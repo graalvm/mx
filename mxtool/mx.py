@@ -445,8 +445,14 @@ class HgConfig:
     def can_push(self, s, strict=True):
         try:
             output = subprocess.check_output(['hg', '-R', s.dir, 'status'])
-            # super strict
-            return output == ''
+            if strict:
+                return output == ''
+            else:
+                if len(output) > 0:
+                    for line in output.split('\n'):
+                        if len(line) > 0 and not line.startswith('?'):
+                            return False
+                return True
         except OSError:
             warn(self.missing)
         except subprocess.CalledProcessError:
@@ -463,11 +469,12 @@ class HgConfig:
 class SuiteModel:
     """
     Defines how to locate a URL/path for a suite, including imported suites.
-    Conceptually a SuiteModel is defined by a primary suite URL/path and a
-    map from suite name to URL/path for imported suites.
+    Conceptually a SuiteModel is defined by a kind (src,dst), a primary suite URL/path,
+    and a map from suite name to URL/path for imported suites.
     Subclasses define a specfic implementation.
     """
-    def __init__(self):
+    def __init__(self, kind):
+        self.kind = kind
         self.primaryDir = None
         self.suitenamemap = {}
 
@@ -479,8 +486,12 @@ class SuiteModel:
         """informs that d is the primary suite directory"""
         self._primaryDir = d
 
-    def importee_dir(self, importer_dir, suitename):
-        """returns the directory path for an import of suitename, given importer_dir"""
+    def importee_dir(self, importer_dir, suite_import):
+        """
+        returns the directory path for an import of suite_import.name, given importer_dir.
+        For a "src" suite model, if suite_import specifies an alternate URL, check whether path exists 
+        and if not, return the alternate.
+        """
         abort('importee_dir not implemented')
 
     def nestedsuites_dirname(self):
@@ -500,6 +511,11 @@ class SuiteModel:
             if sd is not None:
                 return sd
 
+    def _check_exists(self, suite_import, path):
+        if self.kind == "src" and suite_import.alternate is not None and not exists(path):
+            return suite_import.alternate
+        return path
+        
     def _create_suitenamemap(self, optionspec, suitemap):
         """Three ways to specify a suite name mapping, in order of precedence:
         1. Explicitly in optionspec.
@@ -520,13 +536,13 @@ class SuiteModel:
             self.suitenamemap[mappair[0]] = mappair[1]
 
     @staticmethod
-    def set_suitemodel(option, suitemap):
+    def set_suitemodel(kind, option, suitemap):
         if option.startswith('sibling'):
-            return SiblingSuiteModel(os.getcwd(), option, suitemap)
+            return SiblingSuiteModel(kind, os.getcwd(), option, suitemap)
         elif option.startswith('nested'):
-            return NestedImportsSuiteModel(os.getcwd(), option, suitemap)
+            return NestedImportsSuiteModel(kind, os.getcwd(), option, suitemap)
         elif option.startswith('path'):
-            return PathSuiteModel(option[len('path:'):])
+            return PathSuiteModel(kind, option[len('path:'):])
         else:
             abort('unknown suitemodel type: ' + option)
 
@@ -563,15 +579,15 @@ class SuiteModel:
             i = i + 1
 
         global _src_suitemodel
-        _src_suitemodel = SuiteModel.set_suitemodel(src_suitemodel_arg, suitemap_arg)
+        _src_suitemodel = SuiteModel.set_suitemodel("src", src_suitemodel_arg, suitemap_arg)
         global _dst_suitemodel
-        _dst_suitemodel = SuiteModel.set_suitemodel(dst_suitemodel_arg, suitemap_arg)
+        _dst_suitemodel = SuiteModel.set_suitemodel("dst", dst_suitemodel_arg, suitemap_arg)
 
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
-    def __init__(self, suiteRootDir, option, suitemap):
-        SuiteModel.__init__(self)
+    def __init__(self, kind, suiteRootDir, option, suitemap):
+        SuiteModel.__init__(self, kind)
         self._suiteRootDir = suiteRootDir
         self._create_suitenamemap(option[len('sibling:'):], suitemap)
 
@@ -582,25 +598,28 @@ class SiblingSuiteModel(SuiteModel):
         SuiteModel.set_primary_dir(self, d)
         self._suiteRootDir = dirname(d)
 
-    def importee_dir(self, importer_dir, suitename):
+    def importee_dir(self, importer_dir, suite_import):
+        suitename = suite_import.name;
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
-        return join(dirname(importer_dir), suitename)
+        path = join(dirname(importer_dir), suitename)
+        return self._check_exists(suite_import, path)
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'imported_suites' directory of the primary suite"""
     def _imported_suites_dirname(self):
         return "imported_suites"
 
-    def __init__(self, primaryDir, option, suitemap):
-        SuiteModel.__init__(self)
+    def __init__(self, kind, primaryDir, option, suitemap):
+        SuiteModel.__init__(self, kind)
         self._primaryDir = primaryDir
         self._create_suitenamemap(option[len('nested:'):], suitemap)
 
     def find_suite_dir(self, name):
         return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), self._mxDirName(name))
 
-    def importee_dir(self, importer_dir, suitename):
+    def importee_dir(self, importer_dir, suite_import):
+        suitename = suite_import.name;
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
         if basename(importer_dir) == basename(self._primaryDir):
@@ -608,17 +627,18 @@ class NestedImportsSuiteModel(SuiteModel):
             this_imported_suites_dirname = join(importer_dir, self._imported_suites_dirname())
             if not exists(this_imported_suites_dirname):
                 os.mkdir(this_imported_suites_dirname)
-            return join(this_imported_suites_dirname, suitename)
+            path = join(this_imported_suites_dirname, suitename)
         else:
-            return join(dirname(importer_dir), suitename)
+            path = join(dirname(importer_dir), suitename)
+        return self._check_exists(suite_import, path)
 
     def nestedsuites_dirname(self):
         return self._imported_suites_dirname()
 
 class PathSuiteModel(SuiteModel):
     """The most general model. Uses a map from suitename to URL/path provided by the user"""
-    def __init__(self, path):
-        SuiteModel.__init__(self)
+    def __init__(self, kind, path):
+        SuiteModel.__init__(self, kind)
         paths = path.split(',')
         self.suit_to_url = {}
         for path in paths:
@@ -637,33 +657,44 @@ class PathSuiteModel(SuiteModel):
         else:
             return None
 
-    def importee_dir(self, importer_dir, suitename):
+    def importee_dir(self, importer_dir, suite_import):
+        # since this is completely explicit, we pay no attention to any suite_import.alternate
+        suitename = suite_import.name;
         if suitename in self.suit_to_url:
             return self.suit_to_url[suitename]
         else:
             abort('suite ' + suitename + ' not found')
 
 class SuiteImport:
-    def __init__(self, name, version):
+    def __init__(self, name, version, alternate):
         self.name = name
         self.version = version
+        self.alternate = alternate
 
     @staticmethod
     def parse_specification(specification):
-        pair = specification.split(',')
-        name = pair[0]
-        if len(pair) > 1:
-            version = pair[1]
+        parts = specification.split(',')
+        name = parts[0]
+        alternate = None
+        if len(parts) > 1:
+            version = parts[1]
+            if (len(parts) > 2):
+                alternate = parts[2]
         else:
             version = None
-        return SuiteImport(name, version)
+        return SuiteImport(name, version, alternate)
 
     @staticmethod
-    def tostring(name, version):
-        return name + ',' + version
+    def tostring(name, version=None, alternate=None):
+        result = name
+        if version is not None:
+            result = result + ',' + version
+        if alternate is not None:
+            result = result + ',' + alternate
+        return result
 
     def __str__(self):
-        return self.name + ',' + self.version
+        return SuiteImport.tostring(self.name, self.version, self.alternate)
 
 class Suite:
     def __init__(self, mxDir, primary, load=True):
@@ -3984,11 +4015,11 @@ def sclone(args):
 
     _sclone(source, dest, None, args.no_imports)
 
-def _sclone(source, dest, version, no_imports):
+def _sclone(source, dest, suite_import, no_imports):
     cmd = ['hg', 'clone']
-    if version is not None:
+    if suite_import is not None and suite_import.version is not None:
         cmd.append('-r')
-        cmd.append(version)
+        cmd.append(suite_import.version)
     cmd.append(source)
     cmd.append(dest)
 
@@ -4022,8 +4053,8 @@ def _scloneimports_suitehelper(sdir):
 
 def _scloneimports(s, suite_import, source):
     # clone first, then visit imports once we can locate them
-    importee_source = _src_suitemodel.importee_dir(source, suite_import.name)
-    importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import.name)
+    importee_source = _src_suitemodel.importee_dir(source, suite_import)
+    importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
         importee_suite = _scloneimports_suitehelper(importee_dest)
@@ -4031,7 +4062,7 @@ def _scloneimports(s, suite_import, source):
             abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
         importee_suite.visit_imports(_scloneimports_visitor, source=importee_source)
     else:
-        _sclone(importee_source, importee_dest, suite_import.version, False)
+        _sclone(importee_source, importee_dest, suite_import, False)
         # _clone handles the recursive visit of the new imports
 
 def scloneimports(args):
@@ -4064,7 +4095,7 @@ def scloneimports(args):
 def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
     """push visitor for Suite.visit_imports"""
     if dest is not None:
-        dest = _dst_suitemodel.importee_dir(dest, suite_import.name)
+        dest = _dst_suitemodel.importee_dir(dest, suite_import)
     _spush(suite(suite_import.name), suite_import, dest, checks, clonemissing)
 
 def _spush_check_import_visitor(s, suite_import, **extra_args):
@@ -4074,12 +4105,12 @@ def _spush_check_import_visitor(s, suite_import, **extra_args):
         abort('imported version of ' + suite_import.name + ' in suite ' + s.name + ' does not match tip')
 
 def _spush(s, suite_import, dest, checks, clonemissing):
-    if checks:
-        if not _hg.can_push(s):
+    if checks['on']:
+        if not _hg.can_push(s, checks['strict']):
             abort('working directory ' + s.dir + ' contains uncommitted changes, push aborted')
 
     # check imports first
-    if checks:
+    if checks['on']:
         s.visit_imports(_spush_check_import_visitor)
 
     # ok, push imports
@@ -4119,6 +4150,7 @@ def spush(args):
     parser = ArgumentParser(prog='mx spush')
     parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
     parser.add_argument('--no-checks', action='store_true', help='checks on status, versions are disabled')
+    parser.add_argument('--no-strict', action='store_true', help='allows not tracked files')
     parser.add_argument('--clonemissing', action='store_true', help='clone missing imported repos at destination (forces --no-checks)')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
@@ -4140,7 +4172,10 @@ def spush(args):
     if args.dest is not None:
         _dst_suitemodel.set_primary_dir(args.dest)
 
-    _spush(s, None, args.dest, not args.no_checks, args.clonemissing)
+    checks = dict()
+    checks['on'] = not args.no_checks
+    checks['strict'] = not args.no_strict
+    _spush(s, None, args.dest, checks, args.clonemissing)
 
 def _supdate_import_visitor(s, suite_import, **extra_args):
     _supdate(suite(suite_import.name), suite_import)
@@ -4184,17 +4219,17 @@ def scheckimports(args):
 
 def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
     """pull visitor for Suite.visit_imports"""
-    _spull(suite(suite_import.name), update_versions, updated_imports)
+    _spull(suite(suite_import.name), suite_import, update_versions, updated_imports)
 
-def _spull(s, update_versions, updated_imports):
+def _spull(s, suite_import, update_versions, updated_imports):
     _hg.check()
     # pull imports first
     s.visit_imports(_spull_import_visitor, update_versions=update_versions)
 
     run(['hg', '-R', s.dir, 'pull', '-u'])
     if update_versions and updated_imports is not None:
-        tip = s.version()
-        updated_imports.write(SuiteImport.tostring(s.name, tip) + '\n')
+        suite_import.version = s.version()
+        updated_imports.write(str(suite_import) + '\n')
 
 def spull(args):
     """pull primary suite and all its imports"""
@@ -4203,7 +4238,7 @@ def spull(args):
     parser.add_argument('--update-versions', action='store_true', help='update version ids of imported suites')
     args = parser.parse_args(args)
 
-    _spull(_check_primary_suite(), args.update_versions, None)
+    _spull(_check_primary_suite(), None, args.update_versions, None)
 
 def findclass(args, logToConsole=True):
     """find all classes matching a given substring"""
