@@ -32,7 +32,7 @@ mx is a command line tool for managing the development of Java code organized as
 Full documentation can be found at https://wiki.openjdk.java.net/display/Graal/The+mx+Tool
 """
 
-import sys, os, errno, time, subprocess, shlex, types, urllib2, contextlib, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
+import sys, os, errno, time, datetime, subprocess, shlex, types, urllib2, contextlib, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
 import textwrap
 import socket
 import xml.parsers.expat
@@ -490,7 +490,7 @@ class SuiteModel:
     def importee_dir(self, importer_dir, suite_import):
         """
         returns the directory path for an import of suite_import.name, given importer_dir.
-        For a "src" suite model, if suite_import specifies an alternate URL, check whether path exists 
+        For a "src" suite model, if suite_import specifies an alternate URL, check whether path exists
         and if not, return the alternate.
         """
         abort('importee_dir not implemented')
@@ -516,7 +516,7 @@ class SuiteModel:
         if self.kind == "src" and suite_import.alternate is not None and not exists(path):
             return suite_import.alternate
         return path
-        
+
     def _create_suitenamemap(self, optionspec, suitemap):
         """Three ways to specify a suite name mapping, in order of precedence:
         1. Explicitly in optionspec.
@@ -600,7 +600,7 @@ class SiblingSuiteModel(SuiteModel):
         self._suiteRootDir = dirname(d)
 
     def importee_dir(self, importer_dir, suite_import):
-        suitename = suite_import.name;
+        suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
         path = join(dirname(importer_dir), suitename)
@@ -620,7 +620,7 @@ class NestedImportsSuiteModel(SuiteModel):
         return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), self._mxDirName(name))
 
     def importee_dir(self, importer_dir, suite_import):
-        suitename = suite_import.name;
+        suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
         if basename(importer_dir) == basename(self._primaryDir):
@@ -660,7 +660,7 @@ class PathSuiteModel(SuiteModel):
 
     def importee_dir(self, importer_dir, suite_import):
         # since this is completely explicit, we pay no attention to any suite_import.alternate
-        suitename = suite_import.name;
+        suitename = suite_import.name
         if suitename in self.suit_to_url:
             return self.suit_to_url[suitename]
         else:
@@ -1020,6 +1020,108 @@ class XMLDoc(xml.dom.minidom.Document):
         if standalone is not None:
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
+
+class GateTask:
+    def __init__(self, title):
+        self.start = time.time()
+        self.title = title
+        self.end = None
+        self.duration = None
+        log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
+    def stop(self):
+        self.end = time.time()
+        self.duration = datetime.timedelta(seconds=self.end - self.start)
+        log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']')
+        return self
+    def abort(self, codeOrMessage):
+        self.end = time.time()
+        self.duration = datetime.timedelta(seconds=self.end - self.start)
+        log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']')
+        abort(codeOrMessage)
+        return self
+
+def _basic_gate_body(args, tasks):
+    return
+
+def gate(args, parser=None, gate_body=_basic_gate_body):
+    """run the tests used to validate a push
+    This provides a generic gate that does all the standard things.
+    Additional tests can be provided by passing a custom 'gate_body'
+
+    If this command exits with a 0 exit code, then the source code is in
+    a state that would be accepted for integration into the main repository."""
+
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
+    parser = ArgumentParser(prog='mx gate')
+    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
+    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
+    if suppliedParser:
+        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+
+    tasks = []
+    total = GateTask('Gate')
+
+    try:
+
+        t = GateTask('Pylint')
+        pylint([])
+        tasks.append(t.stop())
+
+        t = GateTask('Clean')
+        cleanArgs = []
+        if not args.cleanNative:
+            cleanArgs.append('--no-native')
+        if not args.cleanJava:
+            cleanArgs.append('--no-java')
+        clean(cleanArgs)
+        tasks.append(t.stop())
+
+        t = GateTask('IDEConfigCheck')
+        ideclean([])
+        ideinit([])
+        tasks.append(t.stop())
+
+        eclipse_exe = os.environ.get('ECLIPSE_EXE')
+        if eclipse_exe is not None:
+            t = GateTask('CodeFormatCheck')
+            if eclipseformat(['-e', eclipse_exe]) != 0:
+                t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
+            tasks.append(t.stop())
+
+        t = GateTask('Canonicalization Check')
+        log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
+        if canonicalizeprojects([]) != 0:
+            t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/projects files.')
+        tasks.append(t.stop())
+
+        t = GateTask('BuildJava')
+        build(['--no-native', '--jdt-warning-as-error'])
+        tasks.append(t.stop())
+
+        t = GateTask('Checkstyle')
+        if checkstyle([]) != 0:
+            t.abort('Checkstyle warnings were found')
+        tasks.append(t.stop())
+
+        gate_body(args, tasks)
+
+    except KeyboardInterrupt:
+        total.abort(1)
+
+    except BaseException as e:
+        import traceback
+        traceback.print_exc()
+        total.abort(str(e))
+
+    total.stop()
+
+    log('Gate task times:')
+    for t in tasks:
+        log('  ' + str(t.duration) + '\t' + t.title)
+    log('  =======')
+    log('  ' + str(total.duration))
 
 def get_os():
     """
@@ -4372,6 +4474,7 @@ _commands = {
     'eclipseformat': [eclipseformat, ''],
     'findclass': [findclass, ''],
     'fsckprojects': [fsckprojects, ''],
+    'gate': [gate, '[options]'],
     'help': [help_, '[command]'],
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
