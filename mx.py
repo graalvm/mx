@@ -487,11 +487,11 @@ class SuiteModel:
         """informs that d is the primary suite directory"""
         self._primaryDir = d
 
-    def importee_dir(self, importer_dir, suite_import):
+    def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         """
         returns the directory path for an import of suite_import.name, given importer_dir.
-        For a "src" suite model, if suite_import specifies an alternate URL, check whether path exists
-        and if not, return the alternate.
+        For a "src" suite model, of check_alternate == True and,if suite_import specifies an alternate URL, 
+        check whether path exists and if not, return the alternate.
         """
         abort('importee_dir not implemented')
 
@@ -507,13 +507,15 @@ class SuiteModel:
             return 'mx.' + name
 
     def _search_dir(self, searchDir, mxDirName):
+        if not exists(searchDir):
+            return None
         for dd in os.listdir(searchDir):
             sd = _is_suite_dir(join(searchDir, dd), mxDirName)
             if sd is not None:
                 return sd
 
-    def _check_exists(self, suite_import, path):
-        if self.kind == "src" and suite_import.alternate is not None and not exists(path):
+    def _check_exists(self, suite_import, path, check_alternate=True):
+        if check_alternate and self.kind == "src" and suite_import.alternate is not None and not exists(path):
             return suite_import.alternate
         return path
 
@@ -599,12 +601,12 @@ class SiblingSuiteModel(SuiteModel):
         SuiteModel.set_primary_dir(self, d)
         self._suiteRootDir = dirname(d)
 
-    def importee_dir(self, importer_dir, suite_import):
+    def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
         path = join(dirname(importer_dir), suitename)
-        return self._check_exists(suite_import, path)
+        return self._check_exists(suite_import, path, check_alternate)
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'imported_suites' directory of the primary suite"""
@@ -619,7 +621,7 @@ class NestedImportsSuiteModel(SuiteModel):
     def find_suite_dir(self, name):
         return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), self._mxDirName(name))
 
-    def importee_dir(self, importer_dir, suite_import):
+    def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
@@ -631,7 +633,7 @@ class NestedImportsSuiteModel(SuiteModel):
             path = join(this_imported_suites_dirname, suitename)
         else:
             path = join(dirname(importer_dir), suitename)
-        return self._check_exists(suite_import, path)
+        return self._check_exists(suite_import, path, check_alternate)
 
     def nestedsuites_dirname(self):
         return self._imported_suites_dirname()
@@ -896,7 +898,26 @@ class Suite:
         """visitor for the initial suite load"""
         importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
         if importMxDir is None:
-            abort('import ' + suite_import.name + ' not found')
+            fail = False
+            if suite_import.alternate is not None:
+                cmd = ['hg', 'clone']
+                if suite_import.version is not None:
+                    cmd.append('-r')
+                    cmd.append(suite_import.version)
+                cmd.append(suite_import.alternate)
+                cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
+                try:
+                    subprocess.check_output(cmd)
+                    importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                    if importMxDir is None:
+                        # wasn't a suite after all
+                        fail = True
+                except subprocess.CalledProcessError:
+                    fail = True
+            else:
+                fail = True
+            if fail:
+                abort('import ' + suite_import.name + ' not found')
         importing_suite.imports.append(suite_import)
         _loadSuite(importMxDir, False)
         # we do not check at this stage whether the tip version of imported_suite
@@ -3204,7 +3225,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, async=Fa
     # expect to find the OS command to invoke mx in the same directory
     baseDir = dirname(os.path.abspath(__file__))
 
-    cmd = 'mx.sh'
+    cmd = 'mx'
     if get_os() == 'windows':
         cmd = 'mx.cmd'
     cmdPath = join(baseDir, cmd)
@@ -4090,7 +4111,8 @@ def sclone(args):
     args = parser.parse_args(args)
     # check for non keyword args
     if args.source is None:
-        args.source = _kwArg(args.nonKWArgs)
+        if len(args.nonKWArgs) > 1 or args.dest is not None:
+            args.source = _kwArg(args.nonKWArgs)
     if args.dest is None:
         args.dest = _kwArg(args.nonKWArgs)
     if len(args.nonKWArgs) > 0:
@@ -4262,8 +4284,8 @@ def spush(args):
     if len(args.nonKWArgs) > 0:
         abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
 
-    if args.dest is not None and not os.path.isdir(args.dest):
-        abort('destination must be a directory')
+#    if args.dest is not None and not os.path.isdir(args.dest):
+#        abort('destination must be a directory')
 
     s = _check_primary_suite()
 
