@@ -490,7 +490,7 @@ class SuiteModel:
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         """
         returns the directory path for an import of suite_import.name, given importer_dir.
-        For a "src" suite model, of check_alternate == True and,if suite_import specifies an alternate URL, 
+        For a "src" suite model, of check_alternate == True and,if suite_import specifies an alternate URL,
         check whether path exists and if not, return the alternate.
         """
         abort('importee_dir not implemented')
@@ -4342,12 +4342,29 @@ def scheckimports(args):
     args = parser.parse_args(args)
     _check_primary_suite().visit_imports(_scheck_imports_visitor, update_versions=args.update_versions)
 
+def _sforce_imports_visitor(s, suite_import, **extra_args):
+    """sforceimports visitor for Suite.visit_imports"""
+    _sforce_imports(s, suite(suite_import.name), suite_import)
+
+def _sforce_imports(importing_suite, imported_suite, suite_import):
+    if suite_import.version is not None:
+        currentTip = imported_suite.version()
+        if currentTip != suite_import.version:
+            run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version])
+            run(['hg', '-R', imported_suite.dir, 'update', '-C', '-r', suite_import.version])
+            run(['hg', '-R', imported_suite.dir, 'purge'])
+            # now (may) need to force imports of this suite if the above changed its import revs
+            imported_suite.visit_imports(_sforce_imports_visitor)
+
+def sforceimports(args):
+    '''force working directory revision of imported suites to match primary suite imports'''
+    _check_primary_suite().visit_imports(_sforce_imports_visitor)
+
 def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
     """pull visitor for Suite.visit_imports"""
     _spull(suite(suite_import.name), suite_import, update_versions, updated_imports)
 
 def _spull(s, suite_import, update_versions, updated_imports):
-    _hg.check()
     # pull imports first
     s.visit_imports(_spull_import_visitor, update_versions=update_versions)
 
@@ -4364,6 +4381,37 @@ def spull(args):
     args = parser.parse_args(args)
 
     _spull(_check_primary_suite(), None, args.update_versions, None)
+
+def _sincoming_import_visitor(s, suite_import, **extra_args):
+    _sincoming(suite(suite_import.name), suite_import)
+
+def _sincoming(s, suite_import):
+    s.visit_imports(_sincoming_import_visitor)
+
+    run(['hg', '-R', s.dir, 'incoming'], nonZeroIsFatal = False)
+
+def sincoming(args):
+    '''check incoming for primary suite and all imports'''
+    _hg.check()
+    s = _check_primary_suite()
+
+    _sincoming(s, None)
+
+def _stip_import_visitor(s, suite_import, **extra_args):
+    _stip(suite(suite_import.name), suite_import)
+
+def _stip(s, suite_import):
+    s.visit_imports(_stip_import_visitor)
+
+    print 'tip of %s' % s.name
+    run(['hg', '-R', s.dir, 'tip'], nonZeroIsFatal = False)
+
+def stip(args):
+    '''check tip for primary suite and all imports'''
+    _hg.check()
+    s = _check_primary_suite()
+
+    _stip(s, None)
 
 def findclass(args, logToConsole=True):
     """find all classes matching a given substring"""
@@ -4505,8 +4553,11 @@ _commands = {
     'sclone': [sclone, '[options]'],
     'scheckimports': [scheckimports, ''],
     'scloneimports': [scloneimports, '[options]'],
+    'sforceimports': [sforceimports, ''],
+    'sincoming': [sincoming, ''],
     'spull': [spull, '[options'],
     'spush': [spush, '[options'],
+    'stip': [stip, ''],
     'supdate': [supdate, ''],
     'pylint': [pylint, ''],
     'javap': [javap, '<class name patterns>'],
