@@ -58,6 +58,8 @@ if major != 2 or minor != 7:
 END
 if [ $? -eq 0 ]; then
     exec $python_exe -u "$dir/mx.py" "$@"
+else
+  exit 1
 fi
 
 #end of file
