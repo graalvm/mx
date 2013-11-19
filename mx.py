@@ -3157,19 +3157,28 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         if not exists(settingsDir):
             os.mkdir(settingsDir)
 
+        # collect the defaults from mxtool
+        defaultEclipseSettingsDir = join(dirname(__file__), 'eclipse-settings')
+        esdict = {}
+        if exists(defaultEclipseSettingsDir):
+            for name in os.listdir(defaultEclipseSettingsDir):
+                esdict[name] = os.path.abspath(join(defaultEclipseSettingsDir, name))
+
+        # check for suite overrides
         eclipseSettingsDir = join(p.suite.mxDir, 'eclipse-settings')
         if exists(eclipseSettingsDir):
             for name in os.listdir(eclipseSettingsDir):
-                if name == "org.eclipse.jdt.apt.core.prefs" and not len(p.annotation_processors()) > 0:
-                    continue
-                path = join(eclipseSettingsDir, name)
-                if isfile(path):
-                    with open(join(eclipseSettingsDir, name)) as f:
-                        content = f.read()
-                    content = content.replace('${javaCompliance}', str(p.javaCompliance))
-                    if len(p.annotation_processors()) > 0:
-                        content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
-                    update_file(join(settingsDir, name), content)
+                if isfile(join(eclipseSettingsDir, name)):
+                    esdict[name] = os.path.abspath(join(eclipseSettingsDir, name))
+
+        # copy a possibly modified file to the project's .settings directory
+        for name, path in esdict.iteritems():
+            with open(path) as f:
+                content = f.read()
+            content = content.replace('${javaCompliance}', str(p.javaCompliance))
+            if len(p.annotation_processors()) > 0:
+                content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
+            update_file(join(settingsDir, name), content)
 
         if len(p.annotation_processors()) > 0:
             out = XMLDoc()
