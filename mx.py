@@ -1391,10 +1391,11 @@ def _handle_missing_java_home():
         else:
             break
 
-    envPath = join(_primary_suite.mxDir, 'env')
-    if ask_yes_no('Persist this setting by adding "JAVA_HOME=' + javaHome + '" to ' + envPath, 'y'):
-        with open(envPath, 'a') as fp:
-            print >> fp, 'JAVA_HOME=' + javaHome
+    if _primary_suite is not None:
+        envPath = join(_primary_suite.mxDir, 'env')
+        if ask_yes_no('Persist this setting by adding "JAVA_HOME=' + javaHome + '" to ' + envPath, 'y'):
+            with open(envPath, 'a') as fp:
+                print >> fp, 'JAVA_HOME=' + javaHome
 
     return javaHome
 
