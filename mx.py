@@ -1118,7 +1118,8 @@ def gate(args, parser=None, gate_body=_basic_gate_body):
         tasks.append(t.stop())
 
         t = GateTask('BuildJava')
-        build(['--no-native', '--jdt-warning-as-error'])
+        # Make sure we use any overridden build command
+        command_function('build')(['--no-native', '--jdt-warning-as-error'])
         tasks.append(t.stop())
 
         t = GateTask('Checkstyle')
@@ -3313,16 +3314,24 @@ def generate_eclipse_workingsets():
         log('Could not find Eclipse metadata directory. Please place ' + wsfilename + ' in ' + wsloc + ' manually.')
     wspath = join(wsdir, wsfilename)
 
+    def _add_to_working_set(key, value):
+        if not workingSets.has_key(key):
+            workingSets[key] = [value]
+        else:
+            workingSets[key].append(value)
+
     # gather working set info from project data
     workingSets = dict()
     for p in projects():
         if p.workingSets is None:
             continue
         for w in p.workingSets.split(","):
-            if not workingSets.has_key(w):
-                workingSets[w] = [p.name]
-            else:
-                workingSets[w].append(p.name)
+            _add_to_working_set(w, p.name)
+
+    # the mx metdata directories are included in the appropriate working sets
+    _add_to_working_set('MX', 'mxtool')
+    for suite in suites(True):
+        _add_to_working_set('MX', basename(suite.mxDir))
 
     if exists(wspath):
         wsdoc = _copy_workingset_xml(wspath, workingSets)
@@ -3340,9 +3349,6 @@ def _find_eclipse_wsroot(wsdir):
         return None
     else:
         return _find_eclipse_wsroot(split[0])
-
-def _foobar(val):
-    print(val)
 
 def _make_workingset_xml(workingSets):
     wsdoc = XMLDoc()
@@ -4547,6 +4553,19 @@ def update_commands(suite, new_commands):
         if _commands.has_key(key):
             warn("redefining command '" + key + "' in suite " + suite.name)
         _commands[key] = value
+
+def command_function(name, fatalIfMissing=True):
+    '''
+    Return the function for the (possibly overridden) command named name.
+    If no such command, abort if FatalIsMissing=True, else return None
+    '''
+    if _commands.has_key(name):
+        return _commands[name][0]
+    else:
+        if fatalIfMissing:
+            abort('command ' + name + ' does not exist')
+        else:
+            return None
 
 def warn(msg):
     if _warn:
