@@ -1,8 +1,6 @@
 #!/usr/bin/python
 #
-# ----------------------------------------------------------------------------------------------------
-#
-# Copyright (c) 2007, 2012, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -22,8 +20,6 @@
 # Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
 # or visit www.oracle.com if you need additional information or have any
 # questions.
-#
-# ----------------------------------------------------------------------------------------------------
 #
 
 r"""
@@ -2168,7 +2164,7 @@ def build(args, parser=None):
                 log('Compiling Java sources for {0} with javac...'.format(p.name))
 
 
-                javacCmd = [java().javac, '-g', '-J-Xmx1g', '-source', compliance, '-classpath', cp, '-d', outputDir]
+                javacCmd = [java().javac, '-g', '-J-Xmx1g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
                 if java().debug_port is not None:
                     javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(java().debug_port)]
                 javacCmd += processorArgs
@@ -2312,13 +2308,17 @@ def eclipseformat(args):
 
     log('{0} files were modified'.format(len(modified)))
     if len(modified) != 0:
+        arcbase = _primary_suite.dir
         if args.backup:
             backup = os.path.abspath('eclipseformat.backup.zip')
-            arcbase = _primary_suite.dir
             zf = zipfile.ZipFile(backup, 'w', zipfile.ZIP_DEFLATED)
-            for fi in modified:
-                arcname = os.path.relpath(fi.path, arcbase).replace(os.sep, '/')
+        for fi in modified:
+            name = os.path.relpath(fi.path, arcbase)
+            log(' - {0}'.format(name))
+            if args.backup:
+                arcname = name.replace(os.sep, '/')
                 zf.writestr(arcname, fi.content)
+        if args.backup:
             zf.close()
             log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
         return 1
@@ -2408,7 +2408,7 @@ def pylint(args):
 
     for pyfile in pyfiles:
         log('Running pylint on ' + pyfile + '...')
-        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env, nonZeroIsFatal=False)
+        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env)
 
 def archive(args):
     """create jar files for projects and distributions"""
@@ -2989,13 +2989,23 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
     generate_eclipse_workingsets()
 
 def _check_ide_timestamp(suite, timestamp):
-    """return True if and only if the projects file, imports file, and mx itself are all older than timestamp"""
+    """return True if and only if the projects file, imports file, eclipse-settings files, and mx itself are all older than timestamp"""
     projectsFile = join(suite.mxDir, 'projects')
-    projectsFileOlder = not timestamp.isOlderThan(projectsFile)
-    importsFileOlder = not timestamp.isOlderThan(suite.import_timestamp())
+    if timestamp.isOlderThan(projectsFile):
+        return False
+    if timestamp.isOlderThan(suite.import_timestamp()):
+        return False
     # Assume that any mx change might imply changes to the generated IDE files
-    mxOlder = not timestamp.isOlderThan(__file__)
-    return projectsFileOlder and importsFileOlder and mxOlder
+    if timestamp.isOlderThan(__file__):
+        return False
+
+    eclipseSettingsDir = join(suite.mxDir, 'eclipse-settings')
+    if exists(eclipseSettingsDir):
+        for name in os.listdir(eclipseSettingsDir):
+            path = join(eclipseSettingsDir, name)
+            if timestamp.isOlderThan(path):
+                return False
+    return True
 
 def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
     timestamp = TimeStampFile(join(suite.mxDir, 'eclipseinit.timestamp'))
@@ -3038,7 +3048,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             out.element('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
 
         # Every Java program depends on the JRE
-        out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'})
+        out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(p.javaCompliance)})
 
         if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
             out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
@@ -4131,7 +4141,6 @@ def _kwArg(kwargs):
 
 def sclone(args):
     """clone a suite repository, and its imported suites"""
-    _hg.check()
     parser = ArgumentParser(prog='mx sclone')
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
@@ -4156,6 +4165,8 @@ def sclone(args):
         source = _primary_suite.dir
     else:
         source = args.source
+
+    _hg.check()
 
     if args.dest is not None:
         dest = args.dest
@@ -4221,7 +4232,6 @@ def _scloneimports(s, suite_import, source):
 
 def scloneimports(args):
     """clone the imports of an existing suite"""
-    _hg.check()
     parser = ArgumentParser(prog='mx scloneimports')
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
@@ -4233,6 +4243,7 @@ def scloneimports(args):
     if not os.path.isdir(args.source):
         abort(args.source + ' is not a directory')
 
+    _hg.check()
     s = _scloneimports_suitehelper(args.source)
 
     default_path = _hg.default_push(args.source)
@@ -4300,7 +4311,6 @@ def _spush(s, suite_import, dest, checks, clonemissing):
 
 def spush(args):
     """push primary suite and all its imports"""
-    _hg.check()
     parser = ArgumentParser(prog='mx spush')
     parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
     parser.add_argument('--no-checks', action='store_true', help='checks on status, versions are disabled')
@@ -4316,6 +4326,7 @@ def spush(args):
 #    if args.dest is not None and not os.path.isdir(args.dest):
 #        abort('destination must be a directory')
 
+    _hg.check()
     s = _check_primary_suite()
 
     if args.clonemissing:
@@ -4342,6 +4353,8 @@ def _supdate(s, suite_import):
 def supdate(args):
     """update primary suite and all its imports"""
 
+    parser = ArgumentParser(prog='mx supdate')
+    args = parser.parse_args(args)
     _hg.check()
     s = _check_primary_suite()
 
@@ -4369,6 +4382,7 @@ def scheckimports(args):
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('--update-versions', help='update imported version ids', action='store_true')
     args = parser.parse_args(args)
+    _hg.check()
     _check_primary_suite().visit_imports(_scheck_imports_visitor, update_versions=args.update_versions)
 
 def _sforce_imports_visitor(s, suite_import, **extra_args):
@@ -4387,6 +4401,9 @@ def _sforce_imports(importing_suite, imported_suite, suite_import):
 
 def sforceimports(args):
     '''force working directory revision of imported suites to match primary suite imports'''
+    parser = ArgumentParser(prog='mx sforceimports')
+    args = parser.parse_args(args)
+    _hg.check()
     _check_primary_suite().visit_imports(_sforce_imports_visitor)
 
 def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
@@ -4404,11 +4421,11 @@ def _spull(s, suite_import, update_versions, updated_imports):
 
 def spull(args):
     """pull primary suite and all its imports"""
-    _hg.check()
     parser = ArgumentParser(prog='mx spull')
     parser.add_argument('--update-versions', action='store_true', help='update version ids of imported suites')
     args = parser.parse_args(args)
 
+    _hg.check()
     _spull(_check_primary_suite(), None, args.update_versions, None)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
@@ -4421,6 +4438,8 @@ def _sincoming(s, suite_import):
 
 def sincoming(args):
     '''check incoming for primary suite and all imports'''
+    parser = ArgumentParser(prog='mx sincoming')
+    args = parser.parse_args(args)
     _hg.check()
     s = _check_primary_suite()
 
@@ -4437,6 +4456,8 @@ def _stip(s, suite_import):
 
 def stip(args):
     '''check tip for primary suite and all imports'''
+    parser = ArgumentParser(prog='mx stip')
+    args = parser.parse_args(args)
     _hg.check()
     s = _check_primary_suite()
 
@@ -4525,6 +4546,43 @@ def show_projects(args):
             for p in s.projects:
                 log('\t' + p.name)
 
+def checkcopyrights(args):
+    '''run copyright check on the sources'''
+    parser = ArgumentParser(prog='mx checkcopyrights')
+
+    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+    remove_doubledash(args.remainder)
+    
+    myDir = dirname(__file__)
+    binDir = join(myDir, 'bin')
+
+    # ensure compiled form of code is up to date
+    javaSource = join(myDir, 'CheckCopyright.java')
+    javaClass = join(binDir, 'CheckCopyright.class')
+    if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
+        if not exists(binDir):
+            os.mkdir(binDir)
+        subprocess.check_call([java().javac, '-d', binDir, javaSource])
+
+    result = 0
+    # copyright checking is suite specific as each suite may have different overrides
+    for s in suites(True):
+        if args.primary and not s.primary:
+            continue
+        custom_copyrights = join(s.mxDir, 'copyrights')
+        custom_args = []
+        if exists(custom_copyrights):
+            custom_args = ['--custom-copyright-dir', custom_copyrights]
+        rc = run([java().java, '-cp', binDir, 'CheckCopyright', '--copyright-dir', myDir] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        result = result if rc == 0 else rc
+    return result
+
+def remove_doubledash(args):
+    if '--' in args:
+        args.remove('--')
+
 def ask_yes_no(question, default=None):
     """"""
     assert not default or default == 'y' or default == 'n'
@@ -4582,6 +4640,7 @@ _commands = {
     'checkstyle': [checkstyle, ''],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'clean': [clean, ''],
+    'checkcopyrights': [checkcopyrights, '[options]'],
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
     'findclass': [findclass, ''],
@@ -4593,12 +4652,12 @@ _commands = {
     'archive': [archive, '[options]'],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
-    'scheckimports': [scheckimports, ''],
+    'scheckimports': [scheckimports, '[options]'],
     'scloneimports': [scloneimports, '[options]'],
     'sforceimports': [sforceimports, ''],
     'sincoming': [sincoming, ''],
-    'spull': [spull, '[options'],
-    'spush': [spush, '[options'],
+    'spull': [spull, '[options]'],
+    'spush': [spush, '[options]'],
     'stip': [stip, ''],
     'supdate': [supdate, ''],
     'pylint': [pylint, ''],
