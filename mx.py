@@ -4554,7 +4554,7 @@ def checkcopyrights(args):
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
     remove_doubledash(args.remainder)
-    
+
     myDir = dirname(__file__)
     binDir = join(myDir, 'bin')
 
