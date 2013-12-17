@@ -1575,7 +1575,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         creationflags = 0
         if get_os() == 'windows':
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
+        elif timeout is not None:
             preexec_fn = os.setsid
 
         def redirect(stream, f):
