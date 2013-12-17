@@ -744,10 +744,16 @@ class Suite:
                     parts = key.split('@')
 
                     if len(parts) == 1:
-                        if parts[0] != 'suite':
+                        if parts[0] == 'suite':
+                            if self.name != value:
+                                abort('suite name in project file does not match ' + _suitename(self.mxDir))
+                        elif parts[0] == 'mxversion':
+                            try:
+                                self.requiredMxVersion = JavaVersion(value)
+                            except AssertionError as ae:
+                                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
+                        else:
                             abort('Single part property must be "suite": ' + key)
-                        if self.name != value:
-                            abort('suite name in project file does not match ' + _suitename(self.mxDir))
                         continue
                     if len(parts) != 3:
                         abort('Property name does not have 3 parts separated by "@": ' + key)
