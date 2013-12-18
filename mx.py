@@ -1,5 +1,7 @@
 #!/usr/bin/python
 #
+# ----------------------------------------------------------------------------------------------------
+#
 # Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
@@ -20,6 +22,8 @@
 # Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
 # or visit www.oracle.com if you need additional information or have any
 # questions.
+#
+# ----------------------------------------------------------------------------------------------------
 #
 
 r"""
@@ -705,6 +709,7 @@ class Suite:
         self.imports = []
         self.commands = None
         self.primary = primary
+        self.requiredMxVersion = None
         self.name = _suitename(mxDir)  # validated in _load_projects
         if load:
             # load suites bottom up to make sure command overriding works properly
@@ -753,7 +758,7 @@ class Suite:
                             except AssertionError as ae:
                                 abort('Exception while parsing "mxversion" in project file: ' + str(ae))
                         else:
-                            abort('Single part property must be "suite": ' + key)
+                            abort('Single part property must be "suite" or "mxversion": ' + key)
                         continue
                     if len(parts) != 3:
                         abort('Property name does not have 3 parts separated by "@": ' + key)
@@ -944,6 +949,10 @@ class Suite:
 
     def _post_init(self, opts):
         self._load_projects()
+        if self.requiredMxVersion is None:
+            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
+        elif self.requiredMxVersion > version:
+            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
         # set the global data structures, checking for conflicts unless _check_global_structures is False
         for p in self.projects:
             existing = _projects.get(p.name)
@@ -1886,13 +1895,14 @@ def download(path, urls, verbose=False):
 
     # Try it with the Java tool first since it can show a progress counter
     myDir = dirname(__file__)
+    binDir = join(myDir, 'bin')
 
     if not path.endswith(os.sep):
         javaSource = join(myDir, 'URLConnectionDownload.java')
-        javaClass = join(myDir, 'URLConnectionDownload.class')
+        javaClass = join(binDir, 'URLConnectionDownload.class')
         if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
-            subprocess.check_call([java().javac, '-d', myDir, javaSource])
-        if run([java().java, '-cp', myDir, 'URLConnectionDownload', path] + urls, nonZeroIsFatal=False) == 0:
+            subprocess.check_call([java().javac, '-d', binDir, javaSource])
+        if run([java().java, '-cp', binDir, 'URLConnectionDownload', path] + urls, nonZeroIsFatal=False) == 0:
             return
 
     def url_open(url):
@@ -4806,6 +4816,8 @@ def main():
     except KeyboardInterrupt:
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
+
+version = JavaVersion("1.1")
 
 if __name__ == '__main__':
     # rename this module as 'mx' so it is not imported twice by the commands.py modules
