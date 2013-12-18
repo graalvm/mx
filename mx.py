@@ -1720,7 +1720,7 @@ class JavaVersion:
     def __init__(self, versionString):
         validChar = r'[\x21-\x25\x27-\x29\x2c\x2f-\x5e\x60-\x7f]'
         separator = r'[.\-_]'
-        m = re.match(validChar + '+(' + separator + validChar + '+)*', versionString)
+        m = re.match("^" + validChar + '+(' + separator + validChar + '+)*$', versionString)
         assert m is not None, 'not a recognized version string: ' + versionString
         self.versionString = versionString
         self.parts = [int(f) if f.isdigit() else f for f in re.split(separator, versionString)]
