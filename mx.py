@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -490,7 +490,7 @@ class SuiteModel:
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         """
         returns the directory path for an import of suite_import.name, given importer_dir.
-        For a "src" suite model, of check_alternate == True and,if suite_import specifies an alternate URL,
+        For a "src" suite model, if check_alternate == True and if suite_import specifies an alternate URL,
         check whether path exists and if not, return the alternate.
         """
         abort('importee_dir not implemented')
@@ -690,7 +690,7 @@ class SuiteImport:
     @staticmethod
     def tostring(name, version=None, alternate=None):
         result = name
-        if version is not None:
+        if version:
             result = result + ',' + version
         if alternate is not None:
             result = result + ',' + alternate
@@ -1078,10 +1078,9 @@ def _basic_gate_body(args, tasks):
 def gate(args, parser=None, gate_body=_basic_gate_body):
     """run the tests used to validate a push
     This provides a generic gate that does all the standard things.
-    Additional tests can be provided by passing a custom 'gate_body'
+    Additional tests can be provided by passing a custom 'gate_body'.
 
-    If this command exits with a 0 exit code, then the source code is in
-    a state that would be accepted for integration into the main repository."""
+    If this command exits with a 0 exit code, then the gate passed."""
 
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
@@ -3190,6 +3189,9 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         esdict = {}
         if exists(defaultEclipseSettingsDir):
             for name in os.listdir(defaultEclipseSettingsDir):
+                # ignore this file altogether if this project has no annotation processors
+                if name == "org.eclipse.jdt.apt.core.prefs" and not len(p.annotation_processors()) > 0:
+                    continue
                 esdict[name] = os.path.abspath(join(defaultEclipseSettingsDir, name))
 
         # check for suite overrides
@@ -4338,9 +4340,6 @@ def spush(args):
         args.dest = _kwArg(args.nonKWArgs)
     if len(args.nonKWArgs) > 0:
         abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
-
-#    if args.dest is not None and not os.path.isdir(args.dest):
-#        abort('destination must be a directory')
 
     _hg.check()
     s = _check_primary_suite()
