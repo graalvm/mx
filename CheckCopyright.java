@@ -239,15 +239,21 @@ public class CheckCopyright {
         protected boolean checkYearInfo(String fileName, String fileContent, Matcher matcher, Info info) throws IOException {
             int yearInCopyright;
             int yearInCopyrightIndex;
-            yearInCopyright = Integer.parseInt(matcher.group(2));
+            String yearInCopyrightString = matcher.group(2);
+            yearInCopyright = Integer.parseInt(yearInCopyrightString);
             yearInCopyrightIndex = matcher.start(2);
             if (yearInCopyright != info.lastYear) {
                 System.out.println(fileName + " copyright last modified year " + yearInCopyright + ", hg last modified year " + info.lastYear);
                 if (FIX.getValue()) {
                     // Use currentYear as that is what it will be when it's checked in!
-                    System.out.println("updating last modified year of " + fileName + " to " + currentYear);
-                    final int lx = yearInCopyrightIndex;
-                    final String newContent = fileContent.substring(0, lx) + info.lastYear + fileContent.substring(lx + 4);
+                    System.out.println("updating last modified year of " + fileName + " to " + info.lastYear);
+                    // If the previous copyright only specified a single (initial) year, we convert it to the pair form
+                    String newContent = fileContent.substring(0, yearInCopyrightIndex);
+                    if (matcher.group(1) == null) {
+                    	// single year form
+                    	newContent += yearInCopyrightString + ", ";
+                    }
+                    newContent += info.lastYear + fileContent.substring(yearInCopyrightIndex + 4);
                     final FileOutputStream os = new FileOutputStream(fileName);
                     os.write(newContent.getBytes());
                     os.close();
@@ -582,7 +588,7 @@ public class CheckCopyright {
         if (copyrightHandler != null) {
             Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);        	
             if (copyrightMatcher.matches()) {
-            	error = !copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info);
+            	error = error | !copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info);
             } else {
             	// If copyright is missing, insert it, otherwise user has to manually fix existing copyright.
 				if (!fileContent.contains("Copyright")) {
@@ -809,8 +815,20 @@ public class CheckCopyright {
     	}
 
         void printHelp() {
+        	int maxKeyLen = 0;
         	for (Map.Entry<String, Option<?>> entrySet : optionMap.entrySet()) {
-        		System.out.printf("%24s  %s%n", entrySet.getKey(), entrySet.getValue().help);
+        		int l = entrySet.getKey().length();
+        		if (l > maxKeyLen) {
+        			maxKeyLen = l;
+        		}
+        	}
+        	for (Map.Entry<String, Option<?>> entrySet : optionMap.entrySet()) {
+        		String key = entrySet.getKey();
+        		System.out.printf("  %s", key);
+        		for (int i = 0; i < maxKeyLen - key.length(); i++) {
+        			System.out.print(' ');
+        		}
+        		System.out.printf("   %s%n", entrySet.getValue().help);
         	}
         }
 }
