@@ -3102,7 +3102,9 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
                         # Relative paths for "lib" class path entries have various semantics depending on the Eclipse
                         # version being used (e.g. see https://bugs.eclipse.org/bugs/show_bug.cgi?id=274737) so it's
                         # safest to simply use absolute paths.
-                        path = join(p.suite.dir, path)
+
+                        # Until libs are suite specific, it's important to use dep.suite as the location
+                        path = join(dep.suite.dir, path)
 
                     attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
 
