@@ -1075,7 +1075,7 @@ class GateTask:
 def _basic_gate_body(args, tasks):
     return
 
-def gate(args, parser=None, gate_body=_basic_gate_body):
+def gate(args, gate_body=_basic_gate_body, parser=None):
     """run the tests used to validate a push
     This provides a generic gate that does all the standard things.
     Additional tests can be provided by passing a custom 'gate_body'.
@@ -1084,7 +1084,6 @@ def gate(args, parser=None, gate_body=_basic_gate_body):
 
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
-    parser = ArgumentParser(prog='mx gate')
     parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
     parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
     if suppliedParser:
@@ -1893,14 +1892,8 @@ def download(path, urls, verbose=False):
         os.makedirs(d)
 
     # Try it with the Java tool first since it can show a progress counter
-    myDir = dirname(__file__)
-    binDir = join(myDir, 'bin')
-
     if not path.endswith(os.sep):
-        javaSource = join(myDir, 'URLConnectionDownload.java')
-        javaClass = join(binDir, 'URLConnectionDownload.class')
-        if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
-            subprocess.check_call([java().javac, '-d', binDir, javaSource])
+        _, binDir = _compile_mx_class('URLConnectionDownload')
         if run([java().java, '-cp', binDir, 'URLConnectionDownload', path] + urls, nonZeroIsFatal=False) == 0:
             return
 
@@ -2760,10 +2753,16 @@ def clean(args, parser=None):
     parser = parser if suppliedParser else ArgumentParser(prog='mx clean')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
+    parser.add_argument('--projects', action='store', help='comma separated projects to clean (omit to clean all projects)')
 
     args = parser.parse_args(args)
 
-    for p in projects_opt_limit_to_suites():
+    if args.projects is not None:
+        projects = [project(name) for name in args.projects.split(',')]
+    else:
+        projects = projects_opt_limit_to_suites()
+
+    for p in projects:
         if p.native:
             if args.native:
                 run([gmake_cmd(), '-C', p.dir, 'clean'])
@@ -3456,12 +3455,17 @@ def _copy_workingset_xml(wspath, workingSets):
     # parsing logic
     def _ws_start(name, attributes):
         if name == 'workingSet':
-            ps.current_ws_name = attributes['name']
-            if workingSets.has_key(ps.current_ws_name):
-                ps.current_ws = workingSets[ps.current_ws_name]
-                ps.seen_ws.append(ps.current_ws_name)
-                ps.seen_projects = list()
+            if attributes.has_key('name'):
+                ps.current_ws_name = attributes['name']
+                if workingSets.has_key(ps.current_ws_name):
+                    ps.current_ws = workingSets[ps.current_ws_name]
+                    ps.seen_ws.append(ps.current_ws_name)
+                    ps.seen_projects = list()
+                else:
+                    ps.current_ws = None
             else:
+                # Not sure how/why this happens
+                abort('working set element with no name attribute')
                 ps.current_ws = None
             target.open(name, attributes)
             parser.StartElementHandler = _ws_item
@@ -4616,25 +4620,42 @@ def show_projects(args):
             for p in s.projects:
                 log('\t' + p.name)
 
+def _compile_mx_class(javaClassName, projectscp=None):
+    myDir = dirname(__file__)
+    binDir = join(myDir, 'bin')
+    javaSource = join(myDir, javaClassName + '.java')
+    javaClass = join(binDir, javaClassName + '.class')
+    if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
+        if not exists(binDir):
+            os.mkdir(binDir)
+        cmd = [java().javac, '-d', binDir]
+        if projectscp:
+            cmd += ['-cp', binDir + os.pathsep + projectscp]
+        cmd += [javaSource]
+        subprocess.check_call(cmd)
+    return (myDir, binDir)
+
 def checkcopyrights(args):
     '''run copyright check on the sources'''
-    parser = ArgumentParser(prog='mx checkcopyrights')
+    class CP(ArgumentParser):
+        def format_help(self):
+            return ArgumentParser.format_help(self) + self._get_program_help()
+
+        def _get_program_help(self):
+            help_output = subprocess.check_output([java().java, '-cp', binDir, 'CheckCopyright', '--help'])
+            return '\nother argumemnts preceded with --\n' +  help_output
+
+    myDir, binDir = _compile_mx_class('CheckCopyright')
+
+    parser = CP(prog='mx checkcopyrights')
 
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
     remove_doubledash(args.remainder)
 
-    myDir = dirname(__file__)
-    binDir = join(myDir, 'bin')
 
     # ensure compiled form of code is up to date
-    javaSource = join(myDir, 'CheckCopyright.java')
-    javaClass = join(binDir, 'CheckCopyright.class')
-    if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
-        if not exists(binDir):
-            os.mkdir(binDir)
-        subprocess.check_call([java().javac, '-d', binDir, javaSource])
 
     result = 0
     # copyright checking is suite specific as each suite may have different overrides
@@ -4648,6 +4669,77 @@ def checkcopyrights(args):
         rc = run([java().java, '-cp', binDir, 'CheckCopyright', '--copyright-dir', myDir] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
+
+def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
+    """
+    Scan the sources of project 'p' for Java source files containing a line starting with 'annotation'
+    (ignoring preceding whitespace) and return the fully qualified class name for each Java
+    source file matched in a list.
+    """
+
+    matches = lambda line : len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+    return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
+
+def _basic_junit_harness(args, vmArgs, junitArgs):
+    return run_java(junitArgs)
+
+def junit(args, harness=_basic_junit_harness, parser=None):
+    '''run Junit tests'''
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
+    parser.add_argument('--tests', action='store', help='pattern to match test classes')
+    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    if suppliedParser:
+        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+
+    vmArgs = ['-ea', '-esa']
+
+    if args.vm_args:
+        vmArgs = vmArgs + shlex.split(args.vm_args.lstrip('@'))
+
+    testfile = os.environ.get('MX_TESTFILE', None)
+    if testfile is None:
+        (_, testfile) = tempfile.mkstemp(".testclasses", "mx")
+        os.close(_)
+
+    candidates = []
+    for p in projects_opt_limit_to_suites():
+        if java().javaCompliance < p.javaCompliance:
+            continue
+        candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
+
+    tests = [] if args.tests is None else [name for name in args.tests.split(',')]
+    classes = []
+    if len(tests) == 0:
+        classes = candidates
+    else:
+        for t in tests:
+            found = False
+            for c in candidates:
+                if t in c:
+                    found = True
+                    classes.append(c)
+            if not found:
+                log('warning: no tests matched by substring "' + t)
+
+    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.javaCompliance <= java().javaCompliance])
+
+    if len(classes) != 0:
+        # compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
+        _, binDir = _compile_mx_class('JUnitWrapper', projectscp)
+
+        if len(classes) == 1:
+            testClassArgs = ['--testclass', classes[0]]
+        else:
+            with open(testfile, 'w') as f:
+                for c in classes:
+                    f.write(c + '\n')
+            testClassArgs =  ['--testsfile', testfile]
+        junitArgs = ['-cp', binDir + os.pathsep + projectscp, 'JUnitWrapper'] + testClassArgs
+        return harness(args, vmArgs, junitArgs)
+    else:
+        return 0
 
 def remove_doubledash(args):
     if '--' in args:
@@ -4733,6 +4825,7 @@ _commands = {
     'pylint': [pylint, ''],
     'javap': [javap, '<class name patterns>'],
     'javadoc': [javadoc, '[options]'],
+    'junit': [junit, '[options]'],
     'site': [site, '[options]'],
     'netbeansinit': [netbeansinit, ''],
     'projects': [show_projects, ''],
