@@ -915,6 +915,7 @@ class Suite:
         if importMxDir is None:
             fail = False
             if suite_import.alternate is not None:
+                _hg.check()
                 cmd = ['hg', 'clone']
                 if suite_import.version is not None:
                     cmd.append('-r')
@@ -3114,7 +3115,8 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
                         # version being used (e.g. see https://bugs.eclipse.org/bugs/show_bug.cgi?id=274737) so it's
                         # safest to simply use absolute paths.
 
-                        # Until libs are suite specific, it's important to use dep.suite as the location
+                        # It's important to use dep.suite as the location for when one suite references
+                        # a library in another suite.
                         path = join(dep.suite.dir, path)
 
                     attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
@@ -4681,6 +4683,19 @@ def checkcopyrights(args):
         result = result if rc == 0 else rc
     return result
 
+def _basic_bench_harness(args, vmArgs):
+    return 0
+
+def bench(args, harness=_basic_bench_harness, parser=None):
+    '''run benchmarks (suite-specfic)'''
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
+    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    if suppliedParser:
+        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+    harness(args, args.vm_args)
+
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
     Scan the sources of project 'p' for Java source files containing a line starting with 'annotation'
@@ -4809,6 +4824,7 @@ def warn(msg):
 # Suite extensions should not update this table directly, but use update_commands
 _commands = {
     'about': [about, ''],
+    'bench': [bench, ''],
     'build': [build, '[options]'],
     'checkstyle': [checkstyle, ''],
     'canonicalizeprojects': [canonicalizeprojects, ''],
@@ -4975,7 +4991,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("1.1")
+version = VersionSpec("2.0")
 
 if __name__ == '__main__':
     # rename this module as 'mx' so it is not imported twice by the commands.py modules
