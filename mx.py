@@ -1127,12 +1127,12 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
             cleanArgs.append('--no-native')
         if not args.cleanJava:
             cleanArgs.append('--no-java')
-        clean(cleanArgs)
+        command_function('clean')(cleanArgs)
         tasks.append(t.stop())
 
         t = GateTask('IDEConfigCheck')
-        ideclean([])
-        ideinit([])
+        command_function('ideclean')([])
+        command_function('ideinit')([])
         tasks.append(t.stop())
 
         eclipse_exe = os.environ.get('ECLIPSE_EXE')
@@ -1175,6 +1175,42 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
         log('  ' + str(t.duration) + '\t' + t.title)
     log('  =======')
     log('  ' + str(total.duration))
+
+def _basic_bench_harness(args, vmArgs):
+    return 0
+
+def bench(args, harness=_basic_bench_harness, parser=None):
+    '''run benchmarks (suite-specfic) after clean build (optional)'''
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
+    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
+    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
+    parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
+    parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
+    if suppliedParser:
+        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+
+    if args.noClean:
+        args.cleanIDE = False
+        args.cleanJava = False
+        args.cleanNative = False
+
+    cleanArgs = []
+    if not args.cleanNative:
+        cleanArgs.append('--no-native')
+    if not args.cleanJava:
+        cleanArgs.append('--no-java')
+    command_function('clean')(cleanArgs)
+
+    if args.cleanIDE:
+        command_function('ideclean')([])
+        command_function('ideinit')([])
+
+    command_function('build')([])
+
+    harness(args, args.vm_args)
 
 def get_os():
     """
@@ -4742,19 +4778,6 @@ def checkcopyrights(args):
         rc = run([java().java, '-cp', binDir, 'CheckCopyright', '--copyright-dir', myDir] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
-
-def _basic_bench_harness(args, vmArgs):
-    return 0
-
-def bench(args, harness=_basic_bench_harness, parser=None):
-    '''run benchmarks (suite-specfic)'''
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
-    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-    if suppliedParser:
-        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
-    args = parser.parse_args(args)
-    harness(args, args.vm_args)
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
