@@ -711,6 +711,7 @@ class Suite:
         self.primary = primary
         self.requiredMxVersion = None
         self.name = _suitename(mxDir)  # validated in _load_projects
+        self.post_init = False
         if load:
             # load suites bottom up to make sure command overriding works properly
             self._load_imports()
@@ -911,6 +912,9 @@ class Suite:
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """visitor for the initial suite load"""
+        for s in _suites.itervalues():
+            if s.name == suite_import.name:
+                return s
         importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
         if importMxDir is None:
             fail = False
@@ -935,9 +939,17 @@ class Suite:
             if fail:
                 abort('import ' + suite_import.name + ' not found')
         importing_suite.imports.append(suite_import)
-        _loadSuite(importMxDir, False)
+        return Suite(importMxDir, False)
         # we do not check at this stage whether the tip version of imported_suite
         # matches that of the import, since during development, this can and will change
+
+    def import_suite(self, name, version=None, alternate=None):
+        """dynamic import of a suite"""
+        suite_import = SuiteImport(name, version, alternate)
+        imported_suite = Suite._find_and_loadsuite(self, suite_import)
+        if not imported_suite.post_init:
+            imported_suite._post_init()
+        return imported_suite
 
     def _load_imports(self):
         self.visit_imports(self._find_and_loadsuite)
@@ -956,7 +968,7 @@ class Suite:
                         key, value = line.split('=', 1)
                         os.environ[key.strip()] = expandvars_in_property(value.strip())
 
-    def _post_init(self, opts):
+    def _post_init(self):
         self._load_projects()
         if self.requiredMxVersion is None:
             warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
@@ -984,7 +996,8 @@ class Suite:
                 d.path = existing.path
             _dists[d.name] = d
         if hasattr(self, 'mx_post_parse_cmd_line'):
-            self.mx_post_parse_cmd_line(opts)
+            self.mx_post_parse_cmd_line(_opts)
+        self.post_init = True
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -1178,17 +1191,6 @@ def get_os():
     else:
         abort('Unknown operating system ' + sys.platform)
 
-def _loadSuite(mxDir, primary=False):
-    """
-    Load a suite from 'mxDir'.
-    """
-    for s in _suites.itervalues():
-        if s.mxDir == mxDir:
-            return s
-    # create the new suite
-    s = Suite(mxDir, primary)
-    return s
-
 def suites(opt_limit_to_suite=False):
     """
     Get the list of all loaded suites.
@@ -1201,6 +1203,29 @@ def suites(opt_limit_to_suite=False):
         return result
     else:
         return _suites.values()
+
+def createsuite(args):
+    """create new suite in a subdirectory of cwd"""
+    parser = ArgumentParser(prog='mx createsuite')
+    parser.add_argument('--name', help='suite name', required=True)
+    parser.add_argument('--py', action='store_true', help='create (empty) extensions file')
+    args = parser.parse_args(args)
+    suite_name = args.name
+    if exists(suite_name):
+        abort('suite directory already exists')
+    os.mkdir(suite_name)
+    mxDirPath = join(suite_name, 'mx.' + suite_name)
+    os.mkdir(mxDirPath)
+    with open(join(mxDirPath, 'projects'), 'w') as f:
+        f.write('suite=' + suite_name + '\n')
+        f.write('mxversion=' + str(version) + '\n')
+    if args.py:
+        with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
+            f.write('import mx\n')
+            f.write('def mx_init(suite):\n')
+            f.write('    commands = {\n')
+            f.write('    }\n')
+            f.write('mx.update_commands(suite, commands)\n')
 
 def suite(name, fatalIfMissing=True):
     """
@@ -1720,6 +1745,9 @@ class JavaCompliance:
 
         return cmp(self.value, other.value)
 
+    def __hash__(self):
+        return self.value.__hash__()
+
 """
 A version specification as defined in JSR-56
 """
@@ -2236,6 +2264,11 @@ def build(args, parser=None):
     if suppliedParser:
         return args
     return None
+
+def build_suite(s):
+    '''build all projects in suite (for dynamic import)'''
+    project_names = [p.name for p in s.projects]
+    build(['--projects', ','.join(project_names)])
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
@@ -2898,9 +2931,7 @@ def _source_locator_memento(deps):
     slm.open('sourceLookupDirector')
     slm.open('sourceContainers', {'duplicates' : 'false'})
 
-    # Every Java program depends on the JRE
-    memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'}).xml(standalone='no')
-    slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
+    javaCompliance = None
 
     for dep in deps:
         if dep.isLibrary():
@@ -2913,6 +2944,15 @@ def _source_locator_memento(deps):
         else:
             memento = XMLDoc().element('javaProject', {'name' : dep.name}).xml(standalone='no')
             slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.javaProject'})
+            if javaCompliance is None or dep.javaCompliance < javaCompliance:
+                javaCompliance = dep.javaCompliance
+
+    if javaCompliance:
+        memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(javaCompliance)}).xml(standalone='no')
+        slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
+    else:
+        memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'}).xml(standalone='no')
+        slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
 
     slm.close('sourceContainers')
     slm.close('sourceLookupDirector')
@@ -3089,7 +3129,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             out.element('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
             files.append(genDir)
 
-        # Every Java program depends on the JRE
+        # Every Java program depends on a JRE
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(p.javaCompliance)})
 
         if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
@@ -4512,13 +4552,19 @@ def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
     _spull(suite(suite_import.name), suite_import, update_versions, updated_imports)
 
 def _spull(s, suite_import, update_versions, updated_imports):
-    # pull imports first
-    s.visit_imports(_spull_import_visitor, update_versions=update_versions)
+    # s is primary suite if suite_import is None otherwise it is an imported suite
+    # proceed top down to get any updated version ids first
 
-    run(['hg', '-R', s.dir, 'pull', '-u'])
+    # by default we pull to the revision id in the import
+    cmd = ['hg', '-R', s.dir, 'pull', '-u']
+    if not update_versions and suite_import and suite_import.version:
+        cmd += ['-r', suite_import.version]
+    run(cmd, nonZeroIsFatal=False)
     if update_versions and updated_imports is not None:
         suite_import.version = s.version()
         updated_imports.write(str(suite_import) + '\n')
+
+    s.visit_imports(_spull_import_visitor, update_versions=update_versions)
 
 def spull(args):
     """pull primary suite and all its imports"""
@@ -4844,6 +4890,7 @@ _commands = {
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'clean': [clean, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
+    'createsuite': [createsuite, '[options]'],
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
     'findclass': [findclass, ''],
@@ -4901,11 +4948,16 @@ def _check_primary_suite():
     else:
         return _primary_suite
 
+Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'createsuite']
+
 def _needs_primary_suite(command):
-    return not command.startswith("sclone")
+    return not (command in Needs_primary_suite_exemptions)
 
 def _needs_primary_suite_cl():
-    return not any("sclone" in s for s in sys.argv[1:])
+    for s in sys.argv[1:]:
+        if s in Needs_primary_suite_exemptions:
+            return False
+    return True
 
 def _findPrimarySuiteMxDirFrom(d):
     """ search for a suite directory upwards from 'd' """
@@ -4947,12 +4999,12 @@ def main():
     if primarySuiteMxDir:
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
         global _primary_suite
-        _primary_suite = _loadSuite(primarySuiteMxDir, True)
+        _primary_suite = Suite(primarySuiteMxDir, True)
     else:
-        # in general this is an error, except for the sclone/scloneimports commands,
+        # in general this is an error, except for the Needs_primary_suite_exemptions commands,
         # and an extensions command will likely not parse in this case, as any extra arguments
         # will not have been added to _argParser.
-        # If the command line does not contain a string matching one of the exceptions, we can safely abort,
+        # If the command line does not contain a string matching one of the exemptions, we can safely abort,
         # but not otherwise, as we can't be sure the string isn't in a value for some other option.
         if _needs_primary_suite_cl():
             abort(primary_suite_error)
@@ -4970,7 +5022,7 @@ def main():
     _java = JavaConfig(opts)
 
     for s in suites():
-        s._post_init(opts)
+        s._post_init()
 
     if len(commandAndArgs) == 0:
         _argParser.print_help()
