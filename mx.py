@@ -1097,6 +1097,12 @@ class GateTask:
 def _basic_gate_body(args, tasks):
     return
 
+def _add_omit_clean_args(parser):
+    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
+    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
+    parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
+    parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
+
 def gate(args, gate_body=_basic_gate_body, parser=None):
     """run the tests used to validate a push
     This provides a generic gate that does all the standard things.
@@ -1106,11 +1112,15 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
-    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
-    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
+    _add_omit_clean_args(parser)
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
+
+    if args.noClean:
+        args.cleanIDE = False
+        args.cleanJava = False
+        args.cleanNative = False
 
     tasks = []
     total = GateTask('Gate')
@@ -1130,10 +1140,11 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
         command_function('clean')(cleanArgs)
         tasks.append(t.stop())
 
-        t = GateTask('IDEConfigCheck')
-        command_function('ideclean')([])
-        command_function('ideinit')([])
-        tasks.append(t.stop())
+        if args.cleanIDE:
+            t = GateTask('IDEConfigCheck')
+            command_function('ideclean')([])
+            command_function('ideinit')([])
+            tasks.append(t.stop())
 
         eclipse_exe = os.environ.get('ECLIPSE_EXE')
         if eclipse_exe is not None:
@@ -1184,10 +1195,7 @@ def bench(args, harness=_basic_bench_harness, parser=None):
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
     parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
-    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
-    parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
-    parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
+    _add_omit_clean_args(parser)
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -1257,11 +1265,11 @@ def createsuite(args):
         f.write('mxversion=' + str(version) + '\n')
     if args.py:
         with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
-            f.write('import mx\n')
+            f.write('import mx\n\n')
             f.write('def mx_init(suite):\n')
             f.write('    commands = {\n')
             f.write('    }\n')
-            f.write('mx.update_commands(suite, commands)\n')
+            f.write('    mx.update_commands(suite, commands)\n')
 
 def suite(name, fatalIfMissing=True):
     """
