@@ -29,7 +29,7 @@
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-Full documentation can be found at https://wiki.openjdk.java.net/display/Graal/The+mx+Tool
+Full documentation can be found in the Wiki at the site from which mxtool was downloaded.
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, urllib2, contextlib, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
