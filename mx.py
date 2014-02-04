@@ -681,6 +681,8 @@ class SuiteImport:
         alternate = None
         if len(parts) > 1:
             version = parts[1]
+            if len(version) == 0:
+                version = None
             if (len(parts) > 2):
                 alternate = parts[2]
         else:
@@ -1254,15 +1256,30 @@ def createsuite(args):
     parser.add_argument('--name', help='suite name', required=True)
     parser.add_argument('--py', action='store_true', help='create (empty) extensions file')
     args = parser.parse_args(args)
+
     suite_name = args.name
     if exists(suite_name):
         abort('suite directory already exists')
     os.mkdir(suite_name)
-    mxDirPath = join(suite_name, 'mx.' + suite_name)
+    mx_dot_suite_name = 'mx.' + suite_name
+    mxDirPath = join(suite_name, mx_dot_suite_name)
     os.mkdir(mxDirPath)
+
+    def update_file(template_file, target_file):
+        with open(join(dirname(__file__), 'templates', template_file)) as f:
+            content = f.read()
+        with open(join(mxDirPath, target_file), 'w') as f:
+            f.write(content.replace('MXPROJECT', mx_dot_suite_name))
+
     with open(join(mxDirPath, 'projects'), 'w') as f:
         f.write('suite=' + suite_name + '\n')
         f.write('mxversion=' + str(version) + '\n')
+
+    update_file('hg-ignore', '.hgignore')
+
+    _hg.check()
+    run(['hg', 'init'], cwd=suite_name)
+
     if args.py:
         with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
             f.write('import mx\n\n')
@@ -1270,6 +1287,9 @@ def createsuite(args):
             f.write('    commands = {\n')
             f.write('    }\n')
             f.write('    mx.update_commands(suite, commands)\n')
+
+        update_file('eclipse-pyproject', '.project')
+        update_file('eclipse-pydevproject', '.pydevproject')
 
 def suite(name, fatalIfMissing=True):
     """
@@ -4584,6 +4604,9 @@ def _sforce_imports(importing_suite, imported_suite, suite_import):
             run(['hg', '-R', imported_suite.dir, 'purge'])
             # now (may) need to force imports of this suite if the above changed its import revs
             imported_suite.visit_imports(_sforce_imports_visitor)
+    else:
+        # simple case, pull the tip
+        run(['hg', '-R', imported_suite.dir, 'pull', '-u'])
 
 def sforceimports(args):
     '''force working directory revision of imported suites to match primary suite imports'''
