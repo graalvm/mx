@@ -4358,8 +4358,7 @@ def sclone(args):
     args = parser.parse_args(args)
     # check for non keyword args
     if args.source is None:
-        if len(args.nonKWArgs) > 1 or args.dest is not None:
-            args.source = _kwArg(args.nonKWArgs)
+        args.source = _kwArg(args.nonKWArgs)
     if args.dest is None:
         args.dest = _kwArg(args.nonKWArgs)
     if len(args.nonKWArgs) > 0:
