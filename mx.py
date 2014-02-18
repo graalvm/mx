@@ -37,6 +37,7 @@ import textwrap
 import socket
 import xml.parsers.expat
 import shutil, re, xml.dom.minidom
+import pipes
 from collections import Callable
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER
@@ -383,7 +384,7 @@ class Library(Dependency):
             return None
         if resolve and self.mustExist and not exists(path):
             assert not len(self.urls) == 0, 'cannot find required library ' + self.name + ' ' + path
-            print('Downloading ' + self.name + ' from ' + str(self.urls))
+            print 'Downloading ' + self.name + ' from ' + str(self.urls)
             download(path, self.urls)
         return path
 
@@ -394,7 +395,7 @@ class Library(Dependency):
         if not isabs(path):
             path = join(self.suite.dir, path)
         if resolve and len(self.sourceUrls) != 0 and not exists(path):
-            print('Downloading sources for ' + self.name + ' from ' + str(self.sourceUrls))
+            print 'Downloading sources for ' + self.name + ' from ' + str(self.sourceUrls)
             download(path, self.sourceUrls)
         return path
 
@@ -683,7 +684,7 @@ class SuiteImport:
             version = parts[1]
             if len(version) == 0:
                 version = None
-            if (len(parts) > 2):
+            if len(parts) > 2:
                 alternate = parts[2]
         else:
             version = None
@@ -1071,7 +1072,7 @@ class XMLDoc(xml.dom.minidom.Document):
         assert self.current == self
         result = self.toprettyxml(indent, newl, encoding="UTF-8")
         if escape:
-            entities = { '"':  "&quot;", "'":  "&apos;", '\n': '&#10;' }
+            entities = {'"':  "&quot;", "'":  "&apos;", '\n': '&#10;'}
             result = xml.sax.saxutils.escape(result, entities)
         if standalone is not None:
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
@@ -1526,7 +1527,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
         self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
-        self.add_argument('--J', dest='java_args', help='Java VM arguments (e.g. --J @-dsa)', metavar='@<args>', default='-ea -Xss2m -Xmx1g')
+        self.add_argument('--J', dest='java_args', help='Java VM arguments (e.g. --J @-dsa)', metavar='@<args>')
         self.add_argument('--Jp', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--Ja', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
@@ -1593,8 +1594,8 @@ def java():
     assert _java is not None
     return _java
 
-def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None):
-    return run(java().format_cmd(args), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
+def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True):
+    return run(java().format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
 def _kill_process_group(pid):
     pgid = os.getpgid(pid)
@@ -1638,7 +1639,7 @@ def _waitWithTimeout(process, args, timeout):
 
 # Makes the current subprocess accessible to the abort() function
 # This is a tuple of the Popen object and args.
-_currentSubprocess = None
+_currentSubprocess = (None, None)
 
 def waitOn(p):
     if get_os() == 'windows':
@@ -1672,7 +1673,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             log('Environment variables:')
             for key in sorted(env.keys()):
                 log('    ' + key + '=' + env[key])
-        log(' '.join(args))
+        log(' '.join(map(pipes.quote, args)))
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -1719,7 +1720,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     except KeyboardInterrupt:
         abort(1)
     finally:
-        _currentSubprocess = None
+        _currentSubprocess = (None, None)
 
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
@@ -1800,10 +1801,10 @@ class JavaCompliance:
         assert m is not None, 'not a recognized version string: ' + ver
         self.value = int(m.group(1))
 
-    def __str__ (self):
+    def __str__(self):
         return '1.' + str(self.value)
 
-    def __cmp__ (self, other):
+    def __cmp__(self, other):
         if isinstance(other, types.StringType):
             other = JavaCompliance(other)
 
@@ -1850,7 +1851,7 @@ class JavaConfig:
         def delAtAndSplit(s):
             return shlex.split(s.lstrip('@'))
 
-        self.java_args = delAtAndSplit(_opts.java_args)
+        self.java_args = delAtAndSplit(_opts.java_args) if _opts.java_args else []
         self.java_args_pfx = sum(map(delAtAndSplit, _opts.java_args_pfx), [])
         self.java_args_sfx = sum(map(delAtAndSplit, _opts.java_args_sfx), [])
 
@@ -1873,8 +1874,14 @@ class JavaConfig:
         if self.debug_port is not None:
             self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
 
-    def format_cmd(self, args):
-        return [self.java] + self.java_args_pfx + self.java_args + self.java_args_sfx + args
+    def format_cmd(self, args, addDefaultArgs):
+        if addDefaultArgs:
+            return [self.java] + self.processArgs(args)
+        else:
+            return [self.java] + args
+
+    def processArgs(self, args):
+        return self.java_args_pfx + self.java_args + self.java_args_sfx + args
 
     def bootclasspath(self):
         if self._bootclasspath is None:
@@ -1972,9 +1979,8 @@ def abort(codeOrMessage):
 
     # import traceback
     # traceback.print_stack()
-    currentSubprocess = _currentSubprocess
-    if currentSubprocess is not None:
-        p, _ = currentSubprocess
+    p, _ = _currentSubprocess
+    if p is not None:
         if get_os() == 'windows':
             p.kill()
         else:
@@ -2000,13 +2006,13 @@ def download(path, urls, verbose=False):
 
     def url_open(url):
         userAgent = 'Mozilla/5.0 (compatible)'
-        headers = { 'User-Agent' : userAgent }
+        headers = {'User-Agent' : userAgent}
         req = urllib2.Request(url, headers=headers)
         return urllib2.urlopen(req)
 
     for url in urls:
         try:
-            if (verbose):
+            if verbose:
                 log('Downloading ' + url + ' to ' + path)
             if url.startswith('zip:') or url.startswith('jar:'):
                 i = url.find('!/')
@@ -2294,7 +2300,7 @@ def build(args, parser=None):
                 if java().debug_port is not None:
                     jdtArgs += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(java().debug_port)]
 
-                jdtArgs += [ '-jar', jdtJar,
+                jdtArgs += ['-jar', jdtJar,
                          '-' + compliance,
                          '-encoding', 'UTF-8',
                          '-cp', cp, '-g', '-enableJavadoc',
@@ -2819,7 +2825,7 @@ def checkstyle(args):
                     size = 0
                     while i < len(javafilelist):
                         s = len(javafilelist[i]) + 1
-                        if (size + s < 30000):
+                        if size + s < 30000:
                             size += s
                             i += 1
                         else:
@@ -3418,7 +3424,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 	'value' : java().jdk})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : java().jdk})
     launchOut.close('mapAttribute')
 
     if refresh:
@@ -3685,7 +3691,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
         out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
         out.element('import', {'file' : 'nbproject/build-impl.xml'})
         out.open('target', {'name' : '-post-compile'})
-        out.open('exec', { 'executable' : sys.executable})
+        out.open('exec', {'executable' : sys.executable})
         out.element('env', {'key' : 'JAVA_HOME', 'value' : java().jdk})
         out.element('arg', {'value' : os.path.abspath(__file__)})
         out.element('arg', {'value' : 'archive'})
@@ -4582,7 +4588,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, update_versio
 
     currentTip = imported_suite.version()
     if currentTip != suite_import.version:
-        print('imported version of ' + imported_suite.name + ' in ' + importing_suite.name + ' does not match tip' + (': updating' if update_versions else ''))
+        print 'imported version of ' + imported_suite.name + ' in ' + importing_suite.name + ' does not match tip' + (': updating' if update_versions else '')
 
     if update_versions:
         suite_import.version = currentTip
@@ -4655,7 +4661,7 @@ def _sincoming_import_visitor(s, suite_import, **extra_args):
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
 
-    run(['hg', '-R', s.dir, 'incoming'], nonZeroIsFatal = False)
+    run(['hg', '-R', s.dir, 'incoming'], nonZeroIsFatal=False)
 
 def sincoming(args):
     '''check incoming for primary suite and all imports'''
@@ -4673,7 +4679,7 @@ def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
     print 'tip of %s' % s.name
-    run(['hg', '-R', s.dir, 'tip'], nonZeroIsFatal = False)
+    run(['hg', '-R', s.dir, 'tip'], nonZeroIsFatal=False)
 
 def stip(args):
     '''check tip for primary suite and all imports'''
@@ -4824,7 +4830,7 @@ def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=
     source file matched in a list.
     """
 
-    matches = lambda line : len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+    matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
     return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
 
 def _basic_junit_harness(args, vmArgs, junitArgs):
@@ -4882,7 +4888,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             with open(testfile, 'w') as f:
                 for c in classes:
                     f.write(c + '\n')
-            testClassArgs =  ['--testsfile', testfile]
+            testClassArgs = ['--testsfile', testfile]
         junitArgs = ['-cp', binDir + os.pathsep + projectscp, 'JUnitWrapper'] + testClassArgs
         return harness(args, vmArgs, junitArgs)
     else:
@@ -4936,7 +4942,7 @@ def command_function(name, fatalIfMissing=True):
 
 def warn(msg):
     if _warn:
-        print('WARNING: ' + msg)
+        print 'WARNING: ' + msg
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -5012,7 +5018,7 @@ def _check_primary_suite():
 Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'createsuite']
 
 def _needs_primary_suite(command):
-    return not (command in Needs_primary_suite_exemptions)
+    return not command in Needs_primary_suite_exemptions
 
 def _needs_primary_suite_cl():
     for s in sys.argv[1:]:
