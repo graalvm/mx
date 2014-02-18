@@ -5124,7 +5124,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.0")
+version = VersionSpec("2.0.1")
 
 if __name__ == '__main__':
     # rename this module as 'mx' so it is not imported twice by the commands.py modules
