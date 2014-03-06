@@ -1221,7 +1221,7 @@ def bench(args, harness=_basic_bench_harness, parser=None):
 
     command_function('build')([])
 
-    harness(args, args.vm_args)
+    return harness(args, args.vm_args)
 
 def get_os():
     """
@@ -1537,6 +1537,8 @@ class ArgParser(ArgumentParser):
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>', default='sibling')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>', default='sibling')
         self.add_argument('--suitemap', help='explicit remapping of suite names', metavar='<args>')
+        self.add_argument('--primary', action='store_true', help='limit command to primary suite')
+        self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -1565,6 +1567,9 @@ class ArgParser(ArgumentParser):
 
         if opts.user_home is None or opts.user_home == '':
             abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
+
+        if opts.primary and _primary_suite:
+            opts.specific_suites.append(_primary_suite.name)
 
         os.environ['JAVA_HOME'] = opts.java_home
         os.environ['HOME'] = opts.user_home
@@ -2001,7 +2006,12 @@ def download(path, urls, verbose=False):
     # Try it with the Java tool first since it can show a progress counter
     if not path.endswith(os.sep):
         _, binDir = _compile_mx_class('URLConnectionDownload')
-        if run([java().java, '-cp', binDir, 'URLConnectionDownload', path] + urls, nonZeroIsFatal=False) == 0:
+        command = [java().java, '-cp', binDir, 'URLConnectionDownload']
+        if _opts.no_download_progress:
+            command.append('--no-progress')
+        command.append(path)
+        command += urls
+        if run(command, nonZeroIsFatal=False) == 0:
             return
 
     def url_open(url):

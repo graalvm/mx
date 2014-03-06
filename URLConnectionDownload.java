@@ -35,20 +35,27 @@ public class URLConnectionDownload {
 
 	/**
 	 * Downloads content from a given URL to a given file.
-	 * 
+	 *
 	 * @param args
+	 *            --no-progress is an optional first arg to suppress progress meter
 	 *            arg[0] is the path where to write the content. The remainder
 	 *            of args are the URLs to try, stopping after the first
 	 *            successful one
 	 */
     public static void main(String[] args) {
-    	File path = new File(args[0]);
-    	String[] urls = new String[args.length - 1];
-    	System.arraycopy(args, 1, urls, 0, urls.length);
+    	boolean progress = true;
+    	int firstArgIndex = 0;
+    	if (args[0].equals("--no-progress")) {
+    		firstArgIndex = 1;
+    		progress = false;
+    	}
+    	File path = new File(args[firstArgIndex]);
+    	String[] urls = new String[args.length - 1 - firstArgIndex];
+    	System.arraycopy(args, firstArgIndex + 1, urls, 0, urls.length);
 
         File parent = path.getParentFile();
         makeDirectory(parent);
-        
+
         // Enable use of system proxies
         System.setProperty("java.net.useSystemProxies", "true");
 
@@ -93,7 +100,9 @@ public class URLConnectionDownload {
                 while ((read = in.read(buf)) != -1) {
                     n += read;
                     long percent = ((long) n * 100 / size);
-                    System.err.print("\r " + n + " bytes " + (size == -1 ? "" : " (" + percent + "%)"));
+                    if (progress) {
+                        System.err.print("\r " + n + " bytes " + (size == -1 ? "" : " (" + percent + "%)"));
+                    }
                     out.write(buf, 0, read);
                 }
                 System.err.println();
