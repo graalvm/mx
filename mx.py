@@ -4612,24 +4612,33 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, update_versio
 def scheckimports(args):
     """check that suite import versions are up to date"""
     parser = ArgumentParser(prog='mx scheckimports')
-    parser.add_argument('--update-versions', help='update imported version ids', action='store_true')
+    parser.add_argument('--update-versions', action='store_true', help='update imported version ids')
     args = parser.parse_args(args)
     _hg.check()
     _check_primary_suite().visit_imports(_scheck_imports_visitor, update_versions=args.update_versions)
 
-def _sforce_imports_visitor(s, suite_import, **extra_args):
+def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
     """sforceimports visitor for Suite.visit_imports"""
-    _sforce_imports(s, suite(suite_import.name), suite_import)
+    _sforce_imports(s, suite(suite_import.name), suite_import, import_map, strict_versions)
 
-def _sforce_imports(importing_suite, imported_suite, suite_import):
-    if suite_import.version is not None:
+def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, strict_versions):
+    if imported_suite.name in import_map:
+        # we have seen this already
+        if strict_versions:
+            if suite_import.version and import_map[imported_suite.name] != suite_import.version:
+                abort('inconsistent import versions for suite ' + imported_suite.name)
+        return
+    else:
+        import_map[imported_suite.name] = suite_import.version
+
+    if suite_import.version:
         currentTip = imported_suite.version()
         if currentTip != suite_import.version:
             run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version])
             run(['hg', '-R', imported_suite.dir, 'update', '-C', '-r', suite_import.version])
             run(['hg', '-R', imported_suite.dir, 'purge'])
             # now (may) need to force imports of this suite if the above changed its import revs
-            imported_suite.visit_imports(_sforce_imports_visitor)
+            imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
     else:
         # simple case, pull the tip
         run(['hg', '-R', imported_suite.dir, 'pull', '-u'])
@@ -4637,9 +4646,10 @@ def _sforce_imports(importing_suite, imported_suite, suite_import):
 def sforceimports(args):
     '''force working directory revision of imported suites to match primary suite imports'''
     parser = ArgumentParser(prog='mx sforceimports')
+    parser.add_argument('--strict-versions', action='store_true', help='strict version checking')
     args = parser.parse_args(args)
     _hg.check()
-    _check_primary_suite().visit_imports(_sforce_imports_visitor)
+    _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
 def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
     """pull visitor for Suite.visit_imports"""
