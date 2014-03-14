@@ -2061,7 +2061,7 @@ def abort(codeOrMessage):
         if get_os() == 'windows':
             p.kill()
         else:
-            _kill_process_group(p.pid)
+            _kill_process_group(p.pid, signal.SIGKILL)
 
     raise SystemExit(codeOrMessage)
 
