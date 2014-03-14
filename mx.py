@@ -1569,6 +1569,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='bootstrap JDK installation directory (must be JDK 6 or later)', metavar='<path>')
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
+        self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>', default='sibling')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>', default='sibling')
@@ -1638,10 +1639,10 @@ def java():
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True):
     return run(java().format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
-def _kill_process_group(pid):
+def _kill_process_group(pid, sig=signal.SIGKILL):
     pgid = os.getpgid(pid)
     try:
-        os.killpg(pgid, signal.SIGKILL)
+        os.killpg(pgid, sig)
         return True
     except:
         log('Error killing subprocess ' + str(pgid) + ': ' + str(sys.exc_info()[1]))
@@ -2009,6 +2010,21 @@ def expandvars_in_property(value):
         abort('Property contains an undefined environment variable: ' + value)
     return result
 
+def _send_sigquit():
+    p, args = _currentSubprocess
+
+    def _isJava():
+        if args:
+            name = args[0].split("/")[-1]
+            return name == "java"
+        return False
+
+    if p is not None and _isJava():
+        if get_os() == 'windows':
+            log("mx: implement me! want to send SIGQUIT to my child process")
+        else:
+            _kill_process_group(p.pid, sig=signal.SIGQUIT)
+        time.sleep(0.1)
 
 def abort(codeOrMessage):
     """
@@ -2017,6 +2033,9 @@ def abort(codeOrMessage):
     if it is None, the exit status is zero; if it has another type (such as a string),
     the object's value is printed and the exit status is one.
     """
+
+    if _opts.killwithsigquit:
+        _send_sigquit()
 
     # import traceback
     # traceback.print_stack()
@@ -5177,6 +5196,11 @@ def main():
     def term_handler(signum, frame):
         abort(1)
     signal.signal(signal.SIGTERM, term_handler)
+
+    def quit_handler(signum, frame):
+        _send_sigquit()
+    signal.signal(signal.SIGQUIT, quit_handler)
+
     try:
         if opts.timeout != 0:
             def alarm_handler(signum, frame):
