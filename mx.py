@@ -361,7 +361,7 @@ def _download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExis
             f.write(_sha1OfFile())
 
     def _sha1OfFile():
-        with open(path, 'r') as f:
+        with open(path, 'rb') as f:
             return hashlib.sha1(f.read()).hexdigest()
 
 
@@ -1639,7 +1639,7 @@ def java():
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True):
     return run(java().format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
-def _kill_process_group(pid, sig=signal.SIGKILL):
+def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
     try:
         os.killpg(pgid, sig)
@@ -2023,7 +2023,7 @@ def _send_sigquit():
         if get_os() == 'windows':
             log("mx: implement me! want to send SIGQUIT to my child process")
         else:
-            _kill_process_group(p.pid, sig=signal.SIGQUIT)
+            _kill_process_group(p.pid, signal.SIGKILL)
         time.sleep(0.1)
 
 def abort(codeOrMessage):
@@ -5199,7 +5199,8 @@ def main():
 
     def quit_handler(signum, frame):
         _send_sigquit()
-    signal.signal(signal.SIGQUIT, quit_handler)
+    if get_os() != 'windows':
+        signal.signal(signal.SIGQUIT, quit_handler)
 
     try:
         if opts.timeout != 0:
