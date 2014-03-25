@@ -3437,10 +3437,8 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         esdict = {}
         if exists(defaultEclipseSettingsDir):
             for name in os.listdir(defaultEclipseSettingsDir):
-                # ignore this file altogether if this project has no annotation processors
-                if name == "org.eclipse.jdt.apt.core.prefs" and not len(p.annotation_processors()) > 0:
-                    continue
-                esdict[name] = os.path.abspath(join(defaultEclipseSettingsDir, name))
+                if isfile(join(defaultEclipseSettingsDir, name)):
+                    esdict[name] = os.path.abspath(join(defaultEclipseSettingsDir, name))
 
         # check for suite overrides
         eclipseSettingsDir = join(p.suite.mxDir, 'eclipse-settings')
@@ -3449,8 +3447,19 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
                 if isfile(join(eclipseSettingsDir, name)):
                     esdict[name] = os.path.abspath(join(eclipseSettingsDir, name))
 
+        # check for project overrides
+        projectSettingsDir = join(p.dir, 'eclipse-settings')
+        if exists(projectSettingsDir):
+            for name in os.listdir(projectSettingsDir):
+                if isfile(join(projectSettingsDir, name)):
+                    esdict[name] = os.path.abspath(join(projectSettingsDir, name))
+
         # copy a possibly modified file to the project's .settings directory
         for name, path in esdict.iteritems():
+            # ignore this file altogether if this project has no annotation processors
+            if name == "org.eclipse.jdt.apt.core.prefs" and not len(p.annotation_processors()) > 0:
+                continue
+
             with open(path) as f:
                 content = f.read()
             content = content.replace('${javaCompliance}', str(p.javaCompliance))
