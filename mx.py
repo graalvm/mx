@@ -55,7 +55,7 @@ _primary_suite = None
 _src_suitemodel = None
 _dst_suitemodel = None
 _opts = None
-_java = None
+_java_homes = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
 _warn = False
 _hg = None
@@ -120,6 +120,13 @@ class Project(Dependency):
         self.native = False
         self.workingSets = workingSets
         self.dir = d
+
+        # Verify that a JDK exists for this project if its compliance level is
+        # less than the compliance level of the default JDK
+        jdk = java(self.javaCompliance)
+        if jdk is None and self.javaCompliance < java().javaCompliance:
+            abort('Cannot find ' + str(self.javaCompliance) + ' JDK required by ' + name + '. ' +
+                  'Specify it with --extra-java-homes option or EXTRA_JAVA_HOMES environment variable.')
 
         # Create directories for projects that don't yet exist
         if not exists(d):
@@ -1574,7 +1581,8 @@ class ArgParser(ArgumentParser):
         self.add_argument('--Jp', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--Ja', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
-        self.add_argument('--java-home', help='bootstrap JDK installation directory (must be JDK 6 or later)', metavar='<path>')
+        self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
+        self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
@@ -1605,6 +1613,8 @@ class ArgParser(ArgumentParser):
 
         if opts.java_home is None:
             opts.java_home = os.environ.get('JAVA_HOME')
+        if opts.extra_java_homes is None:
+            opts.extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES')
 
         if opts.java_home is None or opts.java_home == '':
             opts.java_home = _handle_missing_java_home()
@@ -1636,12 +1646,20 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
-def java():
+def java(requiredCompliance=None):
     """
     Get a JavaConfig object containing Java commands launch details.
+    If requiredCompliance is None, the compliance level specified by --java-home/JAVA_HOME
+    is returned. Otherwise, the JavaConfig exactly matching requiredCompliance is returned
+    or None if there is no exact match.
     """
-    assert _java is not None
-    return _java
+    assert _java_homes
+    if not requiredCompliance:
+        return _java_homes[0]
+    for java in _java_homes:
+        if java.javaCompliance == requiredCompliance:
+            return java
+    return None
 
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True):
     return run(java().format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
@@ -1895,9 +1913,9 @@ class VersionSpec:
 A JavaConfig object encapsulates info on how Java commands are run.
 """
 class JavaConfig:
-    def __init__(self, opts):
-        self.jdk = opts.java_home
-        self.debug_port = opts.java_dbg_port
+    def __init__(self, java_home, java_dbg_port):
+        self.jdk = java_home
+        self.debug_port = java_dbg_port
         self.jar = exe_suffix(join(self.jdk, 'bin', 'jar'))
         self.java = exe_suffix(join(self.jdk, 'bin', 'java'))
         self.javac = exe_suffix(join(self.jdk, 'bin', 'javac'))
@@ -1906,7 +1924,7 @@ class JavaConfig:
         self._bootclasspath = None
 
         if not exists(self.java):
-            abort('Java launcher derived from JAVA_HOME does not exist: ' + self.java)
+            abort('Java launcher does not exist: ' + self.java)
 
         def delAtAndSplit(s):
             return shlex.split(s.lstrip('@'))
@@ -1933,6 +1951,14 @@ class JavaConfig:
 
         if self.debug_port is not None:
             self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
+
+    def __hash__(self):
+        return hash(self.jdk)
+
+    def __cmp__(self, other):
+        if isinstance(other, JavaConfig):
+            return cmp(self.javaCompliance, other.javaCompliance)
+        raise TypeError()
 
     def format_cmd(self, args, addDefaultArgs):
         if addDefaultArgs:
@@ -2169,14 +2195,12 @@ def build(args, parser=None):
     if not suppliedParser:
         parser = ArgumentParser(prog='mx build')
 
-    javaCompliance = java().javaCompliance
-
     defaultEcjPath = get_env('JDT', join(_primary_suite.mxDir, 'ecj.jar'))
 
     parser = parser if parser is not None else ArgumentParser(prog='mx build')
     parser.add_argument('-f', action='store_true', dest='force', help='force build (disables timestamp checking)')
     parser.add_argument('-c', action='store_true', dest='clean', help='removes existing build output')
-    parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one', default=str(javaCompliance))
+    parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     parser.add_argument('--projects', action='store', help='comma separated projects to build (omit to build all projects)')
     parser.add_argument('--only', action='store', help='comma separated projects to build, without checking their dependencies (omit to build all projects)')
@@ -2255,9 +2279,12 @@ def build(args, parser=None):
                 continue
 
         # skip building this Java project if its Java compliance level is "higher" than the configured JDK
-        if javaCompliance < p.javaCompliance:
-            log('Excluding {0} from build (Java compliance level {1} required)'.format(p.name, p.javaCompliance))
+        requiredCompliance = p.javaCompliance if p.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
+        jdk = java(requiredCompliance)
+        if not jdk:
+            log('Excluding {0} from build (Java compliance level {1} required)'.format(p.name, requiredCompliance))
             continue
+        compliance = str(jdk.javaCompliance)
 
         outputDir = prepareOutputDirs(p, args.clean)
 
@@ -2362,14 +2389,13 @@ def build(args, parser=None):
 
         toBeDeleted = [argfileName]
         try:
-            compliance = str(p.javaCompliance) if p.javaCompliance is not None else args.compliance
             if jdtJar is None:
                 log('Compiling Java sources for {0} with javac...'.format(p.name))
 
 
-                javacCmd = [java().javac, '-g', '-J-Xmx1500m', '-encoding', 'UTF-8', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
-                if java().debug_port is not None:
-                    javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(java().debug_port)]
+                javacCmd = [jdk.javac, '-g', '-J-Xmx1200m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                if jdk.debug_port is not None:
+                    javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                 javacCmd += processorArgs
                 javacCmd += ['@' + argfile.name]
 
@@ -2379,9 +2405,9 @@ def build(args, parser=None):
             else:
                 log('Compiling Java sources for {0} with JDT...'.format(p.name))
 
-                jdtArgs = [java().java, '-Xmx1g']
-                if java().debug_port is not None:
-                    jdtArgs += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(java().debug_port)]
+                jdtArgs = [jdk.java, '-Xmx1200m']
+                if jdk.debug_port is not None:
+                    jdtArgs += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
 
                 jdtArgs += ['-jar', jdtJar,
                          '-' + compliance,
@@ -2463,13 +2489,14 @@ def eclipseformat(args):
         projects = [project(name) for name in args.projects.split(',')]
 
     class Batch:
-        def __init__(self, settingsFile):
+        def __init__(self, settingsFile, javaCompliance):
             self.path = settingsFile
+            self.javaCompliance = javaCompliance
             self.javafiles = list()
 
         def settings(self):
             with open(self.path) as fp:
-                return fp.read()
+                return fp.read() + java(self.javaCompliance).java
 
     class FileInfo:
         def __init__(self, path):
@@ -2494,7 +2521,7 @@ def eclipseformat(args):
             continue
         sourceDirs = p.source_dirs()
 
-        batch = Batch(join(p.dir, '.settings', 'org.eclipse.jdt.core.prefs'))
+        batch = Batch(join(p.dir, '.settings', 'org.eclipse.jdt.core.prefs'), p.javaCompliance)
 
         if not exists(batch.path):
             if _opts.verbose:
@@ -2513,8 +2540,15 @@ def eclipseformat(args):
         if res is not batch:
             res.javafiles = res.javafiles + batch.javafiles
 
+    print "we have: " + str(len(batches)) + " batches"
     for batch in batches.itervalues():
-        run([args.eclipse_exe, '-nosplash', '-application', 'org.eclipse.jdt.core.JavaCodeFormatter', '-config', batch.path] + [f.path for f in batch.javafiles])
+        run([args.eclipse_exe,
+            '-nosplash',
+            '-application',
+            'org.eclipse.jdt.core.JavaCodeFormatter',
+            '-vm', java(batch.javaCompliance).java,
+            '-config', batch.path]
+            + [f.path for f in batch.javafiles])
         for fi in batch.javafiles:
             if fi.update():
                 modified.append(fi)
@@ -2666,7 +2700,8 @@ def archive(args):
                     else:
                         p = dep
                         # skip a  Java project if its Java compliance level is "higher" than the configured JDK
-                        if java().javaCompliance < p.javaCompliance:
+                        jdk = java(p.javaCompliance)
+                        if not jdk:
                             log('Excluding {0} from {2} (Java compliance level {1} required)'.format(p.name, p.javaCompliance, d.path))
                             continue
 
@@ -2847,7 +2882,8 @@ def checkstyle(args):
             abort('ERROR: .checkstyle for Project {0} is missing'.format(p.name))
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
-        if java().javaCompliance < p.javaCompliance:
+        jdk = java(p.javaCompliance)
+        if not jdk:
             log('Excluding {0} from checking (Java compliance level {1} required)'.format(p.name, p.javaCompliance))
             continue
 
@@ -3282,6 +3318,10 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         if p.native:
             continue
 
+        if not java(p.javaCompliance):
+            log('Excluding {0} (JDK with compliance level {1} not available)'.format(p.name, p.javaCompliance))
+            continue
+
         if not exists(p.dir):
             os.makedirs(p.dir)
 
@@ -3529,7 +3569,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : java().jdk})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : java(p.javaCompliance).jdk})
     launchOut.close('mapAttribute')
 
     if refresh:
@@ -3785,6 +3825,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     updated = False
     files = []
     libFiles = []
+    jdks = set()
     for p in suite.projects:
         if p.native:
             continue
@@ -3795,13 +3836,21 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
         if not exists(join(p.dir, 'nbproject')):
             os.makedirs(join(p.dir, 'nbproject'))
 
+        jdk = java(p.javaCompliance)
+
+        if not jdk:
+            log('Excluding {0} (JDK with compliance level {1} not available)'.format(p.name, p.javaCompliance))
+            continue
+
+        jdks.add(jdk)
+
         out = XMLDoc()
         out.open('project', {'name' : p.name, 'default' : 'default', 'basedir' : '.'})
         out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
         out.element('import', {'file' : 'nbproject/build-impl.xml'})
         out.open('target', {'name' : '-post-compile'})
         out.open('exec', {'executable' : sys.executable})
-        out.element('env', {'key' : 'JAVA_HOME', 'value' : java().jdk})
+        out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
         out.element('arg', {'value' : os.path.abspath(__file__)})
         out.element('arg', {'value' : 'archive'})
         out.element('arg', {'value' : '@GRAAL'})
@@ -3856,7 +3905,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
         out = StringIO.StringIO()
-        jdkPlatform = 'JDK_' + str(java().version)
+        jdkPlatform = 'JDK_' + str(jdk.version)
 
         annotationProcessorEnabled = "false"
         annotationProcessorReferences = ""
@@ -3919,7 +3968,7 @@ main.class=
 manifest.file=manifest.mf
 meta.inf.dir=${src.dir}/META-INF
 mkdist.disabled=false
-platforms.""" + jdkPlatform + """.home=""" + java().jdk + """
+platforms.""" + jdkPlatform + """.home=""" + jdk.jdk + """
 platform.active=""" + jdkPlatform + """
 run.classpath=\\
     ${javac.classpath}:\\
@@ -3999,7 +4048,9 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     if updated:
         log('If using NetBeans:')
-        log('  1. Ensure that a platform named "JDK_' + str(java().version) + '" is defined (Tools -> Java Platforms)')
+        log('  1. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
+        for jdk in jdks:
+            log('        JDK_' + str(jdk.version))
         log('  2. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
 
     _zip_files(files, suite.dir, configZip.path)
@@ -4173,7 +4224,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 windowTitle = ['-windowtitle', p.name + ' javadoc']
             try:
                 log('Generating {2} for {0} in {1}'.format(p.name, out, docDir))
-                run([java().javadoc, memory,
+                run([java(p.javaCompliance).javadoc, memory,
                      '-XDignore.symbol.file',
                      '-classpath', cp,
                      '-quiet',
@@ -4202,7 +4253,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             sp += p.source_dirs()
             names.append(p.name)
 
-        links = ['-link', 'http://docs.oracle.com/javase/' + str(_java.javaCompliance.value) + '/docs/api/']
+        links = ['-link', 'http://docs.oracle.com/javase/' + str(java().javaCompliance.value) + '/docs/api/']
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
@@ -5203,9 +5254,16 @@ def main():
         else:
             warn(primary_suite_error)
 
-    global _opts, _java
+    global _opts, _java_homes
     _opts = opts
-    _java = JavaConfig(opts)
+    defaultJdk = JavaConfig(opts.java_home, opts.java_dbg_port)
+    _java_homes = [defaultJdk]
+    if opts.extra_java_homes:
+        for java_home in opts.extra_java_homes.split(os.pathsep):
+            extraJdk = JavaConfig(java_home, opts.java_dbg_port)
+            if extraJdk > defaultJdk:
+                abort('Secondary JDK ' + extraJdk.jdk + ' has higher compliance level than default JDK ' + defaultJdk.jdk)
+            _java_homes.append(extraJdk)
 
     for s in suites():
         s._post_init()
