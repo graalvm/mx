@@ -2884,14 +2884,14 @@ def checkstyle(args):
         sourceDirs = p.source_dirs()
         dotCheckstyle = join(p.dir, '.checkstyle')
 
-        if not exists(dotCheckstyle):
-            abort('ERROR: .checkstyle for Project {0} is missing'.format(p.name))
-
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
         jdk = java(p.javaCompliance)
         if not jdk:
             log('Excluding {0} from checking (Java compliance level {1} required)'.format(p.name, p.javaCompliance))
             continue
+
+        if not exists(dotCheckstyle):
+            abort('ERROR: .checkstyle for Project {0} is missing'.format(p.name))
 
         for sourceDir in sourceDirs:
             javafilelist = []
