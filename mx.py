@@ -5313,7 +5313,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.0.2")
+version = VersionSpec("2.1.0")
 currentUmask = None
 
 if __name__ == '__main__':
