@@ -1667,8 +1667,10 @@ def java(requiredCompliance=None):
             return java
     return None
 
-def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True):
-    return run(java().format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
+def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, javaConfig=None):
+    if not javaConfig:
+        javaConfig = java()
+    return run(javaConfig.format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
 def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
@@ -1927,6 +1929,7 @@ class JavaConfig:
         self.javac = exe_suffix(join(self.jdk, 'bin', 'javac'))
         self.javap = exe_suffix(join(self.jdk, 'bin', 'javap'))
         self.javadoc = exe_suffix(join(self.jdk, 'bin', 'javadoc'))
+        self.toolsjar = join(self.jdk, 'lib', 'tools.jar')
         self._bootclasspath = None
 
         if not exists(self.java):
@@ -2215,6 +2218,7 @@ def build(args, parser=None):
     parser.add_argument('--force-javac', action='store_true', dest='javac', help='use javac despite ecj.jar is found or not')
     parser.add_argument('--jdt', help='path to ecj.jar, the Eclipse batch compiler (default: ' + defaultEcjPath + ')', default=defaultEcjPath, metavar='<path>')
     parser.add_argument('--jdt-warning-as-error', action='store_true', help='convert all Eclipse batch compiler warnings to errors')
+    parser.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
 
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
@@ -2395,19 +2399,27 @@ def build(args, parser=None):
 
         toBeDeleted = [argfileName]
         try:
-            if jdtJar is None:
-                log('Compiling Java sources for {0} with javac...'.format(p.name))
+            if not jdtJar:
+                if not args.error_prone:
+                    log('Compiling Java sources for {0} with javac...'.format(p.name))
+                    javacCmd = [jdk.javac, '-g', '-J-Xmx1g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    if jdk.debug_port is not None:
+                        javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
+                    javacCmd += processorArgs
+                    javacCmd += ['@' + argfile.name]
 
-
-                javacCmd = [jdk.javac, '-g', '-J-Xmx1200m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
-                if jdk.debug_port is not None:
-                    javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
-                javacCmd += processorArgs
-                javacCmd += ['@' + argfile.name]
-
-                if not args.warnAPI:
-                    javacCmd.append('-XDignore.symbol.file')
-                run(javacCmd)
+                    if not args.warnAPI:
+                        javacCmd.append('-XDignore.symbol.file')
+                    run(javacCmd)
+                else:
+                    log('Compiling Java sources for {0} with javac (with error-prone)...'.format(p.name))
+                    javaArgs = ['-Xmx1g']
+                    javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    javacArgs += processorArgs
+                    javacArgs += ['@' + argfile.name]
+                    if not args.warnAPI:
+                        javacArgs.append('-XDignore.symbol.file')
+                    run_java(javaArgs + ['-cp', os.pathsep.join([jdk.toolsjar, args.error_prone]), 'com.google.errorprone.ErrorProneCompiler'] + javacArgs, javaConfig=jdk)
             else:
                 log('Compiling Java sources for {0} with JDT...'.format(p.name))
 
