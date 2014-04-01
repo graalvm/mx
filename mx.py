@@ -1223,11 +1223,6 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
         command_function('build')(['--no-native', '--jdt-warning-as-error'])
         tasks.append(t.stop())
 
-        t = GateTask('Checkstyle')
-        if checkstyle([]) != 0:
-            t.abort('Checkstyle warnings were found')
-        tasks.append(t.stop())
-
         gate_body(args, tasks)
 
     except KeyboardInterrupt:
