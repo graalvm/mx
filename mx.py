@@ -1961,6 +1961,12 @@ class JavaConfig:
         if self.debug_port is not None:
             self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
 
+    def _init_classpaths(self):
+        _, binDir = _compile_mx_class('ClasspathDump')
+        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', binDir, 'ClasspathDump']).split('|')]
+        if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
+            warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
+
     def __hash__(self):
         return hash(self.jdk)
 
@@ -1980,24 +1986,18 @@ class JavaConfig:
 
     def bootclasspath(self):
         if self._bootclasspath is None:
-            tmpDir = tempfile.mkdtemp()
-            try:
-                src = join(tmpDir, 'bootclasspath.java')
-                with open(src, 'w') as fp:
-                    print >> fp, """
-public class bootclasspath {
-    public static void main(String[] args) {
-        String s = System.getProperty("sun.boot.class.path");
-        if (s != null) {
-            System.out.println(s);
-        }
-    }
-}"""
-                subprocess.check_call([self.javac, '-d', tmpDir, src])
-                self._bootclasspath = subprocess.check_output([self.java, '-cp', tmpDir, 'bootclasspath'])
-            finally:
-                shutil.rmtree(tmpDir)
+            self._init_classpaths()
         return self._bootclasspath
+
+    def extdirs(self):
+        if self._extdirs is None:
+            self._init_classpaths()
+        return self._extdirs
+
+    def endorseddirs(self):
+        if self._endorseddirs is None:
+            self._init_classpaths()
+        return self._endorseddirs
 
 def check_get_env(key):
     """
