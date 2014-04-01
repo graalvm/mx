@@ -2403,7 +2403,7 @@ def build(args, parser=None):
                 mainJava = java()
                 if not args.error_prone:
                     log('Compiling Java sources for {0} with javac...'.format(p.name))
-                    javacCmd = [mainJava.javac, '-g', '-J-Xmx1g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
+                    javacCmd = [mainJava.javac, '-g', '-J-Xmx1200m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
                     if jdk.debug_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                     javacCmd += processorArgs
@@ -2414,7 +2414,7 @@ def build(args, parser=None):
                     run(javacCmd)
                 else:
                     log('Compiling Java sources for {0} with javac (with error-prone)...'.format(p.name))
-                    javaArgs = ['-Xmx1g']
+                    javaArgs = ['-Xmx1200m']
                     javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
                     javacArgs += processorArgs
                     javacArgs += ['@' + argfile.name]
@@ -2424,15 +2424,14 @@ def build(args, parser=None):
             else:
                 log('Compiling Java sources for {0} with JDT...'.format(p.name))
 
-                jdtArgs = [jdk.java, '-Xmx1200m']
-                if jdk.debug_port is not None:
-                    jdtArgs += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
+                jdtVmArgs = ['-Xmx1200m', '-jar', jdtJar]
 
-                jdtArgs += ['-jar', jdtJar,
-                         '-' + compliance,
-                         '-encoding', 'UTF-8',
+                jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
-                         '-d', outputDir]
+                         '-d', outputDir,
+                         '-bootclasspath', jdk.bootclasspath(),
+                         '-endorseddirs', jdk.endorseddirs(),
+                         '-extdirs', jdk.extdirs()]
                 jdtArgs += processorArgs
 
 
@@ -2457,7 +2456,7 @@ def build(args, parser=None):
                         jdtArgs += ['-properties', jdtProperties]
                 jdtArgs.append('@' + argfile.name)
 
-                run(jdtArgs)
+                run_java(jdtVmArgs + jdtArgs)
         finally:
             for n in toBeDeleted:
                 os.remove(n)
