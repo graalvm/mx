@@ -2454,7 +2454,7 @@ def build(args, parser=None):
 def build_suite(s):
     '''build all projects in suite (for dynamic import)'''
     project_names = [p.name for p in s.projects]
-    build(['--projects', ','.join(project_names)])
+    command_function('build')(['--projects', ','.join(project_names)])
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
