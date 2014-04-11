@@ -4305,7 +4305,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Wite misc.xml for global JDK config
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version': '4'})
-    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languagelevel': _complianceToIntellijLanguageLevel(java().javaCompliance), 'project-jdk-name': str(java().javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(java().javaCompliance), 'project-jdk-name': str(java().javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
