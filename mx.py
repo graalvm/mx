@@ -2911,7 +2911,8 @@ def checkstyle(args):
         if p.native:
             continue
         sourceDirs = p.source_dirs()
-        dotCheckstyle = join(p.dir, '.checkstyle')
+
+        csConfig = join(p.dir, '.checkstyle')
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
         jdk = java(p.javaCompliance)
@@ -2919,8 +2920,9 @@ def checkstyle(args):
             log('Excluding {0} from checking (Java compliance level {1} required)'.format(p.name, p.javaCompliance))
             continue
 
-        if not exists(dotCheckstyle):
-            abort('ERROR: .checkstyle for Project {0} is missing'.format(p.name))
+        if not exists(csConfig):
+            log('Excluding {0} from checking: {1} is missing'.format(p.name, csConfig))
+            continue
 
         for sourceDir in sourceDirs:
             javafilelist = []
@@ -2942,7 +2944,7 @@ def checkstyle(args):
                     log('[all Java sources in {0} already checked - skipping]'.format(sourceDir))
                 continue
 
-            dotCheckstyleXML = xml.dom.minidom.parse(dotCheckstyle)
+            dotCheckstyleXML = xml.dom.minidom.parse(csConfig)
             localCheckConfig = dotCheckstyleXML.getElementsByTagName('local-check-config')[0]
             configLocation = localCheckConfig.getAttribute('location')
             configType = localCheckConfig.getAttribute('type')
@@ -3454,6 +3456,11 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             out.close('fileset-config')
             update_file(dotCheckstyle, out.xml(indent='  ', newl='\n'))
             files.append(dotCheckstyle)
+        else:
+            # clean up existing .checkstyle file
+            dotCheckstyle = join(p.dir, ".checkstyle")
+            if exists(dotCheckstyle):
+                os.unlink(dotCheckstyle)
 
         out = XMLDoc()
         out.open('projectDescription')
@@ -4110,6 +4117,7 @@ def ideclean(args):
         shutil.rmtree(join(p.dir, '.externalToolBuilders'), ignore_errors=True)
         shutil.rmtree(join(p.dir, 'nbproject'), ignore_errors=True)
         rm(join(p.dir, '.classpath'))
+        rm(join(p.dir, '.checkstyle'))
         rm(join(p.dir, '.project'))
         rm(join(p.dir, '.factorypath'))
         rm(join(p.dir, 'build.xml'))
@@ -4989,7 +4997,9 @@ def _compile_mx_class(javaClassName, projectscp=None):
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
         if not exists(binDir):
             os.mkdir(binDir)
-        cmd = [java().javac, '-d', binDir]
+        # Pick the lowest Java compliance for compiling mx classes
+        lowestJavaConfig = _java_homes[len(_java_homes) - 1]
+        cmd = [java(lowestJavaConfig.javaCompliance).javac, '-d', binDir]
         if projectscp:
             cmd += ['-cp', binDir + os.pathsep + projectscp]
         cmd += [javaSource]
