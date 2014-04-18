@@ -997,7 +997,7 @@ class Suite:
             sourceUrls = pop_list(attrs, 'sourceUrls')
             sourceSha1 = attrs.pop('sourceSha1', None)
             deps = pop_list(attrs, 'dependencies')
-            l = Library(self, name, path, mustExist, urls, sha1, sourcePath, sourceUrls, sourceSha1)
+            l = Library(self, name, path, mustExist, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
             l.__dict__.update(attrs)
             self.libs.append(l)
 
@@ -3477,7 +3477,10 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             # Relative paths for "lib" class path entries have various semantics depending on the Eclipse
             # version being used (e.g. see https://bugs.eclipse.org/bugs/show_bug.cgi?id=274737) so it's
             # safest to simply use absolute paths.
-            path = _make_absolute(path, p.suite.dir)
+
+            # It's important to use dep.suite as the location for when one suite references
+            # a library in another suite.
+            path = _make_absolute(path, dep.suite.dir)
 
             attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
 
@@ -5688,7 +5691,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.2.0")
+version = VersionSpec("2.2.1")
 currentUmask = None
 
 if __name__ == '__main__':
