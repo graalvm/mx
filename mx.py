@@ -2336,11 +2336,12 @@ def build(args, parser=None):
     parser.add_argument('--only', action='store', help='comma separated projects to build, without checking their dependencies (omit to build all projects)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
-    parser.add_argument('--force-javac', action='store_true', dest='javac', help='use javac despite ecj.jar is found or not')
-    parser.add_argument('--jdt', help='path to ecj.jar, the Eclipse batch compiler (default: ' + defaultEcjPath + ')', default=defaultEcjPath, metavar='<path>')
     parser.add_argument('--jdt-warning-as-error', action='store_true', help='convert all Eclipse batch compiler warnings to errors')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
-    parser.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
+    compilerSelect = parser.add_mutually_exclusive_group()
+    compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
+    compilerSelect.add_argument('--jdt', help='path to ecj.jar, the Eclipse batch compiler (default: ' + defaultEcjPath + ')', default=defaultEcjPath, metavar='<path>')
+    compilerSelect.add_argument('--force-javac', action='store_true', dest='javac', help='use javac despite ecj.jar is found or not')
 
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
@@ -4410,7 +4411,7 @@ def ideclean(args):
 
 
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
-    """(re)generate Eclipse and NetBeans project configurations"""
+    """(re)generate Eclipse, NetBeans and Intellij project configurations"""
     eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
     netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
     intellijinit(args, refreshOnly=refreshOnly)
