@@ -5410,7 +5410,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
 
     candidates = []
     for p in projects_opt_limit_to_suites():
-        if java().javaCompliance < p.javaCompliance:
+        if p.native or java().javaCompliance < p.javaCompliance:
             continue
         candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
 
@@ -5428,7 +5428,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 log('warning: no tests matched by substring "' + t)
 
-    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.javaCompliance <= java().javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if not pcp.native and pcp.javaCompliance <= java().javaCompliance])
 
     if len(classes) != 0:
         # compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
@@ -5691,7 +5691,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.2.1")
+version = VersionSpec("2.2.2")
 currentUmask = None
 
 if __name__ == '__main__':
