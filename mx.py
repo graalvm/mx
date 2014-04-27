@@ -4576,6 +4576,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-source', str(projectJava.javaCompliance),
                      '-bootclasspath', projectJava.bootclasspath(),
                      '-extdirs', projectJava.extdirs()] +
+                     ([] if java().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
                      links +
                      extraArgs +
                      nowarnAPI +
@@ -4613,6 +4614,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-quiet',
              '-d', out,
              '-sourcepath', sp] +
+             ([] if java().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              links +
              extraArgs +
              nowarnAPI +
