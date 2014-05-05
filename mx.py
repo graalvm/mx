@@ -2345,7 +2345,7 @@ def _defaultEcjPath():
     return get_env('JDT', join(_primary_suite.mxDir, 'ecj.jar'))
 
 class JavaCompileTask:
-    def __init__(self, args, proj, reason, javafilelist, jdk, outputDir, deps):
+    def __init__(self, args, proj, reason, javafilelist, jdk, outputDir, jdtJar, deps):
         self.proj = proj
         self.reason = reason
         self.javafilelist = javafilelist
@@ -2353,6 +2353,7 @@ class JavaCompileTask:
         self.jdk = jdk
         self.outputDir = outputDir
         self.done = False
+        self.jdtJar = jdtJar
         self.args = args
 
     def __str__(self):
@@ -2387,20 +2388,8 @@ class JavaCompileTask:
         cp = classpath(self.proj.name, includeSelf=True)
         toBeDeleted = [argfileName]
 
-        jdtJar = None
-        if not args.javac and args.jdt is not None:
-            if not args.jdt.endswith('.jar'):
-                abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
-            jdtJar = args.jdt
-            if not exists(jdtJar):
-                if os.path.abspath(jdtJar) == os.path.abspath(_defaultEcjPath()) and get_env('JDT', None) is None:
-                    # Silently ignore JDT if default location is used but does not exist
-                    jdtJar = None
-                else:
-                    abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
-
         try:
-            if not jdtJar:
+            if not self.jdtJar:
                 mainJava = java()
                 if not args.error_prone:
                     self.logCompilation('javac')
@@ -2425,7 +2414,7 @@ class JavaCompileTask:
             else:
                 self.logCompilation('JDT')
 
-                jdtVmArgs = ['-Xmx1500m', '-jar', jdtJar]
+                jdtVmArgs = ['-Xmx1500m', '-jar', self.jdtJar]
 
                 jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
@@ -2497,6 +2486,18 @@ def build(args, parser=None):
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
 
     args = parser.parse_args(args)
+
+    jdtJar = None
+    if not args.javac and args.jdt is not None:
+        if not args.jdt.endswith('.jar'):
+            abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
+        jdtJar = args.jdt
+        if not exists(jdtJar):
+            if os.path.abspath(jdtJar) == os.path.abspath(_defaultEcjPath()) and get_env('JDT', None) is None:
+                # Silently ignore JDT if default location is used but does not exist
+                jdtJar = None
+            else:
+                abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
 
     if args.only is not None:
         # N.B. This build will not include dependencies including annotation processor dependencies
@@ -2633,7 +2634,7 @@ def build(args, parser=None):
             logv('[no Java sources for {0} - skipping]'.format(p.name))
             continue
 
-        task = JavaCompileTask(args, p, buildReason, javafilelist, jdk, outputDir, taskDeps)
+        task = JavaCompileTask(args, p, buildReason, javafilelist, jdk, outputDir, jdtJar, taskDeps)
 
         if args.parallelize:
             # Best to initialize class paths on main process
@@ -2676,9 +2677,9 @@ def build(args, parser=None):
         def compareTasks(t1, t2):
             d = remainingDepsDepth(t1) - remainingDepsDepth(t2)
             if d == 0:
-                d = len(t1.proj.annotation_processors()) - len(t2.proj.annotation_processors())
-                if d == 0:
-                    d = len(t1.javafilelist) - len(t2.javafilelist)
+                t1Work = (1 + len(t1.proj.annotation_processors())) * len(t1.javafilelist)
+                t2Work = (1 + len(t2.proj.annotation_processors())) * len(t2.javafilelist)
+                d = t1Work - t2Work
             return d
 
         def sortWorklist(tasks):
