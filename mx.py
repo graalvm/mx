@@ -3266,6 +3266,12 @@ def clean(args, parser=None):
     else:
         projects = projects_opt_limit_to_suites()
 
+    def _rmtree(dirPath):
+        path = dirPath
+        if get_os() == 'windows':
+            path = unicode("\\\\?\\" + dirPath)
+        shutil.rmtree(path)
+
     for p in projects:
         if p.native:
             if args.native:
@@ -3276,13 +3282,13 @@ def clean(args, parser=None):
                 if genDir != '' and exists(genDir):
                     log('Clearing {0}...'.format(genDir))
                     for f in os.listdir(genDir):
-                        shutil.rmtree(join(genDir, f))
+                        _rmtree(join(genDir, f))
 
 
                 outputDir = p.output_dir()
                 if outputDir != '' and exists(outputDir):
                     log('Removing {0}...'.format(outputDir))
-                    shutil.rmtree(outputDir)
+                    _rmtree(outputDir)
 
             for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
                 config = TimeStampFile(join(p.suite.mxDir, configName))
