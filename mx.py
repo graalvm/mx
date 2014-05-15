@@ -609,7 +609,7 @@ class Library(BaseLibrary):
         if includedInJDK and java().javaCompliance >= JavaCompliance(includedInJDK):
             return None
 
-        return _download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, self.mustExist)
+        return _download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, not self.optional)
 
     def get_source_path(self, resolve):
         if self.sourcePath is None:
@@ -1075,7 +1075,6 @@ class Suite:
 
         for name, attrs in libsMap.iteritems():
             path = attrs.pop('path')
-            mustExist = attrs.pop('optional', 'false') != 'true'
             urls = pop_list(attrs, 'urls')
             sha1 = attrs.pop('sha1', None)
             sourcePath = attrs.pop('sourcePath', None)
@@ -2067,7 +2066,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     except KeyboardInterrupt:
         abort(1)
     finally:
-         _removeSubprocess(sub)
+        _removeSubprocess(sub)
 
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
