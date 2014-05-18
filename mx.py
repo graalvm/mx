@@ -5910,6 +5910,7 @@ def main():
         abort(1)
 
 version = VersionSpec("2.3.0")
+
 currentUmask = None
 
 if __name__ == '__main__':
