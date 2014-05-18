@@ -820,7 +820,7 @@ class SuiteModel:
                 # to get warnings on suite loading issues before command line is parsed
                 global _warn
                 _warn = True
-            elif arg == '-p' or arg == '--primary-suite-path':
+            elif arg == '--primary-suite-path':
                 global _primary_suite_path
                 _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
             i = i + 1
@@ -1266,53 +1266,6 @@ class Suite:
                 d.path = existing.path
             _dists[d.name] = d
 
-        # Remove projects and libraries that (recursively) depend on an optional library
-        # whose artifact does not exist or on a JRE library that is not present in the
-        # JDK for a project. Also remove projects whose Java compliance requirement
-        # cannot be satisfied by the configured JDKs.
-        #
-        # Removed projects and libraries are also removed from
-        # distributions in they are listed as dependencies.
-        for d in sorted_deps(includeLibs=True):
-            if d.isLibrary():
-                if d.optional:
-                    try:
-                        d.optional = False
-                        path = d.get_path(resolve=True)
-                    except SystemExit:
-                        path = None
-                    finally:
-                        d.optional = True
-                    if not path:
-                        logv('[omitting optional library {} as {} does not exist]'.format(d, d.path))
-                        del _libs[d.name]
-                        self.libs.remove(d)
-            elif d.isProject():
-                if java(d.javaCompliance) is None:
-                    logv('[omitting project {} as Java compliance {} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
-                    del _projects[d.name]
-                    self.projects.remove(d)
-                else:
-                    for name in list(d.deps):
-                        jreLib = _jreLibs.get(name)
-                        if jreLib:
-                            if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
-                                if jreLib.optional:
-                                    logv('[omitting project {} as dependency {} is missing]'.format(d, name))
-                                    del _projects[d.name]
-                                    self.projects.remove(d)
-                                else:
-                                    abort('JRE library {} required by {} not found'.format(jreLib, d))
-                        elif not dependency(name, fatalIfMissing=False):
-                            logv('[omitting project {} as dependency {} is missing]'.format(d, name))
-                            del _projects[d.name]
-                            self.projects.remove(d)
-        for dist in _dists.values():
-            for name in list(dist.deps):
-                if not dependency(name, fatalIfMissing=False):
-                    logv('[omitting {} from distribution {}]'.format(name, dist))
-                    dist.deps.remove(name)
-
         if hasattr(self, 'mx_post_parse_cmd_line'):
             self.mx_post_parse_cmd_line(_opts)
         self.post_init = True
@@ -1479,7 +1432,7 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
         t = GateTask('BuildJava')
         # Make sure we use any overridden build command
-        command_function('build')(['--no-native', '--jdt-warning-as-error'])
+        command_function('build')(['-p', '--no-native', '--jdt-warning-as-error'])
         tasks.append(t.stop())
 
         gate_body(args, tasks)
@@ -5824,6 +5777,54 @@ def _findPrimarySuiteMxDir():
     # backwards compatibility: search from path of this file
     return _findPrimarySuiteMxDirFrom(dirname(__file__))
 
+def _remove_bad_deps():
+    '''Remove projects and libraries that (recursively) depend on an optional library
+    whose artifact does not exist or on a JRE library that is not present in the
+    JDK for a project. Also remove projects whose Java compliance requirement
+    cannot be satisfied by the configured JDKs.
+    Removed projects and libraries are also removed from
+    distributions in they are listed as dependencies.'''
+    for d in sorted_deps(includeLibs=True):
+        if d.isLibrary():
+            if d.optional:
+                try:
+                    d.optional = False
+                    path = d.get_path(resolve=True)
+                except SystemExit:
+                    path = None
+                finally:
+                    d.optional = True
+                if not path:
+                    logv('[omitting optional library {} as {} does not exist]'.format(d, d.path))
+                    del _libs[d.name]
+                    d.suite.libs.remove(d)
+        elif d.isProject():
+            if java(d.javaCompliance) is None:
+                logv('[omitting project {} as Java compliance {} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
+                del _projects[d.name]
+                d.suite.projects.remove(d)
+            else:
+                for name in list(d.deps):
+                    jreLib = _jreLibs.get(name)
+                    if jreLib:
+                        if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
+                            if jreLib.optional:
+                                logv('[omitting project {} as dependency {} is missing]'.format(d, name))
+                                del _projects[d.name]
+                                d.suite.projects.remove(d)
+                            else:
+                                abort('JRE library {} required by {} not found'.format(jreLib, d))
+                    elif not dependency(name, fatalIfMissing=False):
+                        logv('[omitting project {} as dependency {} is missing]'.format(d, name))
+                        del _projects[d.name]
+                        d.suite.projects.remove(d)
+
+    for dist in _dists.values():
+        for name in list(dist.deps):
+            if not dependency(name, fatalIfMissing=False):
+                logv('[omitting {} from distribution {}]'.format(name, dist))
+                dist.deps.remove(name)
+
 def main():
     SuiteModel.parse_options()
 
@@ -5867,6 +5868,8 @@ def main():
     for s in suites():
         s._post_init()
 
+    _remove_bad_deps()
+
     if len(commandAndArgs) == 0:
         _argParser.print_help()
         return
@@ -5906,7 +5909,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.2.2")
+version = VersionSpec("2.3.0")
 currentUmask = None
 
 if __name__ == '__main__':

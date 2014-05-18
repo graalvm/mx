@@ -75,23 +75,23 @@ public class CheckCopyright {
     	enum CommentType{
     		STAR, HASH
     	}
-    	
+
         private static Map<String, CopyrightHandler> copyrightMap;
         private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.h|.*\\.py|.*\\.g|.*\\.r";
         private static Pattern copyrightFilePattern;
-        
+
         protected final String suffix;
         private CopyrightHandler customHandler;
-        
+
         CopyrightHandler(CommentType commentType) {
             this.suffix = commentType.name().toLowerCase();
             initCopyrightMap();
         }
-        
+
         void addCustomhandler(CopyrightHandler copyrightHandler) {
         	this.customHandler = copyrightHandler;
         }
-        
+
         /**
          * Add @code extension to files handled by this {@code CopyrightKind}
          */
@@ -104,24 +104,24 @@ public class CheckCopyright {
         }
 
         protected abstract void readCopyrights()  throws IOException;
-        
+
         protected abstract Matcher getMatcher(String fileName, String fileContent) throws IOException;
-        
+
         protected abstract String getText(String fileName) throws IOException ;
-        
+
         protected abstract boolean handlesFile(String fileName);
-        
+
         /**
          * Checks that the Oracle copyright year info was correct.
          * @return {@code false} if the year info was incorrect and was not fixed otherwise return {@code true}
          * @throws IOException
          */
         protected abstract boolean checkYearInfo(String fileName, String fileContent, Matcher matcher, Info info) throws IOException;
-        
+
         static String getCopyrightText(String fileName) throws IOException {
         	return getCopyrightHandler(fileName).getText(fileName);
         }
-        
+
         private static CopyrightHandler getCopyrightHandler(String fileName) {
         	initCopyrightMap();
             if (!copyrightFilePattern.matcher(fileName).matches()) {
@@ -139,7 +139,7 @@ public class CheckCopyright {
             if (copyrightMap == null) {
                 copyrightMap = new HashMap<String, CopyrightHandler>();
                 copyrightFilePattern = Pattern.compile(copyrightFiles);
-            }        	
+            }
         }
 
         static CopyrightHandler getDefaultHandler(String fileName) {
@@ -156,7 +156,7 @@ public class CheckCopyright {
                 ext = "mk";
             }
             CopyrightHandler ck = copyrightMap.get(ext);
-            assert ck != null : fileName;     
+            assert ck != null : fileName;
         	return ck;
         }
 
@@ -164,11 +164,11 @@ public class CheckCopyright {
             byte[] b = new byte[16384];
             int n = is.read(b);
             is.close();
-            return new String(b, 0, n);    		
+            return new String(b, 0, n);
     	}
 
     }
-    
+
     private static class DefaultCopyrightHandler extends CopyrightHandler {
         private static String ORACLE_COPYRIGHT = "oracle.copyright";
         private static String ORACLE_COPYRIGHT_REGEX = "oracle.copyright.regex";
@@ -186,11 +186,12 @@ public class CheckCopyright {
     			updateMap("g");
     		} else {
     			updateMap("r");
+    			updateMap("R");
     			updateMap("py");
     			updateMap("sh");
     			updateMap("mk");
     			updateMap("bash");
-    			updateMap("");    		
+    			updateMap("");
     		}
     		readCopyrights();
     	}
@@ -212,24 +213,24 @@ public class CheckCopyright {
             InputStream is = new FileInputStream(copyrightPath);
             return readCopyright(is);
         }
-    	
+
     	@Override
         protected void readCopyrights()  throws IOException {
          	copyright = readCopyright(ORACLE_COPYRIGHT);
          	copyrightRegex =  readCopyright(ORACLE_COPYRIGHT_REGEX);
          	copyrightPattern = Pattern.compile(copyrightRegex, Pattern.DOTALL);
         }
-    	
+
     	@Override
     	protected Matcher getMatcher(String fileName, String fileContent) {
             return copyrightPattern.matcher(fileContent);
     	}
-    	
+
     	@Override
         protected String getText(String fileName) {
     		return copyright;
     	}
-    	
+
     	@Override
     	protected boolean handlesFile(String fileName) {
     		return true;
@@ -266,16 +267,16 @@ public class CheckCopyright {
     	}
 
     }
-    
+
     private static class CustomCopyrightHandler extends CopyrightHandler {
     	private Map<String, String> overrides = new HashMap<String, String>();
     	private CopyrightHandler defaultHandler;
-    	
+
     	CustomCopyrightHandler(CopyrightHandler.CommentType commentType, CopyrightHandler defaultHandler) {
     		super(commentType);
     		this.defaultHandler = defaultHandler;
     	}
-    	
+
     	void addFile(String fileName, String copyright) {
     		overrides.put(fileName, copyright);
     	}
@@ -317,7 +318,7 @@ public class CheckCopyright {
 			return defaultHandler.checkYearInfo(fileName, fileContent, matcher, info);
 		}
     }
-    
+
 	private static void initCopyrightKinds() throws IOException {
 		CopyrightHandler starHandler = new DefaultCopyrightHandler(CopyrightHandler.CommentType.STAR);
 		CopyrightHandler hashHandler = new DefaultCopyrightHandler(CopyrightHandler.CommentType.HASH);
@@ -344,6 +345,10 @@ public class CheckCopyright {
 						String[] parts = line.split(",");
 						// filename,copyright-file
 						CopyrightHandler defaultHandler = CopyrightHandler.getDefaultHandler(parts[0]);
+						if (defaultHandler == null) {
+							System.err.println("no default copyright handler for: " + parts[0]);
+							System.exit(1);
+						}
 						CustomCopyrightHandler customhandler = (CustomCopyrightHandler) defaultHandler.customHandler;
 						customhandler.addFile(parts[0], new File(new File(customCopyrightDir), parts[1]).getAbsolutePath());
 					}
@@ -351,7 +356,7 @@ public class CheckCopyright {
 			}
 		}
 	}
-    
+
     private static int currentYear = Calendar.getInstance().get(Calendar.YEAR);
     private static Options options = new Options();
     private static Option<Boolean> help = options.newBooleanOption("help", false, "Show help message and exit.");
@@ -381,7 +386,7 @@ public class CheckCopyright {
 //    private static File workSpaceDirectory;
     private static boolean verbose;
     private static boolean veryVerbose;
-    
+
     public static void main(String[] args) {
         // parse the arguments
         options.parseArguments(args);
@@ -389,10 +394,10 @@ public class CheckCopyright {
             options.printHelp();
             return;
         }
-        
+
         verbose = VERBOSE.getValue();
         veryVerbose = VERY_VERBOSE.getValue();
-        
+
         hgPath = HG_PATH.getValue();
 
         if (FILE_PATTERN.getValue() != null) {
@@ -460,12 +465,12 @@ public class CheckCopyright {
             }
         }
     }
-    
+
     private static Info getFromLastModified(Calendar cal, String fileName) {
 		File file = new File(fileName);
 		cal.setTimeInMillis(file.lastModified());
 		int year = cal.get(Calendar.YEAR);
-		return new Info(fileName, year, year);    	
+		return new Info(fileName, year, year);
     }
 
     private static boolean isInProjects(String fileName, List<String> projects) {
@@ -586,7 +591,7 @@ public class CheckCopyright {
         final String fileContent = new String(fileContentBytes);
         CopyrightHandler copyrightHandler = CopyrightHandler.getCopyrightHandler(fileName);
         if (copyrightHandler != null) {
-            Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);        	
+            Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);
             if (copyrightMatcher.matches()) {
             	error = error | !copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info);
             } else {
@@ -673,7 +678,7 @@ public class CheckCopyright {
         }
         return new ArrayList<String>(outSet.values());
     }
-    
+
     private static List<String> getDirWalkFiles() {
     	File cwd = new File(System.getProperty("user.dir"));
     	ArrayList<String> result = new ArrayList<String>();
@@ -686,7 +691,7 @@ public class CheckCopyright {
     	}
     	return result;
     }
-    
+
     private static void getDirWalkFiles(File dir, ArrayList<String> list) {
     	File[] files = dir.listFiles();
     	for (File file : files) {
@@ -700,10 +705,10 @@ public class CheckCopyright {
     		}
     	}
     }
-    
+
     private static final String IGNORE_LIST = "\\.hg|.*\\.class|bin|src_gen";
     private static final Pattern ignorePattern = Pattern.compile(IGNORE_LIST);
-    
+
     private static boolean ignoreFile(String name) {
     	return ignorePattern.matcher(name).matches();
     }
@@ -768,7 +773,7 @@ public class CheckCopyright {
         }
         return result;
     }
-    
+
     private static class Options {
     	private static Map<String, Option<?>> optionMap  = new TreeMap<>();
 
@@ -777,7 +782,7 @@ public class CheckCopyright {
     		optionMap.put(key(name), option);
     		return option;
     	}
-    	
+
     	private Option<String> newStringOption(String name, String defaultValue, String help) {
     		Option<String> option = new Option<String>(name, help, defaultValue);
     		optionMap.put(key(name), option);
@@ -789,11 +794,11 @@ public class CheckCopyright {
     		optionMap.put(key(name), option);
     		return option;
     	}
-    	
+
     	private static String key(String name) {
     		return "--" + name;
     	}
-    	
+
     	void parseArguments(String[] args) {
             for (int i = 0; i < args.length; i++) {
             	final String arg = args[i];
@@ -832,40 +837,40 @@ public class CheckCopyright {
         	}
         }
 }
-    
+
     private static class Option<T> {
     	private final String name;
     	private final String help;
     	private final boolean consumesNext;
     	private final boolean isList;
     	private T value;
-    	
+
     	Option(String name, String help, T defaultValue, boolean consumesNext, boolean isList) {
     		this.name = name;
     		this.help = help;
     		this.value = defaultValue;
     		this.consumesNext = consumesNext;
     		this.isList = isList;
-   		
+
     	}
-    	
+
     	Option(String name, String help, T defaultValue) {
     		this(name, help, defaultValue, true, false);
     	}
-    	
+
         T getValue() {
     		return value;
     	}
-        
+
         boolean consumesNext() {
         	return consumesNext;
         }
-        
+
  	   @SuppressWarnings("unchecked")
        void setValue(boolean value) {
         	this.value = (T) new Boolean(value);
         }
-        
+
  	   @SuppressWarnings("unchecked")
         void setValue(String value) {
  		   if (isList) {
@@ -875,11 +880,11 @@ public class CheckCopyright {
  			   this.value = (T) value;
  		   }
         }
- 	   
+
  	   @SuppressWarnings("unused")
  	   String getName() {
  		   return name;
  	   }
     }
-    
+
 }
