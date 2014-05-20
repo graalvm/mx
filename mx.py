@@ -2790,6 +2790,8 @@ def build(args, parser=None):
                     break
 
             def executeTask(task):
+                # Clear sub-process list cloned from parent process
+                del _currentSubprocesses[:]
                 task.execute()
 
             def depsDone(task):
