@@ -67,7 +67,7 @@ _hg = None
 A distribution is a jar or zip file containing the output from one or more Java projects.
 """
 class Distribution:
-    def __init__(self, suite, name, path, sourcesPath, deps, excludedDependencies, distDependencies):
+    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies):
         self.suite = suite
         self.name = name
         self.path = path.replace('/', os.sep)
@@ -75,6 +75,7 @@ class Distribution:
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
         self.deps = deps
         self.update_listeners = set()
+        self.mainClass = mainClass
         self.excludedDependencies = excludedDependencies
         self.distDependencies = distDependencies
 
@@ -102,9 +103,17 @@ class Distribution:
                 if not hasattr(zf, '_provenance'):
                     zf._provenance = {}
                 existingSource = zf._provenance.get(arcname, None)
-                if existingSource and existingSource != source and not arcname.endswith('/'):
-                    log('warning: ' + self.path + ': overwriting ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                isOverwrite = False
+                if existingSource and existingSource != source:
+                    log('warning: ' + self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                    isOverwrite = True
                 zf._provenance[arcname] = source
+                return isOverwrite
+
+            if self.mainClass:
+                manifest = "Manifest-Version: 1.0\nMain-Class: %s\n\n" % (self.mainClass)
+                if not overwriteCheck(arc.zf, "META-INF/MANIFEST.MF", "project files"):
+                    arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
             for dep in self.sorted_deps(includeLibs=True):
                 if dep.isLibrary():
@@ -121,13 +130,13 @@ class Distribution:
                                     assert '/' not in service
                                     services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                                 else:
-                                    overwriteCheck(arc.zf, arcname, lpath + '!' + arcname)
-                                    arc.zf.writestr(arcname, lp.read(arcname))
+                                    if not overwriteCheck(arc.zf, arcname, lpath + '!' + arcname):
+                                        arc.zf.writestr(arcname, lp.read(arcname))
                     if srcArc.zf and libSourcePath:
                         with zipfile.ZipFile(libSourcePath, 'r') as lp:
                             for arcname in lp.namelist():
-                                overwriteCheck(srcArc.zf, arcname, lpath + '!' + arcname)
-                                srcArc.zf.writestr(arcname, lp.read(arcname))
+                                if not overwriteCheck(srcArc.zf, arcname, lpath + '!' + arcname):
+                                    srcArc.zf.writestr(arcname, lp.read(arcname))
                 elif dep.isProject():
                     p = dep
 
@@ -161,8 +170,8 @@ class Distribution:
                         else:
                             for f in files:
                                 arcname = join(relpath, f).replace(os.sep, '/')
-                                overwriteCheck(arc.zf, arcname, join(root, f))
-                                arc.zf.write(join(root, f), arcname)
+                                if not overwriteCheck(arc.zf, arcname, join(root, f)):
+                                    arc.zf.write(join(root, f), arcname)
                     if srcArc.zf:
                         sourceDirs = p.source_dirs()
                         if p.source_gen_dir():
@@ -173,8 +182,8 @@ class Distribution:
                                 for f in files:
                                     if f.endswith('.java'):
                                         arcname = join(relpath, f).replace(os.sep, '/')
-                                        overwriteCheck(srcArc.zf, arcname, join(root, f))
-                                        srcArc.zf.write(join(root, f), arcname)
+                                        if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
+                                            srcArc.zf.write(join(root, f), arcname)
 
             for service, providers in services.iteritems():
                 arcname = 'META-INF/services/' + service
@@ -1091,9 +1100,10 @@ class Suite:
             path = attrs.pop('path')
             sourcesPath = attrs.pop('sourcesPath', None)
             deps = pop_list(attrs, 'dependencies')
+            mainClass = attrs.pop('mainClass', None)
             exclDeps = pop_list(attrs, 'exclude')
             distDeps = pop_list(attrs, 'distDependencies')
-            d = Distribution(self, name, path, sourcesPath, deps, exclDeps, distDeps)
+            d = Distribution(self, name, path, sourcesPath, deps, mainClass, exclDeps, distDeps)
             d.__dict__.update(attrs)
             self.dists.append(d)
 
@@ -3118,6 +3128,10 @@ class Archiver:
             # Atomic on Unix
             shutil.move(self.tmpPath, self.path)
 
+def _archive(args):
+    archive(args)
+    return 0
+
 def archive(args):
     """create jar files for projects and distributions"""
     parser = ArgumentParser(prog='mx archive')
@@ -3135,6 +3149,7 @@ def archive(args):
             p = project(name)
             archives.append(p.make_archive())
 
+    logv("generated archives: " + str(archives))
     return archives
 
 def canonicalizeprojects(args):
@@ -5698,7 +5713,7 @@ _commands = {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'intellijinit': [intellijinit, ''],
-    'archive': [archive, '[options]'],
+    'archive': [_archive, '[options]'],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
