@@ -2375,7 +2375,7 @@ def download(path, urls, verbose=False):
         os.makedirs(d)
 
     # Try it with the Java tool first since it can show a progress counter
-    if not path.endswith(os.sep):
+    if sys.stderr.isatty() and not path.endswith(os.sep):
         _, binDir = _compile_mx_class('URLConnectionDownload')
         command = [java().java, '-cp', binDir, 'URLConnectionDownload']
         if _opts.no_download_progress:
