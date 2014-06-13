@@ -32,7 +32,7 @@ mx is a command line tool for managing the development of Java code organized as
 Full documentation can be found in the Wiki at the site from which mxtool was downloaded.
 """
 
-import sys, os, errno, time, datetime, subprocess, shlex, types, urllib2, contextlib, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
+import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
 import multiprocessing
 import textwrap
 import socket
@@ -821,6 +821,9 @@ class SuiteModel:
         i = 0
         while i < len(args):
             arg = args[i]
+            if arg == '--version':
+                print 'mx version ' + str(version)
+                sys.exit(0)
             if arg == '--src-suitemodel':
                 src_suitemodel_arg = _get_argvalue(arg, args, i + 1)
             elif arg == '--dst-suitemodel':
@@ -1820,6 +1823,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--suitemap', help='explicit remapping of suite names', metavar='<args>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
+        self.add_argument('--version', action='store_true', help='print version and exit')
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -5964,7 +5968,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.1")
+version = VersionSpec("2.3.2")
 
 currentUmask = None
 
