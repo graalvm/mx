@@ -5566,7 +5566,7 @@ def show_projects(args):
             for p in s.projects:
                 log('\t' + p.name)
 
-def _compile_mx_class(javaClassName, projectscp=None):
+def _compile_mx_class(javaClassName, classpath=None):
     myDir = dirname(__file__)
     binDir = join(myDir, 'bin')
     javaSource = join(myDir, javaClassName + '.java')
@@ -5577,10 +5577,14 @@ def _compile_mx_class(javaClassName, projectscp=None):
         # Pick the lowest Java compliance for compiling mx classes
         lowestJavaConfig = _java_homes[len(_java_homes) - 1]
         cmd = [java(lowestJavaConfig.javaCompliance).javac, '-d', binDir]
-        if projectscp:
-            cmd += ['-cp', binDir + os.pathsep + projectscp]
+        if classpath:
+            cmd += ['-cp', binDir + os.pathsep + classpath]
         cmd += [javaSource]
-        subprocess.check_call(cmd)
+        try:
+            subprocess.check_call(cmd)
+        except subprocess.CalledProcessError:
+            abort('failed to compile:' + javaSource)
+
     return (myDir, binDir)
 
 def checkcopyrights(args):
@@ -5674,8 +5678,13 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if not pcp.native and pcp.javaCompliance <= java().javaCompliance])
 
     if len(classes) != 0:
-        # compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
-        _, binDir = _compile_mx_class('JUnitWrapper', projectscp)
+        # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
+        # However, perhaps because it's Friday 13th javac is not actually compiling
+        # this file, yet not returning error. It is perhaps related to annotation processors
+        # so the workaround is to extract the junit path as that is all we need.
+        junitpath = [s for s in projectscp.split(":") if "junit" in s][0]
+
+        _, binDir = _compile_mx_class('MX2JUnitWrapper', junitpath)
 
         if len(classes) == 1:
             testClassArgs = ['--testclass', classes[0]]
@@ -5684,8 +5693,9 @@ def junit(args, harness=_basic_junit_harness, parser=None):
                 for c in classes:
                     f.write(c + '\n')
             testClassArgs = ['--testsfile', testfile]
-        junitArgs = ['-cp', binDir + os.pathsep + projectscp, 'JUnitWrapper'] + testClassArgs
-        return harness(args, vmArgs, junitArgs)
+        junitArgs = ['-cp', binDir + os.pathsep + projectscp, 'MX2JUnitWrapper'] + testClassArgs
+        rc = harness(args, vmArgs, junitArgs)
+        return rc
     else:
         return 0
 

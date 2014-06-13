@@ -37,7 +37,7 @@ import java.lang.reflect.*;
 
 import junit.runner.*;
 
-public class JUnitWrapper {
+public class MX2JUnitWrapper {
     // CheckStyle: stop system..print check
 
     /**
@@ -47,6 +47,7 @@ public class JUnitWrapper {
         String testsFile = null;
         String runListenerClassName = null;
         String testClassName = null;
+        List<Failure> missingClasses = new ArrayList<>();
         int i = 0;
         while (i < args.length) {
             final String arg = args[i];
@@ -118,7 +119,10 @@ public class JUnitWrapper {
                 }
             }
         } catch (ClassNotFoundException ex) {
-            System.err.println("Could not find class: " + ex);
+            System.out.println("Could not find class: " + testClassName);
+            Description description = Description.createSuiteDescription(testClassName);
+            Failure failure = new Failure(description, ex);
+            missingClasses.add(failure);
         }
         if (classArgs.length == 1) {
             System.out.printf("executing junit test now... (%s)\n", classArgs[0]);
@@ -127,11 +131,15 @@ public class JUnitWrapper {
         }
         // It is very strange that all this boilerplate is necessary to get the same effect as JUnitCore.main
         JUnitSystem system = new RealSystem();
-        system.out().println("JUnit version " + Version.id());
+        System.out.println("JUnit version " + Version.id());
         JUnitCore core = new JUnitCore();
         core.addListener(new TextListener(system));
         core.addListener(runListener);
-        core.run(classArgs);
+        Result result = core.run(classArgs);
+        for (Failure each : missingClasses) {
+            result.getFailures().add(each);
+        }
+        System.exit(result.wasSuccessful() ? 0 : 1);
     }
 
     private static String getNextArg(String[] args, int i) {
