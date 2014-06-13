@@ -2471,7 +2471,7 @@ class JavaCompileTask:
                 if not args.error_prone:
                     javac = args.alt_javac if args.alt_javac else mainJava.javac
                     self.logCompilation('javac' if not args.alt_javac else args.alt_javac)
-                    javacCmd = [javac, '-g', '-J-Xmx1g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
+                    javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
                     if jdk.debug_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                     javacCmd += processorArgs
@@ -5968,7 +5968,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.2")
+version = VersionSpec("2.3.3")
 
 currentUmask = None
 
