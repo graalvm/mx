@@ -1387,6 +1387,7 @@ def _add_omit_clean_args(parser):
     parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
     parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
     parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
+    parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
 def gate(args, gate_body=_basic_gate_body, parser=None):
@@ -1407,12 +1408,12 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
         args.cleanIDE = False
         args.cleanJava = False
         args.cleanNative = False
+        args.cleanDist = False
 
     tasks = []
     total = GateTask('Gate')
 
     try:
-
         t = GateTask('Pylint')
         pylint([])
         tasks.append(t.stop())
@@ -1423,6 +1424,8 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
             cleanArgs.append('--no-native')
         if not args.cleanJava:
             cleanArgs.append('--no-java')
+        if not args.cleanDist:
+            cleanArgs.append('--no-dist')
         command_function('clean')(cleanArgs)
         tasks.append(t.stop())
 
@@ -1491,6 +1494,8 @@ def bench(args, harness=_basic_bench_harness, parser=None):
         cleanArgs.append('--no-native')
     if not args.cleanJava:
         cleanArgs.append('--no-java')
+    if not args.cleanDist:
+        cleanArgs.append('--no-dist')
     command_function('clean')(cleanArgs)
 
     if args.cleanIDE:
