@@ -5365,7 +5365,7 @@ def stip(args):
 
     _stip(s, None)
 
-def findclass(args, logToConsole=True):
+def findclass(args, logToConsole=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
     matches = []
     for entry, filename in classpath_walk(includeBootClasspath=True):
@@ -5376,7 +5376,7 @@ def findclass(args, logToConsole=True):
                 classname = filename.replace(os.sep, '.')
             classname = classname[:-len('.class')]
             for a in args:
-                if a in classname:
+                if matcher(a, classname):
                     matches.append(classname)
                     if logToConsole:
                         log(classname)
