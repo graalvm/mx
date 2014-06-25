@@ -1285,6 +1285,19 @@ class Suite:
             self.mx_post_parse_cmd_line(_opts)
         self.post_init = True
 
+    @staticmethod
+    def _post_init_visitor(importing_suite, suite_import, **extra_args):
+        imported_suite = suite(suite_import.name)
+        if not imported_suite.post_init:
+            imported_suite.visit_imports(imported_suite._post_init_visitor)
+            imported_suite._post_init()
+
+    def _depth_first_post_init(self):
+        '''depth first _post_init driven by imports graph'''
+        self.visit_imports(self._post_init_visitor)
+        self._post_init()
+
+
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
         writer.write(indent + "<" + self.tagName)
@@ -5924,8 +5937,7 @@ def main():
                 abort('Secondary JDK ' + extraJdk.jdk + ' has higher compliance level than default JDK ' + defaultJdk.jdk)
             _java_homes.append(extraJdk)
 
-    for s in suites():
-        s._post_init()
+    _primary_suite._depth_first_post_init()
 
     _remove_bad_deps()
 
@@ -5968,7 +5980,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.3")
+version = VersionSpec("2.3.4")
 
 currentUmask = None
 
