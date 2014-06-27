@@ -4717,9 +4717,8 @@ def fsckprojects(args):
         projectDirs = [p.dir for p in suite.projects]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
-                # no point in traversing .hg
-                if '.hg' in dirnames:
-                    dirnames.remove('.hg')
+                # no point in traversing .hg or lib/
+                dirnames[:] = [d for d in dirnames if d not in ['.hg', 'lib']]
                 # if there are nested suites must not scan those now, as they are not in projectDirs
                 if _src_suitemodel.nestedsuites_dirname() in dirnames:
                     dirnames.remove(_src_suitemodel.nestedsuites_dirname())
