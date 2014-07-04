@@ -826,8 +826,7 @@ class SuiteModel:
             if args[0] == '--help' or args[0] == '-h':
                 _argParser.print_help()
                 sys.exit(0)
-                
-            
+
         src_suitemodel_arg = dst_suitemodel_arg = 'sibling'
         suitemap_arg = None
 
