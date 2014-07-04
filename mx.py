@@ -815,15 +815,25 @@ class SuiteModel:
                 abort('value expected with ' + arg)
 
         args = sys.argv[1:]
+        if len(args) == 0:
+            _argParser.print_help()
+            sys.exit(0)
+
+        if len(args) == 1:
+            if args[0] == '--version':
+                print 'mx version ' + str(version)
+                sys.exit(0)
+            if args[0] == '--help' or args[0] == '-h':
+                _argParser.print_help()
+                sys.exit(0)
+                
+            
         src_suitemodel_arg = dst_suitemodel_arg = 'sibling'
         suitemap_arg = None
 
         i = 0
         while i < len(args):
             arg = args[i]
-            if arg == '--version':
-                print 'mx version ' + str(version)
-                sys.exit(0)
             if arg == '--src-suitemodel':
                 src_suitemodel_arg = _get_argvalue(arg, args, i + 1)
             elif arg == '--dst-suitemodel':
@@ -2362,7 +2372,7 @@ def abort(codeOrMessage):
     the object's value is printed and the exit status is one.
     """
 
-    if _opts.killwithsigquit:
+    if _opts and _opts.killwithsigquit:
         _send_sigquit()
 
     def is_alive(p):
@@ -5820,7 +5830,10 @@ def _needs_primary_suite(command):
     return not command in Needs_primary_suite_exemptions
 
 def _needs_primary_suite_cl():
-    for s in sys.argv[1:]:
+    args = sys.argv[1:]
+    if len(args) == 0:
+        return False
+    for s in args:
         if s in Needs_primary_suite_exemptions:
             return False
     return True
@@ -5942,13 +5955,10 @@ def main():
                 abort('Secondary JDK ' + extraJdk.jdk + ' has higher compliance level than default JDK ' + defaultJdk.jdk)
             _java_homes.append(extraJdk)
 
-    _primary_suite._depth_first_post_init()
+    if primarySuiteMxDir:
+        _primary_suite._depth_first_post_init()
 
     _remove_bad_deps()
-
-    if len(commandAndArgs) == 0:
-        _argParser.print_help()
-        return
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
