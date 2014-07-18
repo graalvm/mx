@@ -1421,7 +1421,9 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
+
     _add_omit_clean_args(parser)
+    parser.add_argument('-p', '--omit-pylint', action='store_false', dest='pylint', help='omit pylint check')
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -1436,9 +1438,10 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
     total = GateTask('Gate')
 
     try:
-        t = GateTask('Pylint')
-        pylint([])
-        tasks.append(t.stop())
+        if args.pylint:
+            t = GateTask('Pylint')
+            pylint([])
+            tasks.append(t.stop())
 
         t = GateTask('Clean')
         cleanArgs = []
@@ -1510,6 +1513,7 @@ def bench(args, harness=_basic_bench_harness, parser=None):
         args.cleanIDE = False
         args.cleanJava = False
         args.cleanNative = False
+        args.cleanDist = False
 
     cleanArgs = []
     if not args.cleanNative:
