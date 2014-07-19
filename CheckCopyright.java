@@ -77,7 +77,7 @@ public class CheckCopyright {
     	}
 
         private static Map<String, CopyrightHandler> copyrightMap;
-        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.h|.*\\.py|.*\\.g|.*\\.r";
+        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.h|.*\\.py|.*\\.g|.*\\.r|.*\\.R";
         private static Pattern copyrightFilePattern;
 
         protected final String suffix;
@@ -460,7 +460,7 @@ public class CheckCopyright {
                 	}
                     checkFile(fileName, info);
                 } catch (Exception e) {
-                    System.err.println("COPYRIGHT CHECK WARNING: error while processing " + fileName);
+                    System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
                 }
             }
         }
