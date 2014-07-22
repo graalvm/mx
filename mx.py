@@ -1224,18 +1224,22 @@ class Suite:
                     fail = True
             else:
                 fail = True
+
             if fail:
-                abort('import ' + suite_import.name + ' not found')
+                if extra_args["dynamicImport"]:
+                    return None
+                else:
+                    abort('import ' + suite_import.name + ' not found')
         importing_suite.imports.append(suite_import)
         return Suite(importMxDir, False)
         # we do not check at this stage whether the tip version of imported_suite
         # matches that of the import, since during development, this can and will change
 
     def import_suite(self, name, version=None, alternate=None):
-        """dynamic import of a suite"""
+        """Dynamic import of a suite. Returns None if the suite cannot be found"""
         suite_import = SuiteImport(name, version, alternate)
-        imported_suite = Suite._find_and_loadsuite(self, suite_import)
-        if not imported_suite.post_init:
+        imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
+        if imported_suite and not imported_suite.post_init:
             imported_suite._post_init()
         return imported_suite
 
@@ -6043,7 +6047,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.5")
+version = VersionSpec("2.3.6")
 
 currentUmask = None
 
