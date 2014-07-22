@@ -2284,7 +2284,7 @@ class JavaConfig:
 
     def _init_classpaths(self):
         _, binDir = _compile_mx_class('ClasspathDump')
-        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', outDir, 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', binDir, 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
         if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
             warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
         self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
@@ -6043,7 +6043,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.4")
+version = VersionSpec("2.3.5")
 
 currentUmask = None
 
