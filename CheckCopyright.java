@@ -514,36 +514,14 @@ public class CheckCopyright {
         // process sequence of changesets
         int lastYear = 0;
         int firstYear = 0;
-        String summary = null;
         int ix = 0;
 
         while (ix < logInfo.size()) {
-            String s = logInfo.get(ix++);
-            assert s.startsWith("changeset");
-            s = logInfo.get(ix++);
-            // process every entry in a given change set
-            if (s.startsWith("tag")) {
-                s = logInfo.get(ix++);
-            }
-            if (s.startsWith("branch")) {
-                s = logInfo.get(ix++);
-            }
-            while (s.startsWith("parent")) {
-                s = logInfo.get(ix++);
-            }
-            assert s.startsWith("user");
-            s = logInfo.get(ix++);
-            assert s.startsWith("date");
-            final int csYear = getYear(s);
-            summary = logInfo.get(ix++);
-            assert summary.startsWith("summary");
-            s = logInfo.get(ix++); // blank
-            assert s.length() == 0;
-            if (lastYear == 0 && summary.contains("change all copyright notices from Sun to Oracle")) {
-                // special case of last change being the copyright change, which didn't
-                // count as a change of last modification date!
-                continue;
-            }
+        	Map<String, String> tagMap = new HashMap<>();
+        	ix = getChangeset(logInfo, ix, tagMap);
+        	String date = tagMap.get("date");
+            assert date != null;
+            final int csYear = getYear(date);
             if (lastYear == 0) {
                 lastYear = csYear;
                 firstYear = lastYear;
@@ -557,10 +535,6 @@ public class CheckCopyright {
 
         }
 
-        // Special case
-        if (summary != null && summary.contains("Initial commit of VM sources")) {
-            firstYear = 2007;
-        }
         if (HG_MODIFIED.getValue()) {
             // We are only looking at modified and, therefore, uncommitted files.
             // This means that the lastYear value will be the current year once the
@@ -568,6 +542,23 @@ public class CheckCopyright {
             lastYear = currentYear;
         }
         return new Info(fileName, firstYear, lastYear);
+    }
+
+    /**
+     * Process all the changeset data, storing in {@outMap}.
+     * Return updated value of {@code ix}.
+     */
+    private static int getChangeset(List<String> logInfo, int ixx, Map<String, String> outMap) {
+    	int ix = ixx;
+    	String s = logInfo.get(ix++);
+    	while (s.length() > 0) {
+    		int cx = s.indexOf(':');
+    		String tag = s.substring(0, cx);
+    		String value = s.substring(cx + 1);
+    		outMap.put(tag, value);
+    		s = logInfo.get(ix++);
+    	}
+    	return ix;
     }
 
     private static int getYear(String dateLine) {
