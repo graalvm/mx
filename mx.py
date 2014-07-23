@@ -2892,8 +2892,14 @@ def build(args, parser=None):
 
 def build_suite(s):
     '''build all projects in suite (for dynamic import)'''
+    # Note we must use the "build" method in "s" and not the one
+    # in the dict. If there isn't one we use mx.build
     project_names = [p.name for p in s.projects]
-    command_function('build')(['--projects', ','.join(project_names)])
+    if (hasattr(s.commands, 'build')):
+        build_command = s.commands.build
+    else:
+        build_command = build
+    build_command(['--projects', ','.join(project_names)])
 
 def _chunk_files_for_command_line(files, limit=None, pathFunction=None):
     """
@@ -6047,7 +6053,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.3.6")
+version = VersionSpec("2.4.0")
 
 currentUmask = None
 
