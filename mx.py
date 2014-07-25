@@ -1226,7 +1226,7 @@ class Suite:
                 fail = True
 
             if fail:
-                if extra_args["dynamicImport"]:
+                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
                     return None
                 else:
                     abort('import ' + suite_import.name + ' not found')
@@ -2883,8 +2883,11 @@ def build(args, parser=None):
                 log('Compiling {} failed'.format(t.proj.name))
             abort('{} Java compilation tasks failed'.format(len(failed)))
 
+    # do not process a distribution unless it corresponds to one of sortedProjects
+    suites = {p.suite for p in sortedProjects}
     for dist in _dists.values():
-        archive(['@' + dist.name])
+        if dist.suite in suites:
+            archive(['@' + dist.name])
 
     if suppliedParser:
         return args
@@ -6053,7 +6056,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.4.0")
+version = VersionSpec("2.4.1")
 
 currentUmask = None
 
