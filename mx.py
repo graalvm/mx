@@ -510,7 +510,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         base = basename(path)
         cachePath = join(cacheDir, base + '_' + sha1)
 
-        if not exists(cachePath) or _sha1OfFile(cachePath) != sha1:
+        if not exists(cachePath) or sha1OfFile(cachePath) != sha1:
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - re-downloading')
             print 'Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls)
@@ -531,7 +531,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
     def _writeSha1Cached():
         with open(sha1path, 'w') as f:
-            f.write(_sha1OfFile(path))
+            f.write(sha1OfFile(path))
 
     if resolve and mustExist and not exists(path):
         assert not len(urls) == 0, 'cannot find required library ' + name + ' ' + path
@@ -1840,6 +1840,23 @@ def sorted_deps(projectNames=None, includeLibs=False, includeJreLibs=False, incl
 
     return sorted_project_deps(projects, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
 
+def sorted_dists():
+    """
+    Gets distributions sorted such that each distribution comes after
+    any distributions it depends upon.
+    """
+    dists = []
+    def add_dist(dist):
+        if not dist in dists:
+            for depDist in [distribution(name) for name in dist.distDependencies]:
+                add_dist(depDist)
+            if not dist in dists:
+                dists.append(dist)
+
+    for d in _dists.itervalues():
+        add_dist(d)
+    return dists
+
 def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, includeAnnotationProcessors=False):
     deps = []
     for p in projects:
@@ -2920,7 +2937,7 @@ def build(args, parser=None):
 
     # do not process a distribution unless it corresponds to one of sortedProjects
     suites = {p.suite for p in sortedProjects}
-    for dist in _dists.values():
+    for dist in sorted_dists():
         if dist.suite in suites:
             archive(['@' + dist.name])
 
@@ -4013,12 +4030,6 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
     libFiles = []
     if buildProcessorJars:
         files += _processorjars_suite(suite)
-
-    projToDist = dict()
-    for dist in _dists.values():
-        distDeps = dist.sorted_deps()
-        for p in distDeps:
-            projToDist[p.name] = (dist, [dep.name for dep in distDeps])
 
     for p in suite.projects:
         if p.native:
