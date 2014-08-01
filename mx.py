@@ -528,6 +528,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if 'symlink' in dir(os):
             if exists(path):
                 os.unlink(path)
+            os.symlink(cachePath, path)
         else:
             shutil.copy(cachePath, path)
 
@@ -539,22 +540,26 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         with open(sha1path, 'w') as f:
             f.write(sha1OfFile(path))
 
+    def _check():
+        return sha1 != "NOCHECK"
+
     if resolve and mustExist and not exists(path):
         assert not len(urls) == 0, 'cannot find required library ' + name + ' ' + path
         _download_lib()
 
-    if sha1 and not exists(sha1path):
+    if sha1 and _check() and not exists(sha1path):
         _writeSha1Cached()
 
     if exists(path):
-        if sha1 and not exists(sha1path):
-            _writeSha1Cached()
+        if _check():
+            if sha1 and not exists(sha1path):
+                _writeSha1Cached()
 
-        if sha1 and sha1 != _sha1Cached():
-            _download_lib()
-            if sha1 != sha1OfFile(path):
-                abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in projects file?")
-            _writeSha1Cached()
+            if sha1 and sha1 != _sha1Cached():
+                _download_lib()
+                if sha1 != sha1OfFile(path):
+                    abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in projects file?")
+                _writeSha1Cached()
 
     return path
 
@@ -2766,13 +2771,13 @@ def build(args, parser=None):
         sourceDirs = p.source_dirs()
         buildReason = 'forced build' if args.force else None
         taskDeps = []
-        if not buildReason:
-            for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
-                taskDep = tasks.get(dep.name)
-                if taskDep:
-                    if not buildReason:
-                        buildReason = dep.name + ' rebuilt'
-                    taskDeps.append(taskDep)
+
+        for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
+            taskDep = tasks.get(dep.name)
+            if taskDep:
+                if not buildReason:
+                    buildReason = dep.name + ' rebuilt'
+                taskDeps.append(taskDep)
 
         jasminAvailable = None
         javafilelist = []
@@ -6025,7 +6030,7 @@ def _remove_bad_deps():
                         del _projects[d.name]
                         d.suite.projects.remove(d)
 
-    for dist in _dists.values():
+    for dist in _dists.itervalues():
         for name in list(dist.deps):
             if not dependency(name, fatalIfMissing=False):
                 logv('[omitting {} from distribution {}]'.format(name, dist))
