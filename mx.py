@@ -473,7 +473,11 @@ class Project(Dependency):
                 aps = set(self._declaredAnnotationProcessors)
                 for ap in aps:
                     if project(ap).definedAnnotationProcessorsDist is None:
-                        abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors')
+                        config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
+                        if not exists(config):
+                            TimeStampFile(config).touch()
+                        abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                              'Please specify the annotation processors in ' + config)
 
             allDeps = self.all_deps([], includeLibs=False, includeSelf=False, includeAnnotationProcessors=False)
             for p in allDeps:
@@ -6181,7 +6185,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.4.5")
+version = VersionSpec("2.5.0")
 
 currentUmask = None
 
