@@ -2807,7 +2807,9 @@ def build(args, parser=None):
 
     if args.only is not None:
         # N.B. This build will not include dependencies including annotation processor dependencies
-        sortedProjects = [project(name) for name in args.only.split(',')]
+        projectNames = args.only.split(',')
+        sortedProjects = [project(name) for name in projectNames]
+
     else:
         if args.projects is not None:
             projectNames = args.projects.split(',')
@@ -3043,7 +3045,12 @@ def build(args, parser=None):
             abort('{} Java compilation tasks failed'.format(len(failed)))
 
     # do not process a distribution unless it corresponds to one of sortedProjects
-    suites = {p.suite for p in sortedProjects}
+    # limit it even further if an expklicit list of projects given as arg
+    if projectNames:
+        distProjects = projects_from_names(projectNames)
+    else:
+        distProjects = sortedProjects
+    suites = {p.suite for p in distProjects}
     for dist in sorted_dists():
         if dist.suite in suites:
             if dist not in updatedAnnotationProcessorDists:
@@ -6185,7 +6192,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.5.0")
+version = VersionSpec("2.5.1")
 
 currentUmask = None
 
