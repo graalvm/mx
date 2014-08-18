@@ -594,9 +594,6 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         assert not len(urls) == 0, 'cannot find required library ' + name + ' ' + path
         _download_lib()
 
-    if sha1 and _check() and not exists(sha1path):
-        _writeSha1Cached()
-
     if exists(path):
         if _check():
             if sha1 and not exists(sha1path):
