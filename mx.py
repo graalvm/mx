@@ -1616,7 +1616,7 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
         t = GateTask('BuildJava')
         # Make sure we use any overridden build command
-        command_function('build')(['-p', '--no-native', '--jdt-warning-as-error'])
+        command_function('build')([])
         tasks.append(t.stop())
 
         gate_body(args, tasks)
@@ -6215,7 +6215,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.5.2")
+version = VersionSpec("2.5.3")
 
 currentUmask = None
 
