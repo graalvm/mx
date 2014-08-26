@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-5e5f5073d7131abf869bcba517706647bb57c3b4
+7dbe1207fccfe30e382841eea6053b366dddc30b
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
@@ -2766,8 +2766,13 @@ class JavaCompileTask:
                 self.proj.definedAnnotationProcessorsDist.make_archive()
 
         finally:
-            for n in toBeDeleted:
-                os.remove(n)
+            # Do not clean up temp files if verbose as there's
+            # a good chance the user wants to copy and paste the
+            # Java compiler command directly
+            if not _opts.verbose:
+                for n in toBeDeleted:
+                    os.remove(n)
+
             self.done = True
 
 def build(args, parser=None):
