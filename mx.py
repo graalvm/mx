@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-a04d9cbc149fac78e334a63c0204cfefbe98781a
+5e5f5073d7131abf869bcba517706647bb57c3b4
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
@@ -2950,6 +2950,8 @@ def build(args, parser=None):
         if len(javafilelist) == 0:
             logv('[no Java sources for {0} - skipping]'.format(p.name))
             continue
+
+        javafilelist = sorted(javafilelist)
 
         task = JavaCompileTask(args, p, buildReason, javafilelist, jdk, outputDir, jdtJar, taskDeps)
         if p.definedAnnotationProcessorsDist:
