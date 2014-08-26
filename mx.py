@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-73d994651fcdc0ee7beccf78bf9aeedf9f41eaf2
+a04d9cbc149fac78e334a63c0204cfefbe98781a
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
@@ -1773,10 +1773,11 @@ def projects(opt_limit_to_suite=False):
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True
     """
 
+    sortedProjects = sorted(_projects.values(), key=lambda p: p.name)
     if opt_limit_to_suite:
-        return _projects_opt_limit_to_suites(_projects.values())
+        return _projects_opt_limit_to_suites(sortedProjects)
     else:
-        return _projects.values()
+        return sortedProjects
 
 def projects_opt_limit_to_suites():
     """
