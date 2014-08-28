@@ -30,6 +30,13 @@ r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
 Full documentation can be found in the Wiki at the site from which mxtool was downloaded.
+
+This version (2.x) of mx is an evolution of mx 1.x (provided with the Graal distribution),
+and supports multiple suites in separate Mercurial repositories. It is intended to be backwards
+compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
+version that was merged.
+
+73d994651fcdc0ee7beccf78bf9aeedf9f41eaf2
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch
@@ -3046,17 +3053,18 @@ def build(args, parser=None):
                 log('Compiling {} failed'.format(t.proj.name))
             abort('{} Java compilation tasks failed'.format(len(failed)))
 
-    # do not process a distribution unless it corresponds to one of sortedProjects
-    # limit it even further if an expklicit list of projects given as arg
-    if projectNames:
-        distProjects = projects_from_names(projectNames)
-    else:
-        distProjects = sortedProjects
-    suites = {p.suite for p in distProjects}
-    for dist in sorted_dists():
-        if dist.suite in suites:
-            if dist not in updatedAnnotationProcessorDists:
-                archive(['@' + dist.name])
+    if args.java:
+        # do not process a distribution unless it corresponds to one of sortedProjects
+        # limit it even further if an explicit list of projects given as arg
+        if projectNames:
+            distProjects = projects_from_names(projectNames)
+        else:
+            distProjects = sortedProjects
+        suites = {p.suite for p in distProjects}
+        for dist in sorted_dists():
+            if dist.suite in suites:
+                if dist not in updatedAnnotationProcessorDists:
+                    archive(['@' + dist.name])
 
     if suppliedParser:
         return args
