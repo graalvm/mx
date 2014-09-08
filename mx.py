@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-a5dc5513ce85f8992f84cd29e5aaea628d1ccc6
+75a4acd331596d2699c973ceb2efa4260be5f557
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -3679,11 +3679,12 @@ def clean(args, parser=None):
                 if config.exists():
                     os.unlink(config.path)
 
-    if args.dist:
-        for d in _dists.keys():
-            log('Removing distribution {0}...'.format(d))
-            _rmIfExists(distribution(d).path)
-            _rmIfExists(distribution(d).sourcesPath)
+    if args.java:
+        if args.dist:
+            for d in _dists.keys():
+                log('Removing distribution {0}...'.format(d))
+                _rmIfExists(distribution(d).path)
+                _rmIfExists(distribution(d).sourcesPath)
 
 
     if suppliedParser:
