@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-49b8c89327867bc18e88a74f7c725c9f1e37d8e5
+a5dc5513ce85f8992f84cd29e5aaea628d1ccc6
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -75,7 +75,7 @@ _hg = None
 A distribution is a jar or zip file containing the output from one or more Java projects.
 """
 class Distribution:
-    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies):
+    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance):
         self.suite = suite
         self.name = name
         self.path = path.replace('/', os.sep)
@@ -86,6 +86,7 @@ class Distribution:
         self.mainClass = mainClass
         self.excludedDependencies = excludedDependencies
         self.distDependencies = distDependencies
+        self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
 
     def sorted_deps(self, includeLibs=False, transitive=False):
         deps = []
@@ -179,6 +180,10 @@ class Distribution:
 
                     if isCoveredByDependecy:
                         continue
+
+                    if self.javaCompliance:
+                        if p.javaCompliance > self.javaCompliance:
+                            abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance))
 
                     # skip a  Java project if its Java compliance level is "higher" than the configured JDK
                     jdk = java(p.javaCompliance)
@@ -1220,7 +1225,8 @@ class Suite:
             mainClass = attrs.pop('mainClass', None)
             exclDeps = pop_list(attrs, 'exclude')
             distDeps = pop_list(attrs, 'distDependencies')
-            d = Distribution(self, name, path, sourcesPath, deps, mainClass, exclDeps, distDeps)
+            javaCompliance = attrs.pop('javaCompliance', None)
+            d = Distribution(self, name, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
             d.__dict__.update(attrs)
             self.dists.append(d)
 
@@ -1245,7 +1251,8 @@ class Suite:
                 mainClass = None
                 exclDeps = []
                 distDeps = []
-                d = Distribution(self, dname, path, sourcesPath, deps, mainClass, exclDeps, distDeps)
+                javaCompliance = None
+                d = Distribution(self, dname, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
                 d.subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
                 self.dists.append(d)
                 p.definedAnnotationProcessors = annotationProcessors
