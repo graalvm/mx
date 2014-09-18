@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-f0b55d0c5d2dc084bb200c34f1474ff66e4f2d60
+e82d2239610962bc8eb41271bcb92da3db0d14a1
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -6257,7 +6257,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.5.5")
+version = VersionSpec("2.5.6")
 
 currentUmask = None
 
