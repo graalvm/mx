@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-e82d2239610962bc8eb41271bcb92da3db0d14a1
+a8c0553cb2e40907d96275e4105cd982166ed96e
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -1132,7 +1132,6 @@ def _read_projects_file(projectsFile):
                 if attrs is None:
                     attrs = OrderedDict()
                     m[name] = attrs
-                value = expandvars_in_property(value)
                 attrs[attr] = value
     return suite
 
@@ -1251,6 +1250,22 @@ def _load_suite_dict(mxDir):
     suite = None
     dictName = 'suite'
 
+    def expand(value, context):
+        if isinstance(value, types.DictionaryType):
+            for n, v in value.iteritems():
+                value[n] = expand(v, context + [n])
+        elif isinstance(value, types.ListType):
+            for i in range(len(value)):
+                value[i] = expand(value[i], context + [str(i)])
+        else:
+            if not isinstance(value, types.StringTypes):
+                abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
+            value = expandvars(value)
+            if '$' in value or '%' in value:
+                abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+
+        return value
+
     moduleName = 'projects'
     modulePath = join(mxDir, moduleName + '.py')
     while exists(modulePath):
@@ -1282,7 +1297,7 @@ def _load_suite_dict(mxDir):
 
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
-        d = getattr(module, dictName)
+        d = expand(getattr(module, dictName), [dictName])
         sections = ['projects', 'libraries', 'jrelibraries', 'distributions'] + (['distribution_extensions'] if suite else ['name', 'mxversion'])
         unknown = d.viewkeys() - sections
         if unknown:
@@ -6480,7 +6495,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.6.1")
+version = VersionSpec("2.6.2")
 
 currentUmask = None
 
