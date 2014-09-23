@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-4046e014f29f13702712fa4a9f1437f0937567cd
+1cc8b62b4d373e06accd7e0de1ae8a76057663e5
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -5948,12 +5948,27 @@ def javap(args):
         run([javapExe, '-private', '-verbose', '-classpath', classpath()] + selection)
 
 def show_projects(args):
-    """show all loaded projects"""
+    """show all projects"""
     for s in suites():
         if len(s.projects) != 0:
-            log(join(s.mxDir, 'projects*.py'))
+            log(join(s.mxDir, 'suite*.py'))
             for p in s.projects:
                 log('\t' + p.name)
+
+def show_suites(args):
+    """show all suites"""
+    def _show_section(name, section):
+        if len(section) != 0:
+            log('  ' + name + ':')
+            for e in section:
+                log('    ' + e.name)
+
+    for s in suites():
+        log(join(s.mxDir, 'suite*.py'))
+        _show_section('libraries', s.libs)
+        _show_section('jrelibraries', s.jreLibs)
+        _show_section('projects', s.projects)
+        _show_section('distributions', s.dists)
 
 def _compile_mx_class(javaClassName, classpath=None):
     myDir = dirname(__file__)
@@ -6179,6 +6194,7 @@ _commands = {
     'junit': [junit, '[options]'],
     'site': [site, '[options]'],
     'netbeansinit': [netbeansinit, ''],
+    'suites': [show_suites, ''],
     'projects': [show_projects, ''],
 }
 
@@ -6202,7 +6218,7 @@ def _is_suite_dir(d, mxDirName=None):
         for f in os.listdir(d):
             if (mxDirName == None and (f == 'mx' or fnmatch.fnmatch(f, 'mx.*'))) or f == mxDirName:
                 mxDir = join(d, f)
-                if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py')) or exists(join(mxDir, 'projects'))):
+                if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
                     return mxDir
 
 def _check_primary_suite():
@@ -6386,7 +6402,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.6.4")
+version = VersionSpec("2.6.5")
 
 currentUmask = None
 
