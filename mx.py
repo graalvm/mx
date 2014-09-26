@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-fa8210d2ff06efdf13126dbc277062edcb7c4471
+9d728eb7fdecc14427454d4bba7cd4c06f3f15c6
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2677,13 +2677,13 @@ class JavaConfig:
             self._init_classpaths()
 
         for e in self._bootclasspath.split(os.pathsep):
-            if basename(e) == self.jar:
+            if basename(e) == jar:
                 return True
         for d in self._extdirs.split(os.pathsep):
-            if len(d) and self.jar in os.listdir(d):
+            if len(d) and jar in os.listdir(d):
                 return True
         for d in self._endorseddirs.split(os.pathsep):
-            if len(d) and self.jar in os.listdir(d):
+            if len(d) and jar in os.listdir(d):
                 return True
         return False
 
@@ -6445,7 +6445,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.6.7")
+version = VersionSpec("2.6.8")
 
 currentUmask = None
 
