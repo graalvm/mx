@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-a02c295218aaeb8af2fa85b6f5e733621700781c
+fa8210d2ff06efdf13126dbc277062edcb7c4471
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2922,7 +2922,7 @@ class JavaCompileTask:
             else:
                 self.logCompilation('JDT')
 
-                jdtVmArgs = ['-Xmx1500m', '-jar', self.jdtJar]
+                jdtVmArgs = ['-Xmx1g', '-jar', _tpU2W(self.jdtJar)]
 
                 jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
@@ -2955,7 +2955,7 @@ class JavaCompileTask:
                         jdtArgs += ['-properties', jdtPropertiesTmp]
                     else:
                         jdtArgs += ['-properties', jdtProperties]
-                jdtArgs.append('@' + argfile.name)
+                jdtArgs.append('@' + _tpU2W(argfile.name))
 
                 run_java(jdtVmArgs + jdtArgs)
 
@@ -6445,7 +6445,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.6.6")
+version = VersionSpec("2.6.7")
 
 currentUmask = None
 
