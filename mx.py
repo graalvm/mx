@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-9d728eb7fdecc14427454d4bba7cd4c06f3f15c6
+03826360967bc1237fd77861077fead10d1f6eea
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -295,6 +295,13 @@ class Project(Dependency):
         Add the transitive set of dependencies for this project, including
         libraries if 'includeLibs' is true, to the 'deps' list.
         """
+        return self._all_deps_helper(deps, [], includeLibs, includeSelf, includeJreLibs, includeAnnotationProcessors)
+
+    def _all_deps_helper(self, deps, dependants, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
+        if self in dependants:
+            abort(str(self) + 'Project dependency cycle found:\n    ' +
+                  '\n        |\n        V\n    '.join(map(str, dependants[dependants.index(self):])) +
+                  '\n        |\n        V\n    ' + self.name)
         childDeps = list(self.deps)
         if includeAnnotationProcessors and len(self.annotation_processors()) > 0:
             childDeps = self.annotation_processors() + childDeps
@@ -303,8 +310,11 @@ class Project(Dependency):
         for name in childDeps:
             assert name != self.name
             dep = dependency(name)
-            if not dep in deps and (dep.isProject or (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs)):
-                dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+            if not dep in deps:
+                if dep.isProject():
+                    dep._all_deps_helper(deps, dependants + [self], includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+                elif dep.isProject or (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs):
+                    dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
         if not self in deps and includeSelf:
             deps.append(self)
         return deps
@@ -6445,7 +6455,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.6.8")
+version = VersionSpec("2.6.9")
 
 currentUmask = None
 
