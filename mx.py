@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-03826360967bc1237fd77861077fead10d1f6eea
+eff18e262a13a4d50445aac2957b5092fd05cb8c
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2962,9 +2962,9 @@ class JavaCompileTask:
                         with open(jdtPropertiesTmp, 'w') as fp:
                             fp.write(content)
                         toBeDeleted.append(jdtPropertiesTmp)
-                        jdtArgs += ['-properties', jdtPropertiesTmp]
+                        jdtArgs += ['-properties', _tpU2W(jdtPropertiesTmp)]
                     else:
-                        jdtArgs += ['-properties', jdtProperties]
+                        jdtArgs += ['-properties', _tpU2W(jdtProperties)]
                 jdtArgs.append('@' + _tpU2W(argfile.name))
 
                 run_java(jdtVmArgs + jdtArgs)
