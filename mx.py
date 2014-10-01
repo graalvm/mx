@@ -295,6 +295,13 @@ class Project(Dependency):
         Add the transitive set of dependencies for this project, including
         libraries if 'includeLibs' is true, to the 'deps' list.
         """
+        return self._all_deps_helper(deps, [], includeLibs, includeSelf, includeJreLibs, includeAnnotationProcessors)
+
+    def _all_deps_helper(self, deps, dependants, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
+        if self in dependants:
+            abort(str(self) + 'Project dependency cycle found:\n    ' +
+                  '\n        |\n        V\n    '.join(map(str, dependants[dependants.index(self):])) +
+                  '\n        |\n        V\n    ' + self.name)
         childDeps = list(self.deps)
         if includeAnnotationProcessors and len(self.annotation_processors()) > 0:
             childDeps = self.annotation_processors() + childDeps
@@ -303,8 +310,11 @@ class Project(Dependency):
         for name in childDeps:
             assert name != self.name
             dep = dependency(name)
-            if not dep in deps and (dep.isProject or (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs)):
-                dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+            if not dep in deps:
+                if dep.isProject():
+                    dep._all_deps_helper(deps, dependants + [self], includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+                elif (dep.isProject or (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs)):
+                    dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
         if not self in deps and includeSelf:
             deps.append(self)
         return deps
@@ -654,16 +664,7 @@ class JreLibrary(BaseLibrary):
             return NotImplemented
 
     def is_present_in_jdk(self, jdk):
-        for e in jdk.bootclasspath().split(os.pathsep):
-            if basename(e) == self.jar:
-                return True
-        for d in jdk.extdirs().split(os.pathsep):
-            if len(d) and self.jar in os.listdir(d):
-                return True
-        for d in jdk.endorseddirs().split(os.pathsep):
-            if len(d) and self.jar in os.listdir(d):
-                return True
-        return False
+        return jdk.containsJar(self.jar)
 
     def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
         """
@@ -1829,10 +1830,50 @@ def get_os():
         return 'linux'
     elif sys.platform.startswith('sunos'):
         return 'solaris'
-    elif sys.platform.startswith('win32') or sys.platform.startswith('cygwin'):
+    elif sys.platform.startswith('win32'):
         return 'windows'
+    elif sys.platform.startswith('cygwin'):
+        return 'cygwin'
     else:
         abort('Unknown operating system ' + sys.platform)
+
+def _cygpathU2W(p):
+    """
+    Translate a path from unix-style to windows-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or get_os() != "cygwin":
+        return p
+    return subprocess.check_output(['cygpath', '-w', p]).strip()
+
+def _cygpathW2U(p):
+    """
+    Translate a path from windows-style to unix-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or get_os() != "cygwin":
+        return p
+    return subprocess.check_output(['cygpath', '-u', p]).strip()
+
+def _separatedCygpathU2W(p):
+    """
+    Translate a group of paths, separated by a path seperator.
+    unix-style to windows-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or p == "" or get_os() != "cygwin":
+        return p
+    return ';'.join(map(_cygpathU2W, p.split(os.pathsep)))
+
+def _separatedCygpathW2U(p):
+    """
+    Translate a group of paths, separated by a path seperator.
+    windows-style to unix-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or p == "" or get_os() != "cygwin":
+        return p
+    return os.pathsep.join(map(_cygpathW2U, p.split(';')))
 
 def get_arch():
     machine = platform.uname()[4]
@@ -2068,7 +2109,8 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
 
     if includeBootClasspath:
         result = os.pathsep.join([java().bootclasspath(), result])
-    return result
+
+    return _separatedCygpathU2W(result)
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
     """
@@ -2545,7 +2587,7 @@ class VersionSpec:
         return cmp(self.parts, other.parts)
 
 def _filter_non_existant_paths(paths):
-    return os.pathsep.join([path for path in paths.split(os.pathsep) if exists(path)])
+    return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
 
 """
 A JavaConfig object encapsulates info on how Java commands are run.
@@ -2605,7 +2647,7 @@ class JavaConfig:
 
     def _init_classpaths(self):
         _, binDir = _compile_mx_class('ClasspathDump')
-        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', binDir, 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _separatedCygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
         if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
             warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
         self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
@@ -2632,17 +2674,32 @@ class JavaConfig:
     def bootclasspath(self):
         if self._bootclasspath is None:
             self._init_classpaths()
-        return self._bootclasspath
+        return _separatedCygpathU2W(self._bootclasspath)
 
     def extdirs(self):
         if self._extdirs is None:
             self._init_classpaths()
-        return self._extdirs
+        return _separatedCygpathU2W(self._extdirs)
 
     def endorseddirs(self):
         if self._endorseddirs is None:
             self._init_classpaths()
-        return self._endorseddirs
+        return _separatedCygpathU2W(self._endorseddirs)
+
+    def containsJar(self, jar):
+        if self._bootclasspath is None:
+            self._init_classpaths()
+
+        for e in self._bootclasspath.split(os.pathsep):
+            if basename(e) == jar:
+                return True
+        for d in self._extdirs.split(os.pathsep):
+            if len(d) and jar in os.listdir(d):
+                return True
+        for d in self._endorseddirs.split(os.pathsep):
+            if len(d) and jar in os.listdir(d):
+                return True
+        return False
 
 def check_get_env(key):
     """
@@ -2770,10 +2827,10 @@ def download(path, urls, verbose=False):
     assert not path.endswith(os.sep)
 
     _, binDir = _compile_mx_class('URLConnectionDownload')
-    command = [java().java, '-cp', binDir, 'URLConnectionDownload']
+    command = [java().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
     if _opts.no_download_progress or not sys.stderr.isatty():
         command.append('--no-progress')
-    command.append(path)
+    command.append(_cygpathU2W(path))
     command += urls
     if run(command, nonZeroIsFatal=False) == 0:
         return
@@ -2830,24 +2887,23 @@ class JavaCompileTask:
     def execute(self):
         argfileName = join(self.proj.dir, 'javafilelist.txt')
         argfile = open(argfileName, 'wb')
-        argfile.write('\n'.join(self.javafilelist))
+        argfile.write('\n'.join(map(_cygpathU2W, self.javafilelist)))
         argfile.close()
 
         processorArgs = []
-
         processorPath = self.proj.annotation_processors_path()
         if processorPath:
             genDir = self.proj.source_gen_dir()
             if exists(genDir):
                 shutil.rmtree(genDir)
             os.mkdir(genDir)
-            processorArgs += ['-processorpath', join(processorPath), '-s', genDir]
+            processorArgs += ['-processorpath', _separatedCygpathU2W(join(processorPath)), '-s', _cygpathU2W(genDir)]
         else:
             processorArgs += ['-proc:none']
 
         args = self.args
         jdk = self.jdk
-        outputDir = self.outputDir
+        outputDir = _cygpathU2W(self.outputDir)
         compliance = str(jdk.javaCompliance)
         cp = classpath(self.proj.name, includeSelf=True)
         toBeDeleted = [argfileName]
@@ -2862,7 +2918,7 @@ class JavaCompileTask:
                     if jdk.debug_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                     javacCmd += processorArgs
-                    javacCmd += ['@' + argfile.name]
+                    javacCmd += ['@' + _cygpathU2W(argfile.name)]
 
                     if not args.warnAPI:
                         javacCmd.append('-XDignore.symbol.file')
@@ -2879,7 +2935,7 @@ class JavaCompileTask:
             else:
                 self.logCompilation('JDT')
 
-                jdtVmArgs = ['-Xmx1500m', '-jar', self.jdtJar]
+                jdtVmArgs = ['-Xmx1500m', '-jar', _cygpathU2W(self.jdtJar)]
 
                 jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
@@ -2909,10 +2965,10 @@ class JavaCompileTask:
                         with open(jdtPropertiesTmp, 'w') as fp:
                             fp.write(content)
                         toBeDeleted.append(jdtPropertiesTmp)
-                        jdtArgs += ['-properties', jdtPropertiesTmp]
+                        jdtArgs += ['-properties', _cygpathU2W(jdtPropertiesTmp)]
                     else:
-                        jdtArgs += ['-properties', jdtProperties]
-                jdtArgs.append('@' + argfile.name)
+                        jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
+                jdtArgs.append('@' + _cygpathU2W(argfile.name))
 
                 run_java(jdtVmArgs + jdtArgs)
 
@@ -5980,10 +6036,10 @@ def _compile_mx_class(javaClassName, classpath=None):
             os.mkdir(binDir)
         # Pick the lowest Java compliance for compiling mx classes
         lowestJavaConfig = _java_homes[len(_java_homes) - 1]
-        cmd = [java(lowestJavaConfig.javaCompliance).javac, '-d', binDir]
+        cmd = [java(lowestJavaConfig.javaCompliance).javac, '-d', _cygpathU2W(binDir)]
         if classpath:
-            cmd += ['-cp', binDir + os.pathsep + classpath]
-        cmd += [javaSource]
+            cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
+        cmd += [_cygpathU2W(javaSource)]
         try:
             subprocess.check_call(cmd)
         except subprocess.CalledProcessError:
