@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-07462ba5a12aa46eb4e2f43af3d5f83fe95930e8
+83bbc0e5891a1c731e9155b1b4641f91f8cdb705
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -1181,8 +1181,8 @@ def _load_suite_dict(mxDir):
         # For now fail fast if extra modules were loaded.
         # This can later be relaxed to simply remove the extra modules
         # from the sys.modules name space if necessary.
-        extraModules = snapshot - sys.modules.viewkeys()
-        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m.__file__ for m in extraModules])
+        extraModules = sys.modules.viewkeys() - snapshot
+        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
 
         # revert the Python path
         del sys.path[0]
