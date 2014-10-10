@@ -6079,7 +6079,7 @@ def checkcopyrights(args):
         custom_args = []
         if exists(custom_copyrights):
             custom_args = ['--custom-copyright-dir', custom_copyrights]
-        rc = run([java().java, '-cp',_cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        rc = run([java().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
 
