@@ -6075,11 +6075,11 @@ def checkcopyrights(args):
     for s in suites(True):
         if args.primary and not s.primary:
             continue
-        custom_copyrights = join(s.mxDir, 'copyrights')
+        custom_copyrights = _cygpathU2W(join(s.mxDir, 'copyrights'))
         custom_args = []
         if exists(custom_copyrights):
             custom_args = ['--custom-copyright-dir', custom_copyrights]
-        rc = run([java().java, '-cp', binDir, 'CheckCopyright', '--copyright-dir', myDir] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        rc = run([java().java, '-cp',_cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
 
