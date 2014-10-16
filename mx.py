@@ -2110,7 +2110,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     if includeBootClasspath:
         result = os.pathsep.join([java().bootclasspath(), result])
 
-    return _separatedCygpathU2W(result)
+    return result
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
     """
@@ -2906,7 +2906,7 @@ class JavaCompileTask:
         jdk = self.jdk
         outputDir = _cygpathU2W(self.outputDir)
         compliance = str(jdk.javaCompliance)
-        cp = classpath(self.proj.name, includeSelf=True)
+        cp = _separatedCygpathU2W(classpath(self.proj.name, includeSelf=True))
         toBeDeleted = [argfileName]
 
         try:
