@@ -4691,110 +4691,91 @@ def netbeansinit(args, refreshOnly=False, buildProcessorJars=True):
     for suite in suites(True):
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
-def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
-    configZip = TimeStampFile(join(suite.mxDir, 'netbeans-config.zip'))
-    configLibsZip = join(suite.mxDir, 'eclipse-config-libs.zip')
-    if refreshOnly and not configZip.exists():
-        return
+def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
+    if not exists(join(p.dir, 'nbproject')):
+        os.makedirs(join(p.dir, 'nbproject'))
 
-    if _check_ide_timestamp(suite, configZip, 'netbeans'):
-        logv('[NetBeans configurations are up to date - skipping]')
-        return
+    jdk = java(p.javaCompliance)
+    assert jdk
 
-    updated = False
-    files = []
-    libFiles = []
-    jdks = set()
-    for p in suite.projects:
-        if p.native:
-            continue
-
-        if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
-            continue
-
-        if not exists(join(p.dir, 'nbproject')):
-            os.makedirs(join(p.dir, 'nbproject'))
-
-        jdk = java(p.javaCompliance)
-
-        assert jdk
-
+    if jdks:
         jdks.add(jdk)
 
-        out = XMLDoc()
-        out.open('project', {'name' : p.name, 'default' : 'default', 'basedir' : '.'})
-        out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
-        out.element('import', {'file' : 'nbproject/build-impl.xml'})
-        out.open('target', {'name' : '-post-compile'})
-        out.open('exec', {'executable' : sys.executable})
-        out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
-        out.element('arg', {'value' : os.path.abspath(__file__)})
-        out.element('arg', {'value' : 'archive'})
-        out.element('arg', {'value' : '@GRAAL'})
-        out.close('exec')
-        out.close('target')
-        out.close('project')
-        updated = update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n')) or updated
+    out = XMLDoc()
+    out.open('project', {'name' : p.name, 'default' : 'default', 'basedir' : '.'})
+    out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
+    out.element('import', {'file' : 'nbproject/build-impl.xml'})
+    out.open('target', {'name' : '-post-compile'})
+    out.open('exec', {'executable' : sys.executable})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : 'archive'})
+    out.element('arg', {'value' : '@GRAAL'})
+    out.close('exec')
+    out.close('target')
+    out.close('project')
+    update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
+    if files:
         files.append(join(p.dir, 'build.xml'))
 
-        out = XMLDoc()
-        out.open('project', {'xmlns' : 'http://www.netbeans.org/ns/project/1'})
-        out.element('type', data='org.netbeans.modules.java.j2seproject')
-        out.open('configuration')
-        out.open('data', {'xmlns' : 'http://www.netbeans.org/ns/j2se-project/3'})
-        out.element('name', data=p.name)
-        out.element('explicit-platform', {'explicit-source-supported' : 'true'})
-        out.open('source-roots')
-        out.element('root', {'id' : 'src.dir'})
-        if len(p.annotation_processors()) > 0:
-            out.element('root', {'id' : 'src.ap-source-output.dir', 'name' : 'Generated Packages'})
-        out.close('source-roots')
-        out.open('test-roots')
-        out.close('test-roots')
-        out.close('data')
+    out = XMLDoc()
+    out.open('project', {'xmlns' : 'http://www.netbeans.org/ns/project/1'})
+    out.element('type', data='org.netbeans.modules.java.j2seproject')
+    out.open('configuration')
+    out.open('data', {'xmlns' : 'http://www.netbeans.org/ns/j2se-project/3'})
+    out.element('name', data=p.name)
+    out.element('explicit-platform', {'explicit-source-supported' : 'true'})
+    out.open('source-roots')
+    out.element('root', {'id' : 'src.dir'})
+    if len(p.annotation_processors()) > 0:
+        out.element('root', {'id' : 'src.ap-source-output.dir', 'name' : 'Generated Packages'})
+    out.close('source-roots')
+    out.open('test-roots')
+    out.close('test-roots')
+    out.close('data')
 
-        firstDep = True
-        for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
-            if dep == p:
-                continue
+    firstDep = True
+    for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
+        if dep == p:
+            continue
 
-            if dep.isProject():
-                n = dep.name.replace('.', '_')
-                if firstDep:
-                    out.open('references', {'xmlns' : 'http://www.netbeans.org/ns/ant-project-references/1'})
-                    firstDep = False
+        if dep.isProject():
+            n = dep.name.replace('.', '_')
+            if firstDep:
+                out.open('references', {'xmlns' : 'http://www.netbeans.org/ns/ant-project-references/1'})
+                firstDep = False
 
-                out.open('reference')
-                out.element('foreign-project', data=n)
-                out.element('artifact-type', data='jar')
-                out.element('script', data='build.xml')
-                out.element('target', data='jar')
-                out.element('clean-target', data='clean')
-                out.element('id', data='jar')
-                out.close('reference')
+            out.open('reference')
+            out.element('foreign-project', data=n)
+            out.element('artifact-type', data='jar')
+            out.element('script', data='build.xml')
+            out.element('target', data='jar')
+            out.element('clean-target', data='clean')
+            out.element('id', data='jar')
+            out.close('reference')
 
-        if not firstDep:
-            out.close('references')
+    if not firstDep:
+        out.close('references')
 
-        out.close('configuration')
-        out.close('project')
-        updated = update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n')) or updated
+    out.close('configuration')
+    out.close('project')
+    update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
+    if files:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
-        out = StringIO.StringIO()
-        jdkPlatform = 'JDK_' + str(jdk.version)
+    out = StringIO.StringIO()
+    jdkPlatform = 'JDK_' + str(jdk.version)
 
-        annotationProcessorEnabled = "false"
-        annotationProcessorReferences = ""
-        annotationProcessorSrcFolder = ""
-        if len(p.annotation_processors()) > 0:
-            annotationProcessorEnabled = "true"
-            genSrcDir = p.source_gen_dir()
-            if not exists(genSrcDir):
-                os.makedirs(genSrcDir)
-            annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
+    annotationProcessorEnabled = "false"
+    annotationProcessorSrcFolder = ""
+    if len(p.annotation_processors()) > 0:
+        annotationProcessorEnabled = "true"
+        genSrcDir = p.source_gen_dir()
+        if not exists(genSrcDir):
+            os.makedirs(genSrcDir)
+        annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
 
-        content = """
+    content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
 annotation.processing.enabled.in.editor=""" + annotationProcessorEnabled + """
 annotation.processing.processors.list=
@@ -4813,9 +4794,9 @@ build.test.results.dir=${build.dir}/test/results
 # Uncomment to specify the preferred debugger connection transport:
 #debug.transport=dt_socket
 debug.classpath=\\
-    ${run.classpath}
+${run.classpath}
 debug.test.classpath=\\
-    ${run.test.classpath}
+${run.test.classpath}
 # This directory is removed when the project is cleaned:
 dist.dir=dist
 dist.jar=${dist.dir}/""" + p.name + """.jar
@@ -4830,8 +4811,8 @@ javac.deprecation=false
 javac.source=""" + str(p.javaCompliance) + """
 javac.target=""" + str(p.javaCompliance) + """
 javac.test.classpath=\\
-    ${javac.classpath}:\\
-    ${build.classes.dir}
+${javac.classpath}:\\
+${build.classes.dir}
 javadoc.additionalparam=
 javadoc.author=false
 javadoc.encoding=${source.encoding}
@@ -4850,80 +4831,110 @@ mkdist.disabled=false
 platforms.""" + jdkPlatform + """.home=""" + jdk.jdk + """
 platform.active=""" + jdkPlatform + """
 run.classpath=\\
-    ${javac.classpath}:\\
-    ${build.classes.dir}
+${javac.classpath}:\\
+${build.classes.dir}
 # Space-separated list of JVM arguments used when running the project
 # (you may also define separate properties like run-sys-prop.name=value instead of -Dname=value
 # or test-sys-prop.name=value to set system properties for unit tests):
 run.jvmargs=
 run.test.classpath=\\
-    ${javac.test.classpath}:\\
-    ${build.test.classes.dir}
+${javac.test.classpath}:\\
+${build.test.classes.dir}
 test.src.dir=./test
 """ + annotationProcessorSrcFolder + """
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
-        print >> out, content
+    print >> out, content
 
-        mainSrc = True
-        for src in p.srcDirs:
-            srcDir = join(p.dir, src)
-            if not exists(srcDir):
-                os.mkdir(srcDir)
-            if mainSrc:
-                print >> out, 'src.dir=' + srcDir
-                mainSrc = False
-            else:
-                print >> out, 'src.' + src + '.dir=' + srcDir
+    mainSrc = True
+    for src in p.srcDirs:
+        srcDir = join(p.dir, src)
+        if not exists(srcDir):
+            os.mkdir(srcDir)
+        ref = 'file.reference.' + p.name + '-' + src
+        print >> out, ref + '=' + src
+        if mainSrc:
+            print >> out, 'src.dir=${' + ref + '}'
+            mainSrc = False
+        else:
+            print >> out, 'src.' + src + '.dir=${' + ref + '}'
 
-        javacClasspath = []
+    javacClasspath = []
 
-        deps = p.all_deps([], True)
-        annotationProcessorOnlyDeps = []
-        if len(p.annotation_processors()) > 0:
-            for ap in p.annotation_processors():
-                apDep = dependency(ap)
-                if not apDep in deps:
-                    deps.append(apDep)
-                    annotationProcessorOnlyDeps.append(apDep)
+    deps = p.all_deps([], True)
+    annotationProcessorOnlyDeps = []
+    if len(p.annotation_processors()) > 0:
+        for ap in p.annotation_processors():
+            apDep = dependency(ap)
+            if not apDep in deps:
+                deps.append(apDep)
+                annotationProcessorOnlyDeps.append(apDep)
 
-        annotationProcessorReferences = []
+    annotationProcessorReferences = []
 
-        for dep in deps:
-            if dep == p:
-                continue
+    for dep in deps:
+        if dep == p:
+            continue
 
-            if dep.isLibrary():
-                path = dep.get_path(resolve=True)
-                libFiles.append(path)
-
-            elif dep.isProject():
-                path = join(dep.dir, 'dist', dep.name + '.jar')
-
+        if dep.isLibrary():
+            path = dep.get_path(resolve=True)
             if path:
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
+                ref = 'file.reference.' + dep.name + '-bin'
+                print >> out, ref + '=' + path
+                if libFiles:
+                    libFiles.append(path)
 
-                if not dep in annotationProcessorOnlyDeps:
-                    javacClasspath.append(path)
-                else:
-                    annotationProcessorReferences.append(path)
+        elif dep.isProject():
+            n = dep.name.replace('.', '_')
+            relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
+            ref = 'reference.' + n + '.jar'
+            print >> out, 'project.' + n + '=' + relDepPath
+            print >> out, ref + '=${project.' + n + '}/dist/' + dep.name + '.jar'
 
-        print >> out, 'javac.classpath=\\\n    ' + (os.pathsep + '\\\n    ').join(javacClasspath)
-        print >> out, 'javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences)
-        print >> out, 'javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences)
+        if not dep in annotationProcessorOnlyDeps:
+            javacClasspath.append('${' + ref + '}')
+        else:
+            annotationProcessorReferences.append('${' + ref + '}')
 
-        updated = update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue()) or updated
-        out.close()
+    print >> out, 'javac.classpath=\\\n    ' + (os.pathsep + '\\\n    ').join(javacClasspath)
+    print >> out, 'javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences)
+    print >> out, 'javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences)
+
+    update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
+    out.close()
+    if files:
         files.append(join(p.dir, 'nbproject', 'project.properties'))
 
-    if updated:
-        log('If using NetBeans:')
-        # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
-        log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
-        log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
-        for jdk in jdks:
-            log('        JDK_' + str(jdk.version))
-        log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
+def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
+    configZip = TimeStampFile(join(suite.mxDir, 'netbeans-config.zip'))
+    configLibsZip = join(suite.mxDir, 'eclipse-config-libs.zip')
+    if refreshOnly and not configZip.exists():
+        return
+
+    if _check_ide_timestamp(suite, configZip, 'netbeans'):
+        logv('[NetBeans configurations are up to date - skipping]')
+        return
+
+    files = []
+    libFiles = []
+    jdks = set()
+    for p in suite.projects:
+        if p.native:
+            continue
+
+        if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
+            continue
+
+        _netbeansinit_project(p, jdks, files, libFiles)
+
+    log('If using NetBeans:')
+    # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
+    log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
+    log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
+    for jdk in jdks:
+        log('        JDK_' + str(jdk.version))
+    log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
 
     _zip_files(files, suite.dir, configZip.path)
     _zip_files(libFiles, suite.dir, configLibsZip)
