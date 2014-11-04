@@ -3704,11 +3704,14 @@ def checkstyle(args):
     parser = ArgumentParser(prog='mx checkstyle')
 
     parser.add_argument('-f', action='store_true', dest='force', help='force checking (disables timestamp checking)')
+    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     args = parser.parse_args(args)
 
     totalErrors = 0
     for p in projects_opt_limit_to_suites():
         if p.native:
+            continue
+        if args.primary and not p.suite.primary:
             continue
         sourceDirs = p.source_dirs()
 
