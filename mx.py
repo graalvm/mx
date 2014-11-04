@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-31ad929e1afd019d4931e56165a1a72ff4e41c9c
+c88ab4f1f04aabe399bb47666fe14ba8a2ecf453
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -3712,15 +3712,14 @@ def checkstyle(args):
             continue
         sourceDirs = p.source_dirs()
 
-        csConfig = join(p.dir, '.checkstyle')
+        config = join(project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
+        if not exists(config):
+            logv('[No Checkstyle configuration found for {0} - skipping]'.format(p))
+            continue
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
         jdk = java(p.javaCompliance)
         assert jdk
-
-        if not exists(csConfig):
-            log('Excluding {0} from checking: {1} is missing'.format(p.name, csConfig))
-            continue
 
         for sourceDir in sourceDirs:
             javafilelist = []
@@ -3742,26 +3741,7 @@ def checkstyle(args):
                     log('[all Java sources in {0} already checked - skipping]'.format(sourceDir))
                 continue
 
-            dotCheckstyleXML = xml.dom.minidom.parse(csConfig)
-            localCheckConfig = dotCheckstyleXML.getElementsByTagName('local-check-config')[0]
-            configLocation = localCheckConfig.getAttribute('location')
-            configType = localCheckConfig.getAttribute('type')
-            if configType == 'project':
-                # Eclipse plugin "Project Relative Configuration" format:
-                #
-                #  '/<project_name>/<suffix>'
-                #
-                if configLocation.startswith('/'):
-                    name, _, suffix = configLocation.lstrip('/').partition('/')
-                    config = join(project(name).dir, suffix)
-                else:
-                    config = join(p.dir, configLocation)
-            else:
-                logv('[unknown Checkstyle configuration type "' + configType + '" in {0} - skipping]'.format(sourceDir))
-                continue
-
             exclude = join(p.dir, '.checkstyle.exclude')
-
             if exists(exclude):
                 with open(exclude) as f:
                     # Convert patterns to OS separators
@@ -6470,7 +6450,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.7.0")
+version = VersionSpec("2.7.1")
 
 currentUmask = None
 
