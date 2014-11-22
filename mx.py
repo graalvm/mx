@@ -883,14 +883,14 @@ class SuiteModel:
         """Three ways to specify a suite name mapping, in order of precedence:
         1. Explicitly in optionspec.
         2. In suitemap.
-        3. in MXSUITEMAP environment variable.
+        3. in MX_SUITEMAP environment variable.
         """
         if optionspec != '':
             spec = optionspec
         elif suitemap is not None:
             spec = suitemap
-        elif get_env('MXSUITEMAP') is not None:
-            spec = get_env('MXSUITEMAP')
+        elif get_env('MX_SUITEMAP') is not None:
+            spec = get_env('MX_SUITEMAP')
         else:
             return
         pairs = spec.split(',')
@@ -1593,6 +1593,26 @@ class Suite:
         '''depth first _post_init driven by imports graph'''
         self.visit_imports(self._post_init_visitor)
         self._post_init()
+
+    @staticmethod
+    def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
+        if visitmap.has_key(imported_suite.name):
+            return
+        projects += imported_suite.projects
+        visitmap[imported_suite.name] = True
+        imported_suite.visit_imports(importing_suite._projects_recursive_visitor, projects=projects, visitmap=visitmap)
+
+    @staticmethod
+    def _projects_recursive_visitor(importing_suite, suite_import, projects, visitmap, **extra_args):
+        importing_suite._projects_recursive(importing_suite, suite(suite_import.name), projects, visitmap)
+
+    def projects_recursive(self):
+        """return all projects including those in imported suites"""
+        result = []
+        result += self.projects
+        visitmap = dict()
+        self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
+        return result
 
 
 class XMLElement(xml.dom.minidom.Element):
@@ -4924,6 +4944,9 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 
 def intellijinit(args, refreshOnly=False):
     """(re)generate Intellij project configurations"""
+    # In a multiple suite context, the .idea directory in each suite
+    # has to be complete and contain information that is repeated
+    # in dependent suites.
 
     for suite in suites(True):
         _intellij_suite(args, suite, refreshOnly)
@@ -4937,7 +4960,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     if not exists(ideaProjectDirectory):
         os.mkdir(ideaProjectDirectory)
     nameFile = join(ideaProjectDirectory, '.name')
-    update_file(nameFile, "Graal")
+    update_file(nameFile, suite.name)
     modulesXml = XMLDoc()
     modulesXml.open('project', attributes={'version': '4'})
     modulesXml.open('component', attributes={'name': 'ProjectModuleManager'})
@@ -4955,7 +4978,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         return 'JDK_1_' + str(compliance.value)
 
     # create the modules (1 module  = 1 Intellij project)
-    for p in suite.projects:
+    for p in suite.projects_recursive():
         if p.native:
             continue
 
@@ -5024,8 +5047,6 @@ def _intellij_suite(args, suite, refreshOnly=False):
     modulesXml.close('project')
     moduleXmlFile = join(ideaProjectDirectory, 'modules.xml')
     update_file(moduleXmlFile, modulesXml.xml(indent='  ', newl='\n'))
-
-    # TODO What about cross-suite dependencies?
 
     librariesDirectory = join(ideaProjectDirectory, 'libraries')
 
@@ -5102,12 +5123,11 @@ def _intellij_suite(args, suite, refreshOnly=False):
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
-
     # TODO look into copyright settings
     # TODO should add vcs.xml support
 
 def ideclean(args):
-    """remove all Eclipse and NetBeans project configurations"""
+    """remove all IDE project configurations"""
     def rm(path):
         if exists(path):
             os.remove(path)
@@ -5141,10 +5161,15 @@ def ideclean(args):
             shutil.rmtree(d.get_ide_project_dir(), ignore_errors=True)
 
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
-    """(re)generate Eclipse, NetBeans and Intellij project configurations"""
-    eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
-    netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
-    intellijinit(args, refreshOnly=refreshOnly)
+    """(re)generate IDE project configurations"""
+    mx_ide = os.environ.get('MX_IDE', 'all').lower()
+    all_ides = mx_ide == 'all'
+    if all_ides or mx_ide == 'eclipse':
+        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
+    if all_ides or mx_ide == 'netbeans':
+        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
+    if all_ides or mx_ide == 'intellij':
+        intellijinit(args, refreshOnly=refreshOnly)
     if not refreshOnly:
         fsckprojects([])
 
@@ -6453,7 +6478,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.7.1")
+version = VersionSpec("2.8.0")
 
 currentUmask = None
 
