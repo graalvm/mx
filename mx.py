@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-7d8270532cd9c456a53b6d79d60195798d29d3c6
+23de014b38ab80c500f5c6fc56a1a446d6a71d0
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -1165,7 +1165,7 @@ def _load_suite_dict(mxDir):
                     if not existing:
                         suite[s] = additional
                     else:
-                        conflicting = additional.viewkeys() & existing.viewkeys()
+                        conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
                         if conflicting:
                             abort(modulePath + ' redefines: ' + ', '.join(conflicting))
                         existing.update(additional)
