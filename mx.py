@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-23de014b38ab80c500f5c6fc56a1a446d6a71d0
+dcf5cd3c6da97e25af949802a0f5d698fc136863
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -120,7 +120,7 @@ class Distribution:
         try:
             excl = [dependency(d) for d in self.excludedDependencies]
         except SystemExit as e:
-            abort('invalid excluded dependency for {} distribution: {}'.format(self.name, e))
+            abort('invalid excluded dependency for {0} distribution: {1}'.format(self.name, e))
         return deps + [d for d in sorted_deps(self.deps, includeLibs=includeLibs) if d not in excl]
 
     def __str__(self):
@@ -713,14 +713,14 @@ class Library(BaseLibrary):
         abspath = _make_absolute(path, self.suite.dir)
         if not optional and not exists(abspath):
             if not len(urls):
-                abort('Non-optional library {} must either exist at {} or specify one or more URLs from which it can be retrieved'.format(name, abspath))
+                abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath))
 
         def _checkSha1PropertyCondition(propName, cond, inputPath):
             if not cond:
                 absInputPath = _make_absolute(inputPath, self.suite.dir)
                 if exists(absInputPath):
-                    abort('Missing "{}" property for library {}. Add the following line to projects file:\nlibrary@{}@{}={}'.format(propName, name, name, propName, sha1OfFile(absInputPath)))
-                abort('Missing "{}" property for library {}'.format(propName, name))
+                    abort('Missing "{0}" property for library {1}. Add the following line to projects file:\nlibrary@{2}@{3}={4}'.format(propName, name, name, propName, sha1OfFile(absInputPath)))
+                abort('Missing "{0}" property for library {1}'.format(propName, name))
 
         _checkSha1PropertyCondition('sha1', sha1, path)
         _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
@@ -2239,6 +2239,9 @@ class ArgParser(ArgumentParser):
 
         opts = self.parse_args()
 
+        global _opts
+        _opts = opts
+
         # Give the timeout options a default value to avoid the need for hasattr() tests
         opts.__dict__.setdefault('timeout', 0)
         opts.__dict__.setdefault('ptimeout', 0)
@@ -2788,7 +2791,7 @@ def abort(codeOrMessage):
                     _kill_process_group(p.pid, signal.SIGKILL)
             except BaseException as e:
                 if is_alive(p):
-                    log('error while killing subprocess {} "{}": {}'.format(p.pid, ' '.join(args), e))
+                    log('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
     if _opts and _opts.verbose:
         import traceback
@@ -2863,7 +2866,7 @@ class JavaCompileTask:
         return self.proj.name
 
     def logCompilation(self, compiler):
-        log('Compiling Java sources for {} with {}... [{}]'.format(self.proj.name, compiler, self.reason))
+        log('Compiling Java sources for {0} with {1}... [{2}]'.format(self.proj.name, compiler, self.reason))
 
     def execute(self):
         argfileName = join(self.proj.dir, 'javafilelist.txt')
@@ -3251,8 +3254,8 @@ def build(args, parser=None):
         failed += joinTasks(active)
         if len(failed):
             for t in failed:
-                log('Compiling {} failed'.format(t.proj.name))
-            abort('{} Java compilation tasks failed'.format(len(failed)))
+                log('Compiling {0} failed'.format(t.proj.name))
+            abort('{0} Java compilation tasks failed'.format(len(failed)))
 
     if args.java:
         # do not process a distribution unless it corresponds to one of sortedProjects
@@ -3625,7 +3628,7 @@ def canonicalizeprojects(args):
                     candidates.difference_update(c.all_deps([], False, False))
                 candidates = [d.name for d in candidates]
 
-                abort('{} does not use any packages defined in these projects: {}\nComputed project dependencies: {}'.format(
+                abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
                     p, ', '.join(ignoredDeps), ','.join(candidates)))
 
             excess = frozenset(p.deps) - set(p.canonical_deps())
@@ -3755,7 +3758,7 @@ def checkstyle(args):
                                 if name == 'file':
                                     source[0] = attrs['name']
                                 elif name == 'error':
-                                    errors.append('{}:{}: {}'.format(source[0], attrs['line'], attrs['message']))
+                                    errors.append('{0}:{1}: {2}'.format(source[0], attrs['line'], attrs['message']))
 
                             xp = xml.parsers.expat.ParserCreate()
                             xp.StartElementHandler = start_element
@@ -5405,9 +5408,9 @@ def site(args):
                 if not 'version' in subprocess.check_output(['dot', '-V'], stderr=subprocess.STDOUT):
                     dotErr = 'dot -V does not print a string containing "version"'
             except subprocess.CalledProcessError as e:
-                dotErr = 'error calling "dot -V": {}'.format(e)
+                dotErr = 'error calling "dot -V": {0}'.format(e)
             except OSError as e:
-                dotErr = 'error calling "dot -V": {}'.format(e)
+                dotErr = 'error calling "dot -V": {0}'.format(e)
 
             if dotErr != None:
                 abort('cannot generate dependency graph: ' + dotErr)
@@ -5447,7 +5450,7 @@ def site(args):
 
             # Create HTML that embeds the svg file in an <object> frame
             with open(html, 'w') as fp:
-                print >> fp, '<html><body><object data="{}.svg" type="image/svg+xml"></object></body></html>'.format(args.dot_output_base)
+                print >> fp, '<html><body><object data="{0}.svg" type="image/svg+xml"></object></body></html>'.format(args.dot_output_base)
 
 
         if args.tmp:
@@ -6325,12 +6328,12 @@ def _remove_bad_deps():
                 finally:
                     d.optional = True
                 if not path:
-                    logv('[omitting optional library {} as {} does not exist]'.format(d, d.path))
+                    logv('[omitting optional library {0} as {1} does not exist]'.format(d, d.path))
                     del _libs[d.name]
                     d.suite.libs.remove(d)
         elif d.isProject():
             if java(d.javaCompliance) is None:
-                logv('[omitting project {} as Java compliance {} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
+                logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
                 del _projects[d.name]
                 d.suite.projects.remove(d)
             else:
@@ -6339,20 +6342,20 @@ def _remove_bad_deps():
                     if jreLib:
                         if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
                             if jreLib.optional:
-                                logv('[omitting project {} as dependency {} is missing]'.format(d, name))
+                                logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
                                 del _projects[d.name]
                                 d.suite.projects.remove(d)
                             else:
-                                abort('JRE library {} required by {} not found'.format(jreLib, d))
+                                abort('JRE library {0} required by {1} not found'.format(jreLib, d))
                     elif not dependency(name, fatalIfMissing=False):
-                        logv('[omitting project {} as dependency {} is missing]'.format(d, name))
+                        logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
                         del _projects[d.name]
                         d.suite.projects.remove(d)
 
     for dist in _dists.itervalues():
         for name in list(dist.deps):
             if not dependency(name, fatalIfMissing=False):
-                logv('[omitting {} from distribution {}]'.format(name, dist))
+                logv('[omitting {0} from distribution {1}]'.format(name, dist))
                 dist.deps.remove(name)
 
 def main():
@@ -6377,6 +6380,7 @@ def main():
             abort(primary_suite_error)
 
     opts, commandAndArgs = _argParser._parse_cmd_line()
+    assert _opts == opts
 
     if primarySuiteMxDir is None:
         if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
@@ -6384,8 +6388,7 @@ def main():
         else:
             warn(primary_suite_error)
 
-    global _opts, _java_homes
-    _opts = opts
+    global _java_homes
     defaultJdk = JavaConfig(opts.java_home, opts.java_dbg_port)
     _java_homes = [defaultJdk]
     if opts.extra_java_homes:
