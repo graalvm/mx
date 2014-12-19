@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-beb33138029c5bf7d12af64290e0aa7dacd75340
+fdf29cc07ec228f7ab252e268d305a46bd687b9
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -439,7 +439,7 @@ class Project(Dependency):
 
                         if matchFound:
                             simpleClassName = name[:-len('.java')]
-                            assert pkg is not None
+                            assert pkg is not None, 'could not find package statement in file ' + name
                             if pkgRoot is None or pkg.startswith(pkgRoot):
                                 pkgOutputDir = join(outputDir, pkg.replace('.', os.path.sep))
                                 if exists(pkgOutputDir):
