@@ -442,6 +442,10 @@ public class CheckCopyright {
         Calendar cal = Calendar.getInstance();
         for (String fileName : fileNames) {
             if (projects == null || isInProjects(fileName, projects)) {
+            	File file = new File(fileName);
+            	if (file.isDirectory()) {
+            		continue;
+            	}
             	if (verbose) {
             		System.out.println("checking " + fileName);
             	}
@@ -581,6 +585,9 @@ public class CheckCopyright {
         is.close();
         final String fileContent = new String(fileContentBytes);
         CopyrightHandler copyrightHandler = CopyrightHandler.getCopyrightHandler(fileName);
+        if (file.getName().equals("Makefile")) {
+        	System.console();
+        }
         if (copyrightHandler != null) {
             Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);
             if (copyrightMatcher.matches()) {
