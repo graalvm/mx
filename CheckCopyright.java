@@ -236,13 +236,19 @@ public class CheckCopyright {
     		return true;
     	}
 
+    	/**
+    	 * Check the year info against the copyright header.
+    	 * N.B. In the case of multiple matching groups, only the last group is checked.
+    	 * I.e., only the last lines containing year info is checked/updated.
+    	 */
     	@Override
         protected boolean checkYearInfo(String fileName, String fileContent, Matcher matcher, Info info) throws IOException {
             int yearInCopyright;
             int yearInCopyrightIndex;
-            String yearInCopyrightString = matcher.group(2);
+            int groupCount = matcher.groupCount();
+            String yearInCopyrightString = matcher.group(groupCount);
             yearInCopyright = Integer.parseInt(yearInCopyrightString);
-            yearInCopyrightIndex = matcher.start(2);
+            yearInCopyrightIndex = matcher.start(groupCount);
             if (yearInCopyright != info.lastYear) {
                 System.out.println(fileName + " copyright last modified year " + yearInCopyright + ", hg last modified year " + info.lastYear);
                 if (FIX.getValue()) {
@@ -250,7 +256,7 @@ public class CheckCopyright {
                     System.out.println("updating last modified year of " + fileName + " to " + info.lastYear);
                     // If the previous copyright only specified a single (initial) year, we convert it to the pair form
                     String newContent = fileContent.substring(0, yearInCopyrightIndex);
-                    if (matcher.group(1) == null) {
+                    if (matcher.group(groupCount - 1) == null) {
                     	// single year form
                     	newContent += yearInCopyrightString + ", ";
                     }
