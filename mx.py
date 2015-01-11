@@ -618,9 +618,13 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if d != '' and not exists(d):
             os.makedirs(d)
         if canSymlink and 'symlink' in dir(os):
-            if exists(path):
-                os.unlink(path)
-            os.symlink(cachePath, path)
+            try:
+                if exists(path):
+                    os.unlink(path)
+                os.symlink(cachePath, path)
+            except OSError as e:
+                abort('download_file_with_sha1 symlink({0}, {1}) failed, error {2}'.format(cachePath, path, str(e)))
+
         else:
             shutil.copy(cachePath, path)
 
@@ -1484,8 +1488,15 @@ class Suite:
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
         suite_import = SuiteImport(name, version, alternate)
         imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
-        if imported_suite and not imported_suite.post_init:
-            imported_suite._post_init()
+        if imported_suite:
+            # if alternate is set, force the import to version in case it already existed
+            if alternate:
+                if version:
+                    run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version, '-u', alternate])
+                else:
+                    run(['hg', '-R', imported_suite.dir, 'pull', '-u', alternate])
+            if not imported_suite.post_init:
+                imported_suite._post_init()
         return imported_suite
 
     def _load_imports(self):
@@ -6454,7 +6465,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.9.0")
+version = VersionSpec("2.9.1")
 
 currentUmask = None
 
