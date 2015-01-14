@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-fdf29cc07ec228f7ab252e268d305a46bd687b9
+c3bb622095f1a801192dd1a3c17108e2db75673b
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2162,9 +2162,21 @@ def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, inclu
         p.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
     return deps
 
-def _handle_missing_java_home():
+def _handle_lookup_java_home(jdk):
+    return _handle_lookup_jdk(jdk, 'JAVA_HOME', '--java-home', False)
+
+def _handle_lookup_extra_java_homes(jdk):
+    return _handle_lookup_jdk(jdk, 'EXTRA_JAVA_HOMES', '--extra-java-homes', True)
+
+def _handle_lookup_jdk(jdk, varName, flagName, allowMultiple):
+    if jdk != None and jdk != '':
+        return jdk
+    jdk = os.environ.get(varName)
+    if jdk != None and jdk != '':
+        return jdk
+
     if not sys.stdout.isatty():
-        abort('Could not find bootstrap JDK. Use --java-home option or ensure JAVA_HOME environment variable is set.')
+        abort('Could not find bootstrap {0}. Use {1} option or ensure {2} environment variable is set.'.format(varName, flagName, varName))
 
     candidateJdks = []
     if get_os() == 'darwin':
@@ -2182,12 +2194,15 @@ def _handle_missing_java_home():
 
     javaHome = None
     if len(candidateJdks) != 0:
-        javaHome = select_items(candidateJdks + ['<other>'], allowMultiple=False)
+        log('Missing value for {0}.'.format(varName))
+        javaHome = select_items(candidateJdks + ['<other>'], allowMultiple=allowMultiple)
         if javaHome == '<other>':
             javaHome = None
+        if javaHome != None and allowMultiple:
+            javaHome = os.pathsep.join(javaHome)
 
     while javaHome is None:
-        javaHome = raw_input('Enter path of bootstrap JDK: ')
+        javaHome = raw_input('Enter path of JDK for {0}: '.format(varName))
         rtJarPath = join(javaHome, 'jre', 'lib', 'rt.jar')
         if not exists(rtJarPath):
             log('Does not appear to be a valid JDK as ' + rtJarPath + ' does not exist')
@@ -2197,9 +2212,9 @@ def _handle_missing_java_home():
 
     if _primary_suite is not None:
         envPath = join(_primary_suite.mxDir, 'env')
-        if ask_yes_no('Persist this setting by adding "JAVA_HOME=' + javaHome + '" to ' + envPath, 'y'):
+        if ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, javaHome, envPath), 'y'):
             with open(envPath, 'a') as fp:
-                print >> fp, 'JAVA_HOME=' + javaHome
+                print >> fp, varName + '=' + javaHome
 
     return javaHome
 
@@ -2260,13 +2275,8 @@ class ArgParser(ArgumentParser):
         if opts.very_verbose:
             opts.verbose = True
 
-        if opts.java_home is None:
-            opts.java_home = os.environ.get('JAVA_HOME')
-        if opts.extra_java_homes is None:
-            opts.extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES')
-
-        if opts.java_home is None or opts.java_home == '':
-            opts.java_home = _handle_missing_java_home()
+        opts.java_home = _handle_lookup_java_home(opts.java_home)
+        opts.extra_java_homes = _handle_lookup_extra_java_homes(opts.extra_java_homes)
 
         if opts.user_home is None or opts.user_home == '':
             abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
