@@ -2,7 +2,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2014, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -36,11 +36,10 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-c3bb622095f1a801192dd1a3c17108e2db75673b
+c446d00f2cdfdbe2788d1a1420ab49a1af919e9e
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
-import multiprocessing
 import textwrap
 import socket
 import xml.parsers.expat
@@ -67,6 +66,21 @@ def check_output(*popenargs, **kwargs):
         error.output = output
         raise error
     return output
+
+# Support for jython
+def is_jython():
+    return sys.platform.startswith('java')
+
+if not is_jython():
+    import multiprocessing
+
+def cpu_count():
+    if is_jython():
+        from java.lang import Runtime
+        runtime = Runtime.getRuntime()
+        return runtime.availableProcessors()
+    else:
+        return multiprocessing.cpu_count()
 
 try: subprocess.check_output
 except: subprocess.check_output = check_output
@@ -262,6 +276,9 @@ class Dependency:
         self.name = name
         self.suite = suite
 
+    def __cmp__(self, other):
+        return cmp(self.name, other.name)
+
     def __str__(self):
         return self.name
 
@@ -318,7 +335,7 @@ class Project(Dependency):
         Add the transitive set of dependencies for this project, including
         libraries if 'includeLibs' is true, to the 'deps' list.
         """
-        return self._all_deps_helper(deps, [], includeLibs, includeSelf, includeJreLibs, includeAnnotationProcessors)
+        return sorted(self._all_deps_helper(deps, [], includeLibs, includeSelf, includeJreLibs, includeAnnotationProcessors))
 
     def _all_deps_helper(self, deps, dependants, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
         if self in dependants:
@@ -538,7 +555,7 @@ class Project(Dependency):
                 # Inherit annotation processors from dependencies
                 aps.update(p.annotation_processors())
 
-            self._annotationProcessors = list(aps)
+            self._annotationProcessors = sorted(list(aps))
         return self._annotationProcessors
 
     """
@@ -601,8 +618,9 @@ def sha1OfFile(path):
         return d.hexdigest()
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
+    canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
     def _download_lib():
-        cacheDir = get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache'))
+        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
         if not exists(cacheDir):
             os.makedirs(cacheDir)
         base = basename(path)
@@ -699,7 +717,7 @@ class JreLibrary(BaseLibrary):
         """
         if includeJreLibs and includeSelf and not self in deps:
             deps.append(self)
-        return deps
+        return sorted(deps)
 
 class Library(BaseLibrary):
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
@@ -772,10 +790,10 @@ class Library(BaseLibrary):
         Add the transitive set of dependencies for this library to the 'deps' list.
         """
         if not includeLibs:
-            return deps
+            return sorted(deps)
         childDeps = list(self.deps)
         if self in deps:
-            return deps
+            return sorted(deps)
         for name in childDeps:
             assert name != self.name
             dep = library(name)
@@ -783,7 +801,7 @@ class Library(BaseLibrary):
                 dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
         if not self in deps and includeSelf:
             deps.append(self)
-        return deps
+        return sorted(deps)
 
 class HgConfig:
     """
@@ -1259,7 +1277,7 @@ class Suite:
                 abort('Attribute "' + name + '" for ' + context + ' must be a list')
             return v
 
-        for name, attrs in projsMap.iteritems():
+        for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
             srcDirs = pop_list(attrs, 'sourceDirs', context)
             deps = pop_list(attrs, 'dependencies', context)
@@ -1281,14 +1299,14 @@ class Suite:
             p.__dict__.update(attrs)
             self.projects.append(p)
 
-        for name, attrs in jreLibsMap.iteritems():
+        for name, attrs in sorted(jreLibsMap.iteritems()):
             jar = attrs.pop('jar')
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
             l = JreLibrary(self, name, jar, optional)
             self.jreLibs.append(l)
 
-        for name, attrs in libsMap.iteritems():
+        for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
             if "|" in name:
                 if name.count('|') != 2:
@@ -1309,7 +1327,7 @@ class Suite:
             l.__dict__.update(attrs)
             self.libs.append(l)
 
-        for name, attrs in distsMap.iteritems():
+        for name, attrs in sorted(distsMap.iteritems()):
             context = 'distribution ' + name
             path = attrs.pop('path')
             sourcesPath = attrs.pop('sourcesPath', None)
@@ -1812,11 +1830,29 @@ def bench(args, harness=_basic_bench_harness, parser=None):
 
     return harness(args, args.vm_args)
 
+def get_jython_os():
+    from java.lang import System as System
+    os_name = System.getProperty('os.name').lower()
+    if System.getProperty('isCygwin'):
+        return 'cygwin'
+    elif os_name.startswith('mac'):
+        return 'darwin'
+    elif os_name.startswith('linux'):
+        return 'linux'
+    elif os_name.startswith('sunos'):
+        return 'solaris'
+    elif os_name.startswith('win'):
+        return 'windows'
+    else:
+        abort('Unknown operating system ' + os_name)
+
 def get_os():
     """
     Get a canonical form of sys.platform.
     """
-    if sys.platform.startswith('darwin'):
+    if is_jython():
+        return get_jython_os()
+    elif sys.platform.startswith('darwin'):
         return 'darwin'
     elif sys.platform.startswith('linux'):
         return 'linux'
@@ -1836,7 +1872,7 @@ def _cygpathU2W(p):
     """
     if p is None or get_os() != "cygwin":
         return p
-    return subprocess.check_output(['cygpath', '-w', p]).strip()
+    return subprocess.check_output(['cygpath', '-a', '-w', p]).strip()
 
 def _cygpathW2U(p):
     """
@@ -1845,7 +1881,7 @@ def _cygpathW2U(p):
     """
     if p is None or get_os() != "cygwin":
         return p
-    return subprocess.check_output(['cygpath', '-u', p]).strip()
+    return subprocess.check_output(['cygpath', '-a', '-u', p]).strip()
 
 def _separatedCygpathU2W(p):
     """
@@ -2235,6 +2271,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
         self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
+        self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
         self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
         self.add_argument('--J', dest='java_args', help='Java VM arguments (e.g. --J @-dsa)', metavar='@<args>')
@@ -2426,10 +2463,11 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         # can use os.killpg() to kill the whole subprocess group
         preexec_fn = None
         creationflags = 0
-        if get_os() == 'windows':
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-        elif timeout is not None:
-            preexec_fn = os.setsid
+        if not is_jython():
+            if get_os() == 'windows':
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+            elif timeout is not None:
+                preexec_fn = os.setsid
 
         def redirect(stream, f):
             for line in iter(stream.readline, ''):
@@ -2652,7 +2690,7 @@ class JavaConfig:
 
     def _init_classpaths(self):
         _, binDir = _compile_mx_class('ClasspathDump')
-        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _separatedCygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
         if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
             warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
         self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
@@ -2800,7 +2838,7 @@ def abort(codeOrMessage):
     def is_alive(p):
         if isinstance(p, subprocess.Popen):
             return p.poll() is None
-        assert isinstance(p, multiprocessing.Process), p
+        assert is_jython() or isinstance(p, multiprocessing.Process), p
         return p.is_alive()
 
     for p, args in _currentSubprocesses:
@@ -2857,6 +2895,9 @@ def update_file(path, content):
 
         if old == content:
             return False
+
+        if existed and _opts.backup_modified:
+            shutil.move(path, path + '.orig')
 
         with open(path, 'wb') as f:
             f.write(content)
@@ -3025,6 +3066,11 @@ def build(args, parser=None):
 
     args = parser.parse_args(args)
 
+    if is_jython():
+        if args.parallelize:
+            logv('[multiprocessing not available in jython]')
+            args.parallelize = False
+
     jdtJar = None
     if not args.javac and args.jdt is not None:
         if not args.jdt.endswith('.jar'):
@@ -3184,7 +3230,7 @@ def build(args, parser=None):
                 t._d = None
             return sorted(tasks, compareTasks)
 
-        cpus = multiprocessing.cpu_count()
+        cpus = cpu_count()
         worklist = sortWorklist(tasks.values())
         active = []
         failed = []
@@ -4176,10 +4222,10 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         elif dep.isProject():
             projectDeps.add(dep)
 
-    for dep in containerDeps:
+    for dep in sorted(containerDeps):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
 
-    for dep in libraryDeps:
+    for dep in sorted(libraryDeps):
         path = dep.path
         dep.get_path(resolve=True)
 
@@ -4200,7 +4246,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if libFiles:
             libFiles.append(path)
 
-    for dep in projectDeps:
+    for dep in sorted(projectDeps):
         out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : getattr(p, 'eclipse.output', 'bin')})
@@ -5088,7 +5134,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     if annotationProcessorProfiles:
         compilerXml.open('annotationProcessing')
-        for processors, modules in annotationProcessorProfiles.items():
+        for processors, modules in sorted(annotationProcessorProfiles.iteritems()):
             compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join(processors), 'enabled': 'true'})
             compilerXml.element('sourceOutputDir', attributes={'name': 'src_gen'})  # TODO use p.source_gen_dir() ?
             compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
@@ -6455,11 +6501,12 @@ def main():
     c, _ = _commands[command][:2]
     def term_handler(signum, frame):
         abort(1)
-    signal.signal(signal.SIGTERM, term_handler)
+    if not is_jython():
+        signal.signal(signal.SIGTERM, term_handler)
 
     def quit_handler(signum, frame):
         _send_sigquit()
-    if get_os() != 'windows':
+    if not is_jython() and get_os() != 'windows':
         signal.signal(signal.SIGQUIT, quit_handler)
 
     try:
