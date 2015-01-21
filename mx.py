@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-19d99eec887695cb765f94472db638f940de8fd9
+4dc7b1f66de3fe4fb524cd7a5b27da0d351ebd18
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2708,6 +2708,12 @@ class JavaConfig:
 
     def __cmp__(self, other):
         if isinstance(other, JavaConfig):
+            compilanceCmp = cmp(self.javaCompliance, other.javaCompliance)
+            if compilanceCmp:
+                return compilanceCmp
+            versionCmp = cmp(self.version, other.version)
+            if versionCmp:
+                return versionCmp
             return cmp(self.jdk, other.jdk)
         raise TypeError()
 
