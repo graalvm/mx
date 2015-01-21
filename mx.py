@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-c446d00f2cdfdbe2788d1a1420ab49a1af919e9e
+19d99eec887695cb765f94472db638f940de8fd9
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2697,12 +2697,18 @@ class JavaConfig:
         self._extdirs = _filter_non_existant_paths(self._extdirs)
         self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
 
+    def __repr__(self):
+        return "JavaConfig(" + str(self.jdk) + ", " + str(self.debug_port) + ")"
+
+    def __str__(self):
+        return "Java " + str(self.version) + " (" + str(self.javaCompliance) + ") from " + str(self.jdk)
+
     def __hash__(self):
         return hash(self.jdk)
 
     def __cmp__(self, other):
         if isinstance(other, JavaConfig):
-            return cmp(self.javaCompliance, other.javaCompliance)
+            return cmp(self.jdk, other.jdk)
         raise TypeError()
 
     def format_cmd(self, args, addDefaultArgs):
