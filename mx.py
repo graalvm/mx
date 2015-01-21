@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-4dc7b1f66de3fe4fb524cd7a5b27da0d351ebd18
+f5cee3a0496c0b6bebd78006af1ab8fa8c3049d8
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -564,9 +564,16 @@ class Project(Dependency):
     """
     def annotation_processors_path(self):
         aps = [project(ap) for ap in self.annotation_processors()]
-        if len(aps):
-            return os.pathsep.join([ap.definedAnnotationProcessorsDist.path for ap in aps if ap.definedAnnotationProcessorsDist])
+        libAps = [dep for dep in self.all_deps([], includeLibs=True, includeSelf=False) if dep.isLibrary() and hasattr(dep, 'annotationProcessor') and getattr(dep, 'annotationProcessor').lower() == 'true']
+        if len(aps) + len(libAps):
+            return os.pathsep.join([ap.definedAnnotationProcessorsDist.path for ap in aps if ap.definedAnnotationProcessorsDist] + [lib.get_path(False) for lib in libAps])
         return None
+
+    def uses_annotation_processor_library(self):
+        for dep in self.all_deps([], includeLibs=True, includeSelf=False):
+            if dep.isLibrary() and hasattr(dep, 'annotationProcessor'):
+                return True
+        return False
 
     def update_current_annotation_processors_file(self):
         aps = self.annotation_processors()
@@ -3015,7 +3022,10 @@ class JavaCompileTask:
                     with open(jdtProperties) as fp:
                         origContent = fp.read()
                         content = origContent
-                        if args.jdt_warning_as_error:
+                        if self.proj.uses_annotation_processor_library():
+                            # unfortunately, the command line compiler doesn't let us ignore warnings for generated files only
+                            content = content.replace('=warning', '=ignore')
+                        elif args.jdt_warning_as_error:
                             content = content.replace('=warning', '=error')
                         if not args.jdt_show_task_tags:
                             content = content + '\norg.eclipse.jdt.core.compiler.problem.tasks=ignore'
@@ -4203,11 +4213,18 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             os.mkdir(srcDir)
         out.element('classpathentry', {'kind' : 'src', 'path' : src})
 
-    if len(p.annotation_processors()) > 0:
+    processorPath = p.annotation_processors_path()
+    if processorPath:
         genDir = p.source_gen_dir()
         if not exists(genDir):
             os.mkdir(genDir)
-        out.element('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
+        out.open('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
+        if p.uses_annotation_processor_library():
+            # ignore warnings produced by third-party annotation processors
+            out.open('attributes')
+            out.element('attribute', {'name' : 'ignore_optional_problems', 'value' : 'true'})
+            out.close('attributes')
+        out.close('classpathentry')
         if files:
             files.append(genDir)
 
@@ -4390,19 +4407,18 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     # copy a possibly modified file to the project's .settings directory
     for name, path in esdict.iteritems():
         # ignore this file altogether if this project has no annotation processors
-        if name == "org.eclipse.jdt.apt.core.prefs" and not len(p.annotation_processors()) > 0:
+        if name == "org.eclipse.jdt.apt.core.prefs" and not processorPath:
             continue
 
         with open(path) as f:
             content = f.read()
         content = content.replace('${javaCompliance}', str(p.javaCompliance))
-        if len(p.annotation_processors()) > 0:
+        if processorPath:
             content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
         update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
 
-    processorPath = p.annotation_processors_path()
     if processorPath:
         out = XMLDoc()
         out.open('factorypath')
