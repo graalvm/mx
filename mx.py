@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-f5cee3a0496c0b6bebd78006af1ab8fa8c3049d8
+7e500c20208cffee5097051539950d96f60662f1
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2451,7 +2451,19 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         assert isinstance(arg, types.StringTypes), 'argument is not a string: ' + str(arg)
 
     if env is None:
-        env = os.environ
+        env = os.environ.copy()
+
+    # Ideally the command line could be communicated directly in an environment
+    # variable. However, since environment variables share the same resource
+    # space as the command line itself (on Unix at least), this would cause the
+    # limit to be exceeded too easily.
+    _, subprocessCommandFile = tempfile.mkstemp(suffix='', prefix='mx_subprocess_command.')
+    with open(subprocessCommandFile, 'w') as fp:
+        for arg in args:
+            # TODO: handle newlines in args once there's a use case
+            assert '\n' not in arg
+            print >> fp, arg
+    env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
     if _opts.verbose:
         if _opts.very_verbose:
@@ -2515,6 +2527,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         abort(1)
     finally:
         _removeSubprocess(sub)
+        os.remove(subprocessCommandFile)
 
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
