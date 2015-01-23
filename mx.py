@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-7e500c20208cffee5097051539950d96f60662f1
+9aa1cff041eb4afe9d23f59567712e255902827c
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2457,8 +2457,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     # variable. However, since environment variables share the same resource
     # space as the command line itself (on Unix at least), this would cause the
     # limit to be exceeded too easily.
-    _, subprocessCommandFile = tempfile.mkstemp(suffix='', prefix='mx_subprocess_command.')
-    with open(subprocessCommandFile, 'w') as fp:
+    with tempfile.NamedTemporaryFile(suffix='', prefix='mx_subprocess_command.', mode='w', delete=False) as fp:
+        subprocessCommandFile = fp.name
         for arg in args:
             # TODO: handle newlines in args once there's a use case
             assert '\n' not in arg
