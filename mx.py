@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-9aa1cff041eb4afe9d23f59567712e255902827c
+258b3658845a5ee864838c95e98c9fa694d01a64
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -4047,7 +4047,10 @@ def projectgraph(args, suite=None):
     print 'node [shape=rect];'
     for p in projects():
         for dep in p.canonical_deps():
-            print '"' + p.name + '"->"' + dep + '"'
+            print '"' + p.name + '"->"' + dep + '";'
+        if hasattr(p, '_declaredAnnotationProcessors'):
+            for ap in p._declaredAnnotationProcessors:
+                print '"' + p.name + '"->"' + ap + '" [style="dashed"];'
     print '}'
 
 def _source_locator_memento(deps):
