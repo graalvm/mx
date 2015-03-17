@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-bd953f56351746a9acaab8a80adcc8761804b4b6
+ea280aa54d58ff2eeb68d0732a5d812b755091b7
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -3416,7 +3416,7 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
         else:
             # Using just SC_ARG_MAX without extra downwards adjustment
             # results in "[Errno 7] Argument list too long" on MacOS.
-            commandLinePrefixAllowance -= 20000
+            commandLinePrefixAllowance = 20000
             syslimit = os.sysconf('SC_ARG_MAX')
             if syslimit == -1:
                 syslimit = 262144 # we could use sys.maxint but we prefer a more robust smaller value
