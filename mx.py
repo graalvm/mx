@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-ea280aa54d58ff2eeb68d0732a5d812b755091b7
+6e5df2d60fbdc00e695051895802d2308e15f519
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2235,6 +2235,8 @@ def _handle_lookup_jdk(jdk, varName, flagName, allowMultiple):
     elif get_os() == 'linux':
         base = '/usr/lib/jvm'
         candidateJdks = [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
+        base = '/usr/java'
+        candidateJdks += [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
     elif get_os() == 'solaris':
         base = '/usr/jdk/instances'
         candidateJdks = [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
@@ -6559,7 +6561,7 @@ def main():
     if opts.extra_java_homes:
         for java_home in opts.extra_java_homes.split(os.pathsep):
             extraJdk = JavaConfig(java_home, opts.java_dbg_port)
-            if extraJdk > defaultJdk:
+            if extraJdk.javaCompliance > defaultJdk.javaCompliance:
                 abort('Secondary JDK ' + extraJdk.jdk + ' has higher compliance level than default JDK ' + defaultJdk.jdk)
             _java_homes.append(extraJdk)
 
@@ -6608,7 +6610,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.9.5")
+version = VersionSpec("2.9.6")
 
 currentUmask = None
 
