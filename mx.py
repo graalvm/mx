@@ -3148,6 +3148,10 @@ def build(args, parser=None):
     for p in sortedProjects:
         if p.native:
             if args.native:
+                # resolve any dependency downloads
+                for dep in p.all_deps([], includeLibs=True, includeAnnotationProcessors=False, includeSelf=False):
+                    dep.get_path(True)
+
                 log('Calling GNU make {0}...'.format(p.dir))
 
                 if args.clean:
@@ -6604,7 +6608,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.9.4")
+version = VersionSpec("2.9.5")
 
 currentUmask = None
 
