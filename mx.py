@@ -614,6 +614,13 @@ def _make_absolute(path, prefix):
         return join(prefix, path)
     return path
 
+def sha1(args):
+    """generate sha1 digest for given file"""
+    parser = ArgumentParser(prog='sha1')
+    parser.add_argument('--path', action='store', help='path to file', metavar='<path>', required=True)
+    args = parser.parse_args(args)
+    print 'sha1 of ' + args.path + ': ' + sha1OfFile(args.path)
+
 def sha1OfFile(path):
     with open(path, 'rb') as f:
         d = hashlib.sha1()
@@ -6389,6 +6396,7 @@ _commands = {
     'netbeansinit': [netbeansinit, ''],
     'suites': [show_suites, ''],
     'projects': [show_projects, ''],
+    'sha1': [sha1, ''],
 }
 
 _argParser = ArgParser()
