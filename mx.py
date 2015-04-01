@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-6e5df2d60fbdc00e695051895802d2308e15f519
+1b9841bb304db367cec318c4991be9572b5a197a
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -859,6 +859,24 @@ class HgConfig:
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('failed to get status')
+            else:
+                return None
+
+    def locate(self, sDir, patterns=None, abortOnError=True):
+        try:
+            if patterns is None:
+                patterns = []
+            elif not isinstance(patterns, list):
+                patterns = [patterns]
+            return subprocess.check_output(['hg', 'locate', '-R', sDir] + patterns).split('\n')
+        except OSError:
+            warn(self.missing)
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 1:
+                # hg locate returns 1 if no matches were found
+                return []
+            if abortOnError:
+                abort('failed to locate')
             else:
                 return None
 
@@ -5305,8 +5323,13 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
+    if not sys.stdout.isatty():
+        log('fsckprojects command must be run in an interactive shell')
+        return
+    hg = HgConfig()
     for suite in suites(True):
         projectDirs = [p.dir for p in suite.projects]
+        distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
                 # no point in traversing .hg or lib/
@@ -5317,13 +5340,20 @@ def fsckprojects(args):
             elif dirpath in projectDirs:
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
+            elif dirpath in distIdeDirs:
+                # don't traverse subdirs of an existing distributions in this suite
+                dirnames[:] = []
             else:
-                projectConfigFiles = frozenset(['.classpath', 'nbproject'])
+                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
-                    if not sys.stdout.isatty() or ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
-                        shutil.rmtree(dirpath)
-                        log('Deleted ' + dirpath)
+                    indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
+                    indicatorsInHg = hg.locate(suite.dir, indicators)
+                    # Only proceed if there are indicator files that are not under HG
+                    if len(indicators) > len(indicatorsInHg):
+                        if not sys.stdout.isatty() or ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
+                            shutil.rmtree(dirpath)
+                            log('Deleted ' + dirpath)
 
 def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True):
     """generate javadoc for some/all Java projects"""
@@ -6610,7 +6640,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.9.6")
+version = VersionSpec("2.9.7")
 
 currentUmask = None
 
