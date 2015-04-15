@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-8dec9eea31866712f25a56fc15a6a14ee2c0256a
+05e1ab8c5c6a87861b7dfb372182f092ae908ed5
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2682,7 +2682,9 @@ class VersionSpec:
         return cmp(self.parts, other.parts)
 
 def _filter_non_existant_paths(paths):
-    return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
+    if paths:
+        return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
+    return None
 
 """
 A JavaConfig object encapsulates info on how Java commands are run.
@@ -2743,8 +2745,10 @@ class JavaConfig:
     def _init_classpaths(self):
         _, binDir = _compile_mx_class('ClasspathDump')
         self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
-        if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
-            warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
+        if self.javaCompliance <= JavaCompliance('1.8'):
+            # All 3 system properties accessed by ClasspathDump are expected to exist
+            if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
+                warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
         self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
         self._extdirs = _filter_non_existant_paths(self._extdirs)
         self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
@@ -2792,6 +2796,33 @@ class JavaConfig:
         if self._endorseddirs is None:
             self._init_classpaths()
         return _separatedCygpathU2W(self._endorseddirs)
+
+    """
+    Add javadoc style options for the library paths of this JDK.
+    """
+    def javadocLibOptions(self, args):
+        if args is None:
+            args = []
+        if self.bootclasspath():
+            args.append('-bootclasspath')
+            args.append(self.bootclasspath())
+        if self.endorseddirs():
+            args.append('-endorseddirs')
+            args.append(self.endorseddirs())
+        if self.extdirs():
+            args.append('-extdirs')
+            args.append(self.extdirs())
+        return args
+
+    """
+    Add javac style options for the library paths of this JDK.
+    """
+    def javacLibOptions(self, args):
+        args = self.javadocLibOptions(args)
+        if self.endorseddirs():
+            args.append('-endorseddirs')
+            args.append(self.endorseddirs())
+        return args
 
     def containsJar(self, jar):
         if self._bootclasspath is None:
@@ -3025,7 +3056,8 @@ class JavaCompileTask:
                 if not args.error_prone:
                     javac = args.alt_javac if args.alt_javac else mainJava.javac
                     self.logCompilation('javac' if not args.alt_javac else args.alt_javac)
-                    javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
+                    javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    jdk.javacLibOptions(javacCmd)
                     if jdk.debug_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                     javacCmd += processorArgs
@@ -3037,7 +3069,8 @@ class JavaCompileTask:
                 else:
                     self.logCompilation('javac (with error-prone)')
                     javaArgs = ['-Xmx1500m']
-                    javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir, '-bootclasspath', jdk.bootclasspath(), '-endorseddirs', jdk.endorseddirs(), '-extdirs', jdk.extdirs()]
+                    javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    jdk.javacLibOptions(javacCmd)
                     javacArgs += processorArgs
                     javacArgs += ['@' + argfile.name]
                     if not args.warnAPI:
@@ -3050,10 +3083,8 @@ class JavaCompileTask:
 
                 jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
-                         '-d', outputDir,
-                         '-bootclasspath', jdk.bootclasspath(),
-                         '-endorseddirs', jdk.endorseddirs(),
-                         '-extdirs', jdk.extdirs()]
+                         '-d', outputDir]
+                jdk.javacLibOptions(jdtArgs)
                 jdtArgs += processorArgs
 
                 jdtProperties = join(self.proj.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -5484,9 +5515,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-d', out,
                      '-overview', overviewFile,
                      '-sourcepath', sp,
-                     '-source', str(projectJava.javaCompliance),
-                     '-bootclasspath', projectJava.bootclasspath(),
-                     '-extdirs', projectJava.extdirs()] +
+                     '-source', str(projectJava.javaCompliance)] +
+                     projectJava.javadocLibOptions() +
                      ([] if projectJava.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
                      links +
                      extraArgs +
