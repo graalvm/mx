@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-05e1ab8c5c6a87861b7dfb372182f092ae908ed5
+5ea65fe643687560c18a2ecc758d301b913084e0
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -111,7 +111,7 @@ _hg = None
 A distribution is a jar or zip file containing the output from one or more Java projects.
 """
 class Distribution:
-    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance):
+    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
         self.suite = suite
         self.name = name
         self.path = path.replace('/', os.sep)
@@ -123,6 +123,7 @@ class Distribution:
         self.excludedDependencies = excludedDependencies
         self.distDependencies = distDependencies
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
+        self.isProcessorDistribution = isProcessorDistribution
 
     def sorted_deps(self, includeLibs=False, transitive=False):
         deps = []
@@ -1394,7 +1395,7 @@ class Suite:
                 exclDeps = []
                 distDeps = []
                 javaCompliance = None
-                d = Distribution(self, dname, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
+                d = Distribution(self, dname, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, True)
                 d.subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
                 self.dists.append(d)
                 p.definedAnnotationProcessors = annotationProcessors
@@ -2700,6 +2701,7 @@ class JavaConfig:
         self.javadoc = exe_suffix(join(self.jdk, 'bin', 'javadoc'))
         self.pack200 = exe_suffix(join(self.jdk, 'bin', 'pack200'))
         self.toolsjar = join(self.jdk, 'lib', 'tools.jar')
+        self._classpaths_initialized = False
         self._bootclasspath = None
         self._extdirs = None
         self._endorseddirs = None
@@ -2743,15 +2745,17 @@ class JavaConfig:
             self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
 
     def _init_classpaths(self):
-        _, binDir = _compile_mx_class('ClasspathDump')
-        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
-        if self.javaCompliance <= JavaCompliance('1.8'):
-            # All 3 system properties accessed by ClasspathDump are expected to exist
-            if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
-                warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
-        self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
-        self._extdirs = _filter_non_existant_paths(self._extdirs)
-        self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+        if not self._classpaths_initialized:
+            _, binDir = _compile_mx_class('ClasspathDump')
+            self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+            if self.javaCompliance <= JavaCompliance('1.8'):
+                # All 3 system properties accessed by ClasspathDump are expected to exist
+                if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
+                    warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
+            self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
+            self._extdirs = _filter_non_existant_paths(self._extdirs)
+            self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+            self._classpaths_initialized = True
 
     def __repr__(self):
         return "JavaConfig(" + str(self.jdk) + ", " + str(self.debug_port) + ")"
@@ -2783,35 +2787,22 @@ class JavaConfig:
         return self.java_args_pfx + self.java_args + self.java_args_sfx + args
 
     def bootclasspath(self):
-        if self._bootclasspath is None:
-            self._init_classpaths()
+        self._init_classpaths()
         return _separatedCygpathU2W(self._bootclasspath)
-
-    def extdirs(self):
-        if self._extdirs is None:
-            self._init_classpaths()
-        return _separatedCygpathU2W(self._extdirs)
-
-    def endorseddirs(self):
-        if self._endorseddirs is None:
-            self._init_classpaths()
-        return _separatedCygpathU2W(self._endorseddirs)
 
     """
     Add javadoc style options for the library paths of this JDK.
     """
     def javadocLibOptions(self, args):
+        self._init_classpaths()
         if args is None:
             args = []
-        if self.bootclasspath():
+        if self._bootclasspath:
             args.append('-bootclasspath')
-            args.append(self.bootclasspath())
-        if self.endorseddirs():
-            args.append('-endorseddirs')
-            args.append(self.endorseddirs())
-        if self.extdirs():
+            args.append(self._bootclasspath)
+        if self._extdirs:
             args.append('-extdirs')
-            args.append(self.extdirs())
+            args.append(self._extdirs)
         return args
 
     """
@@ -2819,24 +2810,26 @@ class JavaConfig:
     """
     def javacLibOptions(self, args):
         args = self.javadocLibOptions(args)
-        if self.endorseddirs():
+        if self._endorseddirs:
             args.append('-endorseddirs')
-            args.append(self.endorseddirs())
+            args.append(self._endorseddirs)
         return args
 
     def containsJar(self, jar):
-        if self._bootclasspath is None:
-            self._init_classpaths()
+        self._init_classpaths()
 
-        for e in self._bootclasspath.split(os.pathsep):
-            if basename(e) == jar:
-                return True
-        for d in self._extdirs.split(os.pathsep):
-            if len(d) and jar in os.listdir(d):
-                return True
-        for d in self._endorseddirs.split(os.pathsep):
-            if len(d) and jar in os.listdir(d):
-                return True
+        if self._bootclasspath:
+            for e in self._bootclasspath.split(os.pathsep):
+                if basename(e) == jar:
+                    return True
+        if self._extdirs:
+            for d in self._extdirs.split(os.pathsep):
+                if len(d) and jar in os.listdir(d):
+                    return True
+        if self._endorseddirs:
+            for d in self._endorseddirs.split(os.pathsep):
+                if len(d) and jar in os.listdir(d):
+                    return True
         return False
 
 def check_get_env(key):
@@ -3147,6 +3140,7 @@ def build(args, parser=None):
     parser.add_argument('-p', action='store_true', dest='parallelize', help='parallelizes Java compilation')
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
+    parser.add_argument('--check-distributions', action='store_true', dest='check_distributions', help='check built distributions for overlap')
     parser.add_argument('--projects', action='store', help='comma separated projects to build (omit to build all projects)')
     parser.add_argument('--only', action='store', help='comma separated projects to build, without checking their dependencies (omit to build all projects)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
@@ -3388,10 +3382,19 @@ def build(args, parser=None):
         else:
             distProjects = sortedProjects
         suites = {p.suite for p in distProjects}
+
+        files = []
         for dist in sorted_dists():
             if dist.suite in suites:
                 if dist not in updatedAnnotationProcessorDists:
                     archive(['@' + dist.name])
+            if args.check_distributions and not dist.isProcessorDistribution:
+                with zipfile.ZipFile(dist.path, 'r') as zf:
+                    files.extend([member for member in zf.namelist() if not member.startswith('META-INF/services')])
+        dups = set([x for x in files if files.count(x) > 1])
+        if len(dups) > 0:
+            abort('Distributions overlap! duplicates: ' + str(dups))
+
 
     if suppliedParser:
         return args
@@ -5516,7 +5519,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-overview', overviewFile,
                      '-sourcepath', sp,
                      '-source', str(projectJava.javaCompliance)] +
-                     projectJava.javadocLibOptions() +
+                     projectJava.javadocLibOptions([]) +
                      ([] if projectJava.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
                      links +
                      extraArgs +
