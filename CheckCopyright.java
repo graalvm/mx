@@ -338,6 +338,8 @@ public class CheckCopyright {
 
 			File overrides = new File(new File(customCopyrightDir), "overrides");
 			if (overrides.exists()) {
+				ArrayList<String> lines = new ArrayList<>();
+				boolean changed = false;
 				try (BufferedReader br = new BufferedReader(new FileReader(
 						overrides))) {
 					while (true) {
@@ -346,6 +348,7 @@ public class CheckCopyright {
 							break;
 						}
 						if (line.length() == 0 || line.startsWith("#")) {
+							lines.add(line);
 							continue;
 						}
 						String[] parts = line.split(",");
@@ -355,8 +358,29 @@ public class CheckCopyright {
 							System.err.println("no default copyright handler for: " + parts[0]);
 							System.exit(1);
 						}
+						if (!new File(parts[0]).exists()) {
+							System.err.printf("file %s in overrides file does not exist", parts[0]);
+							if (FIX.getValue()) {
+								System.err.print(" - removing");
+								line = null;
+								changed = true;
+							}
+							System.err.println();
+						}
+						if (line != null) {
+							lines.add(line);
+						}
 						CustomCopyrightHandler customhandler = (CustomCopyrightHandler) defaultHandler.customHandler;
 						customhandler.addFile(parts[0], new File(new File(customCopyrightDir), parts[1]).getAbsolutePath());
+					}
+				}
+				if (changed) {
+					try (BufferedWriter bw = new BufferedWriter(new FileWriter(
+							overrides))) {
+						for (String line : lines) {
+							bw.write(line);
+							bw.write('\n');
+						}
 					}
 				}
 			}
