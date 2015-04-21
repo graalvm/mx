@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-5ea65fe643687560c18a2ecc758d301b913084e0
+53b2d64f8ad12a6edffab2422776438e28d03ce8
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -3404,7 +3404,7 @@ def build(args, parser=None):
                     archive(['@' + dist.name])
             if args.check_distributions and not dist.isProcessorDistribution:
                 with zipfile.ZipFile(dist.path, 'r') as zf:
-                    files.extend([member for member in zf.namelist() if not member.startswith('META-INF/services')])
+                    files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
         dups = set([x for x in files if files.count(x) > 1])
         if len(dups) > 0:
             abort('Distributions overlap! duplicates: ' + str(dups))
