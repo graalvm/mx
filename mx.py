@@ -1827,13 +1827,7 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
     log('  =======')
     log('  ' + str(total.duration))
 
-def _basic_bench_harness(args, vmArgs):
-    return 0
-
-def bench(args, harness=_basic_bench_harness, parser=None):
-    '''run benchmarks (suite-specfic) after clean build (optional)'''
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
+def _bench_test_common(args, parser, suppliedParser):
     parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
     _add_omit_clean_args(parser)
     if suppliedParser:
@@ -1860,7 +1854,27 @@ def bench(args, harness=_basic_bench_harness, parser=None):
         command_function('ideinit')([])
 
     command_function('build')([])
+    return args
 
+
+def _basic_bench_harness(args, vmArgs):
+    return 0
+
+def bench(args, harness=_basic_bench_harness, parser=None):
+    '''run benchmarks (suite-specfic) after clean build (optional)'''
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
+    args = _bench_test_common(args, parser, suppliedParser)
+    return harness(args, args.vm_args)
+
+def _basic_test_harness(args, vmArgs):
+    return 0
+
+def test(args, harness=_basic_test_harness, parser=None):
+    '''run tests (suite-specific) after clean build (optional)'''
+    suppliedParser = parser is not None
+    parser = parser if suppliedParser else ArgumentParser(prog='mx test')
+    args = _bench_test_common(args, parser, suppliedParser)
     return harness(args, args.vm_args)
 
 def get_jython_os():
@@ -6471,6 +6485,7 @@ _commands = {
     'suites': [show_suites, ''],
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
+    'test': [test, '[options]'],
 }
 
 _argParser = ArgParser()
@@ -6678,7 +6693,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("2.9.8")
+version = VersionSpec("3.0.0")
 
 currentUmask = None
 
