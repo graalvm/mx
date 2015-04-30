@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-53b2d64f8ad12a6edffab2422776438e28d03ce8
+bdeaa5a7b83c7e5c6c85b8892b974547f622cf0d
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -101,7 +101,8 @@ _primary_suite = None
 _src_suitemodel = None
 _dst_suitemodel = None
 _opts = None
-_java_homes = None
+_extra_java_homes = []
+_default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
 _warn = False
 _hg = None
@@ -223,10 +224,6 @@ class Distribution:
                             if p.javaCompliance > self.javaCompliance:
                                 abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance))
 
-                        # skip a  Java project if its Java compliance level is "higher" than the configured JDK
-                        jdk = java(p.javaCompliance)
-                        assert jdk
-
                         logv('[' + self.path + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
                         for root, _, files in os.walk(outputDir):
@@ -315,14 +312,6 @@ class Project(Dependency):
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.definedAnnotationProcessorsDist = None
-
-
-        # Verify that a JDK exists for this project if its compliance level is
-        # less than the compliance level of the default JDK
-        jdk = java(self.javaCompliance)
-        if jdk is None and self.javaCompliance < java().javaCompliance:
-            abort('Cannot find ' + str(self.javaCompliance) + ' JDK required by ' + name + '. ' +
-                  'Specify it with --extra-java-homes option or EXTRA_JAVA_HOMES environment variable.')
 
         # Create directories for projects that don't yet exist
         if not exists(d):
@@ -780,6 +769,7 @@ class Library(BaseLibrary):
         sha1path = path + '.sha1'
 
         includedInJDK = getattr(self, 'includedInJDK', None)
+        # TODO since we don't know which JDK will be used, this check is dubious
         if includedInJDK and java().javaCompliance >= JavaCompliance(includedInJDK):
             return None
 
@@ -2245,69 +2235,6 @@ def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, inclu
         p.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
     return deps
 
-def _handle_lookup_java_home(jdk):
-    return _handle_lookup_jdk(jdk, 'JAVA_HOME', '--java-home', False)
-
-def _handle_lookup_extra_java_homes(jdk):
-    return _handle_lookup_jdk(jdk, 'EXTRA_JAVA_HOMES', '--extra-java-homes', True)
-
-def _handle_lookup_jdk(jdk, varName, flagName, allowMultiple):
-    if jdk != None and jdk != '':
-        return jdk
-    jdk = os.environ.get(varName)
-    if jdk != None and jdk != '':
-        return jdk
-
-    if not sys.stdout.isatty():
-        abort('Could not find bootstrap {0}. Use {1} option or ensure {2} environment variable is set.'.format(varName, flagName, varName))
-
-    candidateJdks = []
-    if get_os() == 'darwin':
-        base = '/Library/Java/JavaVirtualMachines'
-        if exists(base):
-            candidateJdks = [join(base, n, 'Contents/Home') for n in os.listdir(base) if exists(join(base, n, 'Contents/Home'))]
-    elif get_os() == 'linux':
-        base = '/usr/lib/jvm'
-        if exists(base):
-            candidateJdks = [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
-        base = '/usr/java'
-        if exists(base):
-            candidateJdks += [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
-    elif get_os() == 'solaris':
-        base = '/usr/jdk/instances'
-        if exists(base):
-            candidateJdks = [join(base, n) for n in os.listdir(base) if exists(join(base, n, 'jre/lib/rt.jar'))]
-    elif get_os() == 'windows':
-        base = r'C:\Program Files\Java'
-        if exists(base):
-            candidateJdks = [join(base, n) for n in os.listdir(base) if exists(join(base, n, r'jre\lib\rt.jar'))]
-
-    javaHome = None
-    if len(candidateJdks) != 0:
-        log('Missing value for {0}.'.format(varName))
-        javaHome = select_items(candidateJdks + ['<other>'], allowMultiple=allowMultiple)
-        if javaHome == '<other>':
-            javaHome = None
-        if javaHome != None and allowMultiple:
-            javaHome = os.pathsep.join(javaHome)
-
-    while javaHome is None:
-        javaHome = raw_input('Enter path of JDK for {0}: '.format(varName))
-        rtJarPath = join(javaHome, 'jre', 'lib', 'rt.jar')
-        if not exists(rtJarPath):
-            log('Does not appear to be a valid JDK as ' + rtJarPath + ' does not exist')
-            javaHome = None
-        else:
-            break
-
-    if _primary_suite is not None:
-        envPath = join(_primary_suite.mxDir, 'env')
-        if ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, javaHome, envPath), 'y'):
-            with open(envPath, 'a') as fp:
-                print >> fp, varName + '=' + javaHome
-
-    return javaHome
-
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
@@ -2334,6 +2261,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
+        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects of a certain compliance will only be built with a JDK of this exact compliance', default=bool(os.environ.get('STRICT_COMPLIANCE')))
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
@@ -2366,16 +2294,14 @@ class ArgParser(ArgumentParser):
         if opts.very_verbose:
             opts.verbose = True
 
-        opts.java_home = _handle_lookup_java_home(opts.java_home)
-        opts.extra_java_homes = _handle_lookup_extra_java_homes(opts.extra_java_homes)
-
         if opts.user_home is None or opts.user_home == '':
             abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
 
         if opts.primary and _primary_suite:
             opts.specific_suites.append(_primary_suite.name)
 
-        os.environ['JAVA_HOME'] = opts.java_home
+        if opts.java_home:
+            os.environ['JAVA_HOME'] = opts.java_home
         os.environ['HOME'] = opts.user_home
 
         opts.ignored_projects = opts.ignored_projects + os.environ.get('IGNORED_PROJECTS', '').split(',')
@@ -2396,20 +2322,220 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
-def java(requiredCompliance=None):
+_canceled_java_requests = set()
+
+def java(requiredCompliance=None, purpose=None, cancel=None):
     """
     Get a JavaConfig object containing Java commands launch details.
     If requiredCompliance is None, the compliance level specified by --java-home/JAVA_HOME
     is returned. Otherwise, the JavaConfig exactly matching requiredCompliance is returned
     or None if there is no exact match.
     """
-    assert _java_homes
+
+    global _default_java_home
+    if cancel and (requiredCompliance, purpose) in _canceled_java_requests:
+        return None
+
     if not requiredCompliance:
-        return _java_homes[0]
-    for java in _java_homes:
-        if java.javaCompliance == requiredCompliance:
+        if not _default_java_home:
+            _default_java_home = _find_jdk(purpose=purpose, cancel=cancel)
+            if not _default_java_home:
+                assert cancel
+                _canceled_java_requests.add((requiredCompliance, purpose))
+        return _default_java_home
+
+    if _opts.strict_compliance:
+        complianceCheck = requiredCompliance.exactMatch
+        desc = str(requiredCompliance)
+    else:
+        compVersion = VersionSpec(str(requiredCompliance))
+        complianceCheck = lambda version: version >= compVersion
+        desc = '>=' + str(requiredCompliance)
+
+    for java in _extra_java_homes:
+        if complianceCheck(java.version):
             return java
+
+    jdk = _find_jdk(versionCheck=complianceCheck, versionDescription=desc, purpose=purpose, cancel=cancel)
+    if jdk:
+        assert jdk not in _extra_java_homes
+        _extra_java_homes.append(jdk)
+    else:
+        assert cancel
+        _canceled_java_requests.add((requiredCompliance, purpose))
+    return jdk
+
+def java_version(versionCheck, versionDescription=None, purpose=None):
+    if _default_java_home and versionCheck(_default_java_home.version):
+        return _default_java_home
+    for java in _extra_java_homes:
+        if versionCheck(java.version):
+            return java
+    jdk = _find_jdk(versionCheck, versionDescription, purpose)
+    assert jdk not in _extra_java_homes
+    _extra_java_homes.append(jdk)
+    return jdk
+
+def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None):
+    if not versionCheck:
+        versionCheck = lambda v: True
+    assert not versionDescription or versionCheck
+    if not versionCheck and not purpose:
+        isDefaultJdk = True
+    else:
+        isDefaultJdk = False
+
+    candidateJdks = []
+    source = ''
+    if _opts.java_home:
+        candidateJdks.append(_opts.java_home)
+        source = '--java-home'
+    elif os.environ.get('JAVA_HOME'):
+        candidateJdks.append(os.environ.get('JAVA_HOME'))
+        source = 'JAVA_HOME'
+
+    result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
+    if result:
+        return result
+
+    candidateJdks = []
+
+    if _opts.extra_java_homes:
+        candidateJdks += _opts.extra_java_homes.split(os.pathsep)
+        source = '--extra-java-homes'
+    elif os.environ.get('EXTRA_JAVA_HOMES'):
+        candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
+        source = 'EXTRA_JAVA_HOMES'
+
+    result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
+    if not result:
+        candidateJdks = []
+        source = ''
+
+        if get_os() == 'darwin':
+            base = '/Library/Java/JavaVirtualMachines'
+            if exists(base):
+                candidateJdks = [join(base, n, 'Contents/Home') for n in os.listdir(base)]
+        elif get_os() == 'linux':
+            base = '/usr/lib/jvm'
+            if exists(base):
+                candidateJdks = [join(base, n) for n in os.listdir(base)]
+            base = '/usr/java'
+            if exists(base):
+                candidateJdks += [join(base, n) for n in os.listdir(base)]
+        elif get_os() == 'solaris':
+            base = '/usr/jdk/instances'
+            if exists(base):
+                candidateJdks = [join(base, n) for n in os.listdir(base)]
+        elif get_os() == 'windows':
+            base = r'C:\Program Files\Java'
+            if exists(base):
+                candidateJdks = [join(base, n) for n in os.listdir(base)]
+
+        configs = _filtered_jdk_configs(candidateJdks, versionCheck)
+    else:
+        if not isDefaultJdk:
+            log('find_jdk(versionCheck={0}, versionDescription={1}, purpose={2}, cancel={3})={4}'.format(versionCheck, versionDescription, purpose, cancel, result))
+            return result
+        configs = [result]
+
+    if len(configs) > 1:
+        msg = 'Please select a '
+        if isDefaultJdk:
+            msg += 'default '
+        msg += 'JDK'
+        if purpose:
+            msg += ' for' + purpose
+        msg += ': '
+        if versionDescription:
+            msg = msg + '(' + versionDescription + ')'
+        log(msg)
+        choices = configs + ['<other>']
+        if cancel:
+            choices.append('Cancel (' + cancel + ')')
+        selected = select_items(choices, allowMultiple=False)
+        if isinstance(selected, types.StringTypes) and selected == '<other>':
+            selected = None
+        if isinstance(selected, types.StringTypes) and selected == 'Cancel (' + cancel + ')':
+            return None
+    elif len(configs) == 1:
+        selected = configs[0]
+        msg = 'Selected ' + str(selected) + ' as '
+        if isDefaultJdk:
+            msg += 'default'
+        msg += 'JDK'
+        if versionDescription:
+            msg = msg + ' ' + versionDescription
+        if purpose:
+            msg += ' for' + purpose
+        log(msg)
+    else:
+        msg = 'Could not find any JDK'
+        if purpose:
+            msg += ' for' + purpose
+        msg += ' '
+        if versionDescription:
+            msg = msg + '(' + versionDescription + ')'
+        log(msg)
+        selected = None
+
+    while not selected:
+        jdkLocation = raw_input('Enter path of JDK: ')
+        selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
+
+    varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
+    allowMultiple = not isDefaultJdk
+    envPath = join(_primary_suite.mxDir, 'env')
+    if ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, selected.jdk, envPath), 'y'):
+        envLines = []
+        with open(envPath) as fp:
+            append = True
+            for line in fp:
+                if line.rstrip().startswith(varName):
+                    _, currentValue = line.split('=', 1)
+                    currentValue = currentValue.strip()
+                    if not allowMultiple and currentValue:
+                        if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, selected.jdk), 'n'):
+                            return selected
+                        else:
+                            line = varName + '=' + selected.jdk + os.linesep
+                    else:
+                        line = line.rstrip()
+                        if currentValue:
+                            line += os.pathsep
+                        line += selected.jdk + os.linesep
+                    append = False
+                envLines.append(line)
+        if append:
+            envLines.append(varName + '=' + selected.jdk)
+
+        with open(envPath, 'w') as fp:
+            for line in envLines:
+                fp.write(line)
+
+    if varName == 'JAVA_HOME':
+        os.environ['JAVA_HOME'] = selected.jdk
+
+    return selected
+
+def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
+    filtered = []
+    for candidate in candidates:
+        try:
+            config = JavaConfig(candidate)
+            if versionCheck(config.version):
+                filtered.append(config)
+        except JavaConfigException as e:
+            if warn:
+                log('Path in ' + source + "' is not pointing to a JDK (" + e.message + ")")
+    return filtered
+
+def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
+    filtered = _filtered_jdk_configs(candidates, versionCheck, warn, source)
+    if filtered:
+        return filtered[0]
     return None
+
 
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, javaConfig=None):
     if not javaConfig:
@@ -2678,6 +2804,10 @@ class JavaCompliance:
     def __hash__(self):
         return self.value.__hash__()
 
+    def exactMatch(self, version):
+        assert isinstance(version, VersionSpec)
+        return len(version.parts) > 1 and version.parts[0] == 1 and version.parts[1] == self.value
+
 """
 A version specification as defined in JSR-56
 """
@@ -2701,13 +2831,16 @@ def _filter_non_existant_paths(paths):
         return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
     return None
 
+class JavaConfigException(Exception):
+    def __init__(self, value):
+        Exception.__init__(self, value)
+
 """
 A JavaConfig object encapsulates info on how Java commands are run.
 """
 class JavaConfig:
-    def __init__(self, java_home, java_dbg_port):
+    def __init__(self, java_home):
         self.jdk = java_home
-        self.debug_port = java_dbg_port
         self.jar = exe_suffix(join(self.jdk, 'bin', 'jar'))
         self.java = exe_suffix(join(self.jdk, 'bin', 'java'))
         self.javac = exe_suffix(join(self.jdk, 'bin', 'javac'))
@@ -2721,7 +2854,7 @@ class JavaConfig:
         self._endorseddirs = None
 
         if not exists(self.java):
-            abort('Java launcher does not exist: ' + self.java)
+            raise JavaConfigException('Java launcher does not exist: ' + self.java)
 
         def delAtAndSplit(s):
             return shlex.split(s.lstrip('@'))
@@ -2738,8 +2871,7 @@ class JavaConfig:
             try:
                 output = subprocess.check_output([self.java, '-version'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
-                print e.output
-                abort(e.returncode)
+                raise JavaConfigException(e.returncode + " :" + e.output)
 
         def _checkOutput(out):
             return 'version' in out
@@ -2755,7 +2887,7 @@ class JavaConfig:
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
-        if self.debug_port is not None:
+        if _opts.java_dbg_port is not None:
             self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
 
     def _init_classpaths(self):
@@ -2772,7 +2904,7 @@ class JavaConfig:
             self._classpaths_initialized = True
 
     def __repr__(self):
-        return "JavaConfig(" + str(self.jdk) + ", " + str(self.debug_port) + ")"
+        return "JavaConfig(" + str(self.jdk) + ")"
 
     def __str__(self):
         return "Java " + str(self.version) + " (" + str(self.javaCompliance) + ") from " + str(self.jdk)
@@ -3065,7 +3197,7 @@ class JavaCompileTask:
                     self.logCompilation('javac' if not args.alt_javac else args.alt_javac)
                     javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
                     jdk.javacLibOptions(javacCmd)
-                    if jdk.debug_port is not None:
+                    if _opts.java_dbg_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
                     javacCmd += processorArgs
                     javacCmd += ['@' + _cygpathU2W(argfile.name)]
@@ -3232,7 +3364,6 @@ def build(args, parser=None):
         # skip building this Java project if its Java compliance level is "higher" than the configured JDK
         requiredCompliance = p.javaCompliance if p.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
         jdk = java(requiredCompliance)
-        assert jdk
 
         outputDir = p.output_dir()
 
@@ -3558,16 +3689,33 @@ def eclipseformat(args):
         def __init__(self, settingsDir, javaCompliance):
             self.path = join(settingsDir, 'org.eclipse.jdt.core.prefs')
             self.javaCompliance = javaCompliance
-            self.javafiles = list()
             with open(join(settingsDir, 'org.eclipse.jdt.ui.prefs')) as fp:
                 jdtUiPrefs = fp.read()
             self.removeTrailingWhitespace = 'sp_cleanup.remove_trailing_whitespaces_all=true' in jdtUiPrefs
             if self.removeTrailingWhitespace:
                 assert 'sp_cleanup.remove_trailing_whitespaces=true' in jdtUiPrefs and 'sp_cleanup.remove_trailing_whitespaces_ignore_empty=false' in jdtUiPrefs
+            self.cachedHash = None
 
-        def settings(self):
+        def __hash__(self):
+            if not self.cachedHash:
+                with open(self.path) as fp:
+                    self.cachedHash = (fp.read(), self.javaCompliance, self.removeTrailingWhitespace).__hash__()
+            return self.cachedHash
+
+        def __eq__(self, other):
+            if not isinstance(other, Batch):
+                return False
+            if self.removeTrailingWhitespace != other.removeTrailingWhitespace:
+                return False
+            if self.javaCompliance != other.javaCompliance:
+                return False
+            if self.path == other.path:
+                return True
             with open(self.path) as fp:
-                return fp.read() + java(self.javaCompliance).java + str(self.removeTrailingWhitespace)
+                with open(other.path) as ofp:
+                    if fp.read() != ofp.read():
+                        return False
+            return True
 
     class FileInfo:
         def __init__(self, path):
@@ -3611,20 +3759,21 @@ def eclipseformat(args):
                 log('[no Eclipse Code Formatter preferences at {0} - skipping]'.format(batch.path))
             continue
 
+        javafiles = []
         for sourceDir in sourceDirs:
             for root, _, files in os.walk(sourceDir):
                 for f in [join(root, name) for name in files if name.endswith('.java')]:
-                    batch.javafiles.append(FileInfo(f))
-        if len(batch.javafiles) == 0:
+                    javafiles.append(FileInfo(f))
+        if len(javafiles) == 0:
             logv('[no Java sources in {0} - skipping]'.format(p.name))
             continue
 
-        res = batches.setdefault(batch.settings(), batch)
-        if res is not batch:
-            res.javafiles = res.javafiles + batch.javafiles
+        res = batches.setdefault(batch, javafiles)
+        if res is not javafiles:
+            res.extend(javafiles)
 
     log("we have: " + str(len(batches)) + " batches")
-    for batch in batches.itervalues():
+    for batch, javafiles in batches.iteritems():
         for chunk in _chunk_files_for_command_line(batch.javafiles, pathFunction=lambda f: f.path):
             run([args.eclipse_exe,
                 '-nosplash',
@@ -5523,6 +5672,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 # Once https://bugs.openjdk.java.net/browse/JDK-8041628 is fixed,
                 # this should be reverted to:
                 # javadocExe = java().javadoc
+                # we can then also respect _opts.relatex_compliance
                 javadocExe = projectJava.javadoc
 
                 run([javadocExe, memory,
@@ -6081,15 +6231,16 @@ def select_items(items, descriptions=None, allowMultiple=True):
     if len(items) <= 1:
         return items
     else:
+        numlen = str(len(str(len(items))))
         if allowMultiple:
-            log('[0] <all>')
+            log(('[{0:>' + numlen + '}] <all>').format(0))
         for i in range(0, len(items)):
             if descriptions is None:
-                log('[{0}] {1}'.format(i + 1, items[i]))
+                log(('[{0:>' + numlen + '}] {1}').format(i + 1, items[i]))
             else:
                 assert len(items) == len(descriptions)
                 wrapper = textwrap.TextWrapper(subsequent_indent='    ')
-                log('\n'.join(wrapper.wrap('[{0}] {1} - {2}'.format(i + 1, items[i], descriptions[i]))))
+                log('\n'.join(wrapper.wrap(('[{0:>' + numlen + '}] {1} - {2}').format(i + 1, items[i], descriptions[i]))))
         while True:
             if allowMultiple:
                 s = raw_input('Enter number(s) of selection (separate multiple choices with spaces): ').split()
@@ -6582,7 +6733,7 @@ def _remove_bad_deps():
                     del _libs[d.name]
                     d.suite.libs.remove(d)
         elif d.isProject():
-            if java(d.javaCompliance) is None:
+            if java(d.javaCompliance, cancel='some projects will be omitted which may result in errrors') is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
                 del _projects[d.name]
                 d.suite.projects.remove(d)
@@ -6637,16 +6788,6 @@ def main():
             abort(primary_suite_error)
         else:
             warn(primary_suite_error)
-
-    global _java_homes
-    defaultJdk = JavaConfig(opts.java_home, opts.java_dbg_port)
-    _java_homes = [defaultJdk]
-    if opts.extra_java_homes:
-        for java_home in opts.extra_java_homes.split(os.pathsep):
-            extraJdk = JavaConfig(java_home, opts.java_dbg_port)
-            if extraJdk.javaCompliance > defaultJdk.javaCompliance:
-                abort('Secondary JDK ' + extraJdk.jdk + ' has higher compliance level than default JDK ' + defaultJdk.jdk)
-            _java_homes.append(extraJdk)
 
     if primarySuiteMxDir:
         _primary_suite._depth_first_post_init()
