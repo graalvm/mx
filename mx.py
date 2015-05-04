@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-f383ff4c9af832476e4698500e8fb060853af9ef
+fbe449ca9707620dfac6b005e2ebc068033fc0e0
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -53,10 +53,13 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
 
-# needed to work around https://bugs.python.org/issue1927
-import readline
-#then make pylint happy..
-readline.get_line_buffer()
+try:
+    # needed to work around https://bugs.python.org/issue1927
+    import readline
+    #then make pylint happy..
+    readline.get_line_buffer()
+except ImportError:
+    pass
 
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
