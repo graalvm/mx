@@ -2912,7 +2912,7 @@ class JavaConfig:
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
         if _opts.java_dbg_port is not None:
-            self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(self.debug_port)]
+            self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(_opts.java_dbg_port)]
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
@@ -6442,9 +6442,7 @@ def _compile_mx_class(javaClassName, classpath=None):
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
         if not exists(binDir):
             os.mkdir(binDir)
-        # Pick the lowest Java compliance for compiling mx classes
-        lowestJavaConfig = _java_homes[len(_java_homes) - 1]
-        cmd = [java(lowestJavaConfig.javaCompliance).javac, '-d', _cygpathU2W(binDir)]
+        cmd = [java().javac, '-d', _cygpathU2W(binDir)]
         if classpath:
             cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
         cmd += [_cygpathU2W(javaSource)]
@@ -6859,7 +6857,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.0.0")
+version = VersionSpec("3.1.0")
 
 currentUmask = None
 
