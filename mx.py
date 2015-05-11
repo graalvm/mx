@@ -4799,8 +4799,8 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : _opts.java_home})
-    launchOut.element('mapEntry', {'key' : 'EXTRA_JAVA_HOMES', 'value' : _opts.extra_java_homes})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : _default_java_home.jdk})
+    launchOut.element('mapEntry', {'key' : 'EXTRA_JAVA_HOMES', 'value' :  os.pathsep.join([extraJavaHome.jdk for extraJavaHome in _extra_java_homes])})
     launchOut.close('mapAttribute')
 
     if refresh:
