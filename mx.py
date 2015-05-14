@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-fbe449ca9707620dfac6b005e2ebc068033fc0e0
+f9883cab45800f10e5e69071cb94d0691ab4d649
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -640,7 +640,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
         if not exists(cachePath) or sha1OfFile(cachePath) != sha1:
             if exists(cachePath):
-                log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - re-downloading')
+                log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
             print 'Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls)
             download(cachePath, urls)
 
@@ -1323,6 +1323,7 @@ class Suite:
             p = Project(self, name, srcDirs, deps, javaCompliance, workingSets, d)
             p.checkstyleProj = attrs.pop('checkstyle', name)
             p.native = attrs.pop('native', '') == 'true'
+            p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
             if not p.native and p.javaCompliance is None:
                 abort('javaCompliance property required for non-native project ' + name)
             if len(ap) > 0:
@@ -3978,9 +3979,10 @@ def canonicalizeprojects(args):
             continue
 
         for p in s.projects:
-            for pkg in p.defined_java_packages():
-                if not pkg.startswith(p.name):
-                    abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
+            if p.checkPackagePrefix:
+                for pkg in p.defined_java_packages():
+                    if not pkg.startswith(p.name):
+                        abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
 
             ignoredDeps = set([name for name in p.deps if project(name, False) is not None])
             for pkg in p.imported_java_packages():
