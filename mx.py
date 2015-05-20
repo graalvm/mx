@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-f9883cab45800f10e5e69071cb94d0691ab4d649
+e3438899928c8dca0392606184dcb8f8a29dc5ca
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -5084,13 +5084,16 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('condition')
 
     out.close('target')
-    out.open('target', {'name' : '-post-compile'})
+    out.open('target', {'name' : 'compile'})
     out.open('exec', {'executable' : sys.executable})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
     out.element('arg', {'value' : os.path.abspath(__file__)})
-    out.element('arg', {'value' : 'archive'})
-    out.element('arg', {'value' : '@GRAAL'})
+    out.element('arg', {'value' : 'build'})
+    out.element('arg', {'value' : '--only'})
+    out.element('arg', {'value' : p.name})
     out.close('exec')
+    out.close('target')
+    out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
     out.close('project')
     update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
