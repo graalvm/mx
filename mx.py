@@ -53,6 +53,9 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
 
+# This works because when mx loads this file, it makes sure __file__ gets an absolute path
+_mx_home = dirname(__file__)
+
 try:
     # needed to work around https://bugs.python.org/issue1927
     import readline
@@ -1008,8 +1011,14 @@ class SuiteModel:
                 _argParser.print_help()
                 sys.exit(0)
 
-        src_suitemodel_arg = dst_suitemodel_arg = 'sibling'
+        # set defaults
+        env_src_suitemodel = os.environ.get('MX_SRC_SUITEMODEL')
+        env_dst_suitemodel = os.environ.get('MX_DST_SUITEMODEL')
+        src_suitemodel_arg = 'sibling' if env_src_suitemodel is None else env_src_suitemodel
+        dst_suitemodel_arg = 'sibling' if env_dst_suitemodel is None else env_dst_suitemodel
         suitemap_arg = None
+        env_primary_suite_path = os.environ.get('MX_PRIMARY_SUITE_PATH')
+        global _primary_suite_path
 
         i = 0
         while i < len(args):
@@ -1025,15 +1034,18 @@ class SuiteModel:
                 global _warn
                 _warn = True
             elif arg == '--primary-suite-path':
-                global _primary_suite_path
                 _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
             i = i + 1
 
+        os.environ['MX_SRC_SUITEMODEL'] = src_suitemodel_arg
         global _src_suitemodel
         _src_suitemodel = SuiteModel.set_suitemodel("src", src_suitemodel_arg, suitemap_arg)
+        os.environ['MX_DST_SUITEMODEL'] = dst_suitemodel_arg
         global _dst_suitemodel
         _dst_suitemodel = SuiteModel.set_suitemodel("dst", dst_suitemodel_arg, suitemap_arg)
-
+        if _primary_suite_path is None:
+            if env_primary_suite_path is not None:
+                _primary_suite_path = env_primary_suite_path
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
@@ -6789,6 +6801,7 @@ def _remove_bad_deps():
 
 def main():
     SuiteModel.parse_options()
+    os.environ['MX_HOME'] = _mx_home
 
     global _hg
     _hg = HgConfig()
@@ -6808,6 +6821,7 @@ def main():
         if _needs_primary_suite_cl():
             abort(primary_suite_error)
 
+
     opts, commandAndArgs = _argParser._parse_cmd_line()
     assert _opts == opts
 
@@ -6816,6 +6830,8 @@ def main():
             abort(primary_suite_error)
         else:
             warn(primary_suite_error)
+    else:
+        os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
     if primarySuiteMxDir:
         _primary_suite._depth_first_post_init()
@@ -6862,7 +6878,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.1.2")
+version = VersionSpec("3.2.0")
 
 currentUmask = None
 
