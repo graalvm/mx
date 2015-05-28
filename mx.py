@@ -2282,7 +2282,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
-        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects of a certain compliance will only be built with a JDK of this exact compliance', default=bool(os.environ.get('STRICT_COMPLIANCE')))
+        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects with an explicit compliance will only be built if a JDK exactly matching the compliance is available', default=False)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
