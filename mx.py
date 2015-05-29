@@ -2929,7 +2929,7 @@ class JavaConfig:
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
-            _, binDir = _compile_mx_class('ClasspathDump')
+            _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
             self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
             if self.javaCompliance <= JavaCompliance('1.8'):
                 # All 3 system properties accessed by ClasspathDump are expected to exist
@@ -6451,15 +6451,16 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
-def _compile_mx_class(javaClassName, classpath=None):
+def _compile_mx_class(javaClassName, classpath=None, jdk=None):
     myDir = dirname(__file__)
-    binDir = join(myDir, 'bin')
+    binDir = join(myDir, 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
     javaClass = join(binDir, javaClassName + '.class')
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
         if not exists(binDir):
             os.mkdir(binDir)
-        cmd = [java().javac, '-d', _cygpathU2W(binDir)]
+        javac = jdk.javac if jdk else java().javac
+        cmd = [javac, '-d', _cygpathU2W(binDir)]
         if classpath:
             cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
         cmd += [_cygpathU2W(javaSource)]
@@ -6467,6 +6468,7 @@ def _compile_mx_class(javaClassName, classpath=None):
             subprocess.check_call(cmd)
         except subprocess.CalledProcessError:
             abort('failed to compile:' + javaSource)
+
 
     return (myDir, binDir)
 
@@ -6480,6 +6482,7 @@ def checkcopyrights(args):
             help_output = subprocess.check_output([java().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--help'])
             return '\nother argumemnts preceded with --\n' +  help_output
 
+    # ensure compiled form of code is up to date
     myDir, binDir = _compile_mx_class('CheckCopyright')
 
     parser = CP(prog='mx checkcopyrights')
@@ -6489,8 +6492,6 @@ def checkcopyrights(args):
     args = parser.parse_args(args)
     remove_doubledash(args.remainder)
 
-
-    # ensure compiled form of code is up to date
 
     result = 0
     # copyright checking is suite specific as each suite may have different overrides
