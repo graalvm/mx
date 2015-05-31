@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-12e3d0dfffeb37fe2636612e26bff9ce967217ba
+60154926b5139d2fbda526fdb70355447c2ca2f0
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -6453,8 +6453,8 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
-def _compile_mx_class(javaClassName, classpath=None, jdk=None):
-    myDir = dirname(__file__)
+def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
+    myDir = dirname(__file__) if myDir is None else myDir
     binDir = join(myDir, 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
     javaClass = join(binDir, javaClassName + '.class')
