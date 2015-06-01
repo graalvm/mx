@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-60154926b5139d2fbda526fdb70355447c2ca2f0
+0a2fc09f6ed6dd44763f02d0e75f020863412190
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -6761,6 +6761,7 @@ def _remove_bad_deps():
     cannot be satisfied by the configured JDKs.
     Removed projects and libraries are also removed from
     distributions in they are listed as dependencies.'''
+    ommittedDeps = set()
     for d in sorted_deps(includeLibs=True):
         if d.isLibrary():
             if d.optional:
@@ -6773,11 +6774,13 @@ def _remove_bad_deps():
                     d.optional = True
                 if not path:
                     logv('[omitting optional library {0} as {1} does not exist]'.format(d, d.path))
+                    ommittedDeps.add(d.name)
                     del _libs[d.name]
                     d.suite.libs.remove(d)
         elif d.isProject():
             if java(d.javaCompliance, cancel='some projects will be omitted which may result in errrors') is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
+                ommittedDeps.add(d.name)
                 del _projects[d.name]
                 d.suite.projects.remove(d)
             else:
@@ -6787,18 +6790,20 @@ def _remove_bad_deps():
                         if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
                             if jreLib.optional:
                                 logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
+                                ommittedDeps.add(d.name)
                                 del _projects[d.name]
                                 d.suite.projects.remove(d)
                             else:
                                 abort('JRE library {0} required by {1} not found'.format(jreLib, d))
                     elif not dependency(name, fatalIfMissing=False):
                         logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
+                        ommittedDeps.add(d.name)
                         del _projects[d.name]
                         d.suite.projects.remove(d)
 
     for dist in _dists.itervalues():
         for name in list(dist.deps):
-            if not dependency(name, fatalIfMissing=False):
+            if name in ommittedDeps:
                 logv('[omitting {0} from distribution {1}]'.format(name, dist))
                 dist.deps.remove(name)
 
