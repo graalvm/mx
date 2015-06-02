@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-0a2fc09f6ed6dd44763f02d0e75f020863412190
+ec47283499ef49ddc5074b6d05e102bf6e31bab4
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -654,6 +654,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             try:
                 if exists(path):
                     os.unlink(path)
+                print 'Path ' + cachePath + ' path: ' + path
                 os.symlink(cachePath, path)
             except OSError as e:
                 abort('download_file_with_sha1 symlink({0}, {1}) failed, error {2}'.format(cachePath, path, str(e)))
@@ -5097,7 +5098,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
 
     out.close('target')
     out.open('target', {'name' : 'compile'})
-    out.open('exec', {'executable' : sys.executable})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'build'})
