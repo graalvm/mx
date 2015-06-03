@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-ec47283499ef49ddc5074b6d05e102bf6e31bab4
+b939ee385ae440db8cab71adc5f318863787bb89
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -180,6 +180,9 @@ class Distribution:
                 srcArc = arc if unified else srcArcRaw
                 services = {}
                 def overwriteCheck(zf, arcname, source):
+                    if os.path.basename(arcname).startswith('.'):
+                        logv('Excluding dotfile: ' + source)
+                        return True
                     if not hasattr(zf, '_provenance'):
                         zf._provenance = {}
                     existingSource = zf._provenance.get(arcname, None)
@@ -5578,8 +5581,8 @@ def fsckprojects(args):
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
-                # no point in traversing .hg or lib/
-                dirnames[:] = [d for d in dirnames if d not in ['.hg', 'lib']]
+                # no point in traversing .hg, lib, or .workspace
+                dirnames[:] = [d for d in dirnames if d not in ['.hg', 'lib', '.workspace']]
                 # if there are nested suites must not scan those now, as they are not in projectDirs
                 if _src_suitemodel.nestedsuites_dirname() in dirnames:
                     dirnames.remove(_src_suitemodel.nestedsuites_dirname())
