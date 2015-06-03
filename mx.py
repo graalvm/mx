@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-b939ee385ae440db8cab71adc5f318863787bb89
+a3315bce51926da21ec2e44b6f5adedc9cc3b1b3
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -137,7 +137,7 @@ class Distribution:
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.isProcessorDistribution = isProcessorDistribution
 
-    def sorted_deps(self, includeLibs=False, transitive=False):
+    def sorted_deps(self, includeLibs=False, transitive=False, includeAnnotationProcessors=False):
         deps = []
         if transitive:
             for depDist in [distribution(name) for name in self.distDependencies]:
@@ -148,13 +148,23 @@ class Distribution:
             excl = [dependency(d) for d in self.excludedDependencies]
         except SystemExit as e:
             abort('invalid excluded dependency for {0} distribution: {1}'.format(self.name, e))
-        return deps + [d for d in sorted_deps(self.deps, includeLibs=includeLibs) if d not in excl]
+        return deps + [d for d in sorted_deps(self.deps, includeLibs=includeLibs, includeAnnotationProcessors=includeAnnotationProcessors) if d not in excl]
 
     def __str__(self):
         return self.name
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
+
+    def get_dist_deps(self, includeSelf=True, transitive=False):
+        deps = set()
+        if includeSelf:
+            deps.add(self)
+        deps.update([distribution(name) for name in self.distDependencies])
+        if transitive:
+            for depName in self.distDependencies:
+                deps.update(distribution(depName).get_dist_deps(False, False))
+        return list(deps)
 
     """
     Gets the directory in which the IDE project configuration
