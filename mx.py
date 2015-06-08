@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-a3315bce51926da21ec2e44b6f5adedc9cc3b1b3
+0c60e14e779613bf706a9160749b85be9083a299
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -3438,7 +3438,7 @@ def build(args, parser=None):
         nonjavafiletuples = []
         for sourceDir in sourceDirs:
             for root, _, files in os.walk(sourceDir):
-                javafiles = [join(root, name) for name in files if name.endswith('.java') and name != 'package-info.java']
+                javafiles = [join(root, name) for name in files if name.endswith('.java')]
                 javafilelist += javafiles
 
                 nonjavafiletuples += [(sourceDir, [join(root, name) for name in files if not name.endswith('.java')])]
