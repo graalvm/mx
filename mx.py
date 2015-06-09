@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-0c60e14e779613bf706a9160749b85be9083a299
+fe0d57a9b79bab2f3753cb514d85bad1056356d2
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -157,13 +157,18 @@ class Distribution:
         self.update_listeners.add(listener)
 
     def get_dist_deps(self, includeSelf=True, transitive=False):
-        deps = set()
+        deps = []
         if includeSelf:
-            deps.add(self)
-        deps.update([distribution(name) for name in self.distDependencies])
+            deps.append(self)
+        for name in self.distDependencies:
+            dist = distribution(name)
+            if dist not in deps:
+                deps.append(dist)
         if transitive:
             for depName in self.distDependencies:
-                deps.update(distribution(depName).get_dist_deps(False, False))
+                for recDep in distribution(depName).get_dist_deps(False, True):
+                    if recDep not in deps:
+                        deps.append(recDep)
         return list(deps)
 
     """
@@ -667,7 +672,6 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             try:
                 if exists(path):
                     os.unlink(path)
-                print 'Path ' + cachePath + ' path: ' + path
                 os.symlink(cachePath, path)
             except OSError as e:
                 abort('download_file_with_sha1 symlink({0}, {1}) failed, error {2}'.format(cachePath, path, str(e)))
