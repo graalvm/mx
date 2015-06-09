@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-fe0d57a9b79bab2f3753cb514d85bad1056356d2
+518052de60d5a58dd1f319f7178953b9e561c85d
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -669,13 +669,16 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if d != '' and not exists(d):
             os.makedirs(d)
         if canSymlink and 'symlink' in dir(os):
+            if exists(path):
+                os.unlink(path)
             try:
-                if exists(path):
-                    os.unlink(path)
                 os.symlink(cachePath, path)
             except OSError as e:
-                abort('download_file_with_sha1 symlink({0}, {1}) failed, error {2}'.format(cachePath, path, str(e)))
-
+                # When doing parallel building, the symlink can fail
+                # if another thread wins the race to create the symlink
+                if not exists(path):
+                    # It was some other error
+                    raise e
         else:
             shutil.copy(cachePath, path)
 
