@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-518052de60d5a58dd1f319f7178953b9e561c85d
+3a292e8b9e51833097b1710f47d78d6d056b6558
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -262,12 +262,14 @@ class Distribution(Dependency):
 
     def make_archive(self):
         # are sources combined into main archive?
+        # TODO use a callback mechanism for suite specific code, i.e. jvmci is suite-specific
         unified = self.path == self.sourcesPath
 
         with Archiver(self.path) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
                 services = {}
+                jvmciServices = {}
                 def overwriteCheck(zf, arcname, source):
                     if os.path.basename(arcname).startswith('.'):
                         logv('Excluding dotfile: ' + source)
@@ -307,12 +309,15 @@ class Distribution(Dependency):
                         libSourcePath = l.get_source_path(resolve=True)
                         if lpath:
                             with zipfile.ZipFile(lpath, 'r') as lp:
-                                for arcname in lp.namelist():
+                                entries = lp.namelist()
+                                for arcname in entries:
                                     if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                         service = arcname[len('META-INF/services/'):]
                                         assert '/' not in service
                                         services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                                     else:
+                                        assert not arcname.startswith('META-INF/jvmci.services/'), 'did not expect to see jvmci.services in ' + lpath
+                                        assert not arcname.startswith('META-INF/jvmci.options/'), 'did not expect to see jvmci.options in ' + lpath
                                         if not overwriteCheck(arc.zf, arcname, lpath + '!' + arcname):
                                             arc.zf.writestr(arcname, lp.read(arcname))
                         if srcArc.zf and libSourcePath:
@@ -335,12 +340,25 @@ class Distribution(Dependency):
                                 for service in files:
                                     with open(join(root, service), 'r') as fp:
                                         services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
-                            elif relpath == join('META-INF', 'providers'):
+                            elif relpath == join('META-INF', 'jvmci.services'):
+                                for service in files:
+                                    with open(join(root, service), 'r') as fp:
+                                        jvmciServices.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                            elif relpath == join('META-INF', 'jvmci.providers'):
                                 for provider in files:
                                     with open(join(root, provider), 'r') as fp:
                                         for service in fp:
-                                            services.setdefault(service.strip(), []).append(provider)
+                                            jvmciServices.setdefault(service.strip(), []).append(provider)
                             else:
+                                if relpath == join('META-INF', 'jvmci.options'):
+                                    # Need to create service files for the providers of the
+                                    # com.oracle.jvmci.options.Options service created by
+                                    # com.oracle.jvmci.options.processor.OptionProcessor.
+                                    for optionsOwner in files:
+                                        provider = optionsOwner + '_Options'
+                                        providerClassfile = join(outputDir, provider.replace('.', os.sep) + '.class')
+                                        assert exists(providerClassfile), 'missing generated Options provider ' + providerClassfile
+                                        services.setdefault('com.oracle.jvmci.options.Options', []).append(provider)
                                 for f in files:
                                     arcname = join(relpath, f).replace(os.sep, '/')
                                     if not overwriteCheck(arc.zf, arcname, join(root, f)):
@@ -360,6 +378,9 @@ class Distribution(Dependency):
 
                 for service, providers in services.iteritems():
                     arcname = 'META-INF/services/' + service
+                    arc.zf.writestr(arcname, '\n'.join(providers))
+                for service, providers in jvmciServices.iteritems():
+                    arcname = 'META-INF/jvmci.services/' + service
                     arc.zf.writestr(arcname, '\n'.join(providers))
 
         self.notify_updated()
