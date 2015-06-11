@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-7a0c8adc0a303cb0b788b4a386bd6bad3b5dfe1a
+290a87b718e1765749d349f03d2704781a7a70cd
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2628,10 +2628,10 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         if not is_interactive():
             msg = "Multiple possible choices for a JDK"
             if purpose:
-                msg += ' for' + purpose
+                msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(' + versionDescription + ')'
+                msg += '(version ' + versionDescription + ')'
             selected = configs[0]
             msg += ". Selecting " + str(selected)
             log(msg)
@@ -2641,10 +2641,10 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += 'default '
             msg += 'JDK'
             if purpose:
-                msg += ' for' + purpose
+                msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(' + versionDescription + ')'
+                msg += '(version ' + versionDescription + ')'
             log(msg)
             choices = configs + ['<other>']
             if cancel:
@@ -2663,15 +2663,15 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         if versionDescription:
             msg = msg + ' ' + versionDescription
         if purpose:
-            msg += ' for' + purpose
+            msg += ' for ' + purpose
         log(msg)
     else:
         msg = 'Could not find any JDK'
         if purpose:
-            msg += ' for' + purpose
+            msg += ' for ' + purpose
         msg += ' '
         if versionDescription:
-            msg = msg + '(' + versionDescription + ')'
+            msg = msg + '(version ' + versionDescription + ')'
         log(msg)
         selected = None
 
@@ -6981,7 +6981,7 @@ def _remove_bad_deps():
                     del _libs[d.name]
                     d.suite.libs.remove(d)
         elif d.isProject():
-            if java(d.javaCompliance, cancel='some projects will be omitted which may result in errors') is None:
+                if java(d.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(d.javaCompliance)) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
                 ommittedDeps.add(d.name)
                 del _projects[d.name]
