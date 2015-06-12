@@ -656,7 +656,11 @@ class Project(Dependency):
             for ap in aps:
                 if ap.isDistribution():
                     ddeps = ap.all_deps([], includeLibs=False)
-                    apPaths += [dap.path for dap in ddeps]
+                    for ddep in ddeps:
+                        if ddep.isDistribution():
+                            apPaths.append(ddep.path)
+                        elif ddep.definedAnnotationProcessorsDist:
+                            apPaths.append(ddep.definedAnnotationProcessorsDist.path)
                 elif ap.definedAnnotationProcessorsDist:
                     apPaths.append(ap.definedAnnotationProcessorsDist.path)
             return os.pathsep.join(apPaths + [lib.get_path(False) for lib in libAps])
@@ -1052,18 +1056,11 @@ class SuiteModel:
         """Returns the dirname that contains any nested suites if the model supports that"""
         return None
 
-    def _mxDirName(self, name):
-        # temporary workaround until mx.graal exists
-        if name == 'graal':
-            return 'mx'
-        else:
-            return 'mx.' + name
-
-    def _search_dir(self, searchDir, mxDirName):
+    def _search_dir(self, searchDir, name):
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
-            sd = _is_suite_dir(join(searchDir, dd), mxDirName)
+            sd = _is_suite_dir(join(searchDir, dd), name)
             if sd is not None:
                 return sd
 
@@ -1169,7 +1166,7 @@ class SiblingSuiteModel(SuiteModel):
         self._create_suitenamemap(option[len('sibling:'):], suitemap)
 
     def find_suite_dir(self, name):
-        return self._search_dir(self._suiteRootDir, self._mxDirName(name))
+        return self._search_dir(self._suiteRootDir, name)
 
     def set_primary_dir(self, d):
         SuiteModel.set_primary_dir(self, d)
@@ -1193,7 +1190,7 @@ class NestedImportsSuiteModel(SuiteModel):
         self._create_suitenamemap(option[len('nested:'):], suitemap)
 
     def find_suite_dir(self, name):
-        return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), self._mxDirName(name))
+        return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), name)
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
@@ -6837,21 +6834,47 @@ def _suitename(mxDir):
     parts = base.split('.')
     # temporary workaround until mx.graal exists
     if len(parts) == 1:
-        return 'graal'
+        for f in os.listdir(mxDir):
+            if fnmatch.fnmatch(f, 'mx_*.py'):
+                name = f.split('_')[1].split('.')[0]
+                return name
+        abort('no suite file marker in ' + mxDir)
     else:
         return parts[1]
 
-def _is_suite_dir(d, mxDirName=None):
+def _is_mxdir_candidate(d, f, suiteName):
+    ff = 'mx.' + suiteName
+    mxdir = join(d, ff)
+#    print 'trying: ' + mxdir
+    if exists(mxdir) and isdir(mxdir):
+        return mxdir
+    else:
+        ff = 'mx'
+        mxdir = join(d, ff)
+#        print 'trying: ' + mxdir
+        if (exists(mxdir) and exists(join(mxdir, 'mx_' + suiteName + '.py'))):
+            return mxdir
+    return None
+
+def _is_suite_dir(d, suiteName=None):
     """
-    Checks if d contains a suite.
-    If mxDirName is None, matches any suite name, otherwise checks for exactly that suite.
+    Checks if d contains a suite that matches suiteName.
+    If suiteName is None, matches any suite name, otherwise checks for exactly that suite.
+    The match is flexible:
+      1. A directory MX named 'mx.suiteName' exists AND a file 'MX/suite.py', OR
+      2. A directory named 'mx' exists and a file named 'mx/mx_suiteName.py' AND a file 'MX/suite.py
     """
     if os.path.isdir(d):
         for f in os.listdir(d):
-            if (mxDirName == None and (f == 'mx' or fnmatch.fnmatch(f, 'mx.*'))) or f == mxDirName:
-                mxDir = join(d, f)
-                if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
-                    return mxDir
+            mxDir = None
+            if suiteName == None:
+                if f == 'mx' or fnmatch.fnmatch(f, 'mx.*'):
+                    mxDir = join(d, f)
+            else:
+                mxDir = _is_mxdir_candidate(d, f, suiteName)
+
+            if mxDir is not None and exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
+                return mxDir
 
 def _check_primary_suite():
     if _primary_suite is None:
