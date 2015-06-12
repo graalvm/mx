@@ -116,13 +116,73 @@ _extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
 _warn = False
+_deferred_warnings = []
 _hg = None
 
 
 """
-A distribution is a jar or zip file containing the output from one or more Java projects.
+A dependency is a library, distribution or project specified in a suite.
+The name must be unique across all classes of Dependency.
 """
-class Distribution:
+class Dependency:
+    def __init__(self, suite, name):
+        self.name = name
+        self.suite = suite
+
+    def __cmp__(self, other):
+        return cmp(self.name, other.name)
+
+    def __str__(self):
+        return self.name
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __ne__(self, other):
+        return self.name != other.name
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def isLibrary(self):
+        return isinstance(self, Library)
+
+    def isJreLibrary(self):
+        return isinstance(self, JreLibrary)
+
+    def isProject(self):
+        return isinstance(self, Project)
+
+    def isDistribution(self):
+        return isinstance(self, Distribution)
+
+    """
+    Common method for all subclasses, this adds this objects dependencies (transitively) to "deps" and returns a new sorted list.
+    Not all the arguments are applicable to all subclasses.
+    """
+    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
+        abort("all_deps is not implemented")
+
+
+"""
+A distribution is a jar or zip file containing the output from one or more Java projects.
+In some sense it is the ultimate "result" of a build (there can be more than one).
+It is a Dependency because a Project in another suite may expressed a dependency on it
+or a component of it. A Distribution always generates a jar/zip file for the built components
+and may optionally specify a zip for the sources from which the built components were generated.
+
+Attributes:
+    name: unique name
+    path: suite-local path to where jar file will be placed
+    sourcesPath: as path but for source files (optional)
+    deps: Project and Library "dependencies" that define the components that will comprise the distribution.
+        This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
+        as it defines the eventual content of the distribution
+    distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
+    excludedDependencies: Dependencies (usually Library instances) that should be excluded from the content
+    TODO more
+"""
+class Distribution(Dependency):
     def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
         self.suite = suite
         self.name = name
@@ -170,6 +230,20 @@ class Distribution:
                     if recDep not in deps:
                         deps.append(recDep)
         return list(deps)
+
+    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
+        """
+        Add the transitive set of dependencies for this distribution to the 'deps' list.
+        We "see through" the Distribution to its components. I.e., the result
+        only contains Project and Library (if includeLibs=True) instances.
+        """
+        dist_deps = self.get_dist_deps(includeSelf=includeSelf, transitive=True)
+        for dist in dist_deps:
+            for d in dist.deps:
+                # d is a string naming either a Project or a Library
+                dep = dependency(d)
+                dep.all_deps(deps, includeLibs=includeLibs, includeSelf=True, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+        return sorted(deps)
 
     """
     Gets the directory in which the IDE project configuration
@@ -296,37 +370,18 @@ class Distribution:
             l(self)
 
 """
-A dependency is a library or project specified in a suite.
+A Project is a collection of source code that is built by mx. For historical reasons
+it typically corresponds to an IDE project and the IDE support in mx assumes this.
+Most projects comprise Java code but a "native" (non-Java, typically C) project
+is indicated by the "native" field.
+Additional attributes:
+  suite: definiing Suite
+  name:  unique name (assumed as directory name)
+  srcDirs: subdirectories of name containing sources to build
+  deps: list of dependencies, Project, Library or Distribution
+  javaCompliance: minimum Java version for compiling
+  native: Java (false) or Native (true) source code
 """
-class Dependency:
-    def __init__(self, suite, name):
-        self.name = name
-        self.suite = suite
-
-    def __cmp__(self, other):
-        return cmp(self.name, other.name)
-
-    def __str__(self):
-        return self.name
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-    def __ne__(self, other):
-        return self.name != other.name
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def isLibrary(self):
-        return isinstance(self, Library)
-
-    def isJreLibrary(self):
-        return isinstance(self, JreLibrary)
-
-    def isProject(self):
-        return isinstance(self, Project)
-
 class Project(Dependency):
     def __init__(self, suite, name, srcDirs, deps, javaCompliance, workingSets, d):
         Dependency.__init__(self, suite, name)
@@ -372,7 +427,9 @@ class Project(Dependency):
             if not dep in deps:
                 if dep.isProject():
                     dep._all_deps_helper(deps, dependants + [self], includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-                elif dep.isProject or (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs):
+                elif (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs):
+                    dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+                elif dep.isDistribution():
                     dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
         if not self in deps and includeSelf:
             deps.append(self)
@@ -547,10 +604,11 @@ class Project(Dependency):
         return self._imported_java_packages
 
     """
-    Gets the list of projects defining the annotation processors that will be applied
-    when compiling this project. This includes the projects declared by the annotationProcessors property
+    Gets the list of projects/distributions defining the annotation processors that will be applied
+    when compiling this project. This includes the projects/distributions declared by the annotationProcessors property
     of this project and any of its project dependencies. It also includes
     any project dependencies that define an annotation processors.
+    N.B.In the case of a distribution we just trust it
     """
     def annotation_processors(self):
         if not hasattr(self, '_annotationProcessors'):
@@ -558,34 +616,50 @@ class Project(Dependency):
             if hasattr(self, '_declaredAnnotationProcessors'):
                 aps = set(self._declaredAnnotationProcessors)
                 for ap in aps:
-                    if project(ap).definedAnnotationProcessorsDist is None:
-                        config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
-                        if not exists(config):
-                            TimeStampFile(config).touch()
-                        abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                              'Please specify the annotation processors in ' + config)
+                    # ap may be a Project or a Distribution
+                    apd = dependency(ap)
+                    if apd.isDistribution():
+                        # trust it, we could look inside I suppose
+                        aps.add(apd.name)
+                    elif apd.isProject():
+                        if apd.definedAnnotationProcessorsDist is None:
+                            config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
+                            if not exists(config):
+                                TimeStampFile(config).touch()
+                            abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                                  'Please specify the annotation processors in ' + config)
+                    else:
+                        abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
             allDeps = self.all_deps([], includeLibs=False, includeSelf=False, includeAnnotationProcessors=False)
             for p in allDeps:
                 # Add an annotation processor dependency
-                if p.definedAnnotationProcessorsDist is not None:
+                if p.isProject() and p.definedAnnotationProcessorsDist is not None:
                     aps.add(p.name)
 
                 # Inherit annotation processors from dependencies
-                aps.update(p.annotation_processors())
+                if p.isProject():
+                    aps.update(p.annotation_processors())
 
             self._annotationProcessors = sorted(list(aps))
         return self._annotationProcessors
 
     """
-    Gets the class path composed of the distribution jars containing the
+    Gets the class path composed of the jars containing the
     annotation processors that will be applied when compiling this project.
     """
     def annotation_processors_path(self):
-        aps = [project(ap) for ap in self.annotation_processors()]
+        aps = [dependency(ap) for ap in self.annotation_processors()]
         libAps = [dep for dep in self.all_deps([], includeLibs=True, includeSelf=False) if dep.isLibrary() and hasattr(dep, 'annotationProcessor') and getattr(dep, 'annotationProcessor').lower() == 'true']
         if len(aps) + len(libAps):
-            return os.pathsep.join([ap.definedAnnotationProcessorsDist.path for ap in aps if ap.definedAnnotationProcessorsDist] + [lib.get_path(False) for lib in libAps])
+            apPaths = []
+            for ap in aps:
+                if ap.isDistribution():
+                    ddeps = ap.all_deps([], includeLibs=False)
+                    apPaths += [dap.path for dap in ddeps]
+                elif ap.definedAnnotationProcessorsDist:
+                    apPaths.append(ap.definedAnnotationProcessorsDist.path)
+            return os.pathsep.join(apPaths + [lib.get_path(False) for lib in libAps])
         return None
 
     def uses_annotation_processor_library(self):
@@ -710,9 +784,14 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
     return path
 
+"""
+A BaseLibrary is an entity that is an object that has no structure understood by mx,
+typically a jar file. It is used "as is".
+"""
 class BaseLibrary(Dependency):
-    def __init__(self, suite, name, optional):
+    def __init__(self, suite, name, kind, optional):
         Dependency.__init__(self, suite, name)
+        self.kind = kind;
         self.optional = optional
 
     def __ne__(self, other):
@@ -735,7 +814,7 @@ found in the Oracle JRE.
 """
 class JreLibrary(BaseLibrary):
     def __init__(self, suite, name, jar, optional):
-        BaseLibrary.__init__(self, suite, name, optional)
+        BaseLibrary.__init__(self, suite, name, 'external', optional)
         self.jar = jar
 
     def __eq__(self, other):
@@ -755,9 +834,18 @@ class JreLibrary(BaseLibrary):
             deps.append(self)
         return sorted(deps)
 
+"""
+A library that is provided (built) by some third-party and made available via a URL.
+A Library may have dependencies on other Library's as expressed by the "deps" field.
+A Library can only depend on another Library, and not a Project or Distribution
+Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
+A Library is effectively an "import" into the suite since, unlike a Project or Distribution
+it is not built by the Suite.
+N.B. Not obvious but a Library can be an annotationProcessor
+"""
 class Library(BaseLibrary):
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
-        BaseLibrary.__init__(self, suite, name, optional)
+    def __init__(self, suite, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
+        BaseLibrary.__init__(self, suite, name, kind, optional)
         self.path = path.replace('/', os.sep)
         self.urls = urls
         self.sha1 = sha1
@@ -825,16 +913,21 @@ class Library(BaseLibrary):
     def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
         """
         Add the transitive set of dependencies for this library to the 'deps' list.
+        All such dependencies must also be Library instances.
+        N.B. if includeLibs=False this will do nothing as self is a Library
         """
         if not includeLibs:
+            # since our children are all Library instances nothing to do
             return sorted(deps)
         childDeps = list(self.deps)
         if self in deps:
+            # Already added
             return sorted(deps)
         for name in childDeps:
             assert name != self.name
             dep = library(name)
             if not dep in deps:
+                # recursively add child dependencies
                 dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
         if not self in deps and includeSelf:
             deps.append(self)
@@ -1236,7 +1329,7 @@ def _load_suite_dict(mxDir):
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['projects', 'libraries', 'jrelibraries', 'distributions'] + (['distribution_extensions'] if suite else ['name', 'mxversion'])
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions'] + (['distribution_extensions'] if suite else ['name', 'mxversion'])
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -1244,6 +1337,8 @@ def _load_suite_dict(mxDir):
         if suite is None:
             suite = d
         else:
+            # This really has no place in mx2 as there should be exactly one suite.py file per suite.
+            # It's an mx1 hack for "pseudo" multiple-suites
             for s in sections:
                 existing = suite.get(s)
                 additional = d.get(s)
@@ -1309,6 +1404,45 @@ class Suite:
         # we do not cache the version
         return _hg.tip(self.dir, abortOnError)
 
+    @staticmethod
+    def _pop_list(attrs, name, context):
+        v = attrs.pop(name, None)
+        if not v:
+            return []
+        if not isinstance(v, list):
+            abort('Attribute "' + name + '" for ' + context + ' must be a list')
+        return v
+
+    def _load_libraries(self, libsMap, kind='external'):
+        for name, attrs in sorted(libsMap.iteritems()):
+            context = 'library ' + name
+            if "|" in name:
+                if name.count('|') != 2:
+                    abort("Format error in library name: " + name + "\nsyntax: libname|os-platform|architecture")
+                name, platform, architecture = name.split("|")
+                if platform != get_os() or architecture != get_arch():
+                    continue
+            path = attrs.pop('path')
+            urls = Suite._pop_list(attrs, 'urls', context)
+            sha1 = attrs.pop('sha1', None)
+            sourcePath = attrs.pop('sourcePath', None)
+            sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
+            sourceSha1 = attrs.pop('sourceSha1', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
+            # Add support optional libraries once we have a good use case
+            optional = False
+            # allow any library to match an existing Distribution
+            dist = _dists.get(name)
+            if dist:
+                # we have a definition for a Distribution in an already loaded
+                # suite. This is generally not an error, and we ignore the library
+                warn('ignoring imported library ' + name + '  as is defined locally as a Distribution in suite ' + dist.suite.name)
+                return
+
+            l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+            l.__dict__.update(attrs)
+            self.libs.append(l)
+
     def _load_projects(self):
         suitePyFile = join(self.mxDir, 'suite.py')
         if not exists(suitePyFile):
@@ -1332,20 +1466,13 @@ class Suite:
         jreLibsMap = check_suiteDict('jrelibraries')
         projsMap = check_suiteDict('projects')
         distsMap = check_suiteDict('distributions')
-
-        def pop_list(attrs, name, context):
-            v = attrs.pop(name, None)
-            if not v:
-                return []
-            if not isinstance(v, list):
-                abort('Attribute "' + name + '" for ' + context + ' must be a list')
-            return v
+        importsMap = check_suiteDict('imports')
 
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
-            srcDirs = pop_list(attrs, 'sourceDirs', context)
-            deps = pop_list(attrs, 'dependencies', context)
-            ap = pop_list(attrs, 'annotationProcessors', context)
+            srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
+            ap = Suite._pop_list(attrs, 'annotationProcessors', context)
             javaCompliance = attrs.pop('javaCompliance', None)
             subDir = attrs.pop('subDir', None)
             if subDir is None:
@@ -1371,35 +1498,24 @@ class Suite:
             l = JreLibrary(self, name, jar, optional)
             self.jreLibs.append(l)
 
-        for name, attrs in sorted(libsMap.iteritems()):
-            context = 'library ' + name
-            if "|" in name:
-                if name.count('|') != 2:
-                    abort("Format error in library name: " + name + "\nsyntax: libname|os-platform|architecture")
-                name, platform, architecture = name.split("|")
-                if platform != get_os() or architecture != get_arch():
-                    continue
-            path = attrs.pop('path')
-            urls = pop_list(attrs, 'urls', context)
-            sha1 = attrs.pop('sha1', None)
-            sourcePath = attrs.pop('sourcePath', None)
-            sourceUrls = pop_list(attrs, 'sourceUrls', context)
-            sourceSha1 = attrs.pop('sourceSha1', None)
-            deps = pop_list(attrs, 'dependencies', context)
-            # Add support optional libraries once we have a good use case
-            optional = False
-            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
-            l.__dict__.update(attrs)
-            self.libs.append(l)
+        for name, attrs in sorted(importsMap.iteritems()):
+            if name == 'distributions':
+                self._load_libraries(attrs, 'distribution')
+            elif name == 'libraries':
+                self._load_libraries(attrs)
+            else:
+                abort('illegal import kind: ' + name)
+
+        self._load_libraries(libsMap)
 
         for name, attrs in sorted(distsMap.iteritems()):
             context = 'distribution ' + name
             path = attrs.pop('path')
             sourcesPath = attrs.pop('sourcesPath', None)
-            deps = pop_list(attrs, 'dependencies', context)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
             mainClass = attrs.pop('mainClass', None)
-            exclDeps = pop_list(attrs, 'exclude', context)
-            distDeps = pop_list(attrs, 'distDependencies', context)
+            exclDeps = Suite._pop_list(attrs, 'exclude', context)
+            distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
             d = Distribution(self, name, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
             d.__dict__.update(attrs)
@@ -2133,6 +2249,8 @@ def dependency(name, fatalIfMissing=True):
         d = _libs.get(name)
         if d is None:
             d = _jreLibs.get(name)
+            if d is None:
+                d = _dists.get(name)
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
             abort('project named ' + name + ' is ignored')
@@ -2188,13 +2306,17 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
             names = [names]
         for n in names:
             dep = dependency(n, fatalIfMissing=False)
-            if dep:
-                dep.all_deps(deps, True, includeSelf)
-            else:
+            if dep is None:
+                abort('project, library or distribution named ' + n + ' not found')
+            if dep.isDistribution():
                 dist = distribution(n)
-                if not dist:
-                    abort('project, library or distribution named ' + n + ' not found')
                 dists.append(dist)
+            else:
+                dep.all_deps(deps, True, includeSelf)
+
+    for d in deps:
+        if d.isDistribution():
+            dists.append(d)
 
     if len(dists):
         distsDeps = set()
@@ -2202,7 +2324,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
             distsDeps.update(d.sorted_deps())
 
         # remove deps covered by a dist that will be on the class path
-        deps = [d for d in deps if d not in distsDeps]
+        deps = [d for d in deps if d not in distsDeps and not d.isDistribution()]
 
     result = _as_classpath(deps, resolve)
 
@@ -2313,6 +2435,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
+        self.add_argument('--extra-suites', help='extra suites to load manually, metavar=<args>')
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -6654,6 +6777,9 @@ def command_function(name, fatalIfMissing=True):
             return None
 
 def warn(msg):
+    if _opts is None:
+        _deferred_warnings.append(msg)
+        return
     if _warn:
         print 'WARNING: ' + msg
 
@@ -6841,6 +6967,7 @@ def main():
     if primarySuiteMxDir:
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
         global _primary_suite
+        # This will load all explicitly imported suites
         _primary_suite = Suite(primarySuiteMxDir, True)
     else:
         # in general this is an error, except for the Needs_primary_suite_exemptions commands,
@@ -6851,9 +6978,12 @@ def main():
         if _needs_primary_suite_cl():
             abort(primary_suite_error)
 
-
     opts, commandAndArgs = _argParser._parse_cmd_line()
     assert _opts == opts
+
+    if _warn and _deferred_warnings:
+        for dw in _deferred_warnings:
+            warn(dw);
 
     if primarySuiteMxDir is None:
         if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
@@ -6865,6 +6995,11 @@ def main():
 
     if primarySuiteMxDir:
         _primary_suite._depth_first_post_init()
+
+    if opts.extra_suites:
+        extra_suites = opts.extra_suites.split(",")
+        for extra_suite in extra_suites:
+            _primary_suite.import_suite(extra_suite, alternate=None)
 
     _remove_bad_deps()
 
@@ -6908,7 +7043,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.3.1")
+version = VersionSpec("3.4.0")
 
 currentUmask = None
 
