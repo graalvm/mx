@@ -184,8 +184,7 @@ Attributes:
 """
 class Distribution(Dependency):
     def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
-        self.suite = suite
-        self.name = name
+        Dependency.__init__(self, suite, name)
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
@@ -795,7 +794,7 @@ typically a jar file. It is used "as is".
 class BaseLibrary(Dependency):
     def __init__(self, suite, name, kind, optional):
         Dependency.__init__(self, suite, name)
-        self.kind = kind;
+        self.kind = kind
         self.optional = optional
 
     def __ne__(self, other):
@@ -1246,8 +1245,7 @@ class SuiteImport:
         self.alternate = alternate
 
     @staticmethod
-    def parse_specification(specification):
-        parts = specification.split(',')
+    def parse_specification(parts):
         name = parts[0]
         alternate = None
         if len(parts) > 1:
@@ -1387,9 +1385,11 @@ class Suite:
         self.requiredMxVersion = None
         self.name = _suitename(mxDir)  # validated in _load_projects
         self.post_init = False
+        self.suiteDict, _ = _load_suite_dict(mxDir)
+        self._init_imports()
         if load:
             # load suites bottom up to make sure command overriding works properly
-            self._load_imports()
+            self.visit_imports(self._find_and_loadsuite)
             self._load_env()
             self._load_commands()
         _suites[self.name] = self
@@ -1419,7 +1419,13 @@ class Suite:
                 name, platform, architecture = name.split("|")
                 if platform != get_os() or architecture != get_arch():
                     continue
-            path = attrs.pop('path')
+            attrKind = attrs.pop('kind', None)
+            if attrKind:
+                kind = attrKind
+            if kind == 'external':
+                path = attrs.pop('path')
+            else:
+                path = attrs.pop('path', None)
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
             sourcePath = attrs.pop('sourcePath', None)
@@ -1434,18 +1440,20 @@ class Suite:
                 # we have a definition for a Distribution in an already loaded
                 # suite. This is generally not an error, and we ignore the library
                 warn('ignoring imported library ' + name + '  as is defined locally as a Distribution in suite ' + dist.suite.name)
-                return
+            else:
+                l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+                l.__dict__.update(attrs)
+                self.libs.append(l)
 
-            l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
-            l.__dict__.update(attrs)
-            self.libs.append(l)
+    def _check_suiteDict(self, key):
+        return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
 
     def _load_projects(self):
         suitePyFile = join(self.mxDir, 'suite.py')
         if not exists(suitePyFile):
             return
 
-        suiteDict, _ = _load_suite_dict(self.mxDir)
+        suiteDict = self.suiteDict
 
         if suiteDict.get('name') is not None and suiteDict.get('name') != self.name:
             abort('suite name in project file does not match ' + _suitename(self.mxDir))
@@ -1456,14 +1464,11 @@ class Suite:
             except AssertionError as ae:
                 abort('Exception while parsing "mxversion" in project file: ' + str(ae))
 
-        def check_suiteDict(key):
-            return dict() if suiteDict.get(key) is None else suiteDict[key]
-
-        libsMap = check_suiteDict('libraries')
-        jreLibsMap = check_suiteDict('jrelibraries')
-        projsMap = check_suiteDict('projects')
-        distsMap = check_suiteDict('distributions')
-        importsMap = check_suiteDict('imports')
+        libsMap = self._check_suiteDict('libraries')
+        jreLibsMap = self._check_suiteDict('jrelibraries')
+        projsMap = self._check_suiteDict('projects')
+        distsMap = self._check_suiteDict('distributions')
+        importsMap = self._check_suiteDict('imports')
 
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
@@ -1496,7 +1501,9 @@ class Suite:
             self.jreLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
-            if name == 'distributions':
+            if name == 'suites':
+                pass
+            elif name == 'distributions':
                 self._load_libraries(attrs, 'distribution')
             elif name == 'libraries':
                 self._load_libraries(attrs)
@@ -1605,42 +1612,30 @@ class Suite:
             mod.mx_init(self)
             self.commands = mod
 
-    def _imports_file(self):
-        return join(self.mxDir, 'imports')
-
-    def import_timestamp(self):
-        return TimeStampFile(self._imports_file())
+    def _init_imports(self):
+        importsMap = self._check_suiteDict("imports")
+        suiteImports = importsMap.get("suites")
+        if suiteImports:
+            importsList = suiteImports.values()[0] # a one-element list of lists
+            suite_import_list = []
+            for entry in importsList:
+                if not isinstance(entry, list):
+                    abort('suite import entry must be a list')
+                suite_import_list.append(SuiteImport.parse_specification(entry))
+            # these may not all resolve
+            self.imports = suite_import_list
 
     def visit_imports(self, visitor, **extra_args):
         """
-        Visitor support for the imports file.
-        For each line of the imports file that specifies an import, the visitor function is
-        called with this suite, a SuiteImport instance created from the line and any extra args
-        passed to this call. In addition, if extra_args contains a key 'update_versions' that is True,
-        a StringIO value is added to extra_args with key 'updated_imports', and the visitor is responsible
-        for writing a (possibly) updated import line to the file, and the file is (possibly) updated after
-        all imports are processed.
+        Visitor support for the suite imports list
+        For each entry the visitor function is called with this suite, a SuiteImport instance created
+        from the entry and any extra args passed to this call.
         N.B. There is no built-in support for avoiding visiting the same suite multiple times,
         as this function only visits the imports of a single suite. If a (recursive) visitor function
         wishes to visit a suite exactly once, it must manage that through extra_args.
         """
-        importsFile = self._imports_file()
-        if exists(importsFile):
-            update_versions = extra_args.has_key('update_versions') and extra_args['update_versions']
-            out = StringIO.StringIO() if update_versions else None
-            extra_args['updated_imports'] = out
-            with open(importsFile) as f:
-                for line in f:
-                    sline = line.strip()
-                    if len(sline) == 0 or sline.startswith('#'):
-                        if out is not None:
-                            out.write(sline + '\n')
-                        continue
-                    suite_import = SuiteImport.parse_specification(line.strip())
-                    visitor(self, suite_import, **extra_args)
-
-            if out is not None:
-                update_file(importsFile, out.getvalue())
+        for suite_import in self.imports:
+            visitor(self, suite_import, **extra_args)
 
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
@@ -1675,7 +1670,6 @@ class Suite:
                     return None
                 else:
                     abort('import ' + suite_import.name + ' not found')
-        importing_suite.imports.append(suite_import)
         return Suite(importMxDir, False)
         # we do not check at this stage whether the tip version of imported_suite
         # matches that of the import, since during development, this can and will change
@@ -1695,8 +1689,8 @@ class Suite:
                 imported_suite._post_init()
         return imported_suite
 
-    def _load_imports(self):
-        self.visit_imports(self._find_and_loadsuite)
+    def suite_py(self):
+        return join(self.mxDir, 'suite.py')
 
     def _load_env(self):
         e = join(self.mxDir, 'env')
@@ -4617,8 +4611,6 @@ def _check_ide_timestamp(suite, configZip, ide):
     suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e.startswith('suite') and e.endswith('.py')]
     if configZip.isOlderThan(suitePyFiles):
         return False
-    if configZip.isOlderThan(suite.import_timestamp()):
-        return False
     # Assume that any mx change might imply changes to the generated IDE files
     if configZip.isOlderThan(__file__):
         return False
@@ -6269,11 +6261,11 @@ def supdate(args):
 
     _supdate(s, None)
 
-def _scheck_imports_visitor(s, suite_import, update_versions, updated_imports):
+def _scheck_imports_visitor(s, suite_import, update_versions):
     """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import, update_versions, updated_imports)
+    _scheck_imports(s, suite(suite_import.name), suite_import, update_versions)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import, update_versions, updated_imports):
+def _scheck_imports(importing_suite, imported_suite, suite_import, update_versions):
     # check imports recursively
     imported_suite.visit_imports(_scheck_imports_visitor, update_versions=update_versions)
 
@@ -6283,8 +6275,8 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, update_versio
 
     if update_versions:
         suite_import.version = currentTip
-        line = str(suite_import)
-        updated_imports.write(line + '\n')
+        # temp until we do it automatically
+        print 'please update import of ' + imported_suite.name + ' in ' + importing_suite.suite_py() + ' to ' + currentTip
 
 def scheckimports(args):
     """check that suite import versions are up to date"""
@@ -6852,7 +6844,7 @@ def _is_mxdir_candidate(d, f, suiteName):
         ff = 'mx'
         mxdir = join(d, ff)
 #        print 'trying: ' + mxdir
-        if (exists(mxdir) and exists(join(mxdir, 'mx_' + suiteName + '.py'))):
+        if exists(mxdir) and exists(join(mxdir, 'mx_' + suiteName + '.py')):
             return mxdir
     return None
 
@@ -7006,7 +6998,7 @@ def main():
 
     if _warn and _deferred_warnings:
         for dw in _deferred_warnings:
-            warn(dw);
+            warn(dw)
 
     if primarySuiteMxDir is None:
         if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
