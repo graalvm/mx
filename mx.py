@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-36e37644f91e3d566ee4349e54cce1603ec8b858
+a6425aa8f70c9bda94aa174447221560cd5381b5
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -4174,6 +4174,7 @@ def _archive(args):
 def archive(args):
     """create jar files for projects and distributions"""
     parser = ArgumentParser(prog='mx archive')
+    parser.add_argument('--parsable', action='store_true', dest='parsable', help='Outputs results in a stable parsable way (one archive per line, <ARCHIVE>=<path>)')
     parser.add_argument('names', nargs=REMAINDER, metavar='[<project>|@<distribution>]...')
     args = parser.parse_args(args)
 
@@ -4184,11 +4185,17 @@ def archive(args):
             d = distribution(dname)
             d.make_archive()
             archives.append(d.path)
+            if args.parsable:
+                log('{0}={1}'.format(dname, d.path))
         else:
             p = project(name)
-            archives.append(p.make_archive())
+            path = p.make_archive()
+            archives.append(path)
+            if args.parsable:
+                log('{0}={1}'.format(name, path))
 
-    logv("generated archives: " + str(archives))
+    if not args.parsable:
+        logv("generated archives: " + str(archives))
     return archives
 
 def canonicalizeprojects(args):
