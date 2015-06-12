@@ -36,7 +36,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-290a87b718e1765749d349f03d2704781a7a70cd
+36e37644f91e3d566ee4349e54cce1603ec8b858
 """
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
@@ -2510,64 +2510,58 @@ def _format_commands():
 
 _canceled_java_requests = set()
 
-def java(requiredCompliance=None, purpose=None, cancel=None):
+def java(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None):
     """
     Get a JavaConfig object containing Java commands launch details.
-    If requiredCompliance is None, the compliance level specified by --java-home/JAVA_HOME
-    is returned. Otherwise, the JavaConfig exactly matching requiredCompliance is returned
-    or None if there is no exact match.
     """
 
-    global _default_java_home
-    if cancel and (requiredCompliance, purpose) in _canceled_java_requests:
+    if defaultJdk is None:
+        defaultJdk = versionCheck is None and not purpose
+
+    # interpret string and compliance as compliance check
+    if isinstance(versionCheck, types.StringTypes):
+        requiredCompliance = JavaCompliance(versionCheck)
+        versionCheck, versionDescription = _convert_complicance_to_version_check(requiredCompliance)
+    elif isinstance(versionCheck, JavaCompliance):
+        versionCheck, versionDescription = _convert_complicance_to_version_check(versionCheck)
+
+    global _default_java_home, _extra_java_homes
+    if cancel and (versionDescription, purpose) in _canceled_java_requests:
         return None
 
-    if not requiredCompliance:
+    if defaultJdk:
         if not _default_java_home:
-            _default_java_home = _find_jdk(purpose=purpose, cancel=cancel)
+            _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, purpose=purpose, cancel=cancel, isDefaultJdk=True)
             if not _default_java_home:
-                assert cancel
-                _canceled_java_requests.add((requiredCompliance, purpose))
+                assert cancel and (versionDescription or purpose)
+                _canceled_java_requests.add((versionDescription, purpose))
         return _default_java_home
 
-    if _opts.strict_compliance:
-        complianceCheck = requiredCompliance.exactMatch
-        desc = str(requiredCompliance)
-    else:
-        compVersion = VersionSpec(str(requiredCompliance))
-        complianceCheck = lambda version: version >= compVersion
-        desc = '>=' + str(requiredCompliance)
-
     for java in _extra_java_homes:
-        if complianceCheck(java.version):
+        if not versionCheck or versionCheck(java.version):
             return java
 
-    jdk = _find_jdk(versionCheck=complianceCheck, versionDescription=desc, purpose=purpose, cancel=cancel)
+    jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, purpose=purpose, cancel=cancel, isDefaultJdk=False)
     if jdk:
         assert jdk not in _extra_java_homes
-        _extra_java_homes.append(jdk)
+        _extra_java_homes = _sorted_unique_jdk_configs(_extra_java_homes + [jdk])
     else:
-        assert cancel
-        _canceled_java_requests.add((requiredCompliance, purpose))
+        assert cancel and (versionDescription or purpose)
+        _canceled_java_requests.add((versionDescription, purpose))
     return jdk
 
-def java_version(versionCheck, versionDescription=None, purpose=None):
-    if _default_java_home and versionCheck(_default_java_home.version):
-        return _default_java_home
-    for java in _extra_java_homes:
-        if versionCheck(java.version):
-            return java
-    jdk = _find_jdk(versionCheck, versionDescription, purpose)
-    assert jdk not in _extra_java_homes
-    _extra_java_homes.append(jdk)
-    return jdk
-
-def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None):
-    assert not versionDescription or versionCheck
-    if not versionCheck and not purpose:
-        isDefaultJdk = True
+def _convert_complicance_to_version_check(requiredCompliance):
+    if _opts.strict_compliance:
+        versionDesc = str(requiredCompliance)
+        versionCheck = requiredCompliance.exactMatch
     else:
-        isDefaultJdk = False
+        versionDesc = '>=' + str(requiredCompliance)
+        compVersion = VersionSpec(str(requiredCompliance))
+        versionCheck = lambda version: version >= compVersion
+    return (versionCheck, versionDesc)
+
+def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
+    assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
         versionCheck = lambda v: True
 
@@ -2595,34 +2589,15 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
     if not result:
-        candidateJdks = []
-        source = ''
-
-        if get_os() == 'darwin':
-            base = '/Library/Java/JavaVirtualMachines'
-            if exists(base):
-                candidateJdks = [join(base, n, 'Contents/Home') for n in os.listdir(base)]
-        elif get_os() == 'linux':
-            base = '/usr/lib/jvm'
-            if exists(base):
-                candidateJdks = [join(base, n) for n in os.listdir(base)]
-            base = '/usr/java'
-            if exists(base):
-                candidateJdks += [join(base, n) for n in os.listdir(base)]
-        elif get_os() == 'solaris':
-            base = '/usr/jdk/instances'
-            if exists(base):
-                candidateJdks = [join(base, n) for n in os.listdir(base)]
-        elif get_os() == 'windows':
-            base = r'C:\Program Files\Java'
-            if exists(base):
-                candidateJdks = [join(base, n) for n in os.listdir(base)]
-
-        configs = _filtered_jdk_configs(candidateJdks, versionCheck)
+        configs = _find_available_jdks(versionCheck)
+    elif isDefaultJdk:  # we found something in EXTRA_JAVA_HOMES but we want to set JAVA_HOME, look for further options
+        configs = [result] + _find_available_jdks(versionCheck)
     else:
         if not isDefaultJdk:
             return result
         configs = [result]
+
+    configs = _sorted_unique_jdk_configs(configs)
 
     if len(configs) > 1:
         if not is_interactive():
@@ -2649,6 +2624,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             choices = configs + ['<other>']
             if cancel:
                 choices.append('Cancel (' + cancel + ')')
+
             selected = select_items(choices, allowMultiple=False)
             if isinstance(selected, types.StringTypes) and selected == '<other>':
                 selected = None
@@ -2678,11 +2654,22 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     while not selected:
         jdkLocation = raw_input('Enter path of JDK: ')
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
+        if not selected:
+            assert versionDescription
+            log("Error: JDK at '" + jdkLocation + "' is not compatible with version " + versionDescription)
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
+    valueSeparator = os.pathsep if allowMultiple else None
+    ask_persist_env(varName, selected.jdk, valueSeparator)
+
+    os.environ[varName] = selected.jdk
+
+    return selected
+
+def ask_persist_env(varName, value, valueSeparator=None):
     envPath = join(_primary_suite.mxDir, 'env')
-    if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, selected.jdk, envPath), 'y'):
+    if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y'):
         envLines = []
         if exists(envPath):
             with open(envPath) as fp:
@@ -2691,32 +2678,81 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                     if line.rstrip().startswith(varName):
                         _, currentValue = line.split('=', 1)
                         currentValue = currentValue.strip()
-                        if not allowMultiple and currentValue:
-                            if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, selected.jdk), 'n'):
-                                return selected
+                        if not valueSeparator and currentValue:
+                            if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, value), 'n'):
+                                return
                             else:
-                                line = varName + '=' + selected.jdk + os.linesep
+                                line = varName + '=' + value + os.linesep
                         else:
                             line = line.rstrip()
                             if currentValue:
-                                line += os.pathsep
-                            line += selected.jdk + os.linesep
+                                line += valueSeparator
+                            line += value + os.linesep
                         append = False
+                    if not line.endswith(os.linesep):
+                        line += os.linesep
                     envLines.append(line)
         else:
             append = True
 
         if append:
-            envLines.append(varName + '=' + selected.jdk + os.linesep)
+            envLines.append(varName + '=' + value + os.linesep)
 
         with open(envPath, 'w') as fp:
             for line in envLines:
                 fp.write(line)
 
-    if varName == 'JAVA_HOME':
-        os.environ['JAVA_HOME'] = selected.jdk
+_os_jdk_locations = {
+    'darwin': {
+        'bases': ['/Library/Java/JavaVirtualMachines'],
+        'suffix': 'Contents/Home'
+    },
+    'linux': {
+        'bases': [
+            '/usr/lib/jvm',
+            '/usr/java'
+        ]
+    },
+    'solaris': {
+        'bases': ['/usr/jdk/instances']
+    },
+    'windows': {
+        'bases': [r'C:\Program Files\Java']
+    },
+}
 
-    return selected
+def _find_available_jdks(versionCheck):
+    candidateJdks = []
+    os_name = get_os()
+    if os_name in _os_jdk_locations:
+        jdkLocations = _os_jdk_locations[os_name]
+        for base in jdkLocations['bases']:
+            if exists(base):
+                if 'suffix' in jdkLocations:
+                    suffix = jdkLocations['suffix']
+                    candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
+                else:
+                    candidateJdks += [join(base, n) for n in os.listdir(base)]
+
+    return _filtered_jdk_configs(candidateJdks, versionCheck)
+
+def _sorted_unique_jdk_configs(configs):
+    path_seen = set()
+    unique_configs = [c for c in configs if c.jdk not in path_seen and not path_seen.add(c.jdk)]
+
+    def _compare_configs(c1, c2):
+        if c1 == _default_java_home:
+            if c2 != _default_java_home:
+                return 1
+        elif c2 == _default_java_home:
+            return -1
+        if c1 in _extra_java_homes:
+            if c2 not in _extra_java_homes:
+                return 1
+        elif c2 in _extra_java_homes:
+            return -1
+        return VersionSpec.__cmp__(c1.version, c2.version)
+    return sorted(unique_configs, cmp=_compare_configs, reverse=True)
 
 def is_interactive():
     return sys.__stdin__.isatty()
@@ -3116,6 +3152,8 @@ class JavaConfig:
         return hash(self.jdk)
 
     def __cmp__(self, other):
+        if other is None:
+            return False
         if isinstance(other, JavaConfig):
             compilanceCmp = cmp(self.javaCompliance, other.javaCompliance)
             if compilanceCmp:
