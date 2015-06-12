@@ -6272,11 +6272,10 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, update_versio
     currentTip = imported_suite.version()
     if currentTip != suite_import.version:
         print 'imported version of ' + imported_suite.name + ' in ' + importing_suite.name + ' does not match tip' + (': updating' if update_versions else '')
-
-    if update_versions:
-        suite_import.version = currentTip
-        # temp until we do it automatically
-        print 'please update import of ' + imported_suite.name + ' in ' + importing_suite.suite_py() + ' to ' + currentTip
+        if update_versions:
+            suite_import.version = currentTip
+            # temp until we do it automatically
+            print 'Please update import of ' + imported_suite.name + ' in ' + importing_suite.suite_py() + ' to ' + currentTip
 
 def scheckimports(args):
     """check that suite import versions are up to date"""
