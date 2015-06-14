@@ -1239,24 +1239,29 @@ class PathSuiteModel(SuiteModel):
             abort('suite ' + suitename + ' not found')
 
 class SuiteImport:
-    def __init__(self, name, version, alternate):
+    def __init__(self, name, version, alternate, kind='source'):
         self.name = name
         self.version = version
         self.alternate = alternate
+        self.kind = kind
 
     @staticmethod
-    def parse_specification(parts):
-        name = parts[0]
-        alternate = None
-        if len(parts) > 1:
-            version = parts[1]
-            if len(version) == 0:
-                version = None
-            if len(parts) > 2:
-                alternate = parts[2]
+    def parse_specification(import_dict):
+        name = import_dict.get("name")
+        if not name:
+            abort('suite import must have a "name" attribute')
+        version = import_dict.get("version")
+        urls = import_dict.get("urls")
+        if isinstance(urls, list):
+            # TODO
+            urls = urls[0]
+        kind = import_dict.get("kind")
+        if kind:
+            if kind != 'source' or kind != 'binary':
+                abort('suite import kind ' + kind + ' illegal')
         else:
-            version = None
-        return SuiteImport(name, version, alternate)
+            kind ='source'
+        return SuiteImport(name, version, urls, kind)
 
     @staticmethod
     def tostring(name, version=None, alternate=None):
@@ -1616,11 +1621,12 @@ class Suite:
         importsMap = self._check_suiteDict("imports")
         suiteImports = importsMap.get("suites")
         if suiteImports:
-            importsList = suiteImports.values()[0] # a one-element list of lists
+            if not isinstance(suiteImports, list):
+                abort('suites must be a list-valued attribute')
             suite_import_list = []
-            for entry in importsList:
-                if not isinstance(entry, list):
-                    abort('suite import entry must be a list')
+            for entry in suiteImports:
+                if not isinstance(entry, dict):
+                    abort('suite import entry must be a dict')
                 suite_import_list.append(SuiteImport.parse_specification(entry))
             # these may not all resolve
             self.imports = suite_import_list
@@ -2232,9 +2238,20 @@ def distribution(name, fatalIfMissing=True):
 
 def dependency(name, fatalIfMissing=True):
     """
-    Get the project or library for a given name. This will abort if a project  or library does
+    Get the project, library or dependency for a given name. This will abort if the dependency
     not exist for 'name' and 'fatalIfMissing' is true.
     """
+    pname = name.partition(":")
+    if pname[0] != name:
+        # reference to a distribution from a suite
+        dep_suite = suite(pname[0])
+        if dep_suite:
+            name = pname[2]
+            d = _dists.get(name)
+            if d is None or d.suite != dep_suite:
+                abort('suite ' + dep_suite.name + ' does not export distribution ' + name)
+            else:
+                return d
     d = _projects.get(name)
     if d is None:
         d = _libs.get(name)
@@ -7057,7 +7074,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.4.0")
+version = VersionSpec("3.4.1")
 
 currentUmask = None
 
