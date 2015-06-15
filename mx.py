@@ -6319,24 +6319,27 @@ def sforceimports(args):
     _hg.check()
     _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
-def _spull_import_visitor(s, suite_import, update_versions, updated_imports):
+def _spull_import_visitor(s, suite_import, update_versions):
     """pull visitor for Suite.visit_imports"""
-    _spull(suite(suite_import.name), suite_import, update_versions, updated_imports)
+    _spull(s, suite(suite_import.name), suite_import, update_versions)
 
-def _spull(s, suite_import, update_versions, updated_imports):
-    # s is primary suite if suite_import is None otherwise it is an imported suite
+def _spull(importing_suite, imported_suite, suite_import, update_versions):
+    # imported_suite/suite_import are None if importing_suite is primary suite
     # proceed top down to get any updated version ids first
 
     # by default we pull to the revision id in the import
-    cmd = ['hg', '-R', s.dir, 'pull', '-u']
+    cmd = ['hg', '-R', imported_suite.dir, 'pull', '-u']
     if not update_versions and suite_import and suite_import.version:
         cmd += ['-r', suite_import.version]
     run(cmd, nonZeroIsFatal=False)
-    if update_versions and updated_imports is not None:
-        suite_import.version = s.version()
-        updated_imports.write(str(suite_import) + '\n')
+    if update_versions and suite_import:
+        imported_tip = _hg.tip(imported_suite.dir)
+        if imported_tip != suite_import.version:
+            suite_import.version = imported_tip
+            # temp until we do it automatically
+            print 'Please update import of ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + imported_tip
 
-    s.visit_imports(_spull_import_visitor, update_versions=update_versions)
+    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions)
 
 def spull(args):
     """pull primary suite and all its imports"""
@@ -6345,7 +6348,7 @@ def spull(args):
     args = parser.parse_args(args)
 
     _hg.check()
-    _spull(_check_primary_suite(), None, args.update_versions, None)
+    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
     _sincoming(suite(suite_import.name), suite_import)
