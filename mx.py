@@ -7026,7 +7026,7 @@ def _remove_bad_deps():
                     del _libs[d.name]
                     d.suite.libs.remove(d)
         elif d.isProject():
-                if java(d.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(d.javaCompliance)) is None:
+            if java(d.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(d.javaCompliance)) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
                 ommittedDeps.add(d.name)
                 del _projects[d.name]
@@ -7143,7 +7143,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.4.1")
+version = VersionSpec("3.4.2")
 
 currentUmask = None
 
