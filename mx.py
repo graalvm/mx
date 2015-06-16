@@ -41,7 +41,6 @@ version that was merged.
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
 import textwrap
-import copy
 import socket
 import xml.parsers.expat
 import tarfile
@@ -186,7 +185,7 @@ Attributes:
 class Distribution(Dependency):
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
         Dependency.__init__(self, suite, name)
-        self.subDir = subDir;
+        self.subDir = subDir
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
@@ -1249,7 +1248,7 @@ class SuiteImport:
         self.name = name
         self.vckind = vckind
         self.version = version
-        self.urls = urls
+        self.urls = [] if urls is None else urls
         self.kind = kind
 
     @staticmethod
@@ -1265,7 +1264,7 @@ class SuiteImport:
             if kind != 'source' or kind != 'binary':
                 abort('suite import kind ' + kind + ' illegal')
         else:
-            kind ='source'
+            kind = 'source'
         return SuiteImport(name, vckind, version, urls, kind)
 
 def _load_suite_dict(mxDir):
@@ -1368,8 +1367,6 @@ def _load_suite_dict(mxDir):
         suffix = suffix + 1
 
     return suite, modulePath
-
-_indent = None
 
 class Suite:
     def __init__(self, mxDir, primary=False, vckind='hg', load=True):
@@ -1667,11 +1664,11 @@ class Suite:
                     return None
                 else:
                     abort('import ' + suite_import.name + ' not found')
-        return Suite(importMxDir, vckind = suite_import.vckind)
+        return Suite(importMxDir, vckind=suite_import.vckind)
         # we do not check at this stage whether the tip version of imported_suite
         # matches that of the import, since during development, this can and will change
 
-    def import_suite(self, name, vckind='hg', version=None, urls=[], kind='source'):
+    def import_suite(self, name, vckind='hg', version=None, urls=None, kind='source'):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
         suite_import = SuiteImport(name, vckind, version, urls, kind)
         imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
@@ -1774,198 +1771,6 @@ class Suite:
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
 
-    def update_suite_file(self, alternate_file=None):
-        '''
-        Write an updated suite.py file from current data.
-        '''
-        suite_file = alternate_file if alternate_file is not None else self.suite_py()
-
-        with open(suite_file, 'w') as f:
-            class Indent:
-                def __init__(self, f):
-                    # can't access f in outer scope in 2.x
-                    self.f = f
-                    self.incIndent = 4;
-                    global _indent
-                    self.indent = 0 if _indent is None else _indent.indent
-
-                def __enter__(self):
-                    self.indent += self.incIndent
-                    global _indent
-                    self._save_indent = _indent
-                    _indent = self
-                    return self
-
-                def __exit__(self, exc_type, exc_value, traceback):
-                    self.indent -= self.incIndent
-                    global _indent
-                    _indent = self._save_indent
-
-                def writeIndent(self):
-                    ''' write the current indent '''
-                    for _ in range(self.indent):
-                        self.f.write(' ')
-
-                def write(self, t):
-                    ''' write the current indent followed by t '''
-                    self.writeIndent()
-                    self.f.write(t)
-
-                def writenl(self, t):
-                    ''' write the current indent followed by t and a nl'''
-                    self.writeIndent()
-                    self.f.write(t + '\n')
-
-                def writecnl(self, t):
-                    ''' write the current indent followed by t, a comma and a nl'''
-                    self.writenl(t + ',')
-
-                def writeqname(self, t):
-                    '''  "t" '''
-                    self.f.write('"' + t + '"')
-
-                def writeqnameBra(self, t):
-                    ''' write the current indent followed by "t", a comma and a nl'''
-                    self.writeIndent()
-                    self.writeqname(t)
-                    self.f.write(" : {\n")
-
-                def writeKeyValueNL(self, key, value):
-                    ''' write the current indent followed by "key" : "name", a comma and a nl'''
-                    self.writeIndent()
-                    self.writeqname(key)
-                    self.f.write(" : ")
-                    self.writeqname(value)
-                    self.f.write(',\n')
-
-                def writeStringList(self, key, stringList):
-                    self.writeIndent()
-                    self.writeqname(key)
-                    self.f.write(" : [")
-                    if len(stringList) > 1:
-                        f.write('\n')
-                        with Indent(self.f):
-                            for s in stringList:
-                                _indent.writeIndent()
-                                _indent.writeqname(s)
-                                _indent.f.write(',\n')
-                        self.writeIndent()
-                    elif len(stringList) == 1:
-                        self.writeqname(stringList[0])
-                    self.f.write("],\n")
-
-
-            f.write('"suite" = {\n')
-
-            with Indent(f):
-                _indent.writeKeyValueNL("mxversion", str(self.requiredMxVersion))
-                _indent.writeKeyValueNL("name", self.name)
-                _indent.writenl('')
-                # imports
-                _indent.writeqnameBra("imports")
-                with Indent(f):
-                    if self.suite_imports:
-                        _indent.writenl('"suites" = [')
-                        with Indent(f):
-                            for suite_import in self.suite_imports:
-                                _indent.writenl('{')
-                                with Indent(f):
-                                    _indent.writeKeyValueNL("name", suite_import.name)
-                                    _indent.writeKeyValueNL("vckind", suite_import.vckind)
-                                    _indent.writeKeyValueNL("kind", suite_import.kind)
-                                    if suite_import.version:
-                                        _indent.writeKeyValueNL("version",  suite_import.version)
-                                    if suite_import.urls:
-                                        _indent.writeStringList("urls", suite_import.urls)
-                                _indent.writecnl('}')
-                        _indent.writecnl(']')
-
-                    f.write('\n')
-                    if self.jreLibs:
-                        _indent.writeqnameBra("jrelibraries")
-                        with Indent(f):
-                            for jrelib in self.jrelibs:
-                                # TODO
-                                pass
-                            _indent.writecnl('}')
-                        _indent.writecnl('}')
-
-                    f.write('\n')
-                    if self.libs:
-                        _indent.writeqnameBra("libraries")
-                        with Indent(f):
-                            for lib in self.libs:
-                                _indent.writeqnameBra(lib.name)
-                                with Indent(f):
-                                    _indent.writeKeyValueNL("path", lib.path)
-                                    if len(lib.urls) > 0:
-                                        _indent.writeStringList("urls", lib.urls)
-                                    _indent.writeKeyValueNL("sha1", lib.sha1)
-                                _indent.writecnl('}')
-                                f.write('\n')
-                        _indent.writecnl('}')
-                # end of imports
-                _indent.writecnl('}')
-
-                # projects
-                if len(self.projects) > 0:
-                    f.write('\n')
-                    _indent.writeqnameBra("projects")
-                    with Indent(f):
-                        for p in self.projects:
-                            _indent.writeqnameBra(p.name)
-                            with Indent(f):
-                                if p.subDir:
-                                    _indent.writeKeyValueNL("subDir", p.subDir)
-                                _indent.writeStringList("sourceDirs", p.srcDirs)
-                                if p.deps:
-                                    _indent.writeStringList("dependencies", p.deps)
-                                if hasattr(p, "_declaredAnnotationProcessors"):
-                                    _indent.writeStringList("annotationProcessors", p._declaredAnnotationProcessors)
-                                if p.checkstyleProj:
-                                    _indent.writeKeyValueNL("checkstyle", p.checkstyleProj)
-                                if p.javaCompliance:
-                                    _indent.writeKeyValueNL("javaCompliance", str(p.javaCompliance))
-                                if p.native:
-                                    _indent.writeKeyValueNL("native", "true")
-                                if p.workingSets:
-                                    _indent.writeKeyValueNL("workingSets", p.workingSets)
-                                if hasattr(p, "jacoco"):
-                                    _indent.writeKeyValueNL("jacoco", p.jacoco)
-                                _indent.writecnl('}')
-                            f.write('\n')
-                    # end of projects
-                    _indent.writecnl('}')
-
-                if len(self.dists) > 0:
-                    f.write('\n')
-                    _indent.writeqnameBra("distributions")
-                    with Indent(f):
-                        for d in self.dists:
-                            if not d.isProcessorDistribution:
-                                _indent.writeqnameBra(d.name)
-                                with Indent(f):
-                                    _indent.writeKeyValueNL("path", os.path.relpath(d.path, d.suite.dir))
-                                    if d.subDir:
-                                        _indent.writeKeyValueNL("subDir", d.subDir, d.suite.dir)
-                                    if d.sourcesPath:
-                                        _indent.writeKeyValueNL("sourcesPath", os.path.relpath(d.sourcesPath))
-                                    if d.javaCompliance:
-                                        _indent.writeKeyValueNL("javaCompliance", str(d.javaCompliance))
-                                    if d.mainClass:
-                                        _indent.writeKeyValueNL("mainClass", str(d.mainClass))
-                                    if d.deps:
-                                        _indent.writeStringList("dependencies", d.deps)
-                                    if d.excludedDependencies:
-                                        _indent.writeStringList("exclude", d.excludedDependencies)
-                                _indent.writecnl('}')
-
-                                f.write('\n')
-                    # end of distributions
-                    _indent.writecnl('}')
-
-            # end of suite
-            f.write('}\n')
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
