@@ -41,6 +41,7 @@ version that was merged.
 
 import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
 import textwrap
+import copy
 import socket
 import xml.parsers.expat
 import tarfile
@@ -183,8 +184,9 @@ Attributes:
     TODO more
 """
 class Distribution(Dependency):
-    def __init__(self, suite, name, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
         Dependency.__init__(self, suite, name)
+        self.subDir = subDir;
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
@@ -254,7 +256,7 @@ class Distribution(Dependency):
     def get_ide_project_dir(self):
         if hasattr(self, 'definingProject') and self.definingProject.definedAnnotationProcessorsDist == self:
             return None
-        if hasattr(self, 'subDir'):
+        if self.subDir:
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
             return join(self.suite.dir, self.name + '.dist')
@@ -382,8 +384,9 @@ Additional attributes:
   native: Java (false) or Native (true) source code
 """
 class Project(Dependency):
-    def __init__(self, suite, name, srcDirs, deps, javaCompliance, workingSets, d):
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
         Dependency.__init__(self, suite, name)
+        self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
         self.checkstyleProj = name
@@ -619,7 +622,7 @@ class Project(Dependency):
                     apd = dependency(ap)
                     if apd.isDistribution():
                         # trust it, we could look inside I suppose
-                        aps.add(apd.name)
+                        pass
                     elif apd.isProject():
                         if apd.definedAnnotationProcessorsDist is None:
                             config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
@@ -632,6 +635,9 @@ class Project(Dependency):
 
             allDeps = self.all_deps([], includeLibs=False, includeSelf=False, includeAnnotationProcessors=False)
             for p in allDeps:
+                if p.isDistribution():
+                    aps.add(p.name)
+
                 # Add an annotation processor dependency
                 if p.isProject() and p.definedAnnotationProcessorsDist is not None:
                     aps.add(p.name)
@@ -1239,41 +1245,28 @@ class PathSuiteModel(SuiteModel):
             abort('suite ' + suitename + ' not found')
 
 class SuiteImport:
-    def __init__(self, name, version, alternate, kind='source'):
+    def __init__(self, name, vckind, version, urls, kind='source'):
         self.name = name
+        self.vckind = vckind
         self.version = version
-        self.alternate = alternate
+        self.urls = urls
         self.kind = kind
 
     @staticmethod
     def parse_specification(import_dict):
-        name = import_dict.get("name")
+        name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute')
+        vckind = import_dict.get('vckind', 'hg')
         version = import_dict.get("version")
         urls = import_dict.get("urls")
-        if isinstance(urls, list):
-            # TODO
-            urls = urls[0]
         kind = import_dict.get("kind")
         if kind:
             if kind != 'source' or kind != 'binary':
                 abort('suite import kind ' + kind + ' illegal')
         else:
             kind ='source'
-        return SuiteImport(name, version, urls, kind)
-
-    @staticmethod
-    def tostring(name, version=None, alternate=None):
-        result = name
-        if version:
-            result = result + ',' + version
-        if alternate is not None:
-            result = result + ',' + alternate
-        return result
-
-    def __str__(self):
-        return SuiteImport.tostring(self.name, self.version, self.alternate)
+        return SuiteImport(name, vckind, version, urls, kind)
 
 def _load_suite_dict(mxDir):
 
@@ -1376,17 +1369,20 @@ def _load_suite_dict(mxDir):
 
     return suite, modulePath
 
+_indent = None
+
 class Suite:
-    def __init__(self, mxDir, primary, load=True):
+    def __init__(self, mxDir, primary=False, vckind='hg', load=True):
         self.dir = dirname(mxDir)
         self.mxDir = mxDir
         self.projects = []
         self.libs = []
         self.jreLibs = []
         self.dists = []
-        self.imports = []
+        self.suite_imports = []
         self.commands = None
         self.primary = primary
+        self.vckind = vckind
         self.requiredMxVersion = None
         self.name = _suitename(mxDir)  # validated in _load_projects
         self.post_init = False
@@ -1437,18 +1433,11 @@ class Suite:
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
-            # Add support optional libraries once we have a good use case
+            # Add support for optional external libraries if we have a good use case
             optional = False
-            # allow any library to match an existing Distribution
-            dist = _dists.get(name)
-            if dist:
-                # we have a definition for a Distribution in an already loaded
-                # suite. This is generally not an error, and we ignore the library
-                warn('ignoring imported library ' + name + '  as is defined locally as a Distribution in suite ' + dist.suite.name)
-            else:
-                l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
-                l.__dict__.update(attrs)
-                self.libs.append(l)
+            l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+            l.__dict__.update(attrs)
+            self.libs.append(l)
 
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
@@ -1487,7 +1476,7 @@ class Suite:
             else:
                 d = join(self.dir, subDir, name)
             workingSets = attrs.pop('workingSets', None)
-            p = Project(self, name, srcDirs, deps, javaCompliance, workingSets, d)
+            p = Project(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
             p.checkstyleProj = attrs.pop('checkstyle', name)
             p.native = attrs.pop('native', '') == 'true'
             p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
@@ -1519,6 +1508,7 @@ class Suite:
 
         for name, attrs in sorted(distsMap.iteritems()):
             context = 'distribution ' + name
+            subDir = attrs.pop('subDir', None)
             path = attrs.pop('path')
             sourcesPath = attrs.pop('sourcesPath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
@@ -1526,7 +1516,7 @@ class Suite:
             exclDeps = Suite._pop_list(attrs, 'exclude', context)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = Distribution(self, name, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
+            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
             d.__dict__.update(attrs)
             self.dists.append(d)
 
@@ -1552,8 +1542,8 @@ class Suite:
                 exclDeps = []
                 distDeps = []
                 javaCompliance = None
-                d = Distribution(self, dname, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, True)
-                d.subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
+                subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
+                d = Distribution(self, dname, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, True)
                 self.dists.append(d)
                 p.definedAnnotationProcessors = annotationProcessors
                 p.definedAnnotationProcessorsDist = d
@@ -1629,7 +1619,7 @@ class Suite:
                     abort('suite import entry must be a dict')
                 suite_import_list.append(SuiteImport.parse_specification(entry))
             # these may not all resolve
-            self.imports = suite_import_list
+            self.suite_imports = suite_import_list
 
     def visit_imports(self, visitor, **extra_args):
         """
@@ -1640,7 +1630,7 @@ class Suite:
         as this function only visits the imports of a single suite. If a (recursive) visitor function
         wishes to visit a suite exactly once, it must manage that through extra_args.
         """
-        for suite_import in self.imports:
+        for suite_import in self.suite_imports:
             visitor(self, suite_import, **extra_args)
 
     @staticmethod
@@ -1652,22 +1642,23 @@ class Suite:
         importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
         if importMxDir is None:
             fail = False
-            if suite_import.alternate is not None:
-                _hg.check()
-                cmd = ['hg', 'clone']
-                if suite_import.version is not None:
-                    cmd.append('-r')
-                    cmd.append(suite_import.version)
-                cmd.append(suite_import.alternate)
-                cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
-                try:
-                    subprocess.check_output(cmd)
-                    importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                    if importMxDir is None:
-                        # wasn't a suite after all
+            if len(suite_import.urls) > 0:
+                for suite_url in suite_import.urls:
+                    _hg.check()
+                    cmd = ['hg', 'clone']
+                    if suite_import.version is not None:
+                        cmd.append('-r')
+                        cmd.append(suite_import.version)
+                    cmd.append(suite_url)
+                    cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
+                    try:
+                        subprocess.check_output(cmd)
+                        importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                        if importMxDir is None:
+                            # wasn't a suite after all
+                            fail = True
+                    except subprocess.CalledProcessError:
                         fail = True
-                except subprocess.CalledProcessError:
-                    fail = True
             else:
                 fail = True
 
@@ -1676,21 +1667,22 @@ class Suite:
                     return None
                 else:
                     abort('import ' + suite_import.name + ' not found')
-        return Suite(importMxDir, False)
+        return Suite(importMxDir, vckind = suite_import.vckind)
         # we do not check at this stage whether the tip version of imported_suite
         # matches that of the import, since during development, this can and will change
 
-    def import_suite(self, name, version=None, alternate=None):
+    def import_suite(self, name, vckind='hg', version=None, urls=[], kind='source'):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
-        suite_import = SuiteImport(name, version, alternate)
+        suite_import = SuiteImport(name, vckind, version, urls, kind)
         imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
         if imported_suite:
             # if alternate is set, force the import to version in case it already existed
-            if alternate:
+            if len(urls) > 0:
+                # TODO try all?
                 if version:
-                    run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version, '-u', alternate])
+                    run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version, '-u', urls[0]])
                 else:
-                    run(['hg', '-R', imported_suite.dir, 'pull', '-u', alternate])
+                    run(['hg', '-R', imported_suite.dir, 'pull', '-u', urls[0]])
             if not imported_suite.post_init:
                 imported_suite._post_init()
         return imported_suite
@@ -1782,6 +1774,198 @@ class Suite:
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
 
+    def update_suite_file(self, alternate_file=None):
+        '''
+        Write an updated suite.py file from current data.
+        '''
+        suite_file = alternate_file if alternate_file is not None else self.suite_py()
+
+        with open(suite_file, 'w') as f:
+            class Indent:
+                def __init__(self, f):
+                    # can't access f in outer scope in 2.x
+                    self.f = f
+                    self.incIndent = 4;
+                    global _indent
+                    self.indent = 0 if _indent is None else _indent.indent
+
+                def __enter__(self):
+                    self.indent += self.incIndent
+                    global _indent
+                    self._save_indent = _indent
+                    _indent = self
+                    return self
+
+                def __exit__(self, exc_type, exc_value, traceback):
+                    self.indent -= self.incIndent
+                    global _indent
+                    _indent = self._save_indent
+
+                def writeIndent(self):
+                    ''' write the current indent '''
+                    for _ in range(self.indent):
+                        self.f.write(' ')
+
+                def write(self, t):
+                    ''' write the current indent followed by t '''
+                    self.writeIndent()
+                    self.f.write(t)
+
+                def writenl(self, t):
+                    ''' write the current indent followed by t and a nl'''
+                    self.writeIndent()
+                    self.f.write(t + '\n')
+
+                def writecnl(self, t):
+                    ''' write the current indent followed by t, a comma and a nl'''
+                    self.writenl(t + ',')
+
+                def writeqname(self, t):
+                    '''  "t" '''
+                    self.f.write('"' + t + '"')
+
+                def writeqnameBra(self, t):
+                    ''' write the current indent followed by "t", a comma and a nl'''
+                    self.writeIndent()
+                    self.writeqname(t)
+                    self.f.write(" : {\n")
+
+                def writeKeyValueNL(self, key, value):
+                    ''' write the current indent followed by "key" : "name", a comma and a nl'''
+                    self.writeIndent()
+                    self.writeqname(key)
+                    self.f.write(" : ")
+                    self.writeqname(value)
+                    self.f.write(',\n')
+
+                def writeStringList(self, key, stringList):
+                    self.writeIndent()
+                    self.writeqname(key)
+                    self.f.write(" : [")
+                    if len(stringList) > 1:
+                        f.write('\n')
+                        with Indent(self.f):
+                            for s in stringList:
+                                _indent.writeIndent()
+                                _indent.writeqname(s)
+                                _indent.f.write(',\n')
+                        self.writeIndent()
+                    elif len(stringList) == 1:
+                        self.writeqname(stringList[0])
+                    self.f.write("],\n")
+
+
+            f.write('"suite" = {\n')
+
+            with Indent(f):
+                _indent.writeKeyValueNL("mxversion", str(self.requiredMxVersion))
+                _indent.writeKeyValueNL("name", self.name)
+                _indent.writenl('')
+                # imports
+                _indent.writeqnameBra("imports")
+                with Indent(f):
+                    if self.suite_imports:
+                        _indent.writenl('"suites" = [')
+                        with Indent(f):
+                            for suite_import in self.suite_imports:
+                                _indent.writenl('{')
+                                with Indent(f):
+                                    _indent.writeKeyValueNL("name", suite_import.name)
+                                    _indent.writeKeyValueNL("vckind", suite_import.vckind)
+                                    _indent.writeKeyValueNL("kind", suite_import.kind)
+                                    if suite_import.version:
+                                        _indent.writeKeyValueNL("version",  suite_import.version)
+                                    if suite_import.urls:
+                                        _indent.writeStringList("urls", suite_import.urls)
+                                _indent.writecnl('}')
+                        _indent.writecnl(']')
+
+                    f.write('\n')
+                    if self.jreLibs:
+                        _indent.writeqnameBra("jrelibraries")
+                        with Indent(f):
+                            for jrelib in self.jrelibs:
+                                # TODO
+                                pass
+                            _indent.writecnl('}')
+                        _indent.writecnl('}')
+
+                    f.write('\n')
+                    if self.libs:
+                        _indent.writeqnameBra("libraries")
+                        with Indent(f):
+                            for lib in self.libs:
+                                _indent.writeqnameBra(lib.name)
+                                with Indent(f):
+                                    _indent.writeKeyValueNL("path", lib.path)
+                                    if len(lib.urls) > 0:
+                                        _indent.writeStringList("urls", lib.urls)
+                                    _indent.writeKeyValueNL("sha1", lib.sha1)
+                                _indent.writecnl('}')
+                                f.write('\n')
+                        _indent.writecnl('}')
+                # end of imports
+                _indent.writecnl('}')
+
+                # projects
+                if len(self.projects) > 0:
+                    f.write('\n')
+                    _indent.writeqnameBra("projects")
+                    with Indent(f):
+                        for p in self.projects:
+                            _indent.writeqnameBra(p.name)
+                            with Indent(f):
+                                if p.subDir:
+                                    _indent.writeKeyValueNL("subDir", p.subDir)
+                                _indent.writeStringList("sourceDirs", p.srcDirs)
+                                if p.deps:
+                                    _indent.writeStringList("dependencies", p.deps)
+                                if hasattr(p, "_declaredAnnotationProcessors"):
+                                    _indent.writeStringList("annotationProcessors", p._declaredAnnotationProcessors)
+                                if p.checkstyleProj:
+                                    _indent.writeKeyValueNL("checkstyle", p.checkstyleProj)
+                                if p.javaCompliance:
+                                    _indent.writeKeyValueNL("javaCompliance", str(p.javaCompliance))
+                                if p.native:
+                                    _indent.writeKeyValueNL("native", "true")
+                                if p.workingSets:
+                                    _indent.writeKeyValueNL("workingSets", p.workingSets)
+                                if hasattr(p, "jacoco"):
+                                    _indent.writeKeyValueNL("jacoco", p.jacoco)
+                                _indent.writecnl('}')
+                            f.write('\n')
+                    # end of projects
+                    _indent.writecnl('}')
+
+                if len(self.dists) > 0:
+                    f.write('\n')
+                    _indent.writeqnameBra("distributions")
+                    with Indent(f):
+                        for d in self.dists:
+                            if not d.isProcessorDistribution:
+                                _indent.writeqnameBra(d.name)
+                                with Indent(f):
+                                    _indent.writeKeyValueNL("path", os.path.relpath(d.path, d.suite.dir))
+                                    if d.subDir:
+                                        _indent.writeKeyValueNL("subDir", d.subDir, d.suite.dir)
+                                    if d.sourcesPath:
+                                        _indent.writeKeyValueNL("sourcesPath", os.path.relpath(d.sourcesPath))
+                                    if d.javaCompliance:
+                                        _indent.writeKeyValueNL("javaCompliance", str(d.javaCompliance))
+                                    if d.mainClass:
+                                        _indent.writeKeyValueNL("mainClass", str(d.mainClass))
+                                    if d.deps:
+                                        _indent.writeStringList("dependencies", d.deps)
+                                    if d.excludedDependencies:
+                                        _indent.writeStringList("exclude", d.excludedDependencies)
+                                _indent.writecnl('}')
+
+                                f.write('\n')
+                    # end of distributions
+                    _indent.writecnl('}')
+
+            # end of suite
+            f.write('}\n')
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -6117,7 +6301,7 @@ def _sclone(source, dest, suite_import, no_imports):
         return None
 
     # create a Suite (without loading) to enable imports visitor
-    s = Suite(mxDir, False, load=False)
+    s = Suite(mxDir, load=False)
     if not no_imports:
         s.visit_imports(_scloneimports_visitor, source=source)
     return s
@@ -6135,7 +6319,7 @@ def _scloneimports_suitehelper(sdir):
         abort(sdir + ' is not an mx suite')
     else:
         # create a Suite (without loading) to enable imports visitor
-        return Suite(mxDir, False, load=False)
+        return Suite(mxDir, load=False)
 
 def _scloneimports(s, suite_import, source):
     # clone first, then visit imports once we can locate them
@@ -7002,7 +7186,7 @@ def main():
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
         global _primary_suite
         # This will load all explicitly imported suites
-        _primary_suite = Suite(primarySuiteMxDir, True)
+        _primary_suite = Suite(primarySuiteMxDir, primary=True)
     else:
         # in general this is an error, except for the Needs_primary_suite_exemptions commands,
         # and an extensions command will likely not parse in this case, as any extra arguments
@@ -7033,7 +7217,7 @@ def main():
     if opts.extra_suites:
         extra_suites = opts.extra_suites.split(",")
         for extra_suite in extra_suites:
-            _primary_suite.import_suite(extra_suite, alternate=None)
+            _primary_suite.import_suite(extra_suite, urls=[])
 
     _remove_bad_deps()
 
