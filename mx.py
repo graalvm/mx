@@ -640,7 +640,7 @@ class Project(Dependency):
                 for ap in aps:
                     # ap may be a Project or a Distribution
                     apd = dependency(ap)
-                    if apd.isDistribution():
+                    if apd.isDistribution() or apd.isLibrary():
                         # trust it, we could look inside I suppose
                         pass
                     elif apd.isProject():
@@ -675,7 +675,10 @@ class Project(Dependency):
     """
     def annotation_processors_path(self):
         aps = [dependency(ap) for ap in self.annotation_processors()]
-        libAps = [dep for dep in self.all_deps([], includeLibs=True, includeSelf=False) if dep.isLibrary() and hasattr(dep, 'annotationProcessor') and getattr(dep, 'annotationProcessor').lower() == 'true']
+        libAps = set()
+        for dep in self.all_deps([], includeLibs=True, includeSelf=False):
+            if dep.isLibrary() and hasattr(dep, 'annotationProcessor') and getattr(dep, 'annotationProcessor').lower() == 'true':
+                libAps = libAps.union(dep.all_deps([], includeLibs=True, includeSelf=True))
         if len(aps) + len(libAps):
             apPaths = []
             for ap in aps:
@@ -686,6 +689,8 @@ class Project(Dependency):
                             apPaths.append(ddep.path)
                         elif ddep.definedAnnotationProcessorsDist:
                             apPaths.append(ddep.definedAnnotationProcessorsDist.path)
+                elif ap.isLibrary():
+                    libAps = libAps.union([ap])
                 elif ap.definedAnnotationProcessorsDist:
                     apPaths.append(ap.definedAnnotationProcessorsDist.path)
             return os.pathsep.join(apPaths + [lib.get_path(False) for lib in libAps])
@@ -1265,7 +1270,7 @@ class PathSuiteModel(SuiteModel):
             abort('suite ' + suitename + ' not found')
 
 class SuiteImport:
-    def __init__(self, name, vckind, version, urls, kind='source'):
+    def __init__(self, name, vckind, version, urls, kind=None):
         self.name = name
         self.vckind = vckind
         self.version = version
@@ -1282,7 +1287,7 @@ class SuiteImport:
         urls = import_dict.get("urls")
         kind = import_dict.get("kind")
         if kind:
-            if kind != 'source' or kind != 'binary':
+            if not (kind == 'source' or kind == 'binary'):
                 abort('suite import kind ' + kind + ' illegal')
         else:
             kind = 'source'
@@ -1662,21 +1667,24 @@ class Suite:
             fail = False
             if len(suite_import.urls) > 0:
                 for suite_url in suite_import.urls:
-                    _hg.check()
-                    cmd = ['hg', 'clone']
-                    if suite_import.version is not None:
-                        cmd.append('-r')
-                        cmd.append(suite_import.version)
-                    cmd.append(suite_url)
-                    cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
-                    try:
-                        subprocess.check_output(cmd)
-                        importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                        if importMxDir is None:
-                            # wasn't a suite after all
+                    if suite_import.kind == 'binary':
+                        return BinarySuite(suite_import.name, suite_import.urls)
+                    else:
+                        _hg.check()
+                        cmd = ['hg', 'clone']
+                        if suite_import.version is not None:
+                            cmd.append('-r')
+                            cmd.append(suite_import.version)
+                        cmd.append(suite_url)
+                        cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
+                        try:
+                            subprocess.check_output(cmd)
+                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                            if importMxDir is None:
+                                # wasn't a suite after all
+                                fail = True
+                        except subprocess.CalledProcessError:
                             fail = True
-                    except subprocess.CalledProcessError:
-                        fail = True
             else:
                 fail = True
 
@@ -1791,6 +1799,17 @@ class Suite:
         visitmap = dict()
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
+
+class BinarySuite(Suite):
+    def __init__(self, name, urls):
+        self.name = name
+        self.urls = urls
+        self.primary = False
+        self.post_init = True
+        _suites[self.name] = self
+
+    def visit_imports(self, visitor, **extra_args):
+        pass
 
 
 class XMLElement(xml.dom.minidom.Element):
@@ -2258,9 +2277,16 @@ def dependency(name, fatalIfMissing=True):
         if dep_suite:
             name = pname[2]
             d = _dists.get(name)
-            if d is None or d.suite != dep_suite:
-                abort('suite ' + dep_suite.name + ' does not export distribution ' + name)
+            if d is not None:
+                if d.suite != dep_suite:
+                    abort('suite ' + dep_suite.name + ' does not export distribution ' + name)
+                else:
+                    return d
             else:
+                # this is arguably a hack, we fall back to a library
+                d = _libs.get(name)
+                if d is None and fatalIfMissing:
+                    abort('cannot resolve ' + name + ' as either a component of ' + pname[0] + ' or as a library')
                 return d
     d = _projects.get(name)
     if d is None:
@@ -7143,7 +7169,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.4.2")
+version = VersionSpec("3.4.3")
 
 currentUmask = None
 
