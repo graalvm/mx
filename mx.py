@@ -1394,8 +1394,14 @@ def _load_suite_dict(mxDir):
 
     return suite, modulePath
 
-class Suite:
+class AbstractSuite:
+    def __init__(self, name, primary):
+        self.name = name
+        self.primary = primary
+
+class Suite(AbstractSuite):
     def __init__(self, mxDir, primary=False, vckind='hg', load=True):
+        AbstractSuite.__init__(self, _suitename(mxDir), primary)
         self.dir = dirname(mxDir)
         self.mxDir = mxDir
         self.projects = []
@@ -1407,7 +1413,6 @@ class Suite:
         self.primary = primary
         self.vckind = vckind
         self.requiredMxVersion = None
-        self.name = _suitename(mxDir)  # validated in _load_projects
         self.post_init = False
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
@@ -1800,11 +1805,10 @@ class Suite:
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
 
-class BinarySuite(Suite):
+class BinarySuite(AbstractSuite):
     def __init__(self, name, urls):
-        self.name = name
+        AbstractSuite.__init__(self, name, False)
         self.urls = urls
-        self.primary = False
         self.post_init = True
         _suites[self.name] = self
 
@@ -1888,13 +1892,40 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
+'''
+Vehicle for use in the gate and _gate_body commands
+'''
 class GateTask:
-    def __init__(self, title):
-        self.start = time.time()
+    # None or a list of strings. If not None, only tasks whose title
+    # matches at least one of the substrings in this list will return
+    # a non-None value from __enter__. The body of a 'with Task(...) as t'
+    # statement should check 't' and exit immediately if it is None.
+    filters = None
+    filtersExclude = False
+
+    def __init__(self, title, tasks=None):
+        self.tasks = tasks
         self.title = title
-        self.end = None
-        self.duration = None
-        log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
+        if tasks is not None and GateTask.filters is not None:
+            if GateTask.filtersExclude:
+                self.skipped = any([f in title for f in GateTask.filters])
+            else:
+                self.skipped = not any([f in title for f in GateTask.filters])
+        else:
+            self.skipped = False
+        if not self.skipped:
+            self.start = time.time()
+            self.end = None
+            self.duration = None
+            log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
+    def __enter__(self):
+        assert self.tasks is not None, "using Task with 'with' statement requires to pass the tasks list in the constructor"
+        if self.skipped:
+            return None
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        if not self.skipped:
+            self.tasks.append(self.stop())
     def stop(self):
         self.end = time.time()
         self.duration = datetime.timedelta(seconds=self.end - self.start)
@@ -1917,10 +1948,23 @@ def _add_omit_clean_args(parser):
     parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
+def gate_clean(args, tasks, name='Clean'):
+    with GateTask(name, tasks) as t:
+        if t:
+            cleanArgs = []
+            if not args.cleanNative:
+                cleanArgs.append('--no-native')
+            if not args.cleanJava:
+                cleanArgs.append('--no-java')
+            if not args.cleanDist:
+                cleanArgs.append('--no-dist')
+            command_function('clean')(cleanArgs)
+
 def gate(args, gate_body=_basic_gate_body, parser=None):
     """run the tests used to validate a push
     This provides a generic gate that does all the standard things.
-    Additional tests can be provided by passing a custom 'gate_body'.
+    Additional tests can be provided by passing a custom 'gate_body',
+    or completely override this command.
 
     If this command exits with a 0 exit code, then the gate passed."""
 
@@ -1929,9 +1973,17 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
     _add_omit_clean_args(parser)
     parser.add_argument('-p', '--omit-pylint', action='store_false', dest='pylint', help='omit pylint check')
+    parser.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
+    parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
+
+    if args.task_filter:
+        GateTask.filters = args.task_filter.split(',')
+        GateTask.filtersExclude = args.x
+    elif args.x:
+        abort('-x option cannot be used without --task-filter option')
 
     if args.noClean:
         args.cleanIDE = False
@@ -1944,45 +1996,35 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
 
     try:
         if args.pylint:
-            t = GateTask('Pylint')
-            pylint([])
-            tasks.append(t.stop())
+            with GateTask('Pylint', tasks) as t:
+                if t: pylint([])
 
-        t = GateTask('Clean')
-        cleanArgs = []
-        if not args.cleanNative:
-            cleanArgs.append('--no-native')
-        if not args.cleanJava:
-            cleanArgs.append('--no-java')
-        if not args.cleanDist:
-            cleanArgs.append('--no-dist')
-        command_function('clean')(cleanArgs)
-        tasks.append(t.stop())
+        gate_clean(args, tasks)
 
-        if args.cleanIDE:
-            t = GateTask('IDEConfigCheck')
-            command_function('ideclean')([])
-            command_function('ideinit')([])
-            tasks.append(t.stop())
+        with GateTask('IDEConfigCheck', tasks) as t:
+            if t:
+                if args.cleanIDE:
+                    t = GateTask('IDEConfigCheck')
+                    command_function('ideclean')([])
+                    command_function('ideinit')([])
 
-        eclipse_exe = os.environ.get('ECLIPSE_EXE')
+        eclipse_exe = get_env('ECLIPSE_EXE')
         if eclipse_exe is not None:
-            t = GateTask('CodeFormatCheck')
-            if eclipseformat(['-e', eclipse_exe]) != 0:
-                t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-            tasks.append(t.stop())
+            with GateTask('CodeFormatCheck', tasks) as t:
+                if t and eclipseformat(['-e', eclipse_exe]) != 0:
+                    t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
 
-        t = GateTask('Canonicalization Check')
-        log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
-        if canonicalizeprojects([]) != 0:
-            t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/projects files.')
-        tasks.append(t.stop())
+        with GateTask('Canonicalization Check', tasks) as t:
+            if t:
+                log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
+                if canonicalizeprojects([]) != 0:
+                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        t = GateTask('BuildJava')
-        # Make sure we use any overridden build command
-        command_function('build')([])
-        tasks.append(t.stop())
+        with GateTask('Checkstyle', tasks) as t:
+            if t and checkstyle([]) != 0:
+                t.abort('Checkstyle warnings were found')
 
+        # suite-specific gate
         gate_body(args, tasks)
 
     except KeyboardInterrupt:
@@ -7169,7 +7211,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.4.3")
+version = VersionSpec("3.5.0")
 
 currentUmask = None
 
