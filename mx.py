@@ -2848,6 +2848,8 @@ class ArgParser(ArgumentParser):
         self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
         self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
         self.add_argument('-w', action='store_true', dest='warn', help='enable warning messages')
+        self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
+        self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
         self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
@@ -7388,9 +7390,13 @@ def ask_yes_no(question, default=None):
     questionMark = '? [yn]: '
     if default:
         questionMark = questionMark.replace(default, default.upper())
-    answer = raw_input(question + questionMark) or default
-    while not answer:
-        answer = raw_input(question + questionMark)
+    if _opts.answer:
+        answer = str(_opts.answer)
+        print question + questionMark + answer
+    else:
+        answer = raw_input(question + questionMark) or default
+        while not answer:
+            answer = raw_input(question + questionMark)
     return answer.lower().startswith('y')
 
 def add_argument(*args, **kwargs):
