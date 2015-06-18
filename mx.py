@@ -25,24 +25,24 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-from subprocess import CalledProcessError
-from mercurial.util import url
-from Carbon.QuickTime import kIndeo4CodecType
-
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
 Full documentation can be found in the Wiki at the site from which mxtool was downloaded.
 
-This version (2.x) of mx is an evolution of mx 1.x (provided with the Graal distribution),
+This version of mx is an evolution of mx 1.x (provided with the Graal distribution),
 and supports multiple suites in separate Mercurial repositories. It is intended to be backwards
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
 a6425aa8f70c9bda94aa174447221560cd5381b5
 """
+import sys
+if __name__ == '__main__':
+    # Rename this module as 'mx' so it is not re-executed when imported by other modules.
+    sys.modules['mx'] = sys.modules.pop('__main__')
 
-import sys, os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
+import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
 import textwrap
 import socket
 import xml.parsers.expat
@@ -51,6 +51,7 @@ import hashlib
 import shutil, re, xml.dom.minidom
 import pipes
 import difflib
+import mx_unittest
 import glob
 from collections import Callable
 from threading import Thread
@@ -112,6 +113,7 @@ _jreLibs = dict()
 _dists = dict()
 _suites = dict()
 _annotationProcessors = None
+_mx_suite = None
 _primary_suite_path = None
 _primary_suite = None
 _src_suitemodel = None
@@ -1022,7 +1024,13 @@ class VC:
         Intialize 'vcdir' for vc control
         '''
         abort(self.vckind + " init is not implemented")
-        
+
+    def metadir(self):       
+        '''
+        Return name of metadata directory
+        ''' 
+        abort(self.vckind + " metadir is not implemented")
+
     def add(self, vcdir, path, abortOnError=True):
         '''
         Add path to repo
@@ -1104,7 +1112,7 @@ class VC:
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         '''
-        TBD, who uses this?
+        Return a list of paths under vc control that match 'patterns'
         '''
         abort(self.vckind + " locate is not implemented")
 
@@ -1154,11 +1162,14 @@ class HgConfig(VC):
         # We don't use run because this can be called very early before _opts is set
         try:
             return subprocess.check_output(['hg', 'tip', '-R', vcdir, '--template', '{node}'])
-        except CalledProcessError:
+        except subprocess.CalledProcessError:
             if abortOnError:
                 abort('hg tip failed')
             else:
                 return None
+
+    def metadir(self):
+        return '.hg'  
 
     def clone(self, url, dest=None, rev=None, abortOnError=True):
         cmd = ['hg', 'clone']
@@ -1646,9 +1657,9 @@ class AbstractSuite:
         self._post_init()
 
 class Suite(AbstractSuite):
-    def __init__(self, mxDir, primary=False, load=True):
+    def __init__(self, mxDir, primary=False, load=True, internal=False):
         AbstractSuite.__init__(self, mxDir, primary)
-        self.vc = VC.get_vc(self.dir)
+        self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
         self.libs = []
         self.jreLibs = []
@@ -1658,6 +1669,7 @@ class Suite(AbstractSuite):
         self.requiredMxVersion = None
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
+        self.internal = internal
         _suites[self.name] = self
         if load:
             # load suites bottom up to make sure command overriding works properly
@@ -2120,7 +2132,7 @@ class BinarySuite(AbstractSuite):
                             urls = [join(base_url, maven_dist_name, sversion, maven_dist_name + '-' + sversion + '.jar')]
                             download_file_with_sha1(distname, dist.path, urls, sha1, dist.path + '.sha1', resolve=True, mustExist=True)
                         return
-                    except CalledProcessError as e:
+                    except subprocess.CalledProcessError as e:
                         abort('jar error: ' + e.output)
 
         abort('binary suite ' + self.suite_import.name + ' cannot be downloaded')
@@ -2136,6 +2148,12 @@ class BinarySuite(AbstractSuite):
         if hasattr(self, 'mx_post_parse_cmd_line'):
             self.mx_post_parse_cmd_line(_opts)
         self.post_init = True
+
+class MXSuite(Suite):
+    def __init__(self):
+        mxMxDir = _is_suite_dir(_mx_home)
+        assert mxMxDir
+        Suite.__init__(self, mxMxDir, internal=True)
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -2517,14 +2535,15 @@ def suites(opt_limit_to_suite=False):
     """
     Get the list of all loaded suites.
     """
+    suite_values = filter(lambda s : not s.internal, _suites.values())
     if opt_limit_to_suite and _opts.specific_suites:
         result = []
-        for s in _suites.values():
+        for s in suite_values:
             if s.name in _opts.specific_suites:
                 result.append(s)
         return result
     else:
-        return _suites.values()
+        return suite_values
 
 def createsuite(args):
     """create new suite in a subdirectory of cwd"""
@@ -2830,6 +2849,31 @@ def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, inclu
     # Distributions can occur as deps when using binary suites, need to filter them out
     deps[:] = [el for el in deps if not isinstance(el, Distribution)]
     return deps
+
+def extract_VM_args(args, useDoubleDash=False, allowClasspath=False):
+    """
+    Partitions 'args' into a leading sequence of HotSpot VM options and the rest. If
+    'useDoubleDash' then 'args' is partititioned by the first instance of "--". If
+    not 'allowClasspath' then mx aborts if "-cp" or "-classpath" is in 'args'.
+
+   """
+    for i in range(len(args)):
+        if useDoubleDash:
+            if args[i] == '--':
+                vmArgs = args[:i]
+                remainder = args[i + 1:]
+                return vmArgs, remainder
+        else:
+            if not args[i].startswith('-'):
+                if i != 0 and (args[i - 1] == '-cp' or args[i - 1] == '-classpath'):
+                    if not allowClasspath:
+                        abort('Cannot supply explicit class path option')
+                    else:
+                        continue
+                vmArgs = args[:i]
+                remainder = args[i:]
+                return vmArgs, remainder
+    return args, []
 
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
@@ -3259,7 +3303,6 @@ def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
     if filtered:
         return filtered[0]
     return None
-
 
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, javaConfig=None):
     if not javaConfig:
@@ -6283,20 +6326,22 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
-    if not is_interactive():
-        log('fsckprojects command must be run in an interactive shell')
-        return
-    hg = HgConfig()
+#    if not is_interactive():
+#        log('fsckprojects command must be run in an interactive shell')
+#        return
     for suite in suites(True):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
-                # no point in traversing .hg, lib, or .workspace
-                dirnames[:] = [d for d in dirnames if d not in ['.hg', 'lib', '.workspace']]
-                # if there are nested suites must not scan those now, as they are not in projectDirs
+                # no point in traversing vc metadata dir, lib, or .workspace
+                dirnames[:] = [d for d in dirnames if d not in [suite.vc.metadir(), suite.mxDir, 'lib', '.workspace']]
+                # if there are nested suites must not scan those now, as they are not in projectDirs (but contain .project files)
                 if _src_suitemodel.nestedsuites_dirname() in dirnames:
                     dirnames.remove(_src_suitemodel.nestedsuites_dirname())
+            elif dirpath == suite.mxDir:
+                # don't want to traverse mx.name as it contains a .project
+                dirnames[:] = []
             elif dirpath in projectDirs:
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
@@ -6308,10 +6353,10 @@ def fsckprojects(args):
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
                     indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
-                    indicatorsInHg = hg.locate(suite.dir, indicators)
-                    # Only proceed if there are indicator files that are not under HG
-                    if len(indicators) > len(indicatorsInHg):
-                        if not is_interactive() or ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
+                    indicatorsInVC = suite.vc.locate(suite.dir, indicators)
+                    # Only proceed if there are indicator files that are not under VC
+                    if len(indicators) > len(indicatorsInVC):
+                        if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
 
@@ -7170,7 +7215,7 @@ def show_suites(args):
             for e in section:
                 log('    ' + e.name)
 
-    for s in suites():
+    for s in suites(True):
         log(s.name)
         _show_section('libraries', s.libs)
         _show_section('jrelibraries', s.jreLibs)
@@ -7476,6 +7521,7 @@ _commands = {
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
     'test': [test, '[options]'],
+    'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
 }
 
 _argParser = ArgParser()
@@ -7507,7 +7553,7 @@ def _check_primary_suite():
     else:
         return _primary_suite
 
-Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'createsuite']
+Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'createsuite', 'sha1']
 
 def _needs_primary_suite(command):
     return not command in Needs_primary_suite_exemptions
@@ -7604,6 +7650,9 @@ def _remove_bad_deps():
                 dist.deps.remove(name)
 
 def main():
+    global _mx_suite
+    _mx_suite = MXSuite()
+
     global _force_binary_suites
     _force_binary_suites = False if os.environ.get('MX_FORCE_BINARY_SUITES') is None else True
     ArgParser.parse_startup_options()
@@ -7703,9 +7752,6 @@ version = VersionSpec("3.6.0")
 currentUmask = None
 
 if __name__ == '__main__':
-    # rename this module as 'mx' so it is not imported twice by the commands.py modules
-    sys.modules['mx'] = sys.modules.pop('__main__')
-
     # Capture the current umask since there's no way to query it without mutating it.
     currentUmask = os.umask(0)
     os.umask(currentUmask)
