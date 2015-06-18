@@ -539,6 +539,39 @@ class Project(Dependency):
         if not self.native:
             cp.append(self.output_dir())
 
+    def eclipse_settings_sources(self):
+        """
+        Gets a dictionary from the name of an Eclipse settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        """
+        if not hasattr(self, '_eclipse_settings'):
+            esdict = {}
+            hasAps = self.annotation_processors_path() is not None
+            # start with the mxtool defaults
+            defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
+            if exists(defaultEclipseSettingsDir):
+                for name in os.listdir(defaultEclipseSettingsDir):
+                    if isfile(join(defaultEclipseSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
+                        esdict[name] = [os.path.abspath(join(defaultEclipseSettingsDir, name))]
+
+            # append suite overrides
+            eclipseSettingsDir = join(self.suite.mxDir, 'eclipse-settings')
+            if exists(eclipseSettingsDir):
+                for name in os.listdir(eclipseSettingsDir):
+                    if isfile(join(eclipseSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
+                        esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
+
+            # check for project overrides
+            projectSettingsDir = join(self.dir, 'eclipse-settings')
+            if exists(projectSettingsDir):
+                for name in os.listdir(projectSettingsDir):
+                    if isfile(join(projectSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
+                        esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+            self._eclipse_settings = esdict
+        return self._eclipse_settings
+
     def find_classes_with_matching_source_line(self, pkgRoot, function, includeInnerClasses=False):
         """
         Scan the sources of this project for Java source files containing a line for which
@@ -4008,9 +4041,9 @@ class JavaCompileTask:
                 jdtArgs += processorArgs
 
                 jdtProperties = join(self.proj.dir, '.settings', 'org.eclipse.jdt.core.prefs')
-                rootJdtProperties = join(self.proj.suite.mxDir, 'eclipse-settings', 'org.eclipse.jdt.core.prefs')
-                if not exists(jdtProperties) or os.path.getmtime(jdtProperties) < os.path.getmtime(rootJdtProperties):
-                    # Try to fix a missing properties file by running eclipseinit
+                jdtPropertiesSources = self.proj.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
+                if not exists(jdtProperties) or os.path.getmtime(jdtProperties) < min(map(os.path.getmtime, jdtPropertiesSources)):
+                    # Try to fix a missing or out of date properties file by running eclipseinit
                     _eclipseinit_project(self.proj)
                 if not exists(jdtProperties):
                     log('JDT properties file {0} not found'.format(jdtProperties))
@@ -5240,12 +5273,11 @@ def _check_ide_timestamp(suite, configZip, ide):
         return False
 
     if ide == 'eclipse':
-        eclipseSettingsDir = join(suite.mxDir, 'eclipse-settings')
-        if exists(eclipseSettingsDir):
-            for name in os.listdir(eclipseSettingsDir):
-                path = join(eclipseSettingsDir, name)
-                if configZip.isOlderThan(path):
-                    return False
+        for p in suite.projects:
+            for _, sources in p.eclipse_settings_sources().iteritems():
+                for source in sources:
+                    if configZip.isOlderThan(source):
+                        return False
     return True
 
 def _eclipseinit_project(p, files=None, libFiles=None):
@@ -5432,37 +5464,15 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     if not exists(settingsDir):
         os.mkdir(settingsDir)
 
-    # collect the defaults from mxtool
-    defaultEclipseSettingsDir = join(dirname(__file__), 'eclipse-settings')
-    esdict = {}
-    if exists(defaultEclipseSettingsDir):
-        for name in os.listdir(defaultEclipseSettingsDir):
-            if isfile(join(defaultEclipseSettingsDir, name)):
-                esdict[name] = os.path.abspath(join(defaultEclipseSettingsDir, name))
-
-    # check for suite overrides
-    eclipseSettingsDir = join(p.suite.mxDir, 'eclipse-settings')
-    if exists(eclipseSettingsDir):
-        for name in os.listdir(eclipseSettingsDir):
-            if isfile(join(eclipseSettingsDir, name)):
-                esdict[name] = os.path.abspath(join(eclipseSettingsDir, name))
-
-    # check for project overrides
-    projectSettingsDir = join(p.dir, 'eclipse-settings')
-    if exists(projectSettingsDir):
-        for name in os.listdir(projectSettingsDir):
-            if isfile(join(projectSettingsDir, name)):
-                esdict[name] = os.path.abspath(join(projectSettingsDir, name))
-
     # copy a possibly modified file to the project's .settings directory
-    for name, path in esdict.iteritems():
-        # ignore this file altogether if this project has no annotation processors
-        if name == "org.eclipse.jdt.apt.core.prefs" and not processorPath:
-            continue
-
-        with open(path) as f:
-            content = f.read()
-        content = content.replace('${javaCompliance}', str(p.javaCompliance))
+    for name, sources in p.eclipse_settings_sources().iteritems():
+        out = StringIO.StringIO()
+        print >> out, '# GENERATED -- DO NOT EDIT'
+        for source in sources:
+            print >> out, '# Source:', source
+            with open(source) as f:
+                print >> out, f.read()
+        content = out.getvalue().replace('${javaCompliance}', str(p.javaCompliance))
         if processorPath:
             content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
         update_file(join(settingsDir, name), content)
