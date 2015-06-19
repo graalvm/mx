@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
 
-import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, fnmatch, platform
+import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, platform
 import textwrap
 import socket
 import xml.parsers.expat
@@ -56,9 +56,10 @@ from collections import Callable
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
-import mx_update_suitepy
 
+import mx_update_suitepy
 import mx_unittest
+import mx_findbugs
 
 
 # This works because when mx loads this file, it makes sure __file__ gets an absolute path
@@ -7517,6 +7518,7 @@ _commands = {
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
     'exportlibs': [exportlibs, ''],
+    'findbugs': [mx_findbugs.findbugs, ''],
     'findclass': [findclass, ''],
     'fsckprojects': [fsckprojects, ''],
     'gate': [gate, '[options]'],
