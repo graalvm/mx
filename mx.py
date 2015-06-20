@@ -202,6 +202,7 @@ class Distribution(Dependency):
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
         self.deps = deps
         self.update_listeners = set()
+        self.archiveparticipant = None
         self.mainClass = mainClass
         self.excludedDependencies = excludedDependencies
         self.distDependencies = distDependencies
@@ -226,6 +227,27 @@ class Distribution(Dependency):
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
+
+    def set_archiveparticipant(self, archiveparticipant):
+        """
+        Adds an object that participates in the make_archive method of this distribution by defining the following methods:
+
+        __opened__(arc, srcArc, services)
+            Called when archiving starts. The 'arc' and 'srcArc' Archiver objects are for writing to the
+            binary and source jars for the distribution. The 'services' dict is for collating the files
+            that will be written to META-INF/services in the binary jar. It's a map from service names
+            to a list of providers for the named service.
+        __add__(arcname, contents)
+            Submits an entry for addition to the binary archive (via the 'zf' ZipFile field of the 'arc' object).
+            Returns True if this object writes to the archive or wants to exclude the entry from the archive,
+            False if the caller should add the entry.
+        __addsrc__(arcname, contents)
+            Same as __add__ except if targets the source archive.
+        __closing__()
+            Called just before the 'services' are written to the binary archive and both archives are
+            written to their underlying files.
+        """
+        self.archiveparticipant = archiveparticipant
 
     def get_dist_deps(self, includeSelf=True, transitive=False):
         deps = []
@@ -278,14 +300,16 @@ class Distribution(Dependency):
 
     def make_archive(self):
         # are sources combined into main archive?
-        # TODO use a callback mechanism for suite specific code, i.e. jvmci is suite-specific
         unified = self.path == self.sourcesPath
 
         with Archiver(self.path) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
                 services = {}
-                jvmciServices = {}
+
+                if self.archiveparticipant:
+                    self.archiveparticipant.__opened__(arc, srcArc, services)
+
                 def overwriteCheck(zf, arcname, source):
                     if os.path.basename(arcname).startswith('.'):
                         logv('Excluding dotfile: ' + source)
@@ -309,7 +333,6 @@ class Distribution(Dependency):
                 for dep in self.sorted_deps(includeLibs=True):
                     isCoveredByDependecy = False
                     for d in self.distDependencies:
-                        _, d = splitqualname(d)
                         if dep in _dists[d].sorted_deps(includeLibs=True, transitive=True):
                             logv("Excluding {0} from {1} because it's provided by the dependency {2}".format(dep.name, self.path, d))
                             isCoveredByDependecy = True
@@ -333,15 +356,17 @@ class Distribution(Dependency):
                                         assert '/' not in service
                                         services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                                     else:
-                                        assert not arcname.startswith('META-INF/jvmci.services/'), 'did not expect to see jvmci.services in ' + lpath
-                                        assert not arcname.startswith('META-INF/jvmci.options/'), 'did not expect to see jvmci.options in ' + lpath
                                         if not overwriteCheck(arc.zf, arcname, lpath + '!' + arcname):
-                                            arc.zf.writestr(arcname, lp.read(arcname))
+                                            contents = lp.read(arcname)
+                                            if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                                arc.zf.writestr(arcname, contents)
                         if srcArc.zf and libSourcePath:
                             with zipfile.ZipFile(libSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
                                     if not overwriteCheck(srcArc.zf, arcname, lpath + '!' + arcname):
-                                        srcArc.zf.writestr(arcname, lp.read(arcname))
+                                        contents = lp.read(arcname)
+                                        if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                            srcArc.zf.writestr(arcname, contents)
                     elif dep.isProject():
                         p = dep
 
@@ -357,29 +382,13 @@ class Distribution(Dependency):
                                 for service in files:
                                     with open(join(root, service), 'r') as fp:
                                         services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
-                            elif relpath == join('META-INF', 'jvmci.services'):
-                                for service in files:
-                                    with open(join(root, service), 'r') as fp:
-                                        jvmciServices.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
-                            elif relpath == join('META-INF', 'jvmci.providers'):
-                                for provider in files:
-                                    with open(join(root, provider), 'r') as fp:
-                                        for service in fp:
-                                            jvmciServices.setdefault(service.strip(), []).append(provider)
                             else:
-                                if relpath == join('META-INF', 'jvmci.options'):
-                                    # Need to create service files for the providers of the
-                                    # com.oracle.jvmci.options.Options service created by
-                                    # com.oracle.jvmci.options.processor.OptionProcessor.
-                                    for optionsOwner in files:
-                                        provider = optionsOwner + '_Options'
-                                        providerClassfile = join(outputDir, provider.replace('.', os.sep) + '.class')
-                                        assert exists(providerClassfile), 'missing generated Options provider ' + providerClassfile
-                                        services.setdefault('com.oracle.jvmci.options.Options', []).append(provider)
                                 for f in files:
                                     arcname = join(relpath, f).replace(os.sep, '/')
-                                    if not overwriteCheck(arc.zf, arcname, join(root, f)):
-                                        arc.zf.write(join(root, f), arcname)
+                                    with open(join(root, f), 'r') as fp:
+                                        contents = fp.read()
+                                    if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                        arc.zf.writestr(arcname, contents)
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
                             if p.source_gen_dir():
@@ -391,22 +400,23 @@ class Distribution(Dependency):
                                         if f.endswith('.java'):
                                             arcname = join(relpath, f).replace(os.sep, '/')
                                             if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
-                                                srcArc.zf.write(join(root, f), arcname)
+                                                with open(join(root, f), 'r') as fp:
+                                                    contents = fp.read()
+                                                if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                                    srcArc.zf.writestr(arcname, contents)
+
+                if self.archiveparticipant:
+                    self.archiveparticipant.__closing__()
 
                 for service, providers in services.iteritems():
                     arcname = 'META-INF/services/' + service
                     arc.zf.writestr(arcname, '\n'.join(providers))
-                for service, providers in jvmciServices.iteritems():
-                    arcname = 'META-INF/jvmci.services/' + service
-                    arc.zf.writestr(arcname, '\n'.join(providers))
 
         self.notify_updated()
-
 
     def notify_updated(self):
         for l in self.update_listeners:
             l(self)
-
 """
 A Project is a collection of source code that is built by mx. For historical reasons
 it typically corresponds to an IDE project and the IDE support in mx assumes this.
