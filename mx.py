@@ -25,6 +25,9 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+from subprocess import CalledProcessError
+from mercurial.util import url
+from Carbon.QuickTime import kIndeo4CodecType
 
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
@@ -48,10 +51,12 @@ import hashlib
 import shutil, re, xml.dom.minidom
 import pipes
 import difflib
+import glob
 from collections import Callable
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER
+from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
+import update_suitepy
 
 # This works because when mx loads this file, it makes sure __file__ gets an absolute path
 _mx_home = dirname(__file__)
@@ -111,14 +116,15 @@ _primary_suite_path = None
 _primary_suite = None
 _src_suitemodel = None
 _dst_suitemodel = None
-_opts = None
+_opts = Namespace() # for early startup, overridden in ArgParser__init__
 _extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
 _warn = False
 _deferred_warnings = []
-_hg = None
-
+_vc_systems = []
+_mvn = None
+_force_binary_suites = False
 
 """
 A dependency is a library, distribution or project specified in a suite.
@@ -236,13 +242,18 @@ class Distribution(Dependency):
         Add the transitive set of dependencies for this distribution to the 'deps' list.
         We "see through" the Distribution to its components. I.e., the result
         only contains Project and Library (if includeLibs=True) instances.
+        However, a Distribution from a binary suite will have deps = [], in which
+        case we add the Distribution itself.
         """
         dist_deps = self.get_dist_deps(includeSelf=includeSelf, transitive=True)
         for dist in dist_deps:
-            for d in dist.deps:
-                # d is a string naming either a Project or a Library
-                dep = dependency(d)
-                dep.all_deps(deps, includeLibs=includeLibs, includeSelf=True, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+            if dist.deps:
+                for d in dist.deps:
+                    # d is a string naming either a Project or a Library
+                    dep = dependency(d)
+                    dep.all_deps(deps, includeLibs=includeLibs, includeSelf=True, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+            else:
+                deps.append(dist)
         return sorted(deps)
 
     """
@@ -293,6 +304,7 @@ class Distribution(Dependency):
                 for dep in self.sorted_deps(includeLibs=True):
                     isCoveredByDependecy = False
                     for d in self.distDependencies:
+                        _, d = splitqualname(d)
                         if dep in _dists[d].sorted_deps(includeLibs=True, transitive=True):
                             logv("Excluding {0} from {1} because it's provided by the dependency {2}".format(dep.name, self.path, d))
                             isCoveredByDependecy = True
@@ -759,6 +771,13 @@ def sha1OfFile(path):
         return d.hexdigest()
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
+    '''
+    Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
+    checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
+    Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
+    in which case it copies the cache entry.
+    '''
+    sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
     def _download_lib():
         cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
@@ -767,7 +786,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         base = basename(path)
         cachePath = join(cacheDir, base + '_' + sha1)
 
-        if not exists(cachePath) or sha1OfFile(cachePath) != sha1:
+        if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
             print 'Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls)
@@ -798,22 +817,19 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         with open(sha1path, 'w') as f:
             f.write(sha1OfFile(path))
 
-    def _check():
-        return sha1 != "NOCHECK"
-
     if resolve and mustExist and not exists(path):
         assert not len(urls) == 0, 'cannot find required library ' + name + ' ' + path
         _download_lib()
 
     if exists(path):
-        if _check():
+        if sha1Check:
             if sha1 and not exists(sha1path):
                 _writeSha1Cached()
 
             if sha1 and sha1 != _sha1Cached():
                 _download_lib()
                 if sha1 != sha1OfFile(path):
-                    abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in projects file?")
+                    abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
                 _writeSha1Cached()
 
     return path
@@ -823,9 +839,8 @@ A BaseLibrary is an entity that is an object that has no structure understood by
 typically a jar file. It is used "as is".
 """
 class BaseLibrary(Dependency):
-    def __init__(self, suite, name, kind, optional):
+    def __init__(self, suite, name, optional):
         Dependency.__init__(self, suite, name)
-        self.kind = kind
         self.optional = optional
 
     def __ne__(self, other):
@@ -848,7 +863,7 @@ found in the Oracle JRE.
 """
 class JreLibrary(BaseLibrary):
     def __init__(self, suite, name, jar, optional):
-        BaseLibrary.__init__(self, suite, name, 'external', optional)
+        BaseLibrary.__init__(self, suite, name, optional)
         self.jar = jar
 
     def __eq__(self, other):
@@ -878,8 +893,8 @@ it is not built by the Suite.
 N.B. Not obvious but a Library can be an annotationProcessor
 """
 class Library(BaseLibrary):
-    def __init__(self, suite, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
-        BaseLibrary.__init__(self, suite, name, kind, optional)
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
+        BaseLibrary.__init__(self, suite, name, optional)
         self.path = path.replace('/', os.sep)
         self.urls = urls
         self.sha1 = sha1
@@ -967,15 +982,149 @@ class Library(BaseLibrary):
             deps.append(self)
         return sorted(deps)
 
-class HgConfig:
+'''
+Abstracts the operations of the version control systems
+Most operations take a vcdir as the dir in which to execute the operation
+Most operations abort on error unless abortOnError=False, and return True
+or False for success/failure. The command can be made visible by setting the
+'-v' global option to mx
+'''
+class VC:
+    def __init__(self, kind):
+        self.kind = kind;
+
+    @staticmethod
+    def get_vc(vcdir, abortOnError=True):
+        '''
+        Given that 'vcdir' is repository directory, attempt to determine
+        what kind of VC it is managed by. Return the VC instance or None if it
+        cannot be determined.
+        '''
+        for vcs in _vc_systems:
+            vcs.check()
+            tip = vcs.tip(vcdir, abortOnError=False)
+            if tip:
+                return vcs
+        if abortOnError:
+            abort('cannot determine VC for ' + vcdir)
+        else:
+            return None
+
+    def check(self, abortOnError=True):
+        '''
+        Lazily check whether a particular VC system is available.
+        Return None if fails and abortOnError=False
+        '''
+        abort("VC.check is not implemented")
+
+    def init(self, vcdir, abortOnError=True):
+        '''
+        Intialize 'vcdir' for vc control
+        '''
+        abort(self.vckind + " init is not implemented")
+        
+    def add(self, vcdir, path, abortOnError=True):
+        '''
+        Add path to repo
+        '''
+        abort(self.vckind + " add is not implemented")
+
+    def commit(self, vcdir, msg, abortOnError=True):
+        '''
+        commit with msg
+        '''
+        abort(self.vckind + " commit is not implemented")
+
+    def tip(self, vcdir, abortOnError=True):
+        '''
+        Return the most recent changeset for repo at vcdir.
+        Return None if fails and abortOnError=False
+        '''
+        abort(self.vckind + " tip is not implemented")
+
+    def clone(self, url, dest=None, rev=None, abortOnError=True):
+        '''
+        Clone the repo at url to 'dest' (None is vc specific) using 'rev' (None means tip)
+        Result is True/False for success/failure respectively.
+        '''
+        abort(self.vckind + " clone is not implemented")
+
+    def pull(self, vcdir, rev=None, update=True, abortOnError=True):
+        '''
+        Pull a given changeset (the head if 'rev='None'), optionally updating the working directory
+        '''
+        abort(self.vckind + " pull is not implemented")
+
+    def can_push(self, vcdir, strict=True):
+        '''
+        Return True if we can push 'vcdir'.  if 'strict=True' no uncommitted changes or unadded are allowed.
+        '''
+
+    def default_push(self, vcdir, abortOnError=True):
+        '''
+        Return the default push target for this repo.
+        '''
+        abort(self.vckind + " default_push is not implemented")
+        
+    def force_version(self, vcdir, rev, abortOnError=True):
+        '''
+        force 'vcdir' to 'rev' and updating the working directory 
+        '''
+        abort(self.vckind + ": force_version is not implemented")
+
+    def incoming(self, vcdir, abortOnError=True):
+        '''
+        list incoming changesets
+        '''
+        abort(self.vckind + ": outgoing is not implemented")
+
+    def outgoing(self, vcdir, dest=None, abortOnError=True):
+        '''
+        list outgoing changesets to 'dest' or default-push if None
+        '''
+        abort(self.vckind + ": outgoing is not implemented")
+
+    def push(self, vcdir, dest=None, rev=None, abortOnError=True):
+        '''
+        Push 'vcdir' at rev 'rev', to default if 'target'=None else 'target'
+        '''
+        abort(self.vckind + ": push is not implemented")
+
+    def update(self, vcdir, abortOnError=True):
+        '''
+        update 'vcdir' working directory
+        '''
+        abort(self.vckind + " update is not implemented")
+
+    def isDirty(self, vcdir, abortOnError=True):
+        '''
+        TBD, who uses this?
+        '''
+        abort(self.vckind + " isDirty is not implemented")
+
+    def locate(self, vcdir, patterns=None, abortOnError=True):
+        '''
+        TBD, who uses this?
+        '''
+        abort(self.vckind + " locate is not implemented")
+
+
+class OutputCapture:
+    def __init__(self):
+        self.data = ""
+    def __call__(self, data):
+        self.data += data
+         
+class HgConfig(VC):
     """
     Encapsulates access to Mercurial (hg)
     """
     def __init__(self):
+        VC.__init__(self, 'hg')
         self.missing = 'no hg executable found'
         self.has_hg = None
 
-    def check(self, abortOnFail=True):
+    def check(self, abortOnError=True):
         if self.has_hg is None:
             try:
                 subprocess.check_output(['hg'])
@@ -985,54 +1134,79 @@ class HgConfig:
                 warn(self.missing)
 
         if not self.has_hg:
-            if abortOnFail:
+            if abortOnError:
                 abort(self.missing)
             else:
                 warn(self.missing)
 
-    def tip(self, sDir, abortOnError=True):
+        return self if self.has_hg else None
+
+    def init(self, vcdir, abortOnError=True):
+        return run(['hg', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
+    def add(self, vcdir, path, abortOnError=True):
+        return run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
+        
+    def commit(self, vcdir, msg, abortOnError=True):
+        return run(['hg', '-R', vcdir, 'commit', '-m', msg]) == 0
+        
+    def tip(self, vcdir, abortOnError=True):
+        # We don't use run because this can be called very early before _opts is set
         try:
-            return subprocess.check_output(['hg', 'tip', '-R', sDir, '--template', '{node}'])
-        except OSError:
-            warn(self.missing)
-        except subprocess.CalledProcessError:
+            return subprocess.check_output(['hg', 'tip', '-R', vcdir, '--template', '{node}'])
+        except CalledProcessError:
             if abortOnError:
-                abort('failed to get tip revision id')
+                abort('hg tip failed')
             else:
                 return None
 
-    def isDirty(self, sDir, abortOnError=True):
-        try:
-            return len(subprocess.check_output(['hg', 'status', '-R', sDir])) > 0
-        except OSError:
-            warn(self.missing)
-        except subprocess.CalledProcessError:
-            if abortOnError:
-                abort('failed to get status')
-            else:
-                return None
+    def clone(self, url, dest=None, rev=None, abortOnError=True):
+        cmd = ['hg', 'clone']
+        if rev:
+            cmd.append('-r')
+            cmd.append(rev)
+        cmd.append(url)
+        if dest:
+            cmd.append(dest)
+        return run(cmd, nonZeroIsFatal=abortOnError) == 0
 
-    def locate(self, sDir, patterns=None, abortOnError=True):
-        try:
-            if patterns is None:
-                patterns = []
-            elif not isinstance(patterns, list):
-                patterns = [patterns]
-            return subprocess.check_output(['hg', 'locate', '-R', sDir] + patterns).split('\n')
-        except OSError:
-            warn(self.missing)
-        except subprocess.CalledProcessError as e:
-            if e.returncode == 1:
-                # hg locate returns 1 if no matches were found
-                return []
+    def incoming(self, vcdir, abortOnError=True):
+        out = OutputCapture()
+        rc = run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out);
+        if rc == 0 or rc == 1:
+            return out.data
+        else:
             if abortOnError:
-                abort('failed to locate')
-            else:
-                return None
+                abort('incoming returned ' + str(rc))
+            return None
 
-    def can_push(self, s, strict=True):
-        try:
-            output = subprocess.check_output(['hg', '-R', s.dir, 'status'])
+    def outgoing(self, vcdir, dest, abortOnError=True):
+        out = OutputCapture()
+        cmd = ['hg', '-R', vcdir, 'outgoing']
+        if dest:
+            cmd.append(dest)
+        rc = run(cmd, nonZeroIsFatal=False, out=out);
+        if rc == 0 or rc == 1:
+            return out.data
+        else:
+            if abortOnError:
+                abort('outgoing returned ' + str(rc))
+            return None
+
+    def pull(self, vcdir, rev=None, update=True, abortOnError=True):
+        cmd = ['hg', 'pull', '-R', vcdir]
+        if rev:
+            cmd.append('-r')
+            cmd.append(rev)
+        if update:
+            cmd.append('-u')
+        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+
+    def can_push(self, vcdir, strict=True, abortOnError=True):
+        out = OutputCapture()
+        rc = run(['hg', '-R', vcdir, 'status'], nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            output = out.data
             if strict:
                 return output == ''
             else:
@@ -1041,18 +1215,96 @@ class HgConfig:
                         if len(line) > 0 and not line.startswith('?'):
                             return False
                 return True
-        except OSError:
-            warn(self.missing)
-        except subprocess.CalledProcessError:
+        else:
             return False
 
-    def default_push(self, sdir):
-        with open(join(sdir, '.hg', 'hgrc')) as f:
-            for line in f:
-                line = line.rstrip()
-                if line.startswith('default = '):
-                    return line[len('default = '):]
+    def default_push(self, vcdir, abortOnError=True):
+        hgrc = join(vcdir, '.hg', 'hgrc')
+        if exists(hgrc):
+            with open(hgrc) as f:
+                for line in f:
+                    line = line.rstrip()
+                    if line.startswith('default = '):
+                        return line[len('default = '):]
+        if abortOnError:
+            abort('no default path in ' + join(vcdir, '.hg', 'hgrc'))
         return None
+
+    def force_version(self, vcdir, rev, abortOnError=True):
+        if run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
+            if run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
+                return run(['hg', '-R', vcdir, 'purge'], nonZeroIsFatal=abortOnError) == 0
+        return False
+
+    def push(self, vcdir, dest=None, rev=None, abortOnError=False):
+        cmd = ['hg', '-R', vcdir, 'push']
+        if rev:
+            cmd.append('-r')
+            cmd.append(rev)
+        if dest:
+            cmd.append(dest)
+        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+
+    def update(self, vcdir, abortOnError=False):
+        cmd = ['hg', '-R', vcdir, 'update']
+        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+
+    def locate(self, vcdir, patterns=None, abortOnError=True):
+        class LinesOutputCapture:
+            def __init__(self):
+                self.lines = []
+            def __call__(self, data):
+                self.lines.append(data.rstrip());
+                
+        if patterns is None:
+            patterns = []
+        elif not isinstance(patterns, list):
+            patterns = [patterns]
+        out = LinesOutputCapture()
+        rc = run(['hg', 'locate', '-R', vcdir] + patterns, out=out, nonZeroIsFatal=False)
+        if rc == 1:
+            # hg locate returns 1 if no matches were found
+            return []
+        elif rc == 0:
+            return out.lines
+        else:
+            if abortOnError:
+                abort('locate returned: ' + str(rc))
+            else:
+                return None
+
+    def isDirty(self, vcdir, abortOnError=True):
+        try:
+            return len(subprocess.check_output(['hg', 'status', '-R', vcdir])) > 0
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('failed to get status')
+            else:
+                return None
+
+
+class MavenConfig:
+    def __init__(self):
+        self.has_maven = None
+        self.missing = 'no mvn executable found'
+
+
+    def check(self, abortOnError=True):
+        if self.has_maven is None:
+            try:
+                subprocess.check_output(['mvn', '--version'])
+                self.has_maven = True
+            except OSError:
+                self.has_maven = False
+                warn(self.missing)
+
+        if not self.has_maven:
+            if abortOnError:
+                abort(self.missing)
+            else:
+                warn(self.missing)
+
+        return self if self.has_maven else None
 
 class SuiteModel:
     """
@@ -1095,8 +1347,8 @@ class SuiteModel:
                 return sd
 
     def _check_exists(self, suite_import, path, check_alternate=True):
-        if check_alternate and self.kind == "src" and suite_import.alternate is not None and not exists(path):
-            return suite_import.alternate
+        if check_alternate and self.kind == "src" and suite_import.urlinfos is not None and not exists(path):
+            return suite_import.urlinfos
         return path
 
     def _create_suitenamemap(self, optionspec, suitemap):
@@ -1129,64 +1381,6 @@ class SuiteModel:
         else:
             abort('unknown suitemodel type: ' + option)
 
-    @staticmethod
-    def parse_options():
-        # suite-specific args may match the known args so there is no way at this early stage
-        # to use ArgParser to handle the suite model global arguments, so we just do it manually.
-        def _get_argvalue(arg, args, i):
-            if i < len(args):
-                return args[i]
-            else:
-                abort('value expected with ' + arg)
-
-        args = sys.argv[1:]
-        if len(args) == 0:
-            _argParser.print_help()
-            sys.exit(0)
-
-        if len(args) == 1:
-            if args[0] == '--version':
-                print 'mx version ' + str(version)
-                sys.exit(0)
-            if args[0] == '--help' or args[0] == '-h':
-                _argParser.print_help()
-                sys.exit(0)
-
-        # set defaults
-        env_src_suitemodel = os.environ.get('MX_SRC_SUITEMODEL')
-        env_dst_suitemodel = os.environ.get('MX_DST_SUITEMODEL')
-        src_suitemodel_arg = 'sibling' if env_src_suitemodel is None else env_src_suitemodel
-        dst_suitemodel_arg = 'sibling' if env_dst_suitemodel is None else env_dst_suitemodel
-        suitemap_arg = None
-        env_primary_suite_path = os.environ.get('MX_PRIMARY_SUITE_PATH')
-        global _primary_suite_path
-
-        i = 0
-        while i < len(args):
-            arg = args[i]
-            if arg == '--src-suitemodel':
-                src_suitemodel_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '--dst-suitemodel':
-                dst_suitemodel_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '--suitemap':
-                suitemap_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '-w':
-                # to get warnings on suite loading issues before command line is parsed
-                global _warn
-                _warn = True
-            elif arg == '--primary-suite-path':
-                _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
-            i = i + 1
-
-        os.environ['MX_SRC_SUITEMODEL'] = src_suitemodel_arg
-        global _src_suitemodel
-        _src_suitemodel = SuiteModel.set_suitemodel("src", src_suitemodel_arg, suitemap_arg)
-        os.environ['MX_DST_SUITEMODEL'] = dst_suitemodel_arg
-        global _dst_suitemodel
-        _dst_suitemodel = SuiteModel.set_suitemodel("dst", dst_suitemodel_arg, suitemap_arg)
-        if _primary_suite_path is None:
-            if env_primary_suite_path is not None:
-                _primary_suite_path = env_primary_suite_path
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
@@ -1262,40 +1456,89 @@ class PathSuiteModel(SuiteModel):
             return None
 
     def importee_dir(self, importer_dir, suite_import):
-        # since this is completely explicit, we pay no attention to any suite_import.alternate
+        # since this is completely explicit, we pay no attention to any suite_import.urlinfos
         suitename = suite_import.name
         if suitename in self.suit_to_url:
             return self.suit_to_url[suitename]
         else:
             abort('suite ' + suitename + ' not found')
 
-class SuiteImport:
-    def __init__(self, name, vckind, version, urls, kind=None):
-        self.name = name
-        self.vckind = vckind
-        self.version = version
-        self.urls = [] if urls is None else urls
+'''
+Caputres the info in the {"url", "kind", "vckind"} dict,
+and adds a 'vc' field for whern the 'vckind' is resolved
+to an actual VC instance
+'''
+class SuiteImportURLInfo:
+    def __init__(self, url, kind, vc, vckind=None):
+        self.url = url
         self.kind = kind
+        self.vc = vc
+        self.vckind = vc.kind if vc else None
+        
+class SuiteImport:
+    def __init__(self, name, version, urlinfos, kind=None):
+        self.name = name
+        self.version = version
+        self.urlinfos = [] if urlinfos is None else urlinfos
 
     @staticmethod
     def parse_specification(import_dict):
         name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute')
-        vckind = import_dict.get('vckind', 'hg')
+        # missing defaults to the tip
         version = import_dict.get("version")
         urls = import_dict.get("urls")
-        kind = import_dict.get("kind")
-        if kind:
-            if not (kind == 'source' or kind == 'binary'):
-                abort('suite import kind ' + kind + ' illegal')
+        # urls a list of alternatives, can be str or dict
+        # a str is short for a dict with with kind=source and vckind=None
+        if not isinstance(urls, list):
+            abort('suite import urls must be a list')
+        urlinfos = []
+        for urlinfo in urls:
+            # backards compatibility
+            if isinstance(urlinfo, str):
+                urlinfo = {"url" : urlinfo, "vckind" : 'hg'}
+                print 'assuming {"vckind : "hg", "kind" : "source"}, please update to {"url", "vckind", "kind"} format'
+            if isinstance(urlinfo, dict) and urlinfo.get('url'):
+                kind = urlinfo.get('kind')
+                if not kind:
+                    urlinfo['kind'] = 'source'
+                    kind = 'source'
+                vckind = urlinfo.get('vckind')
+                if not (kind == 'source' or kind == 'binary'):
+                    abort('suite import kind ' + kind + ' illegal')
+                if kind == 'binary':
+                    if vckind is not None:
+                        abort('vckind is illegal for a binary suite import')
+                else:
+                    if vckind == None:
+                        abort('vckind mnust be defined for a source suite import')
+            else:
+                abort('suite import url must be a dict with {"url", "vckind", "kind" attributes')
+            vckind = urlinfo.get('vckind')
+            # this implicity checks the vc kind
+            vc = vc_system(vckind) if vckind else None
+            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
+        return SuiteImport(name, version, urlinfos, kind)
+
+    @staticmethod
+    def get_source_urls(source):
+        '''
+        Returns a list of SourceImportURLInfo instances
+        If source is a string (dir) determine kind, else search the list of
+        urlinfos and return the values for source repos
+        '''
+        if isinstance(source, str):
+            vc = VC.get_vc(source)
+            return [SuiteImportURLInfo(source, 'source', vc)]
+        elif isinstance(source, list):
+            result = filter(lambda p: p.kind == 'source', source)
+            return result
         else:
-            kind = 'source'
-        return SuiteImport(name, vckind, version, urls, kind)
+            abort('unexpected type in SuiteImport.get_source_urls')
 
 def _load_suite_dict(mxDir):
 
-    suffix = 1
     suite = None
     dictName = 'suite'
 
@@ -1317,7 +1560,7 @@ def _load_suite_dict(mxDir):
 
     moduleName = 'suite'
     modulePath = join(mxDir, moduleName + '.py')
-    while exists(modulePath):
+    if exists(modulePath):
 
         savedModule = sys.modules.get(moduleName)
         if savedModule:
@@ -1346,89 +1589,91 @@ def _load_suite_dict(mxDir):
 
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
-        d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions'] + (['distribution_extensions'] if suite else ['name', 'mxversion'])
-        unknown = frozenset(d.keys()) - frozenset(sections)
+        suite = expand(getattr(module, dictName), [dictName])
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions', 'name', 'mxversion']
+        unknown = frozenset(suite.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
-
-        if suite is None:
-            suite = d
-        else:
-            # This really has no place in mx2 as there should be exactly one suite.py file per suite.
-            # It's an mx1 hack for "pseudo" multiple-suites
-            for s in sections:
-                existing = suite.get(s)
-                additional = d.get(s)
-                if additional:
-                    if not existing:
-                        suite[s] = additional
-                    else:
-                        conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
-                        if conflicting:
-                            abort(modulePath + ' redefines: ' + ', '.join(conflicting))
-                        existing.update(additional)
-            distExtensions = d.get('distribution_extensions')
-            if distExtensions:
-                existing = suite['distributions']
-                for n, attrs in distExtensions.iteritems():
-                    original = existing.get(n)
-                    if not original:
-                        abort('cannot extend non-existing distribution ' + n)
-                    for k, v in attrs.iteritems():
-                        if k != 'dependencies':
-                            abort('Only the dependencies of distribution ' + n + ' can be extended')
-                        if not isinstance(v, types.ListType):
-                            abort('distribution_extensions.' + n + '.dependencies must be a list')
-                        original['dependencies'] += v
-
-        dictName = 'extra'
-        moduleName = 'suite' + str(suffix)
-        modulePath = join(mxDir, moduleName + '.py')
-
-        deprecatedModulePath = join(mxDir, 'projects' + str(suffix) + '.py')
-        if exists(deprecatedModulePath):
-            abort('Please rename ' + deprecatedModulePath + ' to ' + modulePath)
-
-        suffix = suffix + 1
 
     return suite, modulePath
 
 class AbstractSuite:
-    def __init__(self, name, primary):
-        self.name = name
+    def __init__(self, mxDir, primary):
+        self.mxDir = mxDir
+        self.dir = dirname(mxDir)
+        self.name = _suitename(mxDir)
         self.primary = primary
+        self.dists = []
+        self.post_init = False
+
+    def _check_suiteDict(self, key):
+        return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
+
+    def binarySuiteDir(self, name):
+        '''
+        Returns the mxDir for an imported BinarySuite, creating the parent if necessary
+        '''
+        dotMxDir = join(self.dir, '.mx')
+        if not exists(dotMxDir):
+            os.mkdir(dotMxDir)
+        return join(dotMxDir, name)
+
+    def _load_distributions(self, distsMap):
+        for name, attrs in sorted(distsMap.iteritems()):
+            context = 'distribution ' + name
+            subDir = attrs.pop('subDir', None)
+            path = attrs.pop('path')
+            sourcesPath = attrs.pop('sourcesPath', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
+            mainClass = attrs.pop('mainClass', None)
+            exclDeps = Suite._pop_list(attrs, 'exclude', context)
+            distDeps = Suite._pop_list(attrs, 'distDependencies', context)
+            javaCompliance = attrs.pop('javaCompliance', None)
+            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
+            d.__dict__.update(attrs)
+            self.dists.append(d)
+
+    @staticmethod
+    def _post_init_visitor(importing_suite, suite_import, **extra_args):
+        imported_suite = suite(suite_import.name)
+        if not imported_suite.post_init:
+            imported_suite.visit_imports(imported_suite._post_init_visitor)
+            imported_suite._post_init()
+
+    def _depth_first_post_init(self):
+        '''depth first _post_init driven by imports graph'''
+        self.visit_imports(self._post_init_visitor)
+        self._post_init()
 
 class Suite(AbstractSuite):
-    def __init__(self, mxDir, primary=False, vckind='hg', load=True):
-        AbstractSuite.__init__(self, _suitename(mxDir), primary)
-        self.dir = dirname(mxDir)
-        self.mxDir = mxDir
+    def __init__(self, mxDir, primary=False, load=True):
+        AbstractSuite.__init__(self, mxDir, primary)
+        self.vc = VC.get_vc(self.dir)
         self.projects = []
         self.libs = []
         self.jreLibs = []
-        self.dists = []
         self.suite_imports = []
         self.commands = None
         self.primary = primary
-        self.vckind = vckind
         self.requiredMxVersion = None
-        self.post_init = False
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
+        _suites[self.name] = self
         if load:
             # load suites bottom up to make sure command overriding works properly
             self.visit_imports(self._find_and_loadsuite)
             self._load_env()
             self._load_commands()
-        _suites[self.name] = self
 
     def __str__(self):
         return self.name
 
     def version(self, abortOnError=True):
+        '''
+        Return the current head changeset of this suite.
+        '''
         # we do not cache the version
-        return _hg.tip(self.dir, abortOnError)
+        return self.vc.tip(self.dir, abortOnError=abortOnError)
 
     @staticmethod
     def _pop_list(attrs, name, context):
@@ -1439,7 +1684,7 @@ class Suite(AbstractSuite):
             abort('Attribute "' + name + '" for ' + context + ' must be a list')
         return v
 
-    def _load_libraries(self, libsMap, kind='external'):
+    def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
             if "|" in name:
@@ -1448,13 +1693,7 @@ class Suite(AbstractSuite):
                 name, platform, architecture = name.split("|")
                 if platform != get_os() or architecture != get_arch():
                     continue
-            attrKind = attrs.pop('kind', None)
-            if attrKind:
-                kind = attrKind
-            if kind == 'external':
-                path = attrs.pop('path')
-            else:
-                path = attrs.pop('path', None)
+            path = attrs.pop('path')
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
             sourcePath = attrs.pop('sourcePath', None)
@@ -1463,12 +1702,9 @@ class Suite(AbstractSuite):
             deps = Suite._pop_list(attrs, 'dependencies', context)
             # Add support for optional external libraries if we have a good use case
             optional = False
-            l = Library(self, name, kind, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
             l.__dict__.update(attrs)
             self.libs.append(l)
-
-    def _check_suiteDict(self, key):
-        return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
 
     def _load_projects(self):
         suitePyFile = join(self.mxDir, 'suite.py')
@@ -1525,28 +1761,13 @@ class Suite(AbstractSuite):
         for name, attrs in sorted(importsMap.iteritems()):
             if name == 'suites':
                 pass
-            elif name == 'distributions':
-                self._load_libraries(attrs, 'distribution')
             elif name == 'libraries':
                 self._load_libraries(attrs)
             else:
                 abort('illegal import kind: ' + name)
 
         self._load_libraries(libsMap)
-
-        for name, attrs in sorted(distsMap.iteritems()):
-            context = 'distribution ' + name
-            subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path')
-            sourcesPath = attrs.pop('sourcesPath', None)
-            deps = Suite._pop_list(attrs, 'dependencies', context)
-            mainClass = attrs.pop('mainClass', None)
-            exclDeps = Suite._pop_list(attrs, 'exclude', context)
-            distDeps = Suite._pop_list(attrs, 'distDependencies', context)
-            javaCompliance = attrs.pop('javaCompliance', None)
-            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
-            d.__dict__.update(attrs)
-            self.dists.append(d)
+        self._load_distributions(distsMap)
 
         # Create a distribution for each project that defines annotation processors
         for p in self.projects:
@@ -1663,57 +1884,82 @@ class Suite(AbstractSuite):
 
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
-        """visitor for the initial suite load"""
+        """
+        Attempts to locate a suite using the information in suite_import.
+        Unless _force_binary_suites == True, always tries to resolve
+        an import as a source suite first. If that fails, looks for
+        an installed binary suite and, if that fails, uses the urlsinfo
+        in suite_import to try to locate the suite. In the latter case,
+        ignores urls not tagged as 'binary' if _force_binary_suites == True
+        """
+        # Loaded already? TODO Check for cycles
         for s in _suites.itervalues():
             if s.name == suite_import.name:
                 return s
-        importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+
+        importMxDir = None
+        if not _force_binary_suites:
+            # First we use the SuiteModel to locate a local source copy of the suite
+            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+
         if importMxDir is None:
-            fail = False
-            if len(suite_import.urls) > 0:
-                for suite_url in suite_import.urls:
-                    if suite_import.kind == 'binary':
-                        return BinarySuite(suite_import.name, suite_import.urls)
-                    else:
-                        _hg.check()
-                        cmd = ['hg', 'clone']
-                        if suite_import.version is not None:
-                            cmd.append('-r')
-                            cmd.append(suite_import.version)
-                        cmd.append(suite_url)
-                        cmd.append(_src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False))
-                        try:
-                            subprocess.check_output(cmd)
-                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                            if importMxDir is None:
-                                # wasn't a suite after all
-                                fail = True
-                        except subprocess.CalledProcessError:
-                            fail = True
+            # check for a local binary suite
+            dotDir = importing_suite.binarySuiteDir(suite_import.name)
+            if exists(dotDir):
+                importMxDir = join(dotDir, _mxdirName(suite_import.name))
+                return BinarySuite(importing_suite, importMxDir, None)
             else:
-                fail = True
-
-            if fail:
-                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
-                    return None
+                # No local copy, so use the URLs in order to "download" one
+                fail = False
+                if len(suite_import.urlinfos) > 0:
+                    # try the URLs in turn, with one or more vc systems
+                    for urlinfo in suite_import.urlinfos:
+                        # check binary
+                        if urlinfo.kind == 'binary':
+                            # if we encounter a binary suite we don't look further
+                            return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxdirName(suite_import.name)), suite_import)
+                        elif not _force_binary_suites:
+                            # source, try a vc clone
+                            importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                            cloned = False
+                            if not urlinfo.vc.check(abortOnError=False):
+                                continue
+                            if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
+                                cloned = True;
+                            else:
+                                # it is possible that the clone partially populated the target
+                                # which will mess an up an alternate, so we clean it
+                                if exists(importDir):
+                                    shutil.rmtree(importDir)
+                            if cloned:
+                                importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                                if importMxDir is None:
+                                    # wasn't a suite after all, this is an error
+                                    fail = True
+                                # we are done searching either way
+                                break
                 else:
-                    abort('import ' + suite_import.name + ' not found')
-        return Suite(importMxDir, vckind=suite_import.vckind)
-        # we do not check at this stage whether the tip version of imported_suite
-        # matches that of the import, since during development, this can and will change
+                    fail = True
 
-    def import_suite(self, name, vckind='hg', version=None, urls=None, kind='source'):
+                if fail:
+                    # check for optional dynamic suite load, which is not a failure
+                    if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
+                        return None
+                    else:
+                        abort('import ' + suite_import.name + ' not found')
+
+        return Suite(importMxDir)
+
+    def import_suite(self, name, version=None, urlinfos=None, kind=None):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
-        suite_import = SuiteImport(name, vckind, version, urls, kind)
+        suite_import = SuiteImport(name, version, urlinfos, kind)
         imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
         if imported_suite:
-            # if alternate is set, force the import to version in case it already existed
-            if len(urls) > 0:
+            # if urlinfos is set, force the import to version in case it already existed
+            if suite_import.urlinfos:
                 # TODO try all?
-                if version:
-                    run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version, '-u', urls[0]])
-                else:
-                    run(['hg', '-R', imported_suite.dir, 'pull', '-u', urls[0]])
+                urlinfo = SuiteImport.parse_specification(urlinfos[0])
+                vc_system(imported_suite.vckind).pull(imported_suite.dir, urlinfo.url, rev=version, update=True)
             if not imported_suite.post_init:
                 imported_suite._post_init()
         return imported_suite
@@ -1774,16 +2020,14 @@ class Suite(AbstractSuite):
         self.post_init = True
 
     @staticmethod
-    def _post_init_visitor(importing_suite, suite_import, **extra_args):
-        imported_suite = suite(suite_import.name)
-        if not imported_suite.post_init:
-            imported_suite.visit_imports(imported_suite._post_init_visitor)
-            imported_suite._post_init()
-
-    def _depth_first_post_init(self):
-        '''depth first _post_init driven by imports graph'''
-        self.visit_imports(self._post_init_visitor)
-        self._post_init()
+    def _validate_binary_suites():
+        '''
+        This has to be lazy as we can't run Java (download) until we have initialized
+        and parsed the command line.
+        '''
+        for s in _suites.itervalues():
+            if isinstance(s, BinarySuite):
+                s._validate_binary_suite()
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
@@ -1805,16 +2049,96 @@ class Suite(AbstractSuite):
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
 
+'''
+A pre-built suite downloaded from a repository. Since the "output" of a build
+is a set of Distributions, this is the main metadata that is stored.
+On first download we create a directory hidden in the directory of the importing suite
+to store the mx metadata and the links to the downloaded distributions.
+This avoids any clash with a source suite and also allows a suite that only
+imports binary suites to be completely self contained in one directory
+
+A BinarySuite is stored in a Maven repository and there is
+a dependency on the URL format in this code.
+'''
 class BinarySuite(AbstractSuite):
-    def __init__(self, name, urls):
-        AbstractSuite.__init__(self, name, False)
-        self.urls = urls
-        self.post_init = True
+    def __init__(self, importing_suite, mxDir, suite_import):
+        AbstractSuite.__init__(self, mxDir, False)
+        self.importing_suite = importing_suite
+        if suite_import:
+            # used in _validate_binary_suite
+            self.suite_import = suite_import
+        else:
+            # already downloaded, just reload the metadata
+            self.suite_import = None
+            self.suiteDict, _ = _load_suite_dict(self.mxDir)
+            self._load_distributions(self._check_suiteDict('distributions'))
+
         _suites[self.name] = self
+
+    # This is not done in the constructor owing to problems
+    # running Java during the initial startup
+    def _validate_binary_suite(self):
+        '''
+        We map from the info in suite_import to a complete URL that we should be able to locate.
+        Every suite name 'name' must provide a jar called name-mx.jar where we
+        can find the mx metadata and other info about the distributions
+        '''
+        if not self.suite_import:
+            return
+        for urlinfo in self.suite_import.urlinfos:
+            if urlinfo['kind'] == 'binary':
+                mxname = self.suite_import.name + '-mx';
+                base_url = join(urlinfo['url'], 'com', 'oracle') # + suite name?
+                sversion = self.suite_import.version
+                version_fix = urlinfo.get('version-fix')
+                if version_fix:
+                    sversion = version_fix.replace('{0}', sversion)
+                mxjar_url = join(base_url, mxname, sversion, mxname + '-' + sversion + '.jar')
+                jartemp = tempfile.mkstemp()
+                if download(jartemp[1], [mxjar_url], abortOnError=False):
+                    self.dir = self.importing_suite.binarySuiteDir(self.name)
+                    os.mkdir(self.dir)
+                    # unjar it get info
+                    cmd = ['jar', 'xf', jartemp[1]]
+                    try:
+                        subprocess.check_output(cmd, cwd=self.dir, stderr=subprocess.STDOUT)
+                        # we (only?) care about the distributions metadata
+                        self.suiteDict, _ = _load_suite_dict(self.mxDir)
+                        self._load_distributions(self._check_suiteDict('distributions'))
+
+                        with open(join(self.mxDir, 'distinfo')) as f:
+                            distinfos = f.readlines()
+                        for distinfo in distinfos:
+                            pair = distinfo.rstrip().split(',')
+                            distname = pair[0]
+                            sha1 = pair[1]
+                            dist = None
+                            for d in self.dists:
+                                if d.name == distname:
+                                    dist = d
+                                    break
+                            if not dist:
+                                abort('binary suite inconsistency: dist ' + distname + ' not defined in suite.py')
+                            maven_dist_name = _map_to_maven_dist_name(distname)
+                            urls = [join(base_url, maven_dist_name, sversion, maven_dist_name + '-' + sversion + '.jar')]
+                            download_file_with_sha1(distname, dist.path, urls, sha1, dist.path + '.sha1', resolve=True, mustExist=True)
+                        return
+                    except CalledProcessError as e:
+                        abort('jar error: ' + e.output)
+
+        abort('binary suite ' + self.suite_import.name + ' cannot be downloaded')
 
     def visit_imports(self, visitor, **extra_args):
         pass
 
+    def _post_init(self):
+        for d in self.dists:
+            d.deps = [] # no project dependencies allowed!
+            _dists[d.name] = d
+
+        if hasattr(self, 'mx_post_parse_cmd_line'):
+            self.mx_post_parse_cmd_line(_opts)
+        self.post_init = True
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -2182,6 +2506,16 @@ def get_arch():
             pass
     abort('unknown or unsupported architecture: os=' + get_os() + ', machine=' + machine)
 
+def vc_system(kind, abortOnError=True):
+    for vc in _vc_systems:
+        if vc.kind == kind:
+            vc.check()
+            return vc
+    if abortOnError:
+        abort('no VC system named ' + kind)
+    else:
+        return None
+
 def suites(opt_limit_to_suite=False):
     """
     Get the list of all loaded suites.
@@ -2200,6 +2534,7 @@ def createsuite(args):
     parser = ArgumentParser(prog='mx createsuite')
     parser.add_argument('--name', help='suite name', required=True)
     parser.add_argument('--py', action='store_true', help='create (empty) extensions file')
+    parser.add_argument('--vc', help='vc kind', metavar='<arg>', default='hg')
     args = parser.parse_args(args)
 
     suite_name = args.name
@@ -2213,17 +2548,19 @@ def createsuite(args):
     def update_file(template_file, target_file):
         with open(join(dirname(__file__), 'templates', template_file)) as f:
             content = f.read()
-        with open(join(mxDirPath, target_file), 'w') as f:
+        with open(target_file, 'w') as f:
             f.write(content.replace('MXPROJECT', mx_dot_suite_name))
 
-    with open(join(mxDirPath, 'projects'), 'w') as f:
-        f.write('suite=' + suite_name + '\n')
-        f.write('mxversion=' + str(version) + '\n')
+    vcs = vc_system(args.vc)
+    vcs.init(suite_name)
+    if vcs.kind == 'hg':
+        hgignore = join(suite_name, '.hgignore')
+        update_file('hg-ignore', hgignore)
+        vcs.add(suite_name, hgignore)
 
-    update_file('hg-ignore', '.hgignore')
-
-    _hg.check()
-    run(['hg', 'init'], cwd=suite_name)
+    cs = Suite(mxDirPath)
+    cs.requiredMxVersion = version
+    update_suitepy.update_suite_file(cs, False)
 
     if args.py:
         with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
@@ -2233,8 +2570,11 @@ def createsuite(args):
             f.write('    }\n')
             f.write('    mx.update_commands(suite, commands)\n')
 
-        update_file('eclipse-pyproject', '.project')
-        update_file('eclipse-pydevproject', '.pydevproject')
+        update_file('eclipse-pyproject', join(mxDirPath, '.project'))
+        update_file('eclipse-pydevproject', join(mxDirPath, '.pydevproject'))
+        
+    vcs.add(cs.dir, join(suite_name, mx_dot_suite_name))
+    vcs.commit(cs.dir, 'Initial suite creation')
 
 def suite(name, fatalIfMissing=True):
     """
@@ -2297,11 +2637,19 @@ def annotation_processors():
         _annotationProcessors = list(aps)
     return _annotationProcessors
 
+def splitqualname(name):
+    pname = name.partition(":")
+    if pname[0] != name:
+        return pname[0], pname[2]
+    else:
+        return None, name
+
 def distribution(name, fatalIfMissing=True):
     """
     Get the distribution for a given name. This will abort if the named distribution does
     not exist and 'fatalIfMissing' is true.
     """
+    _, name = splitqualname(name)
     d = _dists.get(name)
     if d is None and fatalIfMissing:
         abort('distribution named ' + name + ' not found')
@@ -2312,23 +2660,22 @@ def dependency(name, fatalIfMissing=True):
     Get the project, library or dependency for a given name. This will abort if the dependency
     not exist for 'name' and 'fatalIfMissing' is true.
     """
-    pname = name.partition(":")
-    if pname[0] != name:
+    suite_name, name = splitqualname(name)
+    if suite_name:
         # reference to a distribution from a suite
-        dep_suite = suite(pname[0])
+        dep_suite = suite(suite_name)
         if dep_suite:
-            name = pname[2]
             d = _dists.get(name)
             if d is not None:
                 if d.suite != dep_suite:
-                    abort('suite ' + dep_suite.name + ' does not export distribution ' + name)
+                    abort('suite ' + suite_name + ' does not export distribution ' + name)
                 else:
                     return d
             else:
                 # this is arguably a hack, we fall back to a library
                 d = _libs.get(name)
                 if d is None and fatalIfMissing:
-                    abort('cannot resolve ' + name + ' as either a component of ' + pname[0] + ' or as a library')
+                    abort('cannot resolve ' + name + ' as either a component of ' + suite_name + ' or as a library')
                 return d
     d = _projects.get(name)
     if d is None:
@@ -2483,6 +2830,8 @@ def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, inclu
     deps = []
     for p in projects:
         p.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+    # Distributions can occur as deps when using binary suites, need to filter them out
+    deps[:] = [el for el in deps if not isinstance(el, Distribution)]
     return deps
 
 class ArgParser(ArgumentParser):
@@ -2565,6 +2914,75 @@ class ArgParser(ArgumentParser):
 
     def _handle_conflict_resolve(self, action, conflicting_actions):
         self._handle_conflict_error(action, conflicting_actions)
+        
+    @staticmethod
+    def parse_startup_options():
+        # suite-specific args may match the known args so there is no way at this early stage
+        # to use ArgParser to handle the suite model global arguments, so we just do it manually.
+        
+        # minimal options to allow run to be used
+        global _opts        
+        _opts.verbose = None
+        _opts.ptimeout = 0
+        _opts.timeout = 0
+
+        def _get_argvalue(arg, args, i):
+            if i < len(args):
+                return args[i]
+            else:
+                abort('value expected with ' + arg)
+
+        args = sys.argv[1:]
+        if len(args) == 0:
+            _argParser.print_help()
+            sys.exit(0)
+
+        if len(args) == 1:
+            if args[0] == '--version':
+                print 'mx version ' + str(version)
+                sys.exit(0)
+            if args[0] == '--help' or args[0] == '-h':
+                _argParser.print_help()
+                sys.exit(0)
+
+        # set defaults
+        env_src_suitemodel = os.environ.get('MX_SRC_SUITEMODEL')
+        env_dst_suitemodel = os.environ.get('MX_DST_SUITEMODEL')
+        src_suitemodel_arg = 'sibling' if env_src_suitemodel is None else env_src_suitemodel
+        dst_suitemodel_arg = 'sibling' if env_dst_suitemodel is None else env_dst_suitemodel
+        suitemap_arg = None
+        env_primary_suite_path = os.environ.get('MX_PRIMARY_SUITE_PATH')
+        global _primary_suite_path
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg == '--src-suitemodel':
+                src_suitemodel_arg = _get_argvalue(arg, args, i + 1)
+            elif arg == '--dst-suitemodel':
+                dst_suitemodel_arg = _get_argvalue(arg, args, i + 1)
+            elif arg == '--suitemap':
+                suitemap_arg = _get_argvalue(arg, args, i + 1)
+            elif arg == '-w':
+                # to get warnings on suite loading issues before command line is parsed
+                global _warn
+                _warn = True
+            elif arg == '--primary-suite-path':
+                _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
+            elif args == '-v':
+                _opts.verbose = True
+            i = i + 1
+
+        os.environ['MX_SRC_SUITEMODEL'] = src_suitemodel_arg
+        global _src_suitemodel
+        _src_suitemodel = SuiteModel.set_suitemodel("src", src_suitemodel_arg, suitemap_arg)
+        os.environ['MX_DST_SUITEMODEL'] = dst_suitemodel_arg
+        global _dst_suitemodel
+        _dst_suitemodel = SuiteModel.set_suitemodel("dst", dst_suitemodel_arg, suitemap_arg)
+        if _primary_suite_path is None:
+            if env_primary_suite_path is not None:
+                _primary_suite_path = env_primary_suite_path
+        
 
 def _format_commands():
     msg = '\navailable commands:\n\n'
@@ -2635,7 +3053,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     candidateJdks = []
     source = ''
-    if _opts.java_home:
+    if _opts and _opts.java_home:
         candidateJdks.append(_opts.java_home)
         source = '--java-home'
     elif os.environ.get('JAVA_HOME'):
@@ -2941,6 +3359,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         subprocessCommandFile = fp.name
         for arg in args:
             # TODO: handle newlines in args once there's a use case
+            if '\n' in arg:
+                pass
             assert '\n' not in arg
             print >> fp, arg
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
@@ -3400,11 +3820,11 @@ def abort(codeOrMessage):
         traceback.print_stack()
     raise SystemExit(codeOrMessage)
 
-def download(path, urls, verbose=False):
+def download(path, urls, verbose=False, abortOnError=True):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
-    If the content cannot be retrieved from any URL, the program is aborted. The downloaded content
-    is written to the file indicated by 'path'.
+    If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
+    The downloaded content is written to the file indicated by 'path'.
     """
     d = dirname(path)
     if d != '' and not exists(d):
@@ -3419,10 +3839,13 @@ def download(path, urls, verbose=False):
     command.append(_cygpathU2W(path))
     command += urls
     if run(command, nonZeroIsFatal=False) == 0:
-        return
+        return True
 
-    abort('Could not download to ' + path + ' from any of the following URLs:\n\n    ' +
+    if abortOnError:
+        abort('Could not download to ' + path + ' from any of the following URLs:\n\n    ' +
               '\n    '.join(urls) + '\n\nPlease use a web browser to do the download manually')
+    else:
+        return False
 
 def update_file(path, content, showDiff=False):
     """
@@ -3847,7 +4270,7 @@ def build(args, parser=None):
 
         files = []
         for dist in sorted_dists():
-            if dist.suite in suites:
+            if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
                 if dist not in updatedAnnotationProcessorDists:
                     archive(['@' + dist.name])
             if args.check_distributions and not dist.isProcessorDistribution:
@@ -4178,20 +4601,21 @@ def pylint(args):
                     dirs.remove('lib')
         return result
 
-    def findfiles_by_hg():
+    def findfiles_by_vc():
         result = []
         for suite in suites(True):
-            versioned = subprocess.check_output(['hg', 'locate', '-f'], stderr=subprocess.STDOUT, cwd=suite.dir).split(os.linesep)
-            for f in versioned:
-                if f.endswith('.py') and exists(f):
-                    result.append(f)
+            vcs = vc_system(suite.dir)
+            pyfiles = vcs.locate(suite.dir, ['-f', '*.py']).split(os.linesep)
+            for pyfile in pyfiles:
+                if exists(pyfile):
+                    result.append(pyfile)
         return result
 
     # Perhaps we should just look in suite.mxDir directories for .py files?
     if args.walk:
         pyfiles = findfiles_by_walk()
     else:
-        pyfiles = findfiles_by_hg()
+        pyfiles = findfiles_by_vc()
 
     env = os.environ.copy()
 
@@ -4513,6 +4937,13 @@ def clean(args, parser=None):
                 _rmIfExists(distribution(d).path)
                 _rmIfExists(distribution(d).sourcesPath)
 
+    if args.dist:
+        # remove distributions from imported BinarySuites
+        for s in suites():
+            dotMxDir = join(s.dir, '.mx')
+            if exists(dotMxDir):
+                log('Removing {0}...'.format(dotMxDir))
+                _rmtree(dotMxDir)
 
     if suppliedParser:
         return args
@@ -6236,14 +6667,11 @@ def sclone(args):
     _sclone(source, dest, None, args.no_imports)
 
 def _sclone(source, dest, suite_import, no_imports):
-    cmd = ['hg', 'clone']
-    if suite_import is not None and suite_import.version is not None:
-        cmd.append('-r')
-        cmd.append(suite_import.version)
-    cmd.append(source)
-    cmd.append(dest)
-
-    run(cmd)
+    rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
+    url_vcs = SuiteImport.get_source_urls(source)
+    for url_vc in url_vcs:
+        if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
+            break
 
     mxDir = _is_suite_dir(dest)
     if mxDir is None:
@@ -6294,17 +6722,16 @@ def scloneimports(args):
     # check for non keyword args
     if args.source is None:
         args.source = _kwArg(args.nonKWArgs)
+    if not args.source:
+        abort('url/path of repo containing suite missing')
 
     if not os.path.isdir(args.source):
         abort(args.source + ' is not a directory')
 
-    _hg.check()
+    vcs = VC.get_vc(args.source)
     s = _scloneimports_suitehelper(args.source)
 
-    default_path = _hg.default_push(args.source)
-
-    if default_path is None:
-        abort('no default path in ' + join(args.source, '.hg', 'hgrc'))
+    default_path = vcs.default_push(args.source)
 
     # We can now set the primary dir for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
@@ -6325,8 +6752,9 @@ def _spush_check_import_visitor(s, suite_import, **extra_args):
         abort('imported version of ' + suite_import.name + ' in suite ' + s.name + ' does not match tip')
 
 def _spush(s, suite_import, dest, checks, clonemissing):
+    vcs = s.vc
     if checks['on']:
-        if not _hg.can_push(s, checks['strict']):
+        if not vcs.can_push(s.dir, checks['strict'], abortOnError=False):
             abort('working directory ' + s.dir + ' contains uncommitted changes, push aborted')
 
     # check imports first
@@ -6342,27 +6770,16 @@ def _spush(s, suite_import, dest, checks, clonemissing):
         if not os.path.exists(dest):
             dest_exists = False
 
-    def add_version(cmd, suite_import):
+    def get_version():
         if suite_import is not None and suite_import.version is not None:
-            cmd.append('-r')
-            cmd.append(suite_import.version)
+            return suite_import.version
+        else:
+            return None
 
     if dest_exists:
-        cmd = ['hg', '-R', s.dir, 'push']
-        add_version(cmd, suite_import)
-        if dest is not None:
-            cmd.append(dest)
-        rc = run(cmd, nonZeroIsFatal=False)
-        if rc != 0:
-            # rc of 1 not an error,  means no changes
-            if rc != 1:
-                abort("push failed, exit code " + str(rc))
+        vcs.push(s.dir, rev=get_version(), dest=dest)
     else:
-        cmd = ['hg', 'clone']
-        add_version(cmd, suite_import)
-        cmd.append(s.dir)
-        cmd.append(dest)
-        run(cmd)
+        vcs.clone(s.dir, rev=get_version(), dest=dest)
 
 def spush(args):
     """push primary suite and all its imports"""
@@ -6378,7 +6795,6 @@ def spush(args):
     if len(args.nonKWArgs) > 0:
         abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
 
-    _hg.check()
     s = _check_primary_suite()
 
     if args.clonemissing:
@@ -6399,15 +6815,13 @@ def _supdate_import_visitor(s, suite_import, **extra_args):
 
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
-
-    run(['hg', '-R', s.dir, 'update'])
+    vc_system(s.vckind).update(s.dir)
 
 def supdate(args):
     """update primary suite and all its imports"""
 
     parser = ArgumentParser(prog='mx supdate')
     args = parser.parse_args(args)
-    _hg.check()
     s = _check_primary_suite()
 
     _supdate(s, None)
@@ -6433,7 +6847,6 @@ def scheckimports(args):
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('--update-versions', action='store_true', help='update imported version ids')
     args = parser.parse_args(args)
-    _hg.check()
     _check_primary_suite().visit_imports(_scheck_imports_visitor, update_versions=args.update_versions)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
@@ -6453,14 +6866,13 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
     if suite_import.version:
         currentTip = imported_suite.version()
         if currentTip != suite_import.version:
-            run(['hg', '-R', imported_suite.dir, 'pull', '-r', suite_import.version])
-            run(['hg', '-R', imported_suite.dir, 'update', '-C', '-r', suite_import.version])
-            run(['hg', '-R', imported_suite.dir, 'purge'])
+            imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
             # now (may) need to force imports of this suite if the above changed its import revs
             imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
     else:
-        # simple case, pull the tip
-        run(['hg', '-R', imported_suite.dir, 'pull', '-u'])
+        # simple case, pull the head
+        vc_system(imported_suite.vckind).pull(imported_suite.dir)
+        imported_suite.vc.pull(imported_suite.dir)
 
 def sforceimports(args):
     '''force working directory revision of imported suites to match primary suite imports'''
@@ -6475,16 +6887,15 @@ def _spull_import_visitor(s, suite_import, update_versions):
     _spull(s, suite(suite_import.name), suite_import, update_versions)
 
 def _spull(importing_suite, imported_suite, suite_import, update_versions):
-    # imported_suite/suite_import are None if importing_suite is primary suite
+    # suite_import is None if importing_suite is primary suite
     # proceed top down to get any updated version ids first
 
+    vcs = imported_suite.vc
     # by default we pull to the revision id in the import
-    cmd = ['hg', '-R', imported_suite.dir, 'pull', '-u']
-    if not update_versions and suite_import and suite_import.version:
-        cmd += ['-r', suite_import.version]
-    run(cmd, nonZeroIsFatal=False)
+    rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
+    vcs.pull(imported_suite.dir, rev)
     if update_versions and suite_import:
-        imported_tip = _hg.tip(imported_suite.dir)
+        imported_tip = vcs.tip(imported_suite.dir)
         if imported_tip != suite_import.version:
             suite_import.version = imported_tip
             # temp until we do it automatically
@@ -6498,7 +6909,6 @@ def spull(args):
     parser.add_argument('--update-versions', action='store_true', help='update version ids of imported suites')
     args = parser.parse_args(args)
 
-    _hg.check()
     _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
@@ -6507,16 +6917,46 @@ def _sincoming_import_visitor(s, suite_import, **extra_args):
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
 
-    run(['hg', '-R', s.dir, 'incoming'], nonZeroIsFatal=False)
+    output = s.vc.incoming(s.dir)
+    if output:
+        print output
 
 def sincoming(args):
-    '''check incoming for primary suite and all imports'''
+    '''check outgoing for primary suite and all imports'''
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
-    _hg.check()
     s = _check_primary_suite()
 
     _sincoming(s, None)
+
+def _soutgoing_import_visitor(s, suite_import, dest, **extra_args):
+    if dest is not None:
+        dest = _dst_suitemodel.importee_dir(dest, suite_import)
+    _soutgoing(suite(suite_import.name), suite_import, dest)
+
+def _soutgoing(s, suite_import, dest):
+    s.visit_imports(_soutgoing_import_visitor, dest=dest)
+
+    output = s.vc.outgoing(s.dir, dest)
+    if output:
+        print output
+
+def soutgoing(args):
+    '''check outgoing for primary suite and all imports'''
+    parser = ArgumentParser(prog='mx soutgoing')
+    parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
+    parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
+    args = parser.parse_args(args)
+    if args.dest is None:
+        args.dest = _kwArg(args.nonKWArgs)
+    if len(args.nonKWArgs) > 0:
+        abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
+    s = _check_primary_suite()
+
+    if args.dest is not None:
+        _dst_suitemodel.set_primary_dir(args.dest)
+
+    _soutgoing(s, None, args.dest)
 
 def _stip_import_visitor(s, suite_import, **extra_args):
     _stip(suite(suite_import.name), suite_import)
@@ -6524,14 +6964,12 @@ def _stip_import_visitor(s, suite_import, **extra_args):
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
-    print 'tip of %s' % s.name
-    run(['hg', '-R', s.dir, 'tip'], nonZeroIsFatal=False)
+    print 'tip of ' + s.name + ': ' + s.vc.tip(s.dir)
 
 def stip(args):
     '''check tip for primary suite and all imports'''
     parser = ArgumentParser(prog='mx stip')
     args = parser.parse_args(args)
-    _hg.check()
     s = _check_primary_suite()
 
     _stip(s, None)
@@ -6734,7 +7172,7 @@ def show_suites(args):
                 log('    ' + e.name)
 
     for s in suites():
-        log(join(s.mxDir, 'suite*.py'))
+        log(s.name)
         _show_section('libraries', s.libs)
         _show_section('jrelibraries', s.jreLibs)
         _show_section('projects', s.projects)
@@ -6872,6 +7310,69 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     else:
         return 0
 
+def mvn_local_install(name, path, version):
+    run(['mvn', 'install:install-file', '-DgroupId=com.oracle', '-DartifactId=' + name, '-Dversion=' +
+            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
+
+def _map_to_maven_dist_name(name):
+    return name.lower().replace('_', '-')
+
+def _map_from_maven_dist_name(name):
+    return name.upper().replace('-', '_')
+
+def maven_install(args):
+    '''
+    Install the primary suite in a maven repository,
+    '''
+    parser = ArgumentParser(prog='mx maven-install')
+    parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
+    parser.add_argument('--local', action='store_true', help='install in local repository')
+    args = parser.parse_args(args)
+
+    _mvn.check()
+    _hg.check()
+    s = _primary_suite;
+    if args.no_checks or _hg.can_push(s, strict=False):
+        version = _hg.tip(s.dir)
+        usname = s.name.upper()
+        arcdists = []
+        sha1s = []
+        for dist in s.dists:
+            if dist.name.startswith(usname):
+                dist.make_archive()
+                sha1 = sha1OfFile(dist.path)
+                arcdists.append(dist)
+                sha1s.append(sha1)
+
+        mxMetaName = s.name + '-mx'
+        mxMetaJar = join(s.dir, mxMetaName + '.jar')
+        with Archiver(mxMetaJar) as arc:
+            # TODO It would be cleaner for subsequent loading if we actually wrote a
+            # transformed suite.py file that only contained distribution info
+            for pyfile in glob.glob(join(s.mxDir, '*.py')):
+                mxDirBase = basename(s.mxDir)
+                arc.zf.write(pyfile, arcname = join(mxDirBase, basename(pyfile)))
+            fd, tempname = tempfile.mkstemp(text=True)
+            with os.fdopen(fd, 'w') as f:
+                for dist, sha1 in zip(arcdists, sha1s):
+                    f.write(dist.name)
+                    f.write(',')
+                    f.write(sha1)
+                    f.write('\n')
+            arc.zf.write(tempname, arcname=join(mxDirBase, 'distinfo'))
+
+        if args.local:
+            mvn_local_install(_map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
+            for dist in arcdists:
+                mvn_local_install(_map_to_maven_dist_name(dist.name), dist.path, version)
+        else:
+            print 'jars to deploy manually for version: ' + version
+            print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
+            for dist in arcdists:
+                print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
+    else:
+        abort('suite ' + s.name + ' has uncommitted changes')
+
 def remove_doubledash(args):
     if '--' in args:
         args.remove('--')
@@ -6950,12 +7451,14 @@ _commands = {
     'ideinit': [ideinit, ''],
     'intellijinit': [intellijinit, ''],
     'archive': [_archive, '[options]'],
+    'maven-install' : [maven_install, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
     'scloneimports': [scloneimports, '[options]'],
     'sforceimports': [sforceimports, ''],
     'sincoming': [sincoming, ''],
+    'soutgoing': [soutgoing, '[options]'],
     'spull': [spull, '[options]'],
     'spush': [spush, '[options]'],
     'stip': [stip, ''],
@@ -6974,7 +7477,14 @@ _commands = {
 
 _argParser = ArgParser()
 
+def _mxdirName(name):
+    return 'mx.' + name
+
 def _suitename(mxDir):
+    '''
+    Given that mxDir might denote a directory for the mx suite metadata,
+    check that and return the suite name.
+    '''
     base = os.path.basename(mxDir)
     parts = base.split('.')
     # temporary workaround until mx.graal exists
@@ -6988,7 +7498,7 @@ def _suitename(mxDir):
         return parts[1]
 
 def _is_mxdir_candidate(d, f, suiteName):
-    ff = 'mx.' + suiteName
+    ff = _mxdirName(suiteName)
     mxdir = join(d, ff)
 #    print 'trying: ' + mxdir
     if exists(mxdir) and isdir(mxdir):
@@ -7124,11 +7634,17 @@ def _remove_bad_deps():
                 dist.deps.remove(name)
 
 def main():
-    SuiteModel.parse_options()
+    global _force_binary_suites
+    _force_binary_suites = False if os.environ.get('MX_FORCE_BINARY_SUITES') is None else True
+    ArgParser.parse_startup_options()
     os.environ['MX_HOME'] = _mx_home
 
-    global _hg
+    global _vc_systems
+    global _hg # TEMP
     _hg = HgConfig()
+    _vc_systems = [_hg]
+    global _mvn
+    _mvn = MavenConfig()
 
     primary_suite_error = 'no primary suite found'
     primarySuiteMxDir = _findPrimarySuiteMxDir()
@@ -7162,12 +7678,13 @@ def main():
         os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
     if primarySuiteMxDir:
+        Suite._validate_binary_suites()
         _primary_suite._depth_first_post_init()
 
     if opts.extra_suites:
         extra_suites = opts.extra_suites.split(",")
         for extra_suite in extra_suites:
-            _primary_suite.import_suite(extra_suite, urls=[])
+            _primary_suite.import_suite(extra_suite)
 
     _remove_bad_deps()
 
@@ -7211,7 +7728,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.5.0")
+version = VersionSpec("3.6.0")
 
 currentUmask = None
 
