@@ -1342,7 +1342,7 @@ class SuiteModel:
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
-            sd = _is_suite_dir(join(searchDir, dd), name)
+            sd = _is_suite_dir(join(searchDir, dd), _mxDirName(name))
             if sd is not None:
                 return sd
 
@@ -1903,7 +1903,7 @@ class Suite(AbstractSuite):
             # check for a local binary suite
             dotDir = importing_suite.binarySuiteDir(suite_import.name)
             if exists(dotDir):
-                importMxDir = join(dotDir, _mxdirName(suite_import.name))
+                importMxDir = join(dotDir, _mxDirName(suite_import.name))
                 return BinarySuite(importing_suite, importMxDir, None)
             else:
                 # No local copy, so use the URLs in order to "download" one
@@ -1914,7 +1914,7 @@ class Suite(AbstractSuite):
                         # check binary
                         if urlinfo.kind == 'binary':
                             # if we encounter a binary suite we don't look further
-                            return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxdirName(suite_import.name)), suite_import)
+                            return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), suite_import)
                         elif not _force_binary_suites:
                             # source, try a vc clone
                             importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
@@ -5113,7 +5113,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None):
     launchFile = join(eclipseLaunches, name + '.launch')
     return update_file(launchFile, launch), launchFile
 
-def make_eclipse_launch(javaArgs, jre, name=None, deps=None):
+def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     """
     Creates an Eclipse launch configuration file for running/debugging a Java command.
     """
@@ -5175,7 +5175,7 @@ def make_eclipse_launch(javaArgs, jre, name=None, deps=None):
     launch.close('launchConfiguration')
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
-    eclipseLaunches = join('mx', 'eclipse-launches')
+    eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
     if not exists(eclipseLaunches):
         os.makedirs(eclipseLaunches)
     return update_file(join(eclipseLaunches, name + '.launch'), launch)
@@ -7480,58 +7480,25 @@ _commands = {
 
 _argParser = ArgParser()
 
-def _mxdirName(name):
+def _mxDirName(name):
     return 'mx.' + name
 
 def _suitename(mxDir):
-    '''
-    Given that mxDir might denote a directory for the mx suite metadata,
-    check that and return the suite name.
-    '''
     base = os.path.basename(mxDir)
     parts = base.split('.')
-    # temporary workaround until mx.graal exists
-    if len(parts) == 1:
-        for f in os.listdir(mxDir):
-            if fnmatch.fnmatch(f, 'mx_*.py'):
-                name = f.split('_')[1].split('.')[0]
-                return name
-        abort('no suite file marker in ' + mxDir)
-    else:
-        return parts[1]
+    assert len(parts) == 2
+    assert parts[0] == 'mx'
+    return parts[1]
 
-def _is_mxdir_candidate(d, f, suiteName):
-    ff = _mxdirName(suiteName)
-    mxdir = join(d, ff)
-#    print 'trying: ' + mxdir
-    if exists(mxdir) and isdir(mxdir):
-        return mxdir
-    else:
-        ff = 'mx'
-        mxdir = join(d, ff)
-#        print 'trying: ' + mxdir
-        if exists(mxdir) and exists(join(mxdir, 'mx_' + suiteName + '.py')):
-            return mxdir
-    return None
-
-def _is_suite_dir(d, suiteName=None):
+def _is_suite_dir(d, mxDirName=None):
     """
-    Checks if d contains a suite that matches suiteName.
-    If suiteName is None, matches any suite name, otherwise checks for exactly that suite.
-    The match is flexible:
-      1. A directory MX named 'mx.suiteName' exists AND a file 'MX/suite.py', OR
-      2. A directory named 'mx' exists and a file named 'mx/mx_suiteName.py' AND a file 'MX/suite.py
+    Checks if d contains a suite.
+    If mxDirName is None, matches any suite name, otherwise checks for exactly 'mx.mxDirName'.
     """
     if os.path.isdir(d):
-        for f in os.listdir(d):
-            mxDir = None
-            if suiteName == None:
-                if f == 'mx' or fnmatch.fnmatch(f, 'mx.*'):
-                    mxDir = join(d, f)
-            else:
-                mxDir = _is_mxdir_candidate(d, f, suiteName)
-
-            if mxDir is not None and exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
+        for f in [mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.')]:
+            mxDir = join(d, f)
+            if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
                 return mxDir
 
 def _check_primary_suite():
