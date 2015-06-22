@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-770fdbe70bb3facdc910de121e755dc2bbf8f7ed
+62fa6ad33667514873c0df712697c4f3c9cf6e04
 """
 import sys
 if __name__ == '__main__':
@@ -4128,7 +4128,7 @@ def build(args, parser=None):
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
-    compilerSelect.add_argument('--jdt', help='path to ecj.jar, the Eclipse batch compiler', default=_defaultEcjPath(), metavar='<path>')
+    compilerSelect.add_argument('--jdt', help='path to ecj.jar, the stand alone Eclipse batch compiler', default=_defaultEcjPath(), metavar='<path>')
     compilerSelect.add_argument('--force-javac', action='store_true', dest='javac', help='use javac whether ecj.jar is found or not')
 
     if suppliedParser:
@@ -4152,6 +4152,12 @@ def build(args, parser=None):
                 jdtJar = None
             else:
                 abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
+        else:
+            with zipfile.ZipFile(jdtJar, 'r') as zf:
+                if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
+                    abort('Specified Eclipse compiler does not include annotation processing support. ' +
+                          'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
+                          'from within the plugins/ directory of an Eclipse IDE installation.')
 
     if args.only is not None:
         # N.B. This build will not include dependencies including annotation processor dependencies
