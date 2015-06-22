@@ -7471,9 +7471,10 @@ def update_commands(suite, new_commands):
                 _commands[':' + key] = old
             else:
                 # Previously specified command from another suite
-                # is not overridden. Instead, the new command
-                # has a name qualified by the suite name.
-                key = suite.name + ':' + key
+                # is made available using a qualified name.
+                # The last (primary) suite (depth-first init) always defines the generic command
+                qkey = oldSuite.name + ':' + key
+                _commands[qkey] = old
         _commands[key] = value
         _commandsToSuite[key] = suite
 
