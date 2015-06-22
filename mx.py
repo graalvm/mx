@@ -7622,8 +7622,8 @@ def _findPrimarySuiteMxDir():
     mxDir = _findPrimarySuiteMxDirFrom(os.getcwd())
     if mxDir is not None:
         return mxDir
-    # backwards compatibility: search from path of this file
-    return _findPrimarySuiteMxDirFrom(dirname(__file__))
+    # backwards compatibility: search from parent of this file
+    return _findPrimarySuiteMxDirFrom(dirname(dirname(__file__)))
 
 def _remove_bad_deps():
     '''Remove projects and libraries that (recursively) depend on an optional library
