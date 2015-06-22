@@ -51,13 +51,15 @@ import hashlib
 import shutil, re, xml.dom.minidom
 import pipes
 import difflib
-import mx_unittest
 import glob
 from collections import Callable
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
-import update_suitepy
+import mx_update_suitepy
+
+import mx_unittest
+
 
 # This works because when mx loads this file, it makes sure __file__ gets an absolute path
 _mx_home = dirname(__file__)
@@ -2609,7 +2611,7 @@ def createsuite(args):
 
     cs = Suite(mxDirPath)
     cs.requiredMxVersion = version
-    update_suitepy.update_suite_file(cs, False)
+    mx_update_suitepy.update_suite_file(cs, False)
 
     if args.py:
         with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
