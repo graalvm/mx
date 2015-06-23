@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-a694f0c9864fdc4b021d35c492d48dd34170b82a
+acd43093257dcc180a875fdbe564c37e46e6adbf
 """
 import sys
 if __name__ == '__main__':
@@ -4030,6 +4030,8 @@ class JavaCompileTask:
                     javac = args.alt_javac if args.alt_javac else mainJava.javac
                     self.logCompilation('javac' if not args.alt_javac else args.alt_javac)
                     javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    if _opts.very_verbose:
+                        javacCmd.append('-verbose')
                     jdk.javacLibOptions(javacCmd)
                     if _opts.java_dbg_port is not None:
                         javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
@@ -4043,6 +4045,8 @@ class JavaCompileTask:
                     self.logCompilation('javac (with error-prone)')
                     javaArgs = ['-Xmx1500m']
                     javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
+                    if _opts.very_verbose:
+                        javacArgs.append('-verbose')
                     jdk.javacLibOptions(javacCmd)
                     javacArgs += processorArgs
                     javacArgs += ['@' + argfile.name]
@@ -4057,6 +4061,8 @@ class JavaCompileTask:
                 jdtArgs = ['-' + compliance,
                          '-cp', cp, '-g', '-enableJavadoc',
                          '-d', outputDir]
+                if _opts.very_verbose:
+                    jdtArgs.append('-verbose')
                 jdk.javacLibOptions(jdtArgs)
                 jdtArgs += processorArgs
 
