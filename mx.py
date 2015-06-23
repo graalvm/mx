@@ -333,6 +333,7 @@ class Distribution(Dependency):
                 for dep in self.sorted_deps(includeLibs=True):
                     isCoveredByDependecy = False
                     for d in self.distDependencies:
+                        _, d = splitqualname(d)
                         if dep in _dists[d].sorted_deps(includeLibs=True, transitive=True):
                             logv("Excluding {0} from {1} because it's provided by the dependency {2}".format(dep.name, self.path, d))
                             isCoveredByDependecy = True
@@ -1522,16 +1523,17 @@ class PathSuiteModel(SuiteModel):
             abort('suite ' + suitename + ' not found')
 
 '''
-Caputres the info in the {"url", "kind", "vckind"} dict,
-and adds a 'vc' field for whern the 'vckind' is resolved
+Captures the info in the {"url", "kind", "vckind"} dict,
+and adds a 'vc' field for when the 'vckind' is resolved
 to an actual VC instance
 '''
 class SuiteImportURLInfo:
-    def __init__(self, url, kind, vc, vckind=None):
+    def __init__(self, url, kind, vc, vckind=None, version_adjust=None):
         self.url = url
         self.kind = kind
         self.vc = vc
         self.vckind = vc.kind if vc else None
+        self.version_adjust = version_adjust
         
 class SuiteImport:
     def __init__(self, name, version, urlinfos, kind=None):
@@ -1559,6 +1561,7 @@ class SuiteImport:
                 print 'assuming {"vckind : "hg", "kind" : "source"}, please update to {"url", "vckind", "kind"} format'
             if isinstance(urlinfo, dict) and urlinfo.get('url'):
                 kind = urlinfo.get('kind')
+                version_adjust = None
                 if not kind:
                     urlinfo['kind'] = 'source'
                     kind = 'source'
@@ -1568,15 +1571,17 @@ class SuiteImport:
                 if kind == 'binary':
                     if vckind is not None:
                         abort('vckind is illegal for a binary suite import')
+                    version_adjust = urlinfo.get('version-adjust')
+                        
                 else:
                     if vckind == None:
-                        abort('vckind mnust be defined for a source suite import')
+                        abort('vckind must be defined for a source suite import')
             else:
-                abort('suite import url must be a dict with {"url", "vckind", "kind" attributes')
+                abort('suite import url must be a dict with {"url", "vckind", "kind", "version-adjust" attributes')
             vckind = urlinfo.get('vckind')
             # this implicity checks the vc kind
             vc = vc_system(vckind) if vckind else None
-            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
+            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, version_adjust))
         return SuiteImport(name, version, urlinfos, kind)
 
     @staticmethod
@@ -1656,11 +1661,12 @@ def _load_suite_dict(mxDir):
     return suite, modulePath
 
 class AbstractSuite:
-    def __init__(self, mxDir, primary):
+    def __init__(self, mxDir, primary, internal):
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
         self.name = _suitename(mxDir)
         self.primary = primary
+        self.internal = internal
         self.dists = []
         self.post_init = False
 
@@ -1705,7 +1711,7 @@ class AbstractSuite:
 
 class Suite(AbstractSuite):
     def __init__(self, mxDir, primary=False, load=True, internal=False):
-        AbstractSuite.__init__(self, mxDir, primary)
+        AbstractSuite.__init__(self, mxDir, primary, internal)
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
         self.libs = []
@@ -1716,7 +1722,6 @@ class Suite(AbstractSuite):
         self.requiredMxVersion = None
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
-        self.internal = internal
         _suites[self.name] = self
         if load:
             # load suites bottom up to make sure command overriding works properly
@@ -2118,7 +2123,7 @@ a dependency on the URL format in this code.
 '''
 class BinarySuite(AbstractSuite):
     def __init__(self, importing_suite, mxDir, suite_import):
-        AbstractSuite.__init__(self, mxDir, False)
+        AbstractSuite.__init__(self, mxDir, False, False)
         self.importing_suite = importing_suite
         if suite_import:
             # used in _validate_binary_suite
@@ -2142,13 +2147,12 @@ class BinarySuite(AbstractSuite):
         if not self.suite_import:
             return
         for urlinfo in self.suite_import.urlinfos:
-            if urlinfo['kind'] == 'binary':
+            if urlinfo.kind == 'binary':
                 mxname = self.suite_import.name + '-mx';
-                base_url = join(urlinfo['url'], 'com', 'oracle') # + suite name?
+                base_url = join(urlinfo.url, 'com', 'oracle') # + suite name?
                 sversion = self.suite_import.version
-                version_fix = urlinfo.get('version-fix')
-                if version_fix:
-                    sversion = version_fix.replace('{0}', sversion)
+                if urlinfo.version_adjust:
+                    sversion = urlinfo.version_adjust.replace('{version}', sversion)
                 mxjar_url = join(base_url, mxname, sversion, mxname + '-' + sversion + '.jar')
                 jartemp = tempfile.mkstemp()
                 if download(jartemp[1], [mxjar_url], abortOnError=False):
@@ -4793,10 +4797,6 @@ def canonicalizeprojects(args):
 
     nonCanonical = []
     for s in suites(True):
-        projectsPyFile = join(s.mxDir, 'projects')
-        if not exists(projectsPyFile):
-            continue
-
         for p in s.projects:
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
@@ -4842,6 +4842,7 @@ def canonicalizeprojects(args):
             else:
                 log('Canonical dependencies for project ' + p.name + ' are: []')
     return len(nonCanonical)
+
 
 class TimeStampFile:
     def __init__(self, path):
@@ -7405,10 +7406,9 @@ def maven_install(args):
     args = parser.parse_args(args)
 
     _mvn.check()
-    _hg.check()
     s = _primary_suite;
-    if args.no_checks or _hg.can_push(s, strict=False):
-        version = _hg.tip(s.dir)
+    if args.no_checks or s.vc.can_push(s.dir, strict=False):
+        version = s.vc.tip(s.dir)
         usname = s.name.upper()
         arcdists = []
         sha1s = []
