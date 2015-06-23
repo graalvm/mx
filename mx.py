@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-5b3e245aca2bc54d17c6d49e7849c424c8d9d940
+beaf3f31a802c049f06eac867646970c6634a909
 """
 import sys
 if __name__ == '__main__':
@@ -3769,10 +3769,10 @@ class JavaConfig:
             args = []
         if self._bootclasspath:
             args.append('-bootclasspath')
-            args.append(self._bootclasspath)
+            args.append(_separatedCygpathU2W(self._bootclasspath))
         if self._extdirs:
             args.append('-extdirs')
-            args.append(self._extdirs)
+            args.append(_separatedCygpathU2W(self._extdirs))
         return args
 
     """
@@ -3782,7 +3782,7 @@ class JavaConfig:
         args = self.javadocLibOptions(args)
         if self._endorseddirs:
             args.append('-endorseddirs')
-            args.append(self._endorseddirs)
+            args.append(_separatedCygpathU2W(self._endorseddirs))
         return args
 
     def containsJar(self, jar):
