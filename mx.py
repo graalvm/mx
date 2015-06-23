@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-62fa6ad33667514873c0df712697c4f3c9cf6e04
+a694f0c9864fdc4b021d35c492d48dd34170b82a
 """
 import sys
 if __name__ == '__main__':
@@ -734,6 +734,7 @@ class Project(Dependency):
     """
     Gets the class path composed of the jars containing the
     annotation processors that will be applied when compiling this project.
+    TODO This code is very complex and repetitive and should be simplified
     """
     def annotation_processors_path(self):
         aps = [dependency(ap) for ap in self.annotation_processors()]
@@ -752,7 +753,8 @@ class Project(Dependency):
                         elif ddep.definedAnnotationProcessorsDist:
                             apPaths.append(ddep.definedAnnotationProcessorsDist.path)
                 elif ap.isLibrary():
-                    libAps = libAps.union([ap])
+                    for dep in ap.all_deps([], includeLibs=True):
+                        dep.append_to_classpath(apPaths, True)
                 elif ap.definedAnnotationProcessorsDist:
                     apPaths.append(ap.definedAnnotationProcessorsDist.path)
             return os.pathsep.join(apPaths + [lib.get_path(False) for lib in libAps])
