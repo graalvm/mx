@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-acd43093257dcc180a875fdbe564c37e46e6adbf
+5b3e245aca2bc54d17c6d49e7849c424c8d9d940
 """
 import sys
 if __name__ == '__main__':
@@ -4243,7 +4243,7 @@ def build(args, parser=None):
                         classfile = TimeStampFile(outputDir + javafile[len(sourceDir):-len('java')] + 'class')
                         if not classfile.exists() or classfile.isOlderThan(javafile):
                             if basename(classfile.path) != 'package-info.class':
-                                buildReason = 'class file(s) out of date'
+                                buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
                                 break
 
         apsOutOfDate = p.update_current_annotation_processors_file()
