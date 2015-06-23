@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-beaf3f31a802c049f06eac867646970c6634a909
+0f969fd3a7d3ae74671e44f7e31af054073423a0
 """
 import sys
 if __name__ == '__main__':
@@ -4366,34 +4366,36 @@ def build(args, parser=None):
                 log('Compiling {0} failed'.format(t.proj.name))
             abort('{0} Java compilation tasks failed'.format(len(failed)))
 
-    if len(tasks) != 0:
-        if args.java:
-            # do not process a distribution unless it corresponds to one of sortedProjects
-            # limit it even further if an explicit list of projects given as arg
-            if projectNames:
-                distProjects = projects_from_names(projectNames)
-            else:
-                distProjects = sortedProjects
-            suites = {p.suite for p in distProjects}
-    
-            files = []
-            rebuiltProjects = frozenset([t.proj for t in tasks.itervalues()])
-            for dist in sorted_dists():
-                if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
-                    if dist not in updatedAnnotationProcessorDists:
-                        projectsInDist = dist.sorted_deps()
-                        n = len(rebuiltProjects.intersection(projectsInDist))
-                        if n != 0:
-                            log('Updating jars for {0} [{1} constituent projects (re)built]'.format(dist.name, n))
-                            dist.make_archive()
-                        else:
-                            logv('[all constituent projects for {0} are up to date - skipping jar updating]'.format(dist.name))
-                if args.check_distributions and not dist.isProcessorDistribution:
-                    with zipfile.ZipFile(dist.path, 'r') as zf:
-                        files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
-            dups = set([x for x in files if files.count(x) > 1])
-            if len(dups) > 0:
-                abort('Distributions overlap! duplicates: ' + str(dups))    
+    if args.java:
+        # do not process a distribution unless it corresponds to one of sortedProjects
+        # limit it even further if an explicit list of projects given as arg
+        if projectNames:
+            distProjects = projects_from_names(projectNames)
+        else:
+            distProjects = sortedProjects
+        suites = {p.suite for p in distProjects}
+
+        files = []
+        rebuiltProjects = frozenset([t.proj for t in tasks.itervalues()])
+        for dist in sorted_dists():
+            if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
+                if not exists(dist.path):
+                    log('Creating jar for {0}'.format(dist.name))
+                    dist.make_archive()
+                elif dist not in updatedAnnotationProcessorDists:
+                    projectsInDist = dist.sorted_deps()
+                    n = len(rebuiltProjects.intersection(projectsInDist))
+                    if n != 0:
+                        log('Updating jars for {0} [{1} constituent projects (re)built]'.format(dist.name, n))
+                        dist.make_archive()
+                    else:
+                        logv('[all constituent projects for {0} are up to date - skipping jar updating]'.format(dist.name))
+            if args.check_distributions and not dist.isProcessorDistribution:
+                with zipfile.ZipFile(dist.path, 'r') as zf:
+                    files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
+        dups = set([x for x in files if files.count(x) > 1])
+        if len(dups) > 0:
+            abort('Distributions overlap! duplicates: ' + str(dups))    
 
     if suppliedParser:
         return args
