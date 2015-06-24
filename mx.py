@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-5c50f2f6e91390733976ae6e35c33c155e8d7e75
+c30b055ed79a4a7c918d3dba0373afb3d0b4d3c4
 """
 import sys
 if __name__ == '__main__':
@@ -275,7 +275,7 @@ class Distribution(Dependency):
         dependencies on projects in other suites directly. Now they express
         a dependency on a Distribution instead (i.e. projects are private to a suite;
         not currently enforced).
-        
+
         A Distribution from a binary suite will have deps = [], in which
         case we add the Distribution itself.
         """
@@ -1089,10 +1089,10 @@ class VC:
         '''
         abort(self.vckind + " init is not implemented")
 
-    def metadir(self):       
+    def metadir(self):
         '''
         Return name of metadata directory
-        ''' 
+        '''
         abort(self.vckind + " metadir is not implemented")
 
     def add(self, vcdir, path, abortOnError=True):
@@ -1137,10 +1137,10 @@ class VC:
         Return the default push target for this repo.
         '''
         abort(self.vckind + " default_push is not implemented")
-        
+
     def force_version(self, vcdir, rev, abortOnError=True):
         '''
-        force 'vcdir' to 'rev' and updating the working directory 
+        force 'vcdir' to 'rev' and updating the working directory
         '''
         abort(self.vckind + ": force_version is not implemented")
 
@@ -1186,7 +1186,7 @@ class OutputCapture:
         self.data = ""
     def __call__(self, data):
         self.data += data
-         
+
 class HgConfig(VC):
     """
     Encapsulates access to Mercurial (hg)
@@ -1218,10 +1218,10 @@ class HgConfig(VC):
 
     def add(self, vcdir, path, abortOnError=True):
         return run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
-        
+
     def commit(self, vcdir, msg, abortOnError=True):
         return run(['hg', '-R', vcdir, 'commit', '-m', msg]) == 0
-        
+
     def tip(self, vcdir, abortOnError=True):
         # We don't use run because this can be called very early before _opts is set
         try:
@@ -1233,7 +1233,7 @@ class HgConfig(VC):
                 return None
 
     def metadir(self):
-        return '.hg'  
+        return '.hg'
 
     def clone(self, url, dest=None, rev=None, abortOnError=True):
         cmd = ['hg', 'clone']
@@ -1330,7 +1330,7 @@ class HgConfig(VC):
                 self.lines = []
             def __call__(self, data):
                 self.lines.append(data.rstrip());
-                
+
         if patterns is None:
             patterns = []
         elif not isinstance(patterns, list):
@@ -1553,7 +1553,7 @@ class SuiteImportURLInfo:
         ''' Maps vc kinds to 'source'
         '''
         return self.kind if self.kind == 'binary' else 'source'
-        
+
 class SuiteImport:
     def __init__(self, name, version, urlinfos, kind=None):
         self.name = name
@@ -1580,7 +1580,7 @@ class SuiteImport:
                 if not (kind == 'binary' or VC.is_valid_kind(kind)):
                     abort('suite import kind ' + kind + ' illegal')
                 if kind == 'binary':
-                    version_adjust = urlinfo.get('version-adjust')                  
+                    version_adjust = urlinfo.get('version-adjust')
             else:
                 abort('suite import url must be a dict with {"url", kind", ["version-adjust]" attributes')
             # this implicity checks the vc kind
@@ -1685,7 +1685,7 @@ class AbstractSuite:
 
     def source_imports_dir(self):
         return self.imports_dir('source')
-        
+
     def binarySuiteDir(self, name):
         '''
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
@@ -1727,7 +1727,7 @@ class AbstractSuite:
         returns the absolute path of the mx distribution jar.
         '''
         return join(self.dir, 'dists', self.name + '-mx' + '.jar')
-        
+
     def create_mx_distribution(self):
         '''
         Creates a jar file named name-mx.jar that contains
@@ -1751,7 +1751,7 @@ class AbstractSuite:
         if (exists(path)):
             log('Removing distribution {0}...'.format(path))
             os.remove(path)
-    
+
 
 class Suite(AbstractSuite):
     def __init__(self, mxDir, primary=False, load=True, internal=False):
@@ -1991,16 +1991,16 @@ class Suite(AbstractSuite):
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """
         Attempts to locate a suite using the information in suite_import and _binary_suites
-        
+
         If _binary_suites is None, (the usual case in development), tries to resolve
         an import as a local source suite first, using the SuiteModel in effect.
         If that fails uses the urlsinfo in suite_import to try to locate the suite in
         a source repository and download it. 'binary' urls are ignored.
-        
+
         If _binary_suites == [a,b,...], then the listed suites are searched for
         using binary urls and no attempt is made to search source urls.
 
-        If _binary_suites == [], source urls are completely ignored.  
+        If _binary_suites == [], source urls are completely ignored.
         """
         # Loaded already? TODO Check for cycles
         for s in _suites.itervalues():
@@ -2014,7 +2014,7 @@ class Suite(AbstractSuite):
             dotDir = importing_suite.binarySuiteDir(suite_import.name)
             if exists(dotDir):
                 importMxDir = join(dotDir, _mxDirName(suite_import.name))
-                return BinarySuite(importing_suite, importMxDir, None)            
+                return BinarySuite(importing_suite, importMxDir, None)
         else:
             # use the SuiteModel to locate a local source copy of the suite
             importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
@@ -2092,11 +2092,11 @@ class Suite(AbstractSuite):
 
     def _load_env(self):
         Suite._load_env_in_mxDir(self.mxDir)
-    
+
     @staticmethod
     def load_primary_suite_env(mxDir):
         Suite._load_env_in_mxDir(mxDir)
-        
+
     def _post_init(self):
         self._load_projects()
         if self.requiredMxVersion is None:
@@ -2201,14 +2201,14 @@ class BinarySuite(AbstractSuite):
             def __init__(self, files):
                 HTMLParser.__init__(self)
                 self.files = files
-               
+
             def handle_starttag(self, tag, attrs):
                 if tag == 'a':
                     for attr in attrs:
                         if attr[0] == 'href':
                             name = attr[1]
                             self.files.append(name)
-        
+
         files = []
         file_dir = None
         file_url_prefix = 'file://'
@@ -2222,7 +2222,7 @@ class BinarySuite(AbstractSuite):
             parser = DirHTMLParser(files)
             parser.feed(text)
             urlf.close()
-            
+
         jar_files = filter(lambda f : f.endswith('.jar'), files)
         sha_files = filter(lambda f : f.endswith('.jar.sha1'), files)
         sha_values = []
@@ -2721,7 +2721,7 @@ def createsuite(args):
 
         update_file('eclipse-pyproject', join(mxDirPath, '.project'))
         update_file('eclipse-pydevproject', join(mxDirPath, '.pydevproject'))
-        
+
     vcs.add(cs.dir, join(suite_name, mx_dot_suite_name))
     vcs.commit(cs.dir, 'Initial suite creation')
 
@@ -3090,14 +3090,14 @@ class ArgParser(ArgumentParser):
 
     def _handle_conflict_resolve(self, action, conflicting_actions):
         self._handle_conflict_error(action, conflicting_actions)
-        
+
     @staticmethod
     def parse_startup_options():
         # suite-specific args may match the known args so there is no way at this early stage
         # to use ArgParser to handle the suite model global arguments, so we just do it manually.
-        
+
         # minimal options to allow run to be used
-        global _opts        
+        global _opts
         _opts.verbose = None
         _opts.ptimeout = 0
         _opts.timeout = 0
@@ -3159,7 +3159,7 @@ class ArgParser(ArgumentParser):
         if _primary_suite_path is None:
             if env_primary_suite_path is not None:
                 _primary_suite_path = env_primary_suite_path
-        
+
 
 def _format_commands():
     msg = '\navailable commands:\n\n'
@@ -4477,7 +4477,7 @@ def build(args, parser=None):
                     files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
         dups = set([x for x in files if files.count(x) > 1])
         if len(dups) > 0:
-            abort('Distributions overlap! duplicates: ' + str(dups))    
+            abort('Distributions overlap! duplicates: ' + str(dups))
 
     if suppliedParser:
         return args
@@ -5666,7 +5666,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         out.open('buildSpec')
         dist.dir = projectDir
         dist.javaCompliance = max([p.javaCompliance for p in distProjects])
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', 'archive @' + dist.name, relevantResources=relevantResources, logToFile=False, refresh=False, async=False, logToConsole=True)
+        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=False, appendToLogFile=False)
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
