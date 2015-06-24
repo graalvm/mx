@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-4dd0835c0fb049ce10370a1e055ae97d15172179
+5c50f2f6e91390733976ae6e35c33c155e8d7e75
 """
 import sys
 if __name__ == '__main__':
@@ -5674,7 +5674,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         out.open('buildSpec')
         dist.dir = projectDir
         dist.javaCompliance = max([p.javaCompliance for p in distProjects])
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', 'archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=True)
+        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', 'archive @' + dist.name, relevantResources=relevantResources, logToFile=False, refresh=False, async=False, logToConsole=True)
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
