@@ -1674,9 +1674,13 @@ class AbstractSuite:
         self.internal = internal
         self.dists = []
         self.post_init = False
+        _suites[self.name] = self
 
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
+
+    def version(self, abortOnError=True):
+        abort('version not implemented')
 
     def imports_dir(self, kind):
         return join(join(self.dir, 'mx.imports'), kind)
@@ -1790,7 +1794,7 @@ class AbstractSuite:
             dotDir = importing_suite.binarySuiteDir(suite_import.name)
             if exists(dotDir):
                 importMxDir = join(dotDir, _mxDirName(suite_import.name))
-                return BinarySuite(importMxDir, importing_suite, None)
+                return BinarySuite(importMxDir, importing_suite, None, suite_import.version)
         else:
             # use the SuiteModel to locate a local source copy of the suite
             importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
@@ -1801,7 +1805,8 @@ class AbstractSuite:
             for urlinfo in suite_import.urlinfos:
                 if urlinfo.abs_kind() == searchMode:
                     if urlinfo.kind == 'binary':
-                        return BinarySuite(join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), importing_suite, suite_import)
+                        binMxDir = join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name))
+                        return BinarySuite(binMxDir, importing_suite, suite_import, suite_import.version)
                     else:
                         # source, try a vc clone
                         importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
@@ -1847,7 +1852,6 @@ class Suite(AbstractSuite):
         self.requiredMxVersion = None
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
-        _suites[self.name] = self
         if load:
             # load suites depth first
             self.loading_imports = True
@@ -2190,8 +2194,9 @@ A BinarySuite is stored in a Maven repository and there is
 a dependency on the URL format in this code.
 '''
 class BinarySuite(AbstractSuite):
-    def __init__(self, mxDir, importing_suite, suite_import):
+    def __init__(self, mxDir, importing_suite, suite_import, version):
         AbstractSuite.__init__(self, mxDir, False, False, importing_suite)
+        self.versionid = version # fixed
         if suite_import:
             # used in _validate_binary_suite
             self.suite_import = suite_import
@@ -2201,9 +2206,8 @@ class BinarySuite(AbstractSuite):
             self.suiteDict, _ = _load_suite_dict(self.mxDir)
             self._load_distributions(self._check_suiteDict('distributions'))
 
-        _suites[self.name] = self
-
-
+    def version(self, abortOnError=True):
+        return self.versionid
 
     def _scrape_repodir(self, url):
         '''
