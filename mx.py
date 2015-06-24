@@ -1665,7 +1665,8 @@ def _load_suite_dict(mxDir):
     return suite, modulePath
 
 class AbstractSuite:
-    def __init__(self, mxDir, primary, internal):
+    def __init__(self, mxDir, primary, internal, importing_suite):
+        self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
         self.name = _suitename(mxDir)
@@ -1752,10 +1753,90 @@ class AbstractSuite:
             log('Removing distribution {0}...'.format(path))
             os.remove(path)
 
+    @staticmethod
+    def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
+        """
+        Attempts to locate a suite using the information in suite_import and _binary_suites
+
+        If _binary_suites is None, (the usual case in development), tries to resolve
+        an import as a local source suite first, using the SuiteModel in effect.
+        If that fails uses the urlsinfo in suite_import to try to locate the suite in
+        a source repository and download it. 'binary' urls are ignored.
+
+        If _binary_suites == [a,b,...], then the listed suites are searched for
+        using binary urls and no attempt is made to search source urls.
+
+        If _binary_suites == [], source urls are completely ignored.
+        """
+        # Loaded already? Check for cycls and mismatched versions
+        # N.B. We only check the versions stated in the suite.py files and not the head version
+        # of the suite as that can and will change during development.
+        for s in _suites.itervalues():
+            if s.name == suite_import.name:
+                if s.loading_imports:
+                    abort("import cycle on suite '{0}' detected in suite '{1}'".format(s.name, importing_suite.name))
+                # check that all other importers use the same version
+                for imps in s.imported_by:
+                    for imp in imps.suite_imports:
+                        if imp.name == s.name:
+                            if imp.version != suite_import.version :
+                                abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
+                return s
+
+        importMxDir = None
+        searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        if searchMode == 'binary':
+            # check for a local binary suite
+            dotDir = importing_suite.binarySuiteDir(suite_import.name)
+            if exists(dotDir):
+                importMxDir = join(dotDir, _mxDirName(suite_import.name))
+                return BinarySuite(importMxDir, importing_suite, None)
+        else:
+            # use the SuiteModel to locate a local source copy of the suite
+            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+
+        if importMxDir is None:
+            # No local copy, so use the URLs in order to "download" one
+            fail = True
+            for urlinfo in suite_import.urlinfos:
+                if urlinfo.abs_kind() == searchMode:
+                    if urlinfo.kind == 'binary':
+                        return BinarySuite(join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), importing_suite, suite_import)
+                    else:
+                        # source, try a vc clone
+                        importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                        cloned = False
+                        if not urlinfo.vc.check(abortOnError=False):
+                            continue
+                        if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
+                            cloned = True;
+                        else:
+                            # it is possible that the clone partially populated the target
+                            # which will mess an up an alternate, so we clean it
+                            if exists(importDir):
+                                shutil.rmtree(importDir)
+                        if cloned:
+                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                            if importMxDir is None:
+                                # wasn't a suite after all, this is an error
+                                pass
+                            else:
+                                fail = False
+                            # we are done searching either way
+                            break
+            # end of search
+            if fail:
+                # check for optional dynamic suite load, which is not a failure
+                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
+                    return None
+                else:
+                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
+
+        return Suite(importMxDir, importing_suite=importing_suite)
 
 class Suite(AbstractSuite):
-    def __init__(self, mxDir, primary=False, load=True, internal=False):
-        AbstractSuite.__init__(self, mxDir, primary, internal)
+    def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None):
+        AbstractSuite.__init__(self, mxDir, primary, internal, importing_suite)
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
         self.libs = []
@@ -1769,7 +1850,9 @@ class Suite(AbstractSuite):
         _suites[self.name] = self
         if load:
             # load suites depth first
+            self.loading_imports = True
             self.visit_imports(self._find_and_loadsuite)
+            self.loading_imports = False
             self._load_env()
             self._load_commands()
 
@@ -1987,76 +2070,6 @@ class Suite(AbstractSuite):
         for suite_import in self.suite_imports:
             visitor(self, suite_import, **extra_args)
 
-    @staticmethod
-    def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
-        """
-        Attempts to locate a suite using the information in suite_import and _binary_suites
-
-        If _binary_suites is None, (the usual case in development), tries to resolve
-        an import as a local source suite first, using the SuiteModel in effect.
-        If that fails uses the urlsinfo in suite_import to try to locate the suite in
-        a source repository and download it. 'binary' urls are ignored.
-
-        If _binary_suites == [a,b,...], then the listed suites are searched for
-        using binary urls and no attempt is made to search source urls.
-
-        If _binary_suites == [], source urls are completely ignored.
-        """
-        # Loaded already? TODO Check for cycles
-        for s in _suites.itervalues():
-            if s.name == suite_import.name:
-                return s
-
-        importMxDir = None
-        searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
-        if searchMode == 'binary':
-            # check for a local binary suite
-            dotDir = importing_suite.binarySuiteDir(suite_import.name)
-            if exists(dotDir):
-                importMxDir = join(dotDir, _mxDirName(suite_import.name))
-                return BinarySuite(importing_suite, importMxDir, None)
-        else:
-            # use the SuiteModel to locate a local source copy of the suite
-            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-
-        if importMxDir is None:
-            # No local copy, so use the URLs in order to "download" one
-            fail = True
-            for urlinfo in suite_import.urlinfos:
-                if urlinfo.abs_kind() == searchMode:
-                    if urlinfo.kind == 'binary':
-                        return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), suite_import)
-                    else:
-                        # source, try a vc clone
-                        importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
-                        cloned = False
-                        if not urlinfo.vc.check(abortOnError=False):
-                            continue
-                        if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
-                            cloned = True;
-                        else:
-                            # it is possible that the clone partially populated the target
-                            # which will mess an up an alternate, so we clean it
-                            if exists(importDir):
-                                shutil.rmtree(importDir)
-                        if cloned:
-                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                            if importMxDir is None:
-                                # wasn't a suite after all, this is an error
-                                pass
-                            else:
-                                fail = False
-                            # we are done searching either way
-                            break
-            # end of search
-            if fail:
-                # check for optional dynamic suite load, which is not a failure
-                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
-                    return None
-                else:
-                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
-
-        return Suite(importMxDir)
 
     def import_suite(self, name, version=None, urlinfos=None, kind=None):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
@@ -2177,9 +2190,8 @@ A BinarySuite is stored in a Maven repository and there is
 a dependency on the URL format in this code.
 '''
 class BinarySuite(AbstractSuite):
-    def __init__(self, importing_suite, mxDir, suite_import):
-        AbstractSuite.__init__(self, mxDir, False, False)
-        self.importing_suite = importing_suite
+    def __init__(self, mxDir, importing_suite, suite_import):
+        AbstractSuite.__init__(self, mxDir, False, False, importing_suite)
         if suite_import:
             # used in _validate_binary_suite
             self.suite_import = suite_import
