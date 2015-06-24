@@ -5127,21 +5127,14 @@ def clean(args, parser=None):
 
     if args.java:
         if args.dist:
+            lsuites = suites(True);
             for d in _dists.keys():
-                log('Removing distribution {0}...'.format(d))
                 dd = distribution(d)
-                _rmIfExists(dd.path)
-                _rmIfExists(dd.sourcesPath)
-                dd.suite.remove_mx_distribution()
-
-    if args.dist:
-        # remove distributions from imported BinarySuites
-        # currently we remove everything. The jars are cached anyway
-        for s in suites():
-            dotMxDir = s.binary_imports_dir()
-            if exists(dotMxDir):
-                log('Removing {0}...'.format(dotMxDir))
-                _rmtree(dotMxDir)
+                if dd.suite in lsuites:
+                    log('Removing distribution {0}...'.format(d))
+                    _rmIfExists(dd.path)
+                    _rmIfExists(dd.sourcesPath)
+                    dd.suite.remove_mx_distribution()
 
     if suppliedParser:
         return args
