@@ -1724,11 +1724,9 @@ class AbstractSuite:
 
     def mx_distribution_path(self):
         '''
-        returns the absolute path where the mx distribution jar is stored.
-        currently stored in the top-level of a suite, might change to
-        a 'dists' directory if we standardize on that
+        returns the absolute path of the mx distribution jar.
         '''
-        return join(self.dir, self.name + '-mx' + '.jar')
+        return join(self.dir, 'dists', self.name + '-mx' + '.jar')
         
     def create_mx_distribution(self):
         '''
