@@ -52,10 +52,12 @@ import shutil, re, xml.dom.minidom
 import pipes
 import difflib
 import glob
+import urllib
 from collections import Callable
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
+from HTMLParser import HTMLParser
 
 import mx_update_suitepy
 import mx_unittest
@@ -178,8 +180,8 @@ class Dependency:
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
 In some sense it is the ultimate "result" of a build (there can be more than one).
-It is a Dependency because a Project in another suite may expressed a dependency on it
-or a component of it. A Distribution always generates a jar/zip file for the built components
+It is a Dependency because a Project in another suite may expressed a dependency on it.
+A Distribution always generates a jar/zip file for the built components
 and may optionally specify a zip for the sources from which the built components were generated.
 
 Attributes:
@@ -269,7 +271,12 @@ class Distribution(Dependency):
         Add the transitive set of dependencies for this distribution to the 'deps' list.
         We "see through" the Distribution to its components. I.e., the result
         only contains Project and Library (if includeLibs=True) instances.
-        However, a Distribution from a binary suite will have deps = [], in which
+        This is consistent with the prior model where projects expressed
+        dependencies on projects in other suites directly. Now they express
+        a dependency on a Distribution instead (i.e. projects are private to a suite;
+        not currently enforced).
+        
+        A Distribution from a binary suite will have deps = [], in which
         case we add the Distribution itself.
         """
         dist_deps = self.get_dist_deps(includeSelf=includeSelf, transitive=True)
@@ -1563,27 +1570,24 @@ class SuiteImport:
                 print 'assuming {"vckind : "hg", "kind" : "source"}, please update to {"url", "vckind", "kind"} format'
             if isinstance(urlinfo, dict) and urlinfo.get('url'):
                 kind = urlinfo.get('kind')
-                version_adjust = None
                 if not kind:
-                    urlinfo['kind'] = 'source'
                     kind = 'source'
                 vckind = urlinfo.get('vckind')
+                version_adjust = None
                 if not (kind == 'source' or kind == 'binary'):
                     abort('suite import kind ' + kind + ' illegal')
                 if kind == 'binary':
                     if vckind is not None:
                         abort('vckind is illegal for a binary suite import')
-                    version_adjust = urlinfo.get('version-adjust')
-                        
+                    version_adjust = urlinfo.get('version-adjust')                  
                 else:
                     if vckind == None:
                         abort('vckind must be defined for a source suite import')
             else:
                 abort('suite import url must be a dict with {"url", "vckind", "kind", "version-adjust" attributes')
-            vckind = urlinfo.get('vckind')
             # this implicity checks the vc kind
             vc = vc_system(vckind) if vckind else None
-            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, version_adjust))
+            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, vckind, version_adjust))
         return SuiteImport(name, version, urlinfos, kind)
 
     @staticmethod
@@ -1711,6 +1715,43 @@ class AbstractSuite:
         self.visit_imports(self._post_init_visitor)
         self._post_init()
 
+    def mx_distribution_path(self):
+        master = filter(lambda d : d.name == self.name.upper(), self.dists)[0]
+        return join(dirname(master.path), master.name.lower() + '-mx' + '.jar')
+        
+    def create_mx_distribution(self):
+        '''
+        Creates a jar file named MX_name.jar, name in upper case, that contains
+        the metadata for another suite import this suite as a BinarySuite.
+        TODO check timestamps to avoid recreating this
+        '''
+        usname = self.name.upper()
+        arcdists = []
+        for dist in self.dists:
+            if dist.name.startswith(usname):
+                arcdists.append(dist)
+        mxMetaJar = self.mx_distribution_path()
+        with Archiver(mxMetaJar) as arc:
+            # TODO It would be cleaner for subsequent loading if we actually wrote a
+            # transformed suite.py file that only contained distribution info
+            for pyfile in glob.glob(join(self.mxDir, '*.py')):
+                mxDirBase = basename(self.mxDir)
+                arc.zf.write(pyfile, arcname = join(mxDirBase, basename(pyfile)))
+            fd, tempname = tempfile.mkstemp(text=True)
+            with os.fdopen(fd, 'w') as f:
+                for dist in arcdists:
+                    f.write(dist.name)
+                    f.write('\n')
+            arc.zf.write(tempname, arcname=join(mxDirBase, 'distinfo'))
+
+    def remove_mx_distribution(self):
+        '''remove for clean command'''
+        path = self.mx_distribution_path()
+        if (exists(path)):
+            log('Removing distribution {0}...'.format(path))
+            os.remove(path)
+    
+
 class Suite(AbstractSuite):
     def __init__(self, mxDir, primary=False, load=True, internal=False):
         AbstractSuite.__init__(self, mxDir, primary, internal)
@@ -1726,7 +1767,7 @@ class Suite(AbstractSuite):
         self._init_imports()
         _suites[self.name] = self
         if load:
-            # load suites bottom up to make sure command overriding works properly
+            # load suites depth first
             self.visit_imports(self._find_and_loadsuite)
             self._load_env()
             self._load_commands()
@@ -1949,39 +1990,42 @@ class Suite(AbstractSuite):
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """
         Attempts to locate a suite using the information in suite_import.
-        Unless _force_binary_suites == True, always tries to resolve
-        an import as a source suite first. If that fails, looks for
-        an installed binary suite and, if that fails, uses the urlsinfo
-        in suite_import to try to locate the suite. In the latter case,
-        ignores urls not tagged as 'binary' if _force_binary_suites == True
-        """
+        If _force_binary_suites == False, (the usual case in development), tries to resolve
+        an import as a local source suite first, using the SuiteModel in effect.
+        If that fails uses the urlsinfo in suite_import to try to locate the suite in
+        a source repository and download it. If that fails, and there is a binary suite
+        either locally installed or specified as a download will use that.
+        will use that.
+        
+        If _force_binary_suites == True, source suites are completely ignored.
+       """
         # Loaded already? TODO Check for cycles
         for s in _suites.itervalues():
             if s.name == suite_import.name:
                 return s
 
         importMxDir = None
-        if not _force_binary_suites:
+        startingSearchMode = 'binary' if _force_binary_suites else 'source'
+        searchMode = startingSearchMode
+        if searchMode == 'source':
             # First we use the SuiteModel to locate a local source copy of the suite
             importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-
-        if importMxDir is None:
+        else:
             # check for a local binary suite
             dotDir = importing_suite.binarySuiteDir(suite_import.name)
             if exists(dotDir):
                 importMxDir = join(dotDir, _mxDirName(suite_import.name))
-                return BinarySuite(importing_suite, importMxDir, None)
-            else:
+                return BinarySuite(importing_suite, importMxDir, None)            
+
+        if importMxDir is None:
                 # No local copy, so use the URLs in order to "download" one
-                fail = False
-                if len(suite_import.urlinfos) > 0:
-                    # try the URLs in turn, with one or more vc systems
-                    for urlinfo in suite_import.urlinfos:
-                        # check binary
+            fail = True
+            while searchMode:
+                for urlinfo in suite_import.urlinfos:
+                    if urlinfo.kind == searchMode:
                         if urlinfo.kind == 'binary':
-                            # if we encounter a binary suite we don't look further
                             return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), suite_import)
-                        elif not _force_binary_suites:
+                        else:
                             # source, try a vc clone
                             importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
                             cloned = False
@@ -1998,18 +2042,20 @@ class Suite(AbstractSuite):
                                 importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
                                 if importMxDir is None:
                                     # wasn't a suite after all, this is an error
-                                    fail = True
+                                    pass
+                                else:
+                                    fail = False
                                 # we are done searching either way
                                 break
+                # next searchMode
+                searchMode = 'binary' if searchMode == 'source' else None
+            # end of search
+            if fail:
+                # check for optional dynamic suite load, which is not a failure
+                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
+                    return None
                 else:
-                    fail = True
-
-                if fail:
-                    # check for optional dynamic suite load, which is not a failure
-                    if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
-                        return None
-                    else:
-                        abort('import ' + suite_import.name + ' not found')
+                    abort('import ' + suite_import.name + ' not found (search mode ' + startingSearchMode + ')')
 
         return Suite(importMxDir)
 
@@ -2030,8 +2076,9 @@ class Suite(AbstractSuite):
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
 
-    def _load_env(self):
-        e = join(self.mxDir, 'env')
+    @staticmethod
+    def _load_env_in_mxDir(mxDir):
+        e = join(mxDir, 'env')
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -2044,6 +2091,13 @@ class Suite(AbstractSuite):
                         key, value = line.split('=', 1)
                         os.environ[key.strip()] = expandvars_in_property(value.strip())
 
+    def _load_env(self):
+        Suite._load_env_in_mxDir(self.mxDir)
+    
+    @staticmethod
+    def load_primary_suite_env(mxDir):
+        Suite._load_env_in_mxDir(mxDir)
+        
     def _post_init(self):
         self._load_projects()
         if self.requiredMxVersion is None:
@@ -2138,6 +2192,51 @@ class BinarySuite(AbstractSuite):
 
         _suites[self.name] = self
 
+
+
+    def _scrape_repodir(self, url):
+        '''
+        Scrapes the directory at 'url' returning a list of files that are relevent for a binary suite
+        '''
+        class DirHTMLParser(HTMLParser):
+            def __init__(self, files):
+                HTMLParser.__init__(self)
+                self.files = files
+               
+            def handle_starttag(self, tag, attrs):
+                if tag == 'a':
+                    for attr in attrs:
+                        if attr[0] == 'href':
+                            name = attr[1]
+                            self.files.append(name)
+        
+        files = []
+        file_dir = None
+        file_url_prefix = 'file://'
+        if url.startswith(file_url_prefix):
+            file_dir = url.replace(file_url_prefix, '')
+            for f in os.listdir(file_dir):
+                files.append(file_url_prefix + join(file_dir, f))
+        else:
+            urlf = urllib.urlopen(url)
+            text = urlf.read()
+            parser = DirHTMLParser(files)
+            parser.feed(text)
+            urlf.close()
+            
+        jar_files = filter(lambda f : f.endswith('.jar'), files)
+        sha_files = filter(lambda f : f.endswith('.jar.sha1'), files)
+        sha_values = []
+        for sha_file in sha_files:
+            if file_dir:
+                with open(sha_file.replace(file_url_prefix, '')) as f:
+                    sha_values.append(f.read())
+            else:
+                f = urllib.urlopen(sha_file)
+                sha_values.append(f.read())
+                f.close()
+        return jar_files, sha_values
+
     # This is not done in the constructor owing to problems
     # running Java during the initial startup
     def _validate_binary_suite(self):
@@ -2151,39 +2250,29 @@ class BinarySuite(AbstractSuite):
         for urlinfo in self.suite_import.urlinfos:
             if urlinfo.kind == 'binary':
                 mxname = self.suite_import.name + '-mx';
-                base_url = join(urlinfo.url, 'com', 'oracle') # + suite name?
+                base_url = join(urlinfo.url, 'com', 'oracle') # + suite name someday?
                 sversion = self.suite_import.version
                 if urlinfo.version_adjust:
                     sversion = urlinfo.version_adjust.replace('{version}', sversion)
-                mxjar_url = join(base_url, mxname, sversion, mxname + '-' + sversion + '.jar')
+                # local for testing
+                mxjar_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, self.suite_import.version, mxname + '-' + self.suite_import.version + '.jar')
+#                mxjar_url = join(base_url, mxname, sversion, mxname + '-' + sversion + '.jar')
                 jartemp = tempfile.mkstemp()
                 if download(jartemp[1], [mxjar_url], abortOnError=False):
-                    self.dir = self.importing_suite.binarySuiteDir(self.name)
-                    os.mkdir(self.dir)
-                    # unjar it get info
+                    if not exists(self.dir):
+                        os.mkdir(self.dir)
+                    # unjar it. Really like to download it directly to a 'dists' directory
                     cmd = ['jar', 'xf', jartemp[1]]
                     try:
                         subprocess.check_output(cmd, cwd=self.dir, stderr=subprocess.STDOUT)
-                        # we (only?) care about the distributions metadata
                         self.suiteDict, _ = _load_suite_dict(self.mxDir)
                         self._load_distributions(self._check_suiteDict('distributions'))
-
-                        with open(join(self.mxDir, 'distinfo')) as f:
-                            distinfos = f.readlines()
-                        for distinfo in distinfos:
-                            pair = distinfo.rstrip().split(',')
-                            distname = pair[0]
-                            sha1 = pair[1]
-                            dist = None
-                            for d in self.dists:
-                                if d.name == distname:
-                                    dist = d
-                                    break
-                            if not dist:
-                                abort('binary suite inconsistency: dist ' + distname + ' not defined in suite.py')
-                            maven_dist_name = _map_to_maven_dist_name(distname)
-                            urls = [join(base_url, maven_dist_name, sversion, maven_dist_name + '-' + sversion + '.jar')]
-                            download_file_with_sha1(distname, dist.path, urls, sha1, dist.path + '.sha1', resolve=True, mustExist=True)
+                        for dist in self.dists:
+                            dist_url = join(base_url, os.path.splitext(basename(dist.path))[0], sversion)
+                            dist_jars, dist_shas = self._scrape_repodir(dist_url)
+                            for dist_jar, dist_sha in zip(dist_jars, dist_shas):
+                                urls = [dist_jar]
+                                download_file_with_sha1(dist.name, dist.path, urls, dist_sha, dist.path + '.sha1', resolve=True, mustExist=True)
                         return
                     except subprocess.CalledProcessError as e:
                         abort('jar error: ' + e.output)
@@ -3021,6 +3110,7 @@ class ArgParser(ArgumentParser):
         _opts.verbose = None
         _opts.ptimeout = 0
         _opts.timeout = 0
+        _opts.killwithsigquit = False
 
         def _get_argvalue(arg, args, i):
             if i < len(args):
@@ -4379,6 +4469,7 @@ def build(args, parser=None):
         rebuiltProjects = frozenset([t.proj for t in tasks.itervalues()])
         for dist in sorted_dists():
             if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
+                dist.suite.create_mx_distribution()
                 if not exists(dist.path):
                     log('Creating jar for {0}'.format(dist.name))
                     dist.make_archive()
@@ -5047,8 +5138,10 @@ def clean(args, parser=None):
         if args.dist:
             for d in _dists.keys():
                 log('Removing distribution {0}...'.format(d))
-                _rmIfExists(distribution(d).path)
-                _rmIfExists(distribution(d).sourcesPath)
+                dd = distribution(d)
+                _rmIfExists(dd.path)
+                _rmIfExists(dd.sourcesPath)
+                dd.suite.remove_mx_distribution()
 
     if args.dist:
         # remove distributions from imported BinarySuites
@@ -6744,8 +6837,6 @@ def sclone(args):
     else:
         source = args.source
 
-    _hg.check()
-
     if args.dest is not None:
         dest = args.dest
     else:
@@ -6971,7 +7062,6 @@ def sforceimports(args):
     parser = ArgumentParser(prog='mx sforceimports')
     parser.add_argument('--strict-versions', action='store_true', help='strict version checking')
     args = parser.parse_args(args)
-    _hg.check()
     _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
 def _spull_import_visitor(s, suite_import, update_versions):
@@ -7406,20 +7496,18 @@ def mvn_local_install(name, path, version):
     run(['mvn', 'install:install-file', '-DgroupId=com.oracle', '-DartifactId=' + name, '-Dversion=' +
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
 
-def _map_to_maven_dist_name(name):
-    return name.lower().replace('_', '-')
-
-def _map_from_maven_dist_name(name):
-    return name.upper().replace('-', '_')
-
 def maven_install(args):
     '''
-    Install the primary suite in a maven repository,
+    Install the primary suite in a maven repository, mainly for testing as it
+    only actually does the install if --local is set.
     '''
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--local', action='store_true', help='install in local repository')
     args = parser.parse_args(args)
+
+    def _map_to_maven_dist_name(name):
+        return name.lower().replace('_', '-')
 
     _mvn.check()
     s = _primary_suite;
@@ -7427,31 +7515,12 @@ def maven_install(args):
         version = s.vc.tip(s.dir)
         usname = s.name.upper()
         arcdists = []
-        sha1s = []
         for dist in s.dists:
             if dist.name.startswith(usname):
-                dist.make_archive()
-                sha1 = sha1OfFile(dist.path)
                 arcdists.append(dist)
-                sha1s.append(sha1)
 
         mxMetaName = s.name + '-mx'
-        mxMetaJar = join(s.dir, mxMetaName + '.jar')
-        with Archiver(mxMetaJar) as arc:
-            # TODO It would be cleaner for subsequent loading if we actually wrote a
-            # transformed suite.py file that only contained distribution info
-            for pyfile in glob.glob(join(s.mxDir, '*.py')):
-                mxDirBase = basename(s.mxDir)
-                arc.zf.write(pyfile, arcname = join(mxDirBase, basename(pyfile)))
-            fd, tempname = tempfile.mkstemp(text=True)
-            with os.fdopen(fd, 'w') as f:
-                for dist, sha1 in zip(arcdists, sha1s):
-                    f.write(dist.name)
-                    f.write(',')
-                    f.write(sha1)
-                    f.write('\n')
-            arc.zf.write(tempname, arcname=join(mxDirBase, 'distinfo'))
-
+        mxMetaJar = s.mx_distribution_path()
         if args.local:
             mvn_local_install(_map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
             for dist in arcdists:
@@ -7657,6 +7726,7 @@ def _findPrimarySuiteMxDir():
     if mxDir is not None:
         return mxDir
     # backwards compatibility: search from parent of this file
+    # TODO can we retire this?
     return _findPrimarySuiteMxDirFrom(dirname(dirname(__file__)))
 
 def _remove_bad_deps():
@@ -7715,16 +7785,12 @@ def _remove_bad_deps():
 def main():
     global _mx_suite
     _mx_suite = MXSuite()
-
-    global _force_binary_suites
-    _force_binary_suites = False if os.environ.get('MX_FORCE_BINARY_SUITES') is None else True
-    ArgParser.parse_startup_options()
     os.environ['MX_HOME'] = _mx_home
 
+    ArgParser.parse_startup_options()
+
     global _vc_systems
-    global _hg # TEMP
-    _hg = HgConfig()
-    _vc_systems = [_hg]
+    _vc_systems = [HgConfig()]
     global _mvn
     _mvn = MavenConfig()
 
@@ -7732,6 +7798,12 @@ def main():
     primarySuiteMxDir = _findPrimarySuiteMxDir()
     if primarySuiteMxDir:
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
+        # We explicitly load the 'env' file of the primary suite now as it might influence
+        # the suite loading logic. It will get loaded again, to ensure it overrides any
+        # settings in imported suites
+        Suite.load_primary_suite_env(primarySuiteMxDir)
+        global _force_binary_suites
+        _force_binary_suites = False if os.environ.get('MX_FORCE_BINARY_SUITES') is None else True
         global _primary_suite
         # This will load all explicitly imported suites
         _primary_suite = Suite(primarySuiteMxDir, primary=True)
