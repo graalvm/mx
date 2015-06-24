@@ -131,7 +131,7 @@ _warn = False
 _deferred_warnings = []
 _vc_systems = []
 _mvn = None
-_force_binary_suites = False
+_binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
 
 """
 A dependency is a library, distribution or project specified in a suite.
@@ -1053,6 +1053,13 @@ class VC:
         self.kind = kind;
 
     @staticmethod
+    def is_valid_kind(kind):
+        for vcs in _vc_systems:
+            if kind == vcs.kind:
+                return True
+        return False
+
+    @staticmethod
     def get_vc(vcdir, abortOnError=True):
         '''
         Given that 'vcdir' is repository directory, attempt to determine
@@ -1472,9 +1479,9 @@ class SiblingSuiteModel(SuiteModel):
         return self._check_exists(suite_import, path, check_alternate)
 
 class NestedImportsSuiteModel(SuiteModel):
-    """Imported suites are all siblings in an 'imported_suites' directory of the primary suite"""
+    """Imported suites are all siblings in an 'mx.imports/source' directory of the primary suite"""
     def _imported_suites_dirname(self):
-        return "imported_suites"
+        return 'mx.imports/source'
 
     def __init__(self, kind, primaryDir, option, suitemap):
         SuiteModel.__init__(self, kind)
@@ -1492,7 +1499,7 @@ class NestedImportsSuiteModel(SuiteModel):
             # primary is importer
             this_imported_suites_dirname = join(importer_dir, self._imported_suites_dirname())
             if not exists(this_imported_suites_dirname):
-                os.mkdir(this_imported_suites_dirname)
+                os.makedirs(this_imported_suites_dirname)
             path = join(this_imported_suites_dirname, suitename)
         else:
             path = join(dirname(importer_dir), suitename)
@@ -1532,17 +1539,20 @@ class PathSuiteModel(SuiteModel):
             abort('suite ' + suitename + ' not found')
 
 '''
-Captures the info in the {"url", "kind", "vckind"} dict,
-and adds a 'vc' field for when the 'vckind' is resolved
-to an actual VC instance
+Captures the info in the {"url", "kind", ["version-adjust"]} dict,
+and adds a 'vc' field.
 '''
 class SuiteImportURLInfo:
-    def __init__(self, url, kind, vc, vckind=None, version_adjust=None):
+    def __init__(self, url, kind, vc, version_adjust=None):
         self.url = url
         self.kind = kind
         self.vc = vc
-        self.vckind = vc.kind if vc else None
         self.version_adjust = version_adjust
+
+    def abs_kind(self):
+        ''' Maps vc kinds to 'source'
+        '''
+        return self.kind if self.kind == 'binary' else 'source'
         
 class SuiteImport:
     def __init__(self, name, version, urlinfos, kind=None):
@@ -1564,30 +1574,18 @@ class SuiteImport:
             abort('suite import urls must be a list')
         urlinfos = []
         for urlinfo in urls:
-            # backards compatibility
-            if isinstance(urlinfo, str):
-                urlinfo = {"url" : urlinfo, "vckind" : 'hg'}
-                print 'assuming {"vckind : "hg", "kind" : "source"}, please update to {"url", "vckind", "kind"} format'
-            if isinstance(urlinfo, dict) and urlinfo.get('url'):
+            if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
-                if not kind:
-                    kind = 'source'
-                vckind = urlinfo.get('vckind')
                 version_adjust = None
-                if not (kind == 'source' or kind == 'binary'):
+                if not (kind == 'binary' or VC.is_valid_kind(kind)):
                     abort('suite import kind ' + kind + ' illegal')
                 if kind == 'binary':
-                    if vckind is not None:
-                        abort('vckind is illegal for a binary suite import')
                     version_adjust = urlinfo.get('version-adjust')                  
-                else:
-                    if vckind == None:
-                        abort('vckind must be defined for a source suite import')
             else:
-                abort('suite import url must be a dict with {"url", "vckind", "kind", "version-adjust" attributes')
+                abort('suite import url must be a dict with {"url", kind", ["version-adjust]" attributes')
             # this implicity checks the vc kind
-            vc = vc_system(vckind) if vckind else None
-            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, vckind, version_adjust))
+            vc = vc_system(kind) if kind != 'binary' else None
+            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, version_adjust))
         return SuiteImport(name, version, urlinfos, kind)
 
     @staticmethod
@@ -1679,13 +1677,22 @@ class AbstractSuite:
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
 
+    def imports_dir(self, kind):
+        return join(join(self.dir, 'mx.imports'), kind)
+
+    def binary_imports_dir(self):
+        return self.imports_dir('binary')
+
+    def source_imports_dir(self):
+        return self.imports_dir('source')
+        
     def binarySuiteDir(self, name):
         '''
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
         '''
-        dotMxDir = join(self.dir, '.mx')
+        dotMxDir = self.binary_imports_dir()
         if not exists(dotMxDir):
-            os.mkdir(dotMxDir)
+            os.makedirs(dotMxDir)
         return join(dotMxDir, name)
 
     def _load_distributions(self, distsMap):
@@ -1716,33 +1723,29 @@ class AbstractSuite:
         self._post_init()
 
     def mx_distribution_path(self):
-        master = filter(lambda d : d.name == self.name.upper(), self.dists)[0]
-        return join(dirname(master.path), master.name.lower() + '-mx' + '.jar')
+        '''
+        returns the absolute path where the mx distribution jar is stored.
+        currently stored in the top-level of a suite, might change to
+        a 'dists' directory if we standardize on that
+        '''
+        return join(self.dir, self.name + '-mx' + '.jar')
         
     def create_mx_distribution(self):
         '''
-        Creates a jar file named MX_name.jar, name in upper case, that contains
-        the metadata for another suite import this suite as a BinarySuite.
-        TODO check timestamps to avoid recreating this
+        Creates a jar file named name-mx.jar that contains
+        the metadata for another suite to import this suite as a BinarySuite.
+        TODO check timestamps to avoid recreating this repeatedly, or would
+        the check dominate anyway?
+        TODO It would be cleaner for subsequent loading if we actually wrote a
+        transformed suite.py file that only contained distribution info, to
+        detect access to private (non-distribution) state
         '''
-        usname = self.name.upper()
-        arcdists = []
-        for dist in self.dists:
-            if dist.name.startswith(usname):
-                arcdists.append(dist)
         mxMetaJar = self.mx_distribution_path()
+        pyfiles = glob.glob(join(self.mxDir, '*.py'))
         with Archiver(mxMetaJar) as arc:
-            # TODO It would be cleaner for subsequent loading if we actually wrote a
-            # transformed suite.py file that only contained distribution info
-            for pyfile in glob.glob(join(self.mxDir, '*.py')):
+            for pyfile in pyfiles:
                 mxDirBase = basename(self.mxDir)
                 arc.zf.write(pyfile, arcname = join(mxDirBase, basename(pyfile)))
-            fd, tempname = tempfile.mkstemp(text=True)
-            with os.fdopen(fd, 'w') as f:
-                for dist in arcdists:
-                    f.write(dist.name)
-                    f.write('\n')
-            arc.zf.write(tempname, arcname=join(mxDirBase, 'distinfo'))
 
     def remove_mx_distribution(self):
         '''remove for clean command'''
@@ -1989,73 +1992,71 @@ class Suite(AbstractSuite):
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """
-        Attempts to locate a suite using the information in suite_import.
-        If _force_binary_suites == False, (the usual case in development), tries to resolve
+        Attempts to locate a suite using the information in suite_import and _binary_suites
+        
+        If _binary_suites is None, (the usual case in development), tries to resolve
         an import as a local source suite first, using the SuiteModel in effect.
         If that fails uses the urlsinfo in suite_import to try to locate the suite in
-        a source repository and download it. If that fails, and there is a binary suite
-        either locally installed or specified as a download will use that.
-        will use that.
+        a source repository and download it. 'binary' urls are ignored.
         
-        If _force_binary_suites == True, source suites are completely ignored.
-       """
+        If _binary_suites == [a,b,...], then the listed suites are searched for
+        using binary urls and no attempt is made to search source urls.
+
+        If _binary_suites == [], source urls are completely ignored.  
+        """
         # Loaded already? TODO Check for cycles
         for s in _suites.itervalues():
             if s.name == suite_import.name:
                 return s
 
         importMxDir = None
-        startingSearchMode = 'binary' if _force_binary_suites else 'source'
-        searchMode = startingSearchMode
-        if searchMode == 'source':
-            # First we use the SuiteModel to locate a local source copy of the suite
-            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-        else:
+        searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        if searchMode == 'binary':
             # check for a local binary suite
             dotDir = importing_suite.binarySuiteDir(suite_import.name)
             if exists(dotDir):
                 importMxDir = join(dotDir, _mxDirName(suite_import.name))
                 return BinarySuite(importing_suite, importMxDir, None)            
+        else:
+            # use the SuiteModel to locate a local source copy of the suite
+            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
 
         if importMxDir is None:
-                # No local copy, so use the URLs in order to "download" one
+            # No local copy, so use the URLs in order to "download" one
             fail = True
-            while searchMode:
-                for urlinfo in suite_import.urlinfos:
-                    if urlinfo.kind == searchMode:
-                        if urlinfo.kind == 'binary':
-                            return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), suite_import)
+            for urlinfo in suite_import.urlinfos:
+                if urlinfo.abs_kind() == searchMode:
+                    if urlinfo.kind == 'binary':
+                        return BinarySuite(importing_suite, join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name)), suite_import)
+                    else:
+                        # source, try a vc clone
+                        importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                        cloned = False
+                        if not urlinfo.vc.check(abortOnError=False):
+                            continue
+                        if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
+                            cloned = True;
                         else:
-                            # source, try a vc clone
-                            importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
-                            cloned = False
-                            if not urlinfo.vc.check(abortOnError=False):
-                                continue
-                            if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
-                                cloned = True;
+                            # it is possible that the clone partially populated the target
+                            # which will mess an up an alternate, so we clean it
+                            if exists(importDir):
+                                shutil.rmtree(importDir)
+                        if cloned:
+                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                            if importMxDir is None:
+                                # wasn't a suite after all, this is an error
+                                pass
                             else:
-                                # it is possible that the clone partially populated the target
-                                # which will mess an up an alternate, so we clean it
-                                if exists(importDir):
-                                    shutil.rmtree(importDir)
-                            if cloned:
-                                importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                                if importMxDir is None:
-                                    # wasn't a suite after all, this is an error
-                                    pass
-                                else:
-                                    fail = False
-                                # we are done searching either way
-                                break
-                # next searchMode
-                searchMode = 'binary' if searchMode == 'source' else None
+                                fail = False
+                            # we are done searching either way
+                            break
             # end of search
             if fail:
                 # check for optional dynamic suite load, which is not a failure
                 if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
                     return None
                 else:
-                    abort('import ' + suite_import.name + ' not found (search mode ' + startingSearchMode + ')')
+                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
 
         return Suite(importMxDir)
 
@@ -2255,29 +2256,21 @@ class BinarySuite(AbstractSuite):
                 if urlinfo.version_adjust:
                     sversion = urlinfo.version_adjust.replace('{version}', sversion)
                 # local for testing
-                mxjar_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, self.suite_import.version, mxname + '-' + self.suite_import.version + '.jar')
-#                mxjar_url = join(base_url, mxname, sversion, mxname + '-' + sversion + '.jar')
-                jartemp = tempfile.mkstemp()
-                if download(jartemp[1], [mxjar_url], abortOnError=False):
-                    if not exists(self.dir):
-                        os.mkdir(self.dir)
-                    # unjar it. Really like to download it directly to a 'dists' directory
-                    cmd = ['jar', 'xf', jartemp[1]]
-                    try:
-                        subprocess.check_output(cmd, cwd=self.dir, stderr=subprocess.STDOUT)
-                        self.suiteDict, _ = _load_suite_dict(self.mxDir)
-                        self._load_distributions(self._check_suiteDict('distributions'))
-                        for dist in self.dists:
-                            dist_url = join(base_url, os.path.splitext(basename(dist.path))[0], sversion)
-                            dist_jars, dist_shas = self._scrape_repodir(dist_url)
-                            for dist_jar, dist_sha in zip(dist_jars, dist_shas):
-                                urls = [dist_jar]
-                                download_file_with_sha1(dist.name, dist.path, urls, dist_sha, dist.path + '.sha1', resolve=True, mustExist=True)
-                        return
-                    except subprocess.CalledProcessError as e:
-                        abort('jar error: ' + e.output)
-
-        abort('binary suite ' + self.suite_import.name + ' cannot be downloaded')
+                mx_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, self.suite_import.version)
+#               mx_url = join(base_url, mxname, sversion)
+                mx_jar_urls, mx_jar_shas = self._scrape_repodir(mx_url)
+                mx_jar_path = self.mx_distribution_path()
+                # aborts on failure
+                download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
+                run(['jar', 'xf', mx_jar_path], cwd=self.dir)
+                self.suiteDict, _ = _load_suite_dict(self.mxDir)
+                self._load_distributions(self._check_suiteDict('distributions'))
+                for dist in self.dists:
+                    dist_url = join(base_url, os.path.splitext(basename(dist.path))[0], sversion)
+                    dist_jars, dist_jars_shas = self._scrape_repodir(dist_url)
+                    for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
+                        urls = [dist_jar]
+                        download_file_with_sha1(dist.name, dist.path, urls, dist_jar_sha, dist.path + '.sha1', resolve=True, mustExist=True)
 
     def visit_imports(self, visitor, **extra_args):
         pass
@@ -5145,8 +5138,9 @@ def clean(args, parser=None):
 
     if args.dist:
         # remove distributions from imported BinarySuites
+        # currently we remove everything. The jars are cached anyway
         for s in suites():
-            dotMxDir = join(s.dir, '.mx')
+            dotMxDir = s.binary_imports_dir()
             if exists(dotMxDir):
                 log('Removing {0}...'.format(dotMxDir))
                 _rmtree(dotMxDir)
@@ -7802,8 +7796,14 @@ def main():
         # the suite loading logic. It will get loaded again, to ensure it overrides any
         # settings in imported suites
         Suite.load_primary_suite_env(primarySuiteMxDir)
-        global _force_binary_suites
-        _force_binary_suites = False if os.environ.get('MX_FORCE_BINARY_SUITES') is None else True
+        global _binary_suites
+        bs = os.environ.get('MX_BINARY_SUITES')
+        if bs is not None:
+            if len(bs) > 0:
+                _binary_suites=bs.split(',')
+            else:
+                _binary_suites = []
+
         global _primary_suite
         # This will load all explicitly imported suites
         _primary_suite = Suite(primarySuiteMxDir, primary=True)
