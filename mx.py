@@ -1664,7 +1664,10 @@ def _load_suite_dict(mxDir):
 
     return suite, modulePath
 
-class AbstractSuite:
+'''
+Command state and methods for all suite subclasses
+'''
+class Suite:
     def __init__(self, mxDir, primary, internal, importing_suite):
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
@@ -1672,15 +1675,110 @@ class AbstractSuite:
         self.name = _suitename(mxDir)
         self.primary = primary
         self.internal = internal
+        self.libs = []
+        self.jreLibs = []
+        self.suite_imports = []
+        self.commands = None
+        self.primary = primary
+        self.requiredMxVersion = None
         self.dists = []
         self.post_init = False
         _suites[self.name] = self
 
-    def _check_suiteDict(self, key):
-        return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
+    def __str__(self):
+        return self.name
+
+    def _load(self):
+        '''
+        Initializes the imports structure, and calls _load_env and _load_commands
+        Pre-condition is that self.suiteDict has been set
+        '''
+        self._init_imports()
+        # load suites depth first
+        self.loading_imports = True
+        self.visit_imports(self._find_and_loadsuite)
+        self.loading_imports = False
+        self._load_env()
+        self._load_commands()
+
+    def _post_init_check(self):
+        if self.requiredMxVersion is None:
+            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
+        elif self.requiredMxVersion > version:
+            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
+        for l in self.libs:
+            existing = _libs.get(l.name)
+            # Check that suites that define same library are consistent
+            if existing is not None and existing != l and _check_global_structures:
+                abort('inconsistent library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+            _libs[l.name] = l
+        for l in self.jreLibs:
+            existing = _jreLibs.get(l.name)
+            # Check that suites that define same library are consistent
+            if existing is not None and existing != l:
+                abort('inconsistent JRE library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+            _jreLibs[l.name] = l
+        for d in self.dists:
+            existing = _dists.get(d.name)
+            if existing is not None and _check_global_structures:
+                # allow redefinition, so use path from existing
+                # abort('cannot redefine distribution  ' + d.name)
+                warn('distribution ' + d.name + ' redefined')
+                d.path = existing.path
+            _dists[d.name] = d
+
+    def _post_init_finish(self):
+        if hasattr(self, 'mx_post_parse_cmd_line'):
+            self.mx_post_parse_cmd_line(_opts)
+        self.post_init = True
 
     def version(self, abortOnError=True):
         abort('version not implemented')
+
+    def _load_metadata(self):
+        suitePyFile = join(self.mxDir, 'suite.py')
+        if not exists(suitePyFile):
+            return
+
+        suiteDict = self.suiteDict
+        if suiteDict.get('name') is None:
+            abort('Missing "suite=<name>" in ' + suitePyFile)
+
+        if suiteDict.get('name') != self.name:
+            abort('suite name in project file does not match ' + self.name)
+
+        if suiteDict.has_key('mxversion'):
+            try:
+                self.requiredMxVersion = VersionSpec(suiteDict['mxversion'])
+            except AssertionError as ae:
+                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
+
+        libsMap = self._check_suiteDict('libraries')
+        jreLibsMap = self._check_suiteDict('jrelibraries')
+        distsMap = self._check_suiteDict('distributions')
+        importsMap = self._check_suiteDict('imports')
+
+        for name, attrs in sorted(jreLibsMap.iteritems()):
+            jar = attrs.pop('jar')
+            # JRE libraries are optional by default
+            optional = attrs.pop('optional', 'true') != 'false'
+            l = JreLibrary(self, name, jar, optional)
+            self.jreLibs.append(l)
+
+        for name, attrs in sorted(importsMap.iteritems()):
+            if name == 'suites':
+                pass
+            elif name == 'libraries':
+                self._load_libraries(attrs)
+            else:
+                abort('illegal import kind: ' + name)
+
+        self._load_libraries(libsMap)
+        self._load_distributions(distsMap)
+
+
+    def _check_suiteDict(self, key):
+        return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
 
     def imports_dir(self, kind):
         return join(join(self.dir, 'mx.imports'), kind)
@@ -1691,7 +1789,7 @@ class AbstractSuite:
     def source_imports_dir(self):
         return self.imports_dir('source')
 
-    def binarySuiteDir(self, name):
+    def binary_suite_dir(self, name):
         '''
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
         '''
@@ -1699,6 +1797,50 @@ class AbstractSuite:
         if not exists(dotMxDir):
             os.makedirs(dotMxDir)
         return join(dotMxDir, name)
+
+    def _commands_name(self):
+        return 'mx_' + self.name.replace('-', '_')
+
+    def _find_commands(self, name):
+        commandsPath = join(self.mxDir, name + '.py')
+        if exists(commandsPath):
+            return name
+        else:
+            return None
+
+    def _load_commands(self):
+        commandsName = self._find_commands(self._commands_name())
+        if commandsName is not None:
+            if commandsName in sys.modules:
+                abort(commandsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[commandsName].__file__)
+            # temporarily extend the Python path
+            sys.path.insert(0, self.mxDir)
+            mod = __import__(commandsName)
+
+            self.commands = sys.modules.pop(commandsName)
+            sys.modules[commandsName] = self.commands
+
+            # revert the Python path
+            del sys.path[0]
+
+            if not hasattr(mod, 'mx_init'):
+                abort(commandsName + '.py in suite ' + self.name + ' must define an mx_init(suite) function')
+            if hasattr(mod, 'mx_post_parse_cmd_line'):
+                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
+
+            mod.mx_init(self)
+            self.commands = mod
+
+    def _init_imports(self):
+        importsMap = self._check_suiteDict("imports")
+        suiteImports = importsMap.get("suites")
+        if suiteImports:
+            if not isinstance(suiteImports, list):
+                abort('suites must be a list-valued attribute')
+            for entry in suiteImports:
+                if not isinstance(entry, dict):
+                    abort('suite import entry must be a dict')
+                self.suite_imports.append(SuiteImport.parse_specification(entry))
 
     def _load_distributions(self, distsMap):
         for name, attrs in sorted(distsMap.iteritems()):
@@ -1716,16 +1858,47 @@ class AbstractSuite:
             self.dists.append(d)
 
     @staticmethod
+    def _pop_list(attrs, name, context):
+        v = attrs.pop(name, None)
+        if not v:
+            return []
+        if not isinstance(v, list):
+            abort('Attribute "' + name + '" for ' + context + ' must be a list')
+        return v
+
+    def _load_libraries(self, libsMap):
+        for name, attrs in sorted(libsMap.iteritems()):
+            context = 'library ' + name
+            if "|" in name:
+                if name.count('|') != 2:
+                    abort("Format error in library name: " + name + "\nsyntax: libname|os-platform|architecture")
+                name, platform, architecture = name.split("|")
+                if platform != get_os() or architecture != get_arch():
+                    continue
+            path = attrs.pop('path')
+            urls = Suite._pop_list(attrs, 'urls', context)
+            sha1 = attrs.pop('sha1', None)
+            sourcePath = attrs.pop('sourcePath', None)
+            sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
+            sourceSha1 = attrs.pop('sourceSha1', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
+            # Add support for optional external libraries if we have a good use case
+            optional = False
+            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+            l.__dict__.update(attrs)
+            self.libs.append(l)
+
+    @staticmethod
     def _post_init_visitor(importing_suite, suite_import, **extra_args):
         imported_suite = suite(suite_import.name)
         if not imported_suite.post_init:
             imported_suite.visit_imports(imported_suite._post_init_visitor)
-            imported_suite._post_init()
+            imported_suite._post_init_sequence()
 
-    def _depth_first_post_init(self):
-        '''depth first _post_init driven by imports graph'''
-        self.visit_imports(self._post_init_visitor)
-        self._post_init()
+    def _post_init_sequence(self):
+        self._load_metadata()
+        self._post_init_check()
+        self._post_init_finish()
 
     def mx_distribution_path(self):
         '''
@@ -1772,9 +1945,10 @@ class AbstractSuite:
 
         If _binary_suites == [], source urls are completely ignored.
         """
-        # Loaded already? Check for cycls and mismatched versions
-        # N.B. We only check the versions stated in the suite.py files and not the head version
-        # of the suite as that can and will change during development.
+        # Loaded already? Check for cycles and mismatched versions
+        # N.B. Currently only check the versions stated in the suite.py files and not the head version
+        # of a source suite as that can and will change during development. I.e, the version
+        # in the suite_import is only used when we actually need to download a suite
         for s in _suites.itervalues():
             if s.name == suite_import.name:
                 if s.loading_imports:
@@ -1791,7 +1965,7 @@ class AbstractSuite:
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
         if searchMode == 'binary':
             # check for a local binary suite
-            dotDir = importing_suite.binarySuiteDir(suite_import.name)
+            dotDir = importing_suite.binary_suite_dir(suite_import.name)
             if exists(dotDir):
                 importMxDir = join(dotDir, _mxDirName(suite_import.name))
                 return BinarySuite(importMxDir, importing_suite, None, suite_import.version)
@@ -1805,7 +1979,7 @@ class AbstractSuite:
             for urlinfo in suite_import.urlinfos:
                 if urlinfo.abs_kind() == searchMode:
                     if urlinfo.kind == 'binary':
-                        binMxDir = join(importing_suite.binarySuiteDir(suite_import.name), _mxDirName(suite_import.name))
+                        binMxDir = join(importing_suite.binary_suite_dir(suite_import.name), _mxDirName(suite_import.name))
                         return BinarySuite(binMxDir, importing_suite, suite_import, suite_import.version)
                     else:
                         # source, try a vc clone
@@ -1837,91 +2011,63 @@ class AbstractSuite:
                 else:
                     abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
 
-        return Suite(importMxDir, importing_suite=importing_suite)
+        return SourceSuite(importMxDir, importing_suite=importing_suite)
 
-class Suite(AbstractSuite):
+    def visit_imports(self, visitor, **extra_args):
+        """
+        Visitor support for the suite imports list
+        For each entry the visitor function is called with this suite, a SuiteImport instance created
+        from the entry and any extra args passed to this call.
+        N.B. There is no built-in support for avoiding visiting the same suite multiple times,
+        as this function only visits the imports of a single suite. If a (recursive) visitor function
+        wishes to visit a suite exactly once, it must manage that through extra_args.
+        """
+        for suite_import in self.suite_imports:
+            visitor(self, suite_import, **extra_args)
+
+
+    def import_suite(self, name, version=None, urlinfos=None, kind=None):
+        """Dynamic import of a suite. Returns None if the suite cannot be found"""
+        suite_import = SuiteImport(name, version, urlinfos, kind)
+        imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
+        if imported_suite:
+            # if urlinfos is set, force the import to version in case it already existed
+            if suite_import.urlinfos:
+                # TODO try all?
+                urlinfo = SuiteImport.parse_specification(urlinfos[0])
+                vc_system(imported_suite.vckind).pull(imported_suite.dir, urlinfo.url, rev=version, update=True)
+            if not imported_suite.post_init:
+                imported_suite._post_init()
+        return imported_suite
+
+    def suite_py(self):
+        return join(self.mxDir, 'suite.py')
+
+
+'''A source suite'''
+class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None):
-        AbstractSuite.__init__(self, mxDir, primary, internal, importing_suite)
+        Suite.__init__(self, mxDir, primary, internal, importing_suite)
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
-        self.libs = []
-        self.jreLibs = []
-        self.suite_imports = []
-        self.commands = None
-        self.primary = primary
-        self.requiredMxVersion = None
         self.suiteDict, _ = _load_suite_dict(mxDir)
-        self._init_imports()
         if load:
-            # load suites depth first
-            self.loading_imports = True
-            self.visit_imports(self._find_and_loadsuite)
-            self.loading_imports = False
-            self._load_env()
-            self._load_commands()
-
-    def __str__(self):
-        return self.name
+            self._load()
 
     def version(self, abortOnError=True):
         '''
         Return the current head changeset of this suite.
         '''
-        # we do not cache the version
+        # we do not cache the version because it changes in development
         return self.vc.tip(self.dir, abortOnError=abortOnError)
 
-    @staticmethod
-    def _pop_list(attrs, name, context):
-        v = attrs.pop(name, None)
-        if not v:
-            return []
-        if not isinstance(v, list):
-            abort('Attribute "' + name + '" for ' + context + ' must be a list')
-        return v
-
-    def _load_libraries(self, libsMap):
-        for name, attrs in sorted(libsMap.iteritems()):
-            context = 'library ' + name
-            if "|" in name:
-                if name.count('|') != 2:
-                    abort("Format error in library name: " + name + "\nsyntax: libname|os-platform|architecture")
-                name, platform, architecture = name.split("|")
-                if platform != get_os() or architecture != get_arch():
-                    continue
-            path = attrs.pop('path')
-            urls = Suite._pop_list(attrs, 'urls', context)
-            sha1 = attrs.pop('sha1', None)
-            sourcePath = attrs.pop('sourcePath', None)
-            sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
-            sourceSha1 = attrs.pop('sourceSha1', None)
-            deps = Suite._pop_list(attrs, 'dependencies', context)
-            # Add support for optional external libraries if we have a good use case
-            optional = False
-            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
-            l.__dict__.update(attrs)
-            self.libs.append(l)
+    def _load_metadata(self):
+        Suite._load_metadata(self)
+        self._load_projects()
 
     def _load_projects(self):
-        suitePyFile = join(self.mxDir, 'suite.py')
-        if not exists(suitePyFile):
-            return
-
-        suiteDict = self.suiteDict
-
-        if suiteDict.get('name') is not None and suiteDict.get('name') != self.name:
-            abort('suite name in project file does not match ' + _suitename(self.mxDir))
-
-        if suiteDict.has_key('mxversion'):
-            try:
-                self.requiredMxVersion = VersionSpec(suiteDict['mxversion'])
-            except AssertionError as ae:
-                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
-
-        libsMap = self._check_suiteDict('libraries')
-        jreLibsMap = self._check_suiteDict('jrelibraries')
+        '''projects are unique to source suites'''
         projsMap = self._check_suiteDict('projects')
-        distsMap = self._check_suiteDict('distributions')
-        importsMap = self._check_suiteDict('imports')
 
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
@@ -1946,23 +2092,6 @@ class Suite(AbstractSuite):
             p.__dict__.update(attrs)
             self.projects.append(p)
 
-        for name, attrs in sorted(jreLibsMap.iteritems()):
-            jar = attrs.pop('jar')
-            # JRE libraries are optional by default
-            optional = attrs.pop('optional', 'true') != 'false'
-            l = JreLibrary(self, name, jar, optional)
-            self.jreLibs.append(l)
-
-        for name, attrs in sorted(importsMap.iteritems()):
-            if name == 'suites':
-                pass
-            elif name == 'libraries':
-                self._load_libraries(attrs)
-            else:
-                abort('illegal import kind: ' + name)
-
-        self._load_libraries(libsMap)
-        self._load_distributions(distsMap)
 
         # Create a distribution for each project that defines annotation processors
         for p in self.projects:
@@ -2012,86 +2141,6 @@ class Suite(AbstractSuite):
                 d.add_update_listener(_refineAnnotationProcessorServiceConfig)
                 self.dists.append(d)
 
-        if self.name is None:
-            abort('Missing "suite=<name>" in ' + suitePyFile)
-
-    def _commands_name(self):
-        return 'mx_' + self.name.replace('-', '_')
-
-    def _find_commands(self, name):
-        commandsPath = join(self.mxDir, name + '.py')
-        if exists(commandsPath):
-            return name
-        else:
-            return None
-
-    def _load_commands(self):
-        commandsName = self._find_commands(self._commands_name())
-        if commandsName is not None:
-            if commandsName in sys.modules:
-                abort(commandsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[commandsName].__file__)
-            # temporarily extend the Python path
-            sys.path.insert(0, self.mxDir)
-            mod = __import__(commandsName)
-
-            self.commands = sys.modules.pop(commandsName)
-            sys.modules[commandsName] = self.commands
-
-            # revert the Python path
-            del sys.path[0]
-
-            if not hasattr(mod, 'mx_init'):
-                abort(commandsName + '.py in suite ' + self.name + ' must define an mx_init(suite) function')
-            if hasattr(mod, 'mx_post_parse_cmd_line'):
-                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
-
-            mod.mx_init(self)
-            self.commands = mod
-
-    def _init_imports(self):
-        importsMap = self._check_suiteDict("imports")
-        suiteImports = importsMap.get("suites")
-        if suiteImports:
-            if not isinstance(suiteImports, list):
-                abort('suites must be a list-valued attribute')
-            suite_import_list = []
-            for entry in suiteImports:
-                if not isinstance(entry, dict):
-                    abort('suite import entry must be a dict')
-                suite_import_list.append(SuiteImport.parse_specification(entry))
-            # these may not all resolve
-            self.suite_imports = suite_import_list
-
-    def visit_imports(self, visitor, **extra_args):
-        """
-        Visitor support for the suite imports list
-        For each entry the visitor function is called with this suite, a SuiteImport instance created
-        from the entry and any extra args passed to this call.
-        N.B. There is no built-in support for avoiding visiting the same suite multiple times,
-        as this function only visits the imports of a single suite. If a (recursive) visitor function
-        wishes to visit a suite exactly once, it must manage that through extra_args.
-        """
-        for suite_import in self.suite_imports:
-            visitor(self, suite_import, **extra_args)
-
-
-    def import_suite(self, name, version=None, urlinfos=None, kind=None):
-        """Dynamic import of a suite. Returns None if the suite cannot be found"""
-        suite_import = SuiteImport(name, version, urlinfos, kind)
-        imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
-        if imported_suite:
-            # if urlinfos is set, force the import to version in case it already existed
-            if suite_import.urlinfos:
-                # TODO try all?
-                urlinfo = SuiteImport.parse_specification(urlinfos[0])
-                vc_system(imported_suite.vckind).pull(imported_suite.dir, urlinfo.url, rev=version, update=True)
-            if not imported_suite.post_init:
-                imported_suite._post_init()
-        return imported_suite
-
-    def suite_py(self):
-        return join(self.mxDir, 'suite.py')
-
     @staticmethod
     def _load_env_in_mxDir(mxDir):
         e = join(mxDir, 'env')
@@ -2108,59 +2157,16 @@ class Suite(AbstractSuite):
                         os.environ[key.strip()] = expandvars_in_property(value.strip())
 
     def _load_env(self):
-        Suite._load_env_in_mxDir(self.mxDir)
+        SourceSuite._load_env_in_mxDir(self.mxDir)
 
-    @staticmethod
-    def load_primary_suite_env(mxDir):
-        Suite._load_env_in_mxDir(mxDir)
-
-    def _post_init(self):
-        self._load_projects()
-        if self.requiredMxVersion is None:
-            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
-        elif self.requiredMxVersion > version:
-            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
-        # set the global data structures, checking for conflicts unless _check_global_structures is False
+    def _post_init_check(self):
+        Suite._post_init_check(self)
         for p in self.projects:
             existing = _projects.get(p.name)
             if existing is not None and _check_global_structures:
                 abort('cannot override project  ' + p.name + ' in ' + p.dir + " with project of the same name in  " + existing.dir)
             if not p.name in _opts.ignored_projects:
                 _projects[p.name] = p
-        for l in self.libs:
-            existing = _libs.get(l.name)
-            # Check that suites that define same library are consistent
-            if existing is not None and existing != l and _check_global_structures:
-                abort('inconsistent library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
-            _libs[l.name] = l
-        for l in self.jreLibs:
-            existing = _jreLibs.get(l.name)
-            # Check that suites that define same library are consistent
-            if existing is not None and existing != l:
-                abort('inconsistent JRE library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
-            _jreLibs[l.name] = l
-        for d in self.dists:
-            existing = _dists.get(d.name)
-            if existing is not None and _check_global_structures:
-                # allow redefinition, so use path from existing
-                # abort('cannot redefine distribution  ' + d.name)
-                warn('distribution ' + d.name + ' redefined')
-                d.path = existing.path
-            _dists[d.name] = d
-
-        if hasattr(self, 'mx_post_parse_cmd_line'):
-            self.mx_post_parse_cmd_line(_opts)
-        self.post_init = True
-
-    @staticmethod
-    def _validate_binary_suites():
-        '''
-        This has to be lazy as we can't run Java (download) until we have initialized
-        and parsed the command line.
-        '''
-        for s in _suites.itervalues():
-            if isinstance(s, BinarySuite):
-                s._validate_binary_suite()
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
@@ -2193,18 +2199,18 @@ imports binary suites to be completely self contained in one directory
 A BinarySuite is stored in a Maven repository and there is
 a dependency on the URL format in this code.
 '''
-class BinarySuite(AbstractSuite):
+class BinarySuite(Suite):
     def __init__(self, mxDir, importing_suite, suite_import, version):
-        AbstractSuite.__init__(self, mxDir, False, False, importing_suite)
+        Suite.__init__(self, mxDir, False, False, importing_suite)
         self.versionid = version # fixed
+        self.existed = suite_import is None
         if suite_import:
-            # used in _validate_binary_suite
-            self.suite_import = suite_import
+            self._validate_binary_suite(suite_import)
         else:
             # already downloaded, just reload the metadata
-            self.suite_import = None
+            # the default versions of _load_metadata and _post_init do all we need
             self.suiteDict, _ = _load_suite_dict(self.mxDir)
-            self._load_distributions(self._check_suiteDict('distributions'))
+        self._load()
 
     def version(self, abortOnError=True):
         return self.versionid
@@ -2254,23 +2260,21 @@ class BinarySuite(AbstractSuite):
 
     # This is not done in the constructor owing to problems
     # running Java during the initial startup
-    def _validate_binary_suite(self):
+    def _validate_binary_suite(self, suite_import):
         '''
         We map from the info in suite_import to a complete URL that we should be able to locate.
         Every suite name 'name' must provide a jar called name-mx.jar where we
         can find the mx metadata and other info about the distributions
         '''
-        if not self.suite_import:
-            return
-        for urlinfo in self.suite_import.urlinfos:
+        for urlinfo in suite_import.urlinfos:
             if urlinfo.kind == 'binary':
-                mxname = self.suite_import.name + '-mx';
+                mxname = suite_import.name + '-mx';
                 base_url = join(urlinfo.url, 'com', 'oracle') # + suite name someday?
-                sversion = self.suite_import.version
+                sversion = suite_import.version
                 if urlinfo.version_adjust:
                     sversion = urlinfo.version_adjust.replace('{version}', sversion)
                 # local for testing
-                mx_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, self.suite_import.version)
+                mx_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, suite_import.version)
 #               mx_url = join(base_url, mxname, sversion)
                 mx_jar_urls, mx_jar_shas = self._scrape_repodir(mx_url)
                 mx_jar_path = self.mx_distribution_path()
@@ -2278,7 +2282,7 @@ class BinarySuite(AbstractSuite):
                 download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
                 run(['jar', 'xf', mx_jar_path], cwd=self.dir)
                 self.suiteDict, _ = _load_suite_dict(self.mxDir)
-                self._load_distributions(self._check_suiteDict('distributions'))
+                Suite._load_distributions(self, self._check_suiteDict('distributions'))
                 for dist in self.dists:
                     dist_url = join(base_url, os.path.splitext(basename(dist.path))[0], sversion)
                     dist_jars, dist_jars_shas = self._scrape_repodir(dist_url)
@@ -2286,23 +2290,43 @@ class BinarySuite(AbstractSuite):
                         urls = [dist_jar]
                         download_file_with_sha1(dist.name, dist.path, urls, dist_jar_sha, dist.path + '.sha1', resolve=True, mustExist=True)
 
-    def visit_imports(self, visitor, **extra_args):
+    def _load_env(self):
         pass
 
-    def _post_init(self):
+    def _load_distributions(self, distsMap):
+        # This gets done explicitly in _validate_binary_suite as we need the info there
+        # so, in that mode, we don't want to call the superclass method
+        if self.existed:
+            Suite._load_distributions(self, distsMap)
+
+    def _post_init_check(self):
+        Suite._post_init_check(self)
+        # since we are working with the original suite.py file, we remove some
+        # values that should not be visible
         for d in self.dists:
-            d.deps = [] # no project dependencies allowed!
-            _dists[d.name] = d
+            d.deps = [] # remeve project dependencies
+        self.projects = []
 
-        if hasattr(self, 'mx_post_parse_cmd_line'):
-            self.mx_post_parse_cmd_line(_opts)
-        self.post_init = True
 
-class MXSuite(Suite):
+class MXSuite(SourceSuite):
     def __init__(self):
         mxMxDir = _is_suite_dir(_mx_home)
         assert mxMxDir
-        Suite.__init__(self, mxMxDir, internal=True)
+        SourceSuite.__init__(self, mxMxDir, internal=True)
+
+class PrimarySuite(SourceSuite):
+    def __init__(self, mxDir):
+        SourceSuite.__init__(self, mxDir, True, True, None)
+
+    def _depth_first_post_init(self):
+        '''depth first _post_init driven by imports graph'''
+        self.visit_imports(self._post_init_visitor)
+        self._post_init_sequence()
+
+    @staticmethod
+    def load_env(mxDir):
+        SourceSuite._load_env_in_mxDir(mxDir)
+
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -2723,7 +2747,7 @@ def createsuite(args):
         update_file('hg-ignore', hgignore)
         vcs.add(suite_name, hgignore)
 
-    cs = Suite(mxDirPath)
+    cs = SourceSuite(mxDirPath)
     cs.requiredMxVersion = version
     mx_update_suitepy.update_suite_file(cs, False)
 
@@ -3111,13 +3135,22 @@ class ArgParser(ArgumentParser):
     def parse_startup_options():
         # suite-specific args may match the known args so there is no way at this early stage
         # to use ArgParser to handle the suite model global arguments, so we just do it manually.
+        # TODO find a better way to do this! Idea: scan args to find command (still need to handle key-value args)
+        # and then parse the global options only.
 
-        # minimal options to allow run to be used
+        # minimal options to allow run/java to be used
         global _opts
         _opts.verbose = None
         _opts.ptimeout = 0
         _opts.timeout = 0
         _opts.killwithsigquit = False
+        _opts.java_home = None
+        _opts.java_args = None
+        _opts.java_args_pfx = []
+        _opts.java_args_sfx = []
+        _opts.java_dbg_port = None
+        _opts.user_home = os.path.expanduser('~')
+        _opts.no_download_progress = None
 
         def _get_argvalue(arg, args, i):
             if i < len(args):
@@ -3164,6 +3197,9 @@ class ArgParser(ArgumentParser):
                 _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
             elif args == '-v':
                 _opts.verbose = True
+            elif args == '-V':
+                _opts.verbose = True
+                _opts.very_verbose = True
             i = i + 1
 
         os.environ['MX_SRC_SUITEMODEL'] = src_suitemodel_arg
@@ -4478,8 +4514,7 @@ def build(args, parser=None):
             if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
                 dist.suite.create_mx_distribution()
                 if not exists(dist.path):
-                    log('Creating jar for {0}'.format(dist.name))
-                    dist.make_archive()
+                    archive(['@' + dist.name])
                 elif dist not in updatedAnnotationProcessorDists:
                     projectsInDist = dist.sorted_deps()
                     n = len(rebuiltProjects.intersection(projectsInDist))
@@ -6863,7 +6898,7 @@ def _sclone(source, dest, suite_import, no_imports):
         return None
 
     # create a Suite (without loading) to enable imports visitor
-    s = Suite(mxDir, load=False)
+    s = SourceSuite(mxDir, load=False)
     if not no_imports:
         s.visit_imports(_scloneimports_visitor, source=source)
     return s
@@ -6881,7 +6916,7 @@ def _scloneimports_suitehelper(sdir):
         abort(sdir + ' is not an mx suite')
     else:
         # create a Suite (without loading) to enable imports visitor
-        return Suite(mxDir, load=False)
+        return SourceSuite(mxDir, load=False)
 
 def _scloneimports(s, suite_import, source):
     # clone first, then visit imports once we can locate them
@@ -7362,7 +7397,7 @@ def show_suites(args):
         _show_section('distributions', s.dists)
 
 def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
-    myDir = dirname(__file__) if myDir is None else myDir
+    myDir = _mx_home if myDir is None else myDir
     binDir = join(myDir, 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
     javaClass = join(binDir, javaClassName + '.class')
@@ -7534,6 +7569,18 @@ def maven_install(args):
     else:
         abort('suite ' + s.name + ' has uncommitted changes')
 
+def show_envs(args):
+    '''
+    Show the (MX) environment variables, or all if '-all' is provide.
+    '''
+    parser = ArgumentParser(prog='mx showenvs')
+    parser.add_argument('--all', action='store_true', help='show all')
+    args = parser.parse_args(args)
+
+    for key, value in os.environ.iteritems():
+        if args.all or key.startswith('MX'):
+            print '{0}: {1}'.format(key, value)
+
 def remove_doubledash(args):
     if '--' in args:
         args.remove('--')
@@ -7650,6 +7697,7 @@ _commands = {
     'site': [site, '[options]'],
     'netbeansinit': [netbeansinit, ''],
     'suites': [show_suites, ''],
+    'envs': [show_envs, '[options]'],
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
     'test': [test, '[options]'],
@@ -7802,7 +7850,7 @@ def main():
         # We explicitly load the 'env' file of the primary suite now as it might influence
         # the suite loading logic. It will get loaded again, to ensure it overrides any
         # settings in imported suites
-        Suite.load_primary_suite_env(primarySuiteMxDir)
+        PrimarySuite.load_env(primarySuiteMxDir)
         global _binary_suites
         bs = os.environ.get('MX_BINARY_SUITES')
         if bs is not None:
@@ -7813,7 +7861,7 @@ def main():
 
         global _primary_suite
         # This will load all explicitly imported suites
-        _primary_suite = Suite(primarySuiteMxDir, primary=True)
+        _primary_suite = PrimarySuite(primarySuiteMxDir)
     else:
         # in general this is an error, except for the Needs_primary_suite_exemptions commands,
         # and an extensions command will likely not parse in this case, as any extra arguments
@@ -7839,7 +7887,6 @@ def main():
         os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
     if primarySuiteMxDir:
-        Suite._validate_binary_suites()
         _primary_suite._depth_first_post_init()
 
     if opts.extra_suites:
