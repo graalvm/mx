@@ -5,7 +5,7 @@ suite = {
 
     # ------------- Libraries -------------
 
-    "MX_FINDBUGS_DIST" : {
+    "FINDBUGS_DIST" : {
       "path" : "lib/findbugs-dist-3.0.0.zip",
       "urls" : [
         "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/findbugs-3.0.0.zip",
@@ -14,7 +14,7 @@ suite = {
       "sha1" : "6e56d67f238dbcd60acb88a81655749aa6419c5b",
     },
 
-    "MX_JUNIT" : {
+    "JUNIT" : {
       "path" : "lib/junit-4.11.jar",
       "urls" : [
         "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/junit-4.11.jar",
@@ -28,10 +28,10 @@ suite = {
         "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11-sources.jar",
       ],
       "sourceSha1" : "28e0ad201304e4a4abf999ca0570b7cffc352c3c",
-      "dependencies" : ["MX_HAMCREST"],
+      "dependencies" : ["HAMCREST"],
     },
 
-    "MX_CHECKSTYLE" : {
+    "CHECKSTYLE" : {
       "path" : "lib/checkstyle-6.0-all.jar",
       "urls" : [
         "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/checkstyle-6.0-all.jar",
@@ -40,7 +40,7 @@ suite = {
       "sha1" : "2bedc7feded58b5fd65595323bfaf7b9bb6a3c7a",
     },
 
-    "MX_HAMCREST" : {
+    "HAMCREST" : {
       "path" : "lib/hamcrest-core-1.3.jar",
       "urls" : [
         "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/hamcrest-core-1.3.jar",
@@ -62,7 +62,7 @@ suite = {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "dependencies" : [
-        "MX_JUNIT",
+        "JUNIT",
       ],
       "javaCompliance" : "1.8",
     },

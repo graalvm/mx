@@ -51,7 +51,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
         if not exists(findbugsLib):
             tmp = tempfile.mkdtemp(prefix='findbugs-download-tmp', dir=mx._mx_suite.dir)
             try:
-                findbugsDist = mx.library('MX_FINDBUGS_DIST').get_path(resolve=True)
+                findbugsDist = mx.library('FINDBUGS_DIST').get_path(resolve=True)
                 with zipfile.ZipFile(findbugsDist) as zf:
                     candidates = [e for e in zf.namelist() if e.endswith('/lib/findbugs.jar')]
                     assert len(candidates) == 1, candidates
