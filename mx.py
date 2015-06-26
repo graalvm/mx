@@ -132,7 +132,7 @@ _deferred_warnings = []
 _vc_systems = []
 _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
-
+_suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 """
 A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all classes of Dependency.
@@ -1058,7 +1058,7 @@ or False for success/failure. The command can be made visible by setting the
 '''
 class VC:
     def __init__(self, kind):
-        self.kind = kind;
+        self.kind = kind
 
     @staticmethod
     def is_valid_kind(kind):
@@ -1255,7 +1255,7 @@ class HgConfig(VC):
 
     def incoming(self, vcdir, abortOnError=True):
         out = OutputCapture()
-        rc = run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out);
+        rc = run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -1263,12 +1263,12 @@ class HgConfig(VC):
                 abort('incoming returned ' + str(rc))
             return None
 
-    def outgoing(self, vcdir, dest, abortOnError=True):
+    def outgoing(self, vcdir, dest=None, abortOnError=True):
         out = OutputCapture()
         cmd = ['hg', '-R', vcdir, 'outgoing']
         if dest:
             cmd.append(dest)
-        rc = run(cmd, nonZeroIsFatal=False, out=out);
+        rc = run(cmd, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -1337,7 +1337,7 @@ class HgConfig(VC):
             def __init__(self):
                 self.lines = []
             def __call__(self, data):
-                self.lines.append(data.rstrip());
+                self.lines.append(data.rstrip())
 
         if patterns is None:
             patterns = []
@@ -1607,7 +1607,7 @@ class SuiteImport:
             vc = VC.get_vc(source)
             return [SuiteImportURLInfo(source, 'source', vc)]
         elif isinstance(source, list):
-            result = filter(lambda p: p.kind == 'source', source)
+            result = [s for s in source if s.kind == 'source']
             return result
         else:
             abort('unexpected type in SuiteImport.get_source_urls')
@@ -1698,10 +1698,9 @@ class Suite:
 
     def _load(self):
         '''
-        Initializes the imports structure, and calls _load_env and _load_commands
-        Pre-condition is that self.suiteDict has been set
+        Calls _load_env and _load_commands
+        Pre-condition is that _init.imports(0 has been called
         '''
-        self._init_imports()
         # load suites depth first
         self.loading_imports = True
         self.visit_imports(self._find_and_loadsuite)
@@ -1929,12 +1928,12 @@ class Suite:
         with Archiver(mxMetaJar) as arc:
             for pyfile in pyfiles:
                 mxDirBase = basename(self.mxDir)
-                arc.zf.write(pyfile, arcname = join(mxDirBase, basename(pyfile)))
+                arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
 
     def remove_mx_distribution(self):
         '''remove for clean command'''
         path = self.mx_distribution_path()
-        if (exists(path)):
+        if exists(path):
             log('Removing distribution {0}...'.format(path))
             os.remove(path)
 
@@ -1965,12 +1964,17 @@ class Suite:
                 for imps in s.imported_by:
                     for imp in imps.suite_imports:
                         if imp.name == s.name:
-                            if imp.version != suite_import.version :
+                            if imp.version != suite_import.version:
                                 abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
                 return s
 
         importMxDir = None
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        version = suite_import.version
+        if _suites_ignore_versions:
+            if len(_suites_ignore_versions) == 0 or suite_import.name in _suites_ignore_versions:
+                version = None
+
         if searchMode == 'binary':
             # check for a local binary suite
             dotDir = importing_suite.binary_suite_dir(suite_import.name)
@@ -1988,6 +1992,7 @@ class Suite:
                 if urlinfo.abs_kind() == searchMode:
                     if urlinfo.kind == 'binary':
                         binMxDir = join(importing_suite.binary_suite_dir(suite_import.name), _mxDirName(suite_import.name))
+                        # ignore versions cannot apply to a binary suite as it has no intepretation
                         return BinarySuite(binMxDir, importing_suite, suite_import, suite_import.version)
                     else:
                         # source, try a vc clone
@@ -1995,8 +2000,8 @@ class Suite:
                         cloned = False
                         if not urlinfo.vc.check(abortOnError=False):
                             continue
-                        if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False):
-                            cloned = True;
+                        if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False):
+                            cloned = True
                         else:
                             # it is possible that the clone partially populated the target
                             # which will mess an up an alternate, so we clean it
@@ -2059,6 +2064,7 @@ class SourceSuite(Suite):
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
         self.suiteDict, _ = _load_suite_dict(mxDir)
+        self._init_imports()
         if load:
             self._load()
 
@@ -2226,6 +2232,8 @@ class BinarySuite(Suite):
             # already downloaded, just reload the metadata
             # the default versions of _load_metadata and _post_init do all we need
             self.suiteDict, _ = _load_suite_dict(self.mxDir)
+
+        self._init_inports()
         self._load()
 
     def version(self, abortOnError=True):
@@ -2261,8 +2269,8 @@ class BinarySuite(Suite):
             parser.feed(text)
             urlf.close()
 
-        jar_files = filter(lambda f : f.endswith('.jar'), files)
-        sha_files = filter(lambda f : f.endswith('.jar.sha1'), files)
+        jar_files = [f for f in files if f.endswith('.jar')]
+        sha_files = [f for f in files if f.endswith('.jar.sha1')]
         sha_values = []
         for sha_file in sha_files:
             if file_dir:
@@ -2284,7 +2292,7 @@ class BinarySuite(Suite):
         '''
         for urlinfo in suite_import.urlinfos:
             if urlinfo.kind == 'binary':
-                mxname = suite_import.name + '-mx';
+                mxname = suite_import.name + '-mx'
                 base_url = join(urlinfo.url, 'com', 'oracle') # + suite name someday?
                 sversion = suite_import.version
                 if urlinfo.version_adjust:
@@ -2305,11 +2313,11 @@ class BinarySuite(Suite):
                     for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
                         urls = [dist_jar]
                         if dist_jar.endswith('sources.jar'):
-                            sources=True
+                            sources = True
                             dist_path = dist.sourcesPath
                         else:
-                            sources=False
-                            dist_path=dist.path
+                            sources = False
+                            dist_path = dist.path
                         download_file_with_sha1(dist.name, dist_path, urls, dist_jar_sha, dist_path + '.sha1', resolve=True, mustExist=True, sources=sources)
 
     def _load_env(self):
@@ -2730,7 +2738,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     Get the list of all loaded suites.
     """
-    suite_values = filter(lambda s : not s.internal and (includeBinary or isinstance(s, SourceSuite)), _suites.values())
+    suite_values = [s for s in _suites.values() if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
     if opt_limit_to_suite and _opts.specific_suites:
         result = []
         for s in suite_values:
@@ -3161,7 +3169,6 @@ class ArgParser(ArgumentParser):
         '''
 
         # minimal options to allow run/java to be used
-        global _opts
         _opts.verbose = None
         _opts.ptimeout = 0
         _opts.timeout = 0
@@ -5199,7 +5206,7 @@ def clean(args, parser=None):
 
     if args.java:
         if args.dist:
-            lsuites = suites(True);
+            lsuites = suites(True)
             for d in _dists.keys():
                 dd = distribution(d)
                 if dd.suite in lsuites:
@@ -7572,7 +7579,7 @@ def maven_install(args):
         return name.lower().replace('_', '-')
 
     _mvn.check()
-    s = _primary_suite;
+    s = _primary_suite
     if args.no_checks or s.vc.can_push(s.dir, strict=False):
         version = s.vc.tip(s.dir)
         usname = s.name.upper()
@@ -7881,9 +7888,19 @@ def main():
         bs = os.environ.get('MX_BINARY_SUITES')
         if bs is not None:
             if len(bs) > 0:
-                _binary_suites=bs.split(',')
+                _binary_suites = bs.split(',')
             else:
                 _binary_suites = []
+
+        # support advanced use where import version ids are ignored (so get head)
+        # experimental, not observed in all commands
+        global _suites_ignore_versions
+        igv = os.environ.get('MX_IGNORE_VERSIONS')
+        if igv  is not None:
+            if len(igv) > 0:
+                _suites_ignore_versions = igv.split(',')
+            else:
+                _suites_ignore_versions = []
 
         global _primary_suite
         # This will load all explicitly imported suites
@@ -7962,7 +7979,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.6.1")
+version = VersionSpec("4.0.0")
 
 currentUmask = None
 

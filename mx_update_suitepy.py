@@ -22,7 +22,7 @@
 #
 
 import shutil
-from os.path import join
+from os.path import join, relpath
 
 _indent = None
 
@@ -38,7 +38,7 @@ def update_suite_file(self, backup=True):
         class Indent:
             def __init__(self, f):
                 # can't access f in outer scope in 2.x
-                self.f = f
+                self.sf = f
                 self.incIndent = 4
                 self.indent = 0 if _indent is None else _indent.indent
 
@@ -57,17 +57,17 @@ def update_suite_file(self, backup=True):
             def writeIndent(self):
                 ''' write the current indent '''
                 for _ in range(self.indent):
-                    self.f.write(' ')
+                    self.sf.write(' ')
 
             def write(self, t):
                 ''' write the current indent followed by t '''
                 self.writeIndent()
-                self.f.write(t)
+                self.sf.write(t)
 
             def writenl(self, t):
                 ''' write the current indent followed by t and a nl'''
                 self.writeIndent()
-                self.f.write(t + '\n')
+                self.sf.write(t + '\n')
 
             def writecnl(self, t):
                 ''' write the current indent followed by t, a comma and a nl'''
@@ -75,29 +75,29 @@ def update_suite_file(self, backup=True):
 
             def writeqname(self, t):
                 '''  "t" '''
-                self.f.write('"' + t + '"')
+                self.sf.write('"' + t + '"')
 
             def writeqnameBra(self, t):
                 ''' write the current indent followed by "t", a comma and a nl'''
                 self.writeIndent()
                 self.writeqname(t)
-                self.f.write(" : {\n")
+                self.sf.write(" : {\n")
 
             def writeKeyValueNL(self, key, value):
                 ''' write the current indent followed by "key" : "name", a comma and a nl'''
                 self.writeIndent()
                 self.writeqname(key)
-                self.f.write(" : ")
+                self.sf.write(" : ")
                 self.writeqname(value)
-                self.f.write(',\n')
+                self.sf.write(',\n')
 
             def writeStringList(self, key, stringList):
                 self.writeIndent()
                 self.writeqname(key)
-                self.f.write(" : [")
+                self.sf.write(" : [")
                 if len(stringList) > 1:
                     f.write('\n')
-                    with Indent(self.f):
+                    with Indent(self.sf):
                         for s in stringList:
                             _indent.writeIndent()
                             _indent.writeqname(s)
@@ -105,7 +105,7 @@ def update_suite_file(self, backup=True):
                     self.writeIndent()
                 elif len(stringList) == 1:
                     self.writeqname(stringList[0])
-                self.f.write("],\n")
+                self.sf.write("],\n")
 
 
         f.write('suite = {\n')
@@ -137,9 +137,9 @@ def update_suite_file(self, backup=True):
                 if self.jreLibs:
                     _indent.writeqnameBra("jrelibraries")
                     with Indent(f):
-                        for jrelib in self.jrelibs:
-                            # TODO
-                            pass
+#                        for jrelib in self.jrelibs:
+#                            # TODO
+#                            pass
                         _indent.writecnl('}')
                     _indent.writecnl('}')
 
@@ -198,11 +198,11 @@ def update_suite_file(self, backup=True):
                         if not d.isProcessorDistribution:
                             _indent.writeqnameBra(d.name)
                             with Indent(f):
-                                _indent.writeKeyValueNL("path", os.path.relpath(d.path, d.suite.dir))
+                                _indent.writeKeyValueNL("path", relpath(d.path, d.suite.dir))
                                 if d.subDir:
                                     _indent.writeKeyValueNL("subDir", d.subDir, d.suite.dir)
                                 if d.sourcesPath:
-                                    _indent.writeKeyValueNL("sourcesPath", os.path.relpath(d.sourcesPath))
+                                    _indent.writeKeyValueNL("sourcesPath", relpath(d.sourcesPath))
                                 if d.javaCompliance:
                                     _indent.writeKeyValueNL("javaCompliance", str(d.javaCompliance))
                                 if d.mainClass:
