@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-c30b055ed79a4a7c918d3dba0373afb3d0b4d3c4
+0defcb691fe25f694b42196837acca3476d023a3
 """
 import sys
 if __name__ == '__main__':
@@ -176,6 +176,9 @@ class Dependency:
     def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
         abort("all_deps is not implemented")
 
+    '''Only Projects define Java packages'''
+    def defined_java_packages(self):
+        return []
 
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
@@ -816,8 +819,13 @@ def sha1(args):
     """generate sha1 digest for given file"""
     parser = ArgumentParser(prog='sha1')
     parser.add_argument('--path', action='store', help='path to file', metavar='<path>', required=True)
+    parser.add_argument('--plain', action='store_true', help='just the 40 chars', )
     args = parser.parse_args(args)
-    print 'sha1 of ' + args.path + ': ' + sha1OfFile(args.path)
+    value = sha1OfFile(args.path)
+    if args.plain:
+        sys.stdout.write(value)
+    else:
+        print 'sha1 of ' + args.path + ': ' + value
 
 def sha1OfFile(path):
     with open(path, 'rb') as f:
@@ -1846,7 +1854,7 @@ class Suite:
         for name, attrs in sorted(distsMap.iteritems()):
             context = 'distribution ' + name
             subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path')
+            path = attrs.pop('path', join(self.dir, 'dists', name.lower().replace('_', '-') + '.jar'))
             sourcesPath = attrs.pop('sourcesPath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
             mainClass = attrs.pop('mainClass', None)
@@ -2167,6 +2175,14 @@ class SourceSuite(Suite):
                 abort('cannot override project  ' + p.name + ' in ' + p.dir + " with project of the same name in  " + existing.dir)
             if not p.name in _opts.ignored_projects:
                 _projects[p.name] = p
+            # check all project dependencies are local
+            for d in p.deps:
+                dp = project(d, False)
+                if dp:
+                    if not dp in self.projects:
+                        abort("dependency on project '{0}' from imported suite, use '{1}:distribution-name' instead".format(dp.name, dp.suite.name))
+                    elif dp == p:
+                        abort("recursive dependency in suite '{0}' in project '{1}'".format(self.name, d))
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
@@ -2288,14 +2304,20 @@ class BinarySuite(Suite):
                     dist_jars, dist_jars_shas = self._scrape_repodir(dist_url)
                     for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
                         urls = [dist_jar]
-                        download_file_with_sha1(dist.name, dist.path, urls, dist_jar_sha, dist.path + '.sha1', resolve=True, mustExist=True)
+                        if dist_jar.endswith('sources.jar'):
+                            sources=True
+                            dist_path = dist.sourcesPath
+                        else:
+                            sources=False
+                            dist_path=dist.path
+                        download_file_with_sha1(dist.name, dist_path, urls, dist_jar_sha, dist_path + '.sha1', resolve=True, mustExist=True, sources=sources)
 
     def _load_env(self):
         pass
 
     def _load_distributions(self, distsMap):
         # This gets done explicitly in _validate_binary_suite as we need the info there
-        # so, in that mode, we don't want to call the superclass method
+        # so, in that mode, we don't want to call the superclass method again
         if self.existed:
             Suite._load_distributions(self, distsMap)
 
@@ -2704,11 +2726,11 @@ def vc_system(kind, abortOnError=True):
     else:
         return None
 
-def suites(opt_limit_to_suite=False):
+def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     Get the list of all loaded suites.
     """
-    suite_values = filter(lambda s : not s.internal, _suites.values())
+    suite_values = filter(lambda s : not s.internal and (includeBinary or isinstance(s, SourceSuite)), _suites.values())
     if opt_limit_to_suite and _opts.specific_suites:
         result = []
         for s in suite_values:
@@ -2861,10 +2883,8 @@ def dependency(name, fatalIfMissing=True):
                 else:
                     return d
             else:
-                # this is arguably a hack, we fall back to a library
-                d = _libs.get(name)
-                if d is None and fatalIfMissing:
-                    abort('cannot resolve ' + name + ' as either a component of ' + suite_name + ' or as a library')
+                if fatalIfMissing:
+                    abort('cannot resolve ' + name + ' as a distribution of ' + suite_name)
                 return d
     d = _projects.get(name)
     if d is None:
@@ -3133,10 +3153,12 @@ class ArgParser(ArgumentParser):
 
     @staticmethod
     def parse_startup_options():
-        # suite-specific args may match the known args so there is no way at this early stage
-        # to use ArgParser to handle the suite model global arguments, so we just do it manually.
-        # TODO find a better way to do this! Idea: scan args to find command (still need to handle key-value args)
-        # and then parse the global options only.
+        '''
+        Manual parsing of critical options that are needed during suite loading.
+        Unfortunately, the fact a suite might add new global options, means we
+        can't use the standard parse_cmd_line since, if one of those new options is
+        present, the parse will fail. TODO Is there a way to finesse this?
+        '''
 
         # minimal options to allow run/java to be used
         global _opts
@@ -3166,9 +3188,6 @@ class ArgParser(ArgumentParser):
         if len(args) == 1:
             if args[0] == '--version':
                 print 'mx version ' + str(version)
-                sys.exit(0)
-            if args[0] == '--help' or args[0] == '-h':
-                _argParser.print_help()
                 sys.exit(0)
 
         # set defaults
@@ -4837,7 +4856,7 @@ def pylint(args):
 
     def findfiles_by_walk():
         result = []
-        for suite in suites(True):
+        for suite in suites(True, includeBinary=False):
             for root, dirs, files in os.walk(suite.dir):
                 for f in files:
                     if f.endswith('.py'):
@@ -4852,9 +4871,8 @@ def pylint(args):
 
     def findfiles_by_vc():
         result = []
-        for suite in suites(True):
-            vcs = vc_system(suite.dir)
-            pyfiles = vcs.locate(suite.dir, ['-f', '*.py']).split(os.linesep)
+        for suite in suites(True, includeBinary=False):
+            pyfiles = suite.vc.locate(suite.dir, ['-f', '*.py'])
             for pyfile in pyfiles:
                 if exists(pyfile):
                     result.append(pyfile)
@@ -4945,8 +4963,11 @@ def canonicalizeprojects(args):
     The exit code of this command reflects how many projects have non-canonical dependencies."""
 
     nonCanonical = []
-    for s in suites(True):
+    for s in suites(True, includeBinary=False):
         for p in s.projects:
+            if p.name == 'com.oracle.truffle.r.nodes':
+#            if p.name == 'com.oracle.s1':
+                pass
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
                     if not pkg.startswith(p.name):
@@ -5658,6 +5679,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             files.append(join(p.dir, '.factorypath'))
 
 def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
+    # a binary suite archive is immutable and no project sources, only the -sources.jar
+    # TODO We may need the project (for source debugging) but it needs different treatment
+    if isinstance(suite, BinarySuite):
+        return
+
     configZip = TimeStampFile(join(suite.mxDir, 'eclipse-config.zip'))
     configLibsZip = join(suite.mxDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
@@ -7936,7 +7962,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("3.6.0")
+version = VersionSpec("3.6.1")
 
 currentUmask = None
 
