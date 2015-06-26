@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-0defcb691fe25f694b42196837acca3476d023a3
+4918409846d81939dc684434eec8f69a58eef65d
 """
 import sys
 if __name__ == '__main__':
@@ -4701,9 +4701,8 @@ def eclipseformat(args):
         projects = [project(name) for name in args.projects.split(',')]
 
     class Batch:
-        def __init__(self, settingsDir, javaCompliance):
+        def __init__(self, settingsDir):
             self.path = join(settingsDir, 'org.eclipse.jdt.core.prefs')
-            self.javaCompliance = javaCompliance
             with open(join(settingsDir, 'org.eclipse.jdt.ui.prefs')) as fp:
                 jdtUiPrefs = fp.read()
             self.removeTrailingWhitespace = 'sp_cleanup.remove_trailing_whitespaces_all=true' in jdtUiPrefs
@@ -4714,15 +4713,13 @@ def eclipseformat(args):
         def __hash__(self):
             if not self.cachedHash:
                 with open(self.path) as fp:
-                    self.cachedHash = (fp.read(), self.javaCompliance, self.removeTrailingWhitespace).__hash__()
+                    self.cachedHash = (fp.read(), self.removeTrailingWhitespace).__hash__()
             return self.cachedHash
 
         def __eq__(self, other):
             if not isinstance(other, Batch):
                 return False
             if self.removeTrailingWhitespace != other.removeTrailingWhitespace:
-                return False
-            if self.javaCompliance != other.javaCompliance:
                 return False
             if self.path == other.path:
                 return True
@@ -4731,6 +4728,7 @@ def eclipseformat(args):
                     if fp.read() != ofp.read():
                         return False
             return True
+
 
     class FileInfo:
         def __init__(self, path):
@@ -4767,7 +4765,7 @@ def eclipseformat(args):
             continue
         sourceDirs = p.source_dirs()
 
-        batch = Batch(join(p.dir, '.settings'), p.javaCompliance)
+        batch = Batch(join(p.dir, '.settings'))
 
         if not exists(batch.path):
             if _opts.verbose:
@@ -4794,7 +4792,6 @@ def eclipseformat(args):
                 '-nosplash',
                 '-application',
                 'org.eclipse.jdt.core.JavaCodeFormatter',
-                '-vm', java(batch.javaCompliance).java,
                 '-config', batch.path]
                 + [f.path for f in chunk])
             for fi in chunk:
