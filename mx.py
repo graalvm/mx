@@ -3141,6 +3141,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
         self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
+        self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
         self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
         self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
@@ -3914,8 +3915,15 @@ class JavaConfig:
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
-        if _opts.java_dbg_port is not None:
-            self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(_opts.java_dbg_port)]
+        attach = None
+        if _opts.attach is not None:
+            attach = 'server=n,address=' + _opts.attach
+        else:
+            if _opts.java_dbg_port is not None:
+                attach = 'server=y,address=' + str(_opts.java_dbg_port)
+
+        if attach is not None:
+            self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
@@ -4238,8 +4246,16 @@ class JavaCompileTask:
                     if _opts.very_verbose:
                         javacCmd.append('-verbose')
                     jdk.javacLibOptions(javacCmd)
-                    if _opts.java_dbg_port is not None:
-                        javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=' + str(jdk.debug_port)]
+
+                    attach = None
+                    if _opts.attach is not None:
+                        attach = 'server=n,address=' + _opts.attach
+                    else:
+                        if _opts.java_dbg_port is not None:
+                            attach = 'server=y,address=' + str(_opts.java_dbg_port)
+
+                    if attach is not None:
+                        javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
                     javacCmd += processorArgs
                     javacCmd += ['@' + _cygpathU2W(argfile.name)]
 
@@ -6119,6 +6135,43 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
+    out.open('target', {'name' : 'run', 'depends' : 'compile'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : 'unittest'})
+    out.element('arg', {'value' : p.name})
+    out.close('exec')
+    out.close('target')
+    out.open('target', {'name' : 'debug', 'depends' : 'init,compile'})
+    out.open('nbjpdastart', {'addressproperty' : 'jpda.address', 'name' : p.name, })
+    out.open('classpath')
+    out.element('path', {'path' : '${javac.classpath}'})
+    out.close('classpath')
+    out.open('sourcepath')
+    out.element('pathelement', {'location' : 'src'})
+    out.close('sourcepath')
+    out.close('nbjpdastart')
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : '-d'})
+    out.element('arg', {'value' : '--attach'})
+    out.element('arg', {'value' : '${jpda.address}'})
+    out.element('arg', {'value' : 'unittest'})
+    out.element('arg', {'value' : p.name})
+    out.close('exec')
+    out.close('target')
+    out.open('target', {'name' : 'javadoc'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : 'javadoc'})
+    out.element('arg', {'value' : '--projects'})
+    out.element('arg', {'value' : p.name})
+    out.close('exec')
+    out.element('nbbrowse', {'file' : 'javadoc/index.html'})
+    out.close('target')
     out.close('project')
     update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
     if files:
@@ -6230,7 +6283,7 @@ javadoc.splitindex=true
 javadoc.use=true
 javadoc.version=false
 javadoc.windowtitle=
-main.class=
+main.class=com.oracle.truffle.api.impl.Accessor
 manifest.file=manifest.mf
 meta.inf.dir=${src.dir}/META-INF
 mkdist.disabled=false
@@ -8017,7 +8070,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.0")
+version = VersionSpec("4.0.1")
 
 currentUmask = None
 
