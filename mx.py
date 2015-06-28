@@ -28,7 +28,7 @@
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-Full documentation can be found in the Wiki at the site from which mxtool was downloaded.
+Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 
 This version of mx is an evolution of mx 1.x (provided with the Graal distribution),
 and supports multiple suites in separate Mercurial repositories. It is intended to be backwards
@@ -119,6 +119,7 @@ _dists = dict()
 _suites = dict()
 _annotationProcessors = None
 _mx_suite = None
+_mx_tests_suite = None
 _primary_suite_path = None
 _primary_suite = None
 _src_suitemodel = None
@@ -1607,7 +1608,7 @@ class SuiteImport:
             vc = VC.get_vc(source)
             return [SuiteImportURLInfo(source, 'source', vc)]
         elif isinstance(source, list):
-            result = [s for s in source if s.kind == 'source']
+            result = [s for s in source if s.kind != 'binary']
             return result
         else:
             abort('unexpected type in SuiteImport.get_source_urls')
@@ -2338,11 +2339,19 @@ class BinarySuite(Suite):
         self.projects = []
 
 
-class MXSuite(SourceSuite):
-    def __init__(self):
-        mxMxDir = _is_suite_dir(_mx_home)
+class InternalSuite(SourceSuite):
+    def __init__(self, mxDir):
+        mxMxDir = _is_suite_dir(mxDir)
         assert mxMxDir
         SourceSuite.__init__(self, mxMxDir, internal=True)
+
+class MXSuite(InternalSuite):
+    def __init__(self):
+        InternalSuite.__init__(self, _mx_home)
+
+class MXTestsSuite(InternalSuite):
+    def __init__(self):
+        InternalSuite.__init__(self, join(_mx_home, "tests"))
 
 class PrimarySuite(SourceSuite):
     def __init__(self, mxDir):
@@ -2804,6 +2813,8 @@ def suite(name, fatalIfMissing=True):
         abort('suite named ' + name + ' not found')
     return s
 
+def primary_suite():
+    return _primary_suite
 
 def projects_from_names(projectNames):
     """
@@ -3114,7 +3125,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
-        self.add_argument('--extra-suites', help='extra suites to load manually, metavar=<args>')
+        self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -6533,19 +6544,17 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
-    if not is_interactive():
-        log('fsckprojects command must be run in an interactive shell')
-        return
-    for suite in suites(True):
+#    if not is_interactive():
+#        log('fsckprojects command must be run in an interactive shell')
+#        return
+    for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
-                # no point in traversing vc metadata dir, lib, or .workspace
-                dirnames[:] = [d for d in dirnames if d not in [suite.vc.metadir(), suite.mxDir, 'lib', '.workspace']]
-                # if there are nested suites must not scan those now, as they are not in projectDirs (but contain .project files)
-                if _src_suitemodel.nestedsuites_dirname() in dirnames:
-                    dirnames.remove(_src_suitemodel.nestedsuites_dirname())
+                # no point in traversing vc metadata dir, lib, .workspace
+                # if there are nested source suites must not scan those now, as they are not in projectDirs (but contain .project files)
+                dirnames[:] = [d for d in dirnames if d not in [suite.vc.metadir(), suite.mxDir, 'lib', '.workspace', 'mx.imports']]
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
@@ -6930,7 +6939,7 @@ def _sclone(source, dest, suite_import, no_imports):
     # create a Suite (without loading) to enable imports visitor
     s = SourceSuite(mxDir, load=False)
     if not no_imports:
-        s.visit_imports(_scloneimports_visitor, source=source)
+        s.visit_imports(_scloneimports_visitor, source=dest)
     return s
 
 def _scloneimports_visitor(s, suite_import, source, **extra_args):
@@ -7926,13 +7935,11 @@ def main():
     else:
         os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
+    if opts.mx_tests:
+        MXTestsSuite()
+
     if primarySuiteMxDir:
         _primary_suite._depth_first_post_init()
-
-    if opts.extra_suites:
-        extra_suites = opts.extra_suites.split(",")
-        for extra_suite in extra_suites:
-            _primary_suite.import_suite(extra_suite)
 
     _remove_bad_deps()
 
