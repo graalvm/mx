@@ -7561,8 +7561,8 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     else:
         return 0
 
-def mvn_local_install(name, path, version):
-    run(['mvn', 'install:install-file', '-DgroupId=com.oracle', '-DartifactId=' + name, '-Dversion=' +
+def mvn_local_install(suite_name, dist_name, path, version):
+    run(['mvn', 'install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
 
 def maven_install(args):
@@ -7591,9 +7591,9 @@ def maven_install(args):
         mxMetaName = s.name + '-mx'
         mxMetaJar = s.mx_distribution_path()
         if args.local:
-            mvn_local_install(_map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
+            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
             for dist in arcdists:
-                mvn_local_install(_map_to_maven_dist_name(dist.name), dist.path, version)
+                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
         else:
             print 'jars to deploy manually for version: ' + version
             print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
