@@ -2046,12 +2046,10 @@ class Suite:
         imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
-            if suite_import.urlinfos:
-                # TODO try all?
-                urlinfo = SuiteImport.parse_specification(urlinfos[0])
-                vc_system(imported_suite.vckind).pull(imported_suite.dir, urlinfo.url, rev=version, update=True)
+            if urlinfos:
+                imported_suite.vc.pull(imported_suite.dir, rev=version, update=True)
             if not imported_suite.post_init:
-                imported_suite._post_init()
+                imported_suite._post_init_sequence()
         return imported_suite
 
     def suite_py(self):
