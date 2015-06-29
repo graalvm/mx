@@ -39,7 +39,7 @@ def update_suite_file(self, backup=True):
             def __init__(self, f):
                 # can't access f in outer scope in 2.x
                 self.sf = f
-                self.incIndent = 4
+                self.incIndent = 2
                 self.indent = 0 if _indent is None else _indent.indent
 
             def __enter__(self):
@@ -124,7 +124,6 @@ def update_suite_file(self, backup=True):
                             _indent.writenl('{')
                             with Indent(f):
                                 _indent.writeKeyValueNL("name", suite_import.name)
-                                _indent.writeKeyValueNL("vckind", suite_import.vckind)
                                 _indent.writeKeyValueNL("kind", suite_import.kind)
                                 if suite_import.version:
                                     _indent.writeKeyValueNL("version", suite_import.version)
@@ -137,9 +136,10 @@ def update_suite_file(self, backup=True):
                 if self.jreLibs:
                     _indent.writeqnameBra("jrelibraries")
                     with Indent(f):
-#                        for jrelib in self.jrelibs:
-#                            # TODO
-#                            pass
+                        for jrelib in self.jrelibs:
+                            _indent.writeqnameBra(jrelib.name)
+                            with Indent(f):
+                                _indent.writeKeyValueNL("jar", jrelib.jar)
                         _indent.writecnl('}')
                     _indent.writecnl('}')
 

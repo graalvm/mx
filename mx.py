@@ -1578,11 +1578,11 @@ class SuiteImport:
         # missing defaults to the tip
         version = import_dict.get("version")
         urls = import_dict.get("urls")
-        # urls a list of alternatives, can be str or dict
-        # a str is short for a dict with with kind=source and vckind=None
+        # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
             abort('suite import urls must be a list')
         urlinfos = []
+        kind = None
         for urlinfo in urls:
             if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
@@ -1637,7 +1637,8 @@ def _load_suite_dict(mxDir):
 
     moduleName = 'suite'
     modulePath = join(mxDir, moduleName + '.py')
-    if exists(modulePath):
+    suffix = 1
+    while exists(modulePath):
 
         savedModule = sys.modules.get(moduleName)
         if savedModule:
@@ -1666,11 +1667,46 @@ def _load_suite_dict(mxDir):
 
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
-        suite = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions', 'name', 'mxversion']
-        unknown = frozenset(suite.keys()) - frozenset(sections)
+        d = expand(getattr(module, dictName), [dictName])
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite else [])
+        unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
+
+        if suite is None:
+            suite = d
+        else:
+            # Retire this code once all suites are converted as there should be exactly one suite.py file per suite.
+            # This is currently needed by the repo split tool
+            for s in sections:
+                existing = suite.get(s)
+                additional = d.get(s)
+                if additional:
+                    if not existing:
+                        suite[s] = additional
+                    else:
+                        conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
+                        if conflicting:
+                            abort(modulePath + ' redefines: ' + ', '.join(conflicting))
+                        existing.update(additional)
+            distExtensions = d.get('distribution_extensions')
+            if distExtensions:
+                existing = suite['distributions']
+                for n, attrs in distExtensions.iteritems():
+                    original = existing.get(n)
+                    if not original:
+                        abort('cannot extend non-existing distribution ' + n)
+                    for k, v in attrs.iteritems():
+                        if k != 'dependencies':
+                            abort('Only the dependencies of distribution ' + n + ' can be extended')
+                        if not isinstance(v, types.ListType):
+                            abort('distribution_extensions.' + n + '.dependencies must be a list')
+                        original['dependencies'] += v
+
+        dictName = 'extra'
+        moduleName = 'suite' + str(suffix)
+        modulePath = join(mxDir, moduleName + '.py')
+        suffix = suffix + 1
 
     return suite, modulePath
 
@@ -7587,10 +7623,10 @@ def maven_install(args):
     s = _primary_suite
     if args.no_checks or s.vc.can_push(s.dir, strict=False):
         version = s.vc.tip(s.dir)
-        usname = s.name.upper()
         arcdists = []
         for dist in s.dists:
-            if dist.name.startswith(usname):
+            # ignore non-exported dists
+            if not dist.name.startswith('COM_ORACLE'):
                 arcdists.append(dist)
 
         mxMetaName = s.name + '-mx'
