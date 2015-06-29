@@ -35,7 +35,7 @@ and supports multiple suites in separate Mercurial repositories. It is intended 
 compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
 version that was merged.
 
-4918409846d81939dc684434eec8f69a58eef65d
+6b5221d7b5c1197ce67a2c74ed263515c5b747a3
 """
 import sys
 if __name__ == '__main__':
@@ -5824,8 +5824,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : _default_java_home.jdk})
-    launchOut.element('mapEntry', {'key' : 'EXTRA_JAVA_HOMES', 'value' :  os.pathsep.join([extraJavaHome.jdk for extraJavaHome in _extra_java_homes])})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : java().jdk})
     launchOut.close('mapAttribute')
 
     if refresh:
