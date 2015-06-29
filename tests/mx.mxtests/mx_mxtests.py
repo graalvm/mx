@@ -9,8 +9,9 @@ import mx
 def _build(args):
     mx.primary_suite().build(args)
 
+
 def _cp(args):
-    parser = ArgumentParser(prog='mx classpath')
+    parser = ArgumentParser(prog='mx mxt-classpath')
     parser.add_argument('--project', action='store', help='name of entity')
     parser.add_argument('--noResolve', action='store_true', help='noResolve')
     parser.add_argument('--ignoreSelf', action='store_true', help='ignoreSelf')
@@ -21,8 +22,19 @@ def _cp(args):
     for comp in comps:
         print comp
 
+def _ap(args):
+    parser = ArgumentParser(prog='mx mxt-proj-ap-path')
+    parser.add_argument('--project', action='store', help='name of entity')
+    args = parser.parse_args(args)
+    project = mx.project(args.project)
+    result = project.annotation_processors_path()
+    print 'annotation_processors_path for: ', args.project
+    comps = result.split(':')
+    for comp in comps:
+        print comp
+
 def _alldeps(args):
-    parser = ArgumentParser(prog='mx deps')
+    parser = ArgumentParser(prog='mx mxt-alldeps')
     parser.add_argument('--kind', action='store', help='project, dist or library', default='project')
     parser.add_argument('--name', action='store', help='name of entity', required=True)
     parser.add_argument('--includeLibs', action='store_true', help='includeLibs')
@@ -45,7 +57,7 @@ def _alldeps(args):
         print d.__class__.__name__, ":", d.name
 
 def _sorted_project_deps(args):
-    parser = ArgumentParser(prog='mx sorted_project_deps')
+    parser = ArgumentParser(prog='mx mxt-sorted-project-deps')
     parser.add_argument('--project', action='store', help='name of project')
     parser.add_argument('--includeAP', action='store_true', help='inclkude annotation processors')
     args = parser.parse_args(args)
@@ -56,7 +68,7 @@ def _sorted_project_deps(args):
         print r
 
 def _update_suitepy(args):
-    parser = ArgumentParser(prog='mx sorted_project_deps')
+    parser = ArgumentParser(prog='mx mxt-update-suitepy')
     parser.add_argument('--file', action='store', help='target file', required=True)
     parser.add_argument('--s', action='store', help='suite')
     args = parser.parse_args(args)
@@ -89,7 +101,7 @@ class DirHTMLParser(HTMLParser):
                     self.files.append(name)
 
 def _readurl(args):
-    parser = ArgumentParser(prog='mx readurl')
+    parser = ArgumentParser(prog='mx mxt-readurl')
     parser.add_argument('--url', action='store', help='target url', required=True)
     args = parser.parse_args(args)
     if 'file://' in args.url:
@@ -104,7 +116,7 @@ def _readurl(args):
             print file
 
 def _vc_clone(args):
-    parser = ArgumentParser(prog='mx vc_clone')
+    parser = ArgumentParser(prog='mx mxt-vc-clone')
     parser.add_argument('--url', action='store', help='repo url', required=True)
     parser.add_argument('--target', action='store', help='target dir')
     parser.add_argument('--rev', action='store', help='revision')
@@ -116,7 +128,7 @@ def _vc_clone(args):
     print rc
 
 def _vc_tip(args):
-    parser = ArgumentParser(prog='mx vc_tip')
+    parser = ArgumentParser(prog='mx mxt-vc-tip')
     parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
     parser.add_argument('--vckind', action='store', help='vc kind (hg, git)', default='hg')
     args = parser.parse_args(args)
@@ -125,7 +137,7 @@ def _vc_tip(args):
     print rc
 
 def _vc_locate(args):
-    parser = ArgumentParser(prog='mx vc_locate')
+    parser = ArgumentParser(prog='mx mxt-vc-locate')
     parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
     parser.add_argument('--vckind', action='store', help='vc kind (hg, git)', default='hg')
     parser.add_argument('--patterns', action='store', help='patterns)')
@@ -136,7 +148,7 @@ def _vc_locate(args):
         print line
 
 def _command_info(args):
-    parser = ArgumentParser(prog='mx command_function')
+    parser = ArgumentParser(prog='mx mxt-command_function')
     parser.add_argument('--command', action='store', help='command', required=True)
     args = parser.parse_args(args)
     c = mx.command_function(args.command)
@@ -149,8 +161,9 @@ def mx_init(suite):
         # new commands
         "mxt-alldeps" : [_alldeps, '[options]'],
         "mxt-classpath" : [_cp, '[options]'],
+        "mxt-proj-ap-path" : [_ap, '[options]'],
         "mxt-sorted_project_deps" : [_sorted_project_deps, '[options]'],
-        "mxt-update_suitepy" : [_update_suitepy, '[options]'],
+        "mxt-update-suitepy" : [_update_suitepy, '[options]'],
         "mxt-readurl" : [_readurl, '[options]'],
         "mxt-vc-tip" : [_vc_tip, '[options]'],
         "mxt-vc-clone" : [_vc_clone, '[options]'],
