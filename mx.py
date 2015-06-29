@@ -274,13 +274,13 @@ class Distribution(Dependency):
         """
         Add the transitive set of dependencies for this distribution to the 'deps' list.
         We "see through" the Distribution to its components. I.e., the result
-        only contains Project and Library (if includeLibs=True) instances.
+        only contains Project and Library (if includeLibs=True) instances, even
+        if the distribution is from another suite.
         This is consistent with the prior model where projects expressed
         dependencies on projects in other suites directly. Now they express
-        a dependency on a Distribution instead (i.e. projects are private to a suite;
-        not currently enforced).
+        a dependency on a Distribution instead (i.e. projects are private to a suite).
 
-        A Distribution from a binary suite will have deps = [], in which
+        A Distribution from a BinarySuite will have deps = [], in which
         case we add the Distribution itself.
         """
         dist_deps = self.get_dist_deps(includeSelf=includeSelf, transitive=True)
@@ -760,7 +760,8 @@ class Project(Dependency):
                     ddeps = ap.all_deps([], includeLibs=False)
                     for ddep in ddeps:
                         if ddep.isDistribution():
-                            apPaths.append(ddep.path)
+                            if not ddep.path in apPaths:
+                                apPaths.append(ddep.path)
                         elif ddep.definedAnnotationProcessorsDist:
                             apPaths.append(ddep.definedAnnotationProcessorsDist.path)
                 elif ap.isLibrary():
@@ -2232,7 +2233,7 @@ class BinarySuite(Suite):
             # the default versions of _load_metadata and _post_init do all we need
             self.suiteDict, _ = _load_suite_dict(self.mxDir)
 
-        self._init_inports()
+        self._init_imports()
         self._load()
 
     def version(self, abortOnError=True):
@@ -2292,13 +2293,13 @@ class BinarySuite(Suite):
         for urlinfo in suite_import.urlinfos:
             if urlinfo.kind == 'binary':
                 mxname = suite_import.name + '-mx'
-                base_url = join(urlinfo.url, 'com', 'oracle') # + suite name someday?
+                base_url = join(urlinfo.url, 'com', 'oracle')
+                if os.environ.get('MX_GROUPID_INCLUDES_SUITE'):
+                    base_url = join(base_url, suite_import.name)
                 sversion = suite_import.version
                 if urlinfo.version_adjust:
                     sversion = urlinfo.version_adjust.replace('{version}', sversion)
-                # local for testing
-                mx_url = join("file:///Users/mickjordan/.m2/repository/com/oracle", mxname, suite_import.version)
-#               mx_url = join(base_url, mxname, sversion)
+                mx_url = join(base_url, mxname, sversion)
                 mx_jar_urls, mx_jar_shas = self._scrape_repodir(mx_url)
                 mx_jar_path = self.mx_distribution_path()
                 # aborts on failure
@@ -6542,9 +6543,9 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
-#    if not is_interactive():
-#        log('fsckprojects command must be run in an interactive shell')
-#        return
+    if not is_interactive():
+        log('fsckprojects command must be run in an interactive shell')
+        return
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
