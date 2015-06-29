@@ -59,7 +59,7 @@ def _alldeps(args):
 def _sorted_project_deps(args):
     parser = ArgumentParser(prog='mx mxt-sorted-project-deps')
     parser.add_argument('--project', action='store', help='name of project')
-    parser.add_argument('--includeAP', action='store_true', help='inclkude annotation processors')
+    parser.add_argument('--includeAP', action='store_true', help='include annotation processors')
     args = parser.parse_args(args)
 
     result = mx.sorted_project_deps([mx.project(args.project)], args.includeAP)
@@ -120,29 +120,38 @@ def _vc_clone(args):
     parser.add_argument('--url', action='store', help='repo url', required=True)
     parser.add_argument('--target', action='store', help='target dir')
     parser.add_argument('--rev', action='store', help='revision')
-    parser.add_argument('--vckind', action='store', help='vc kind (hg, git)', default='hg')
+    parser.add_argument('--kind', action='store', help='vc kind (hg, git)', default='hg')
     parser.add_argument('--log', action='store', help='log command output', default='True')
     args = parser.parse_args(args)
-    vc = mx.vc_system(args.vckind)
+    vc = mx.vc_system(args.kind)
     rc = vc.clone(args.url, args.target, args.rev, args.log == 'True')
     print rc
+
+def _vc_pull(args):
+    parser = ArgumentParser(prog='mx mxt-vc-pull')
+    parser.add_argument('--no-update', action='store_true', help='do not update')
+    parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
+    parser.add_argument('--kind', action='store', help='vc kind (hg, git)', default='hg')
+    args = parser.parse_args(args)
+    vc = mx.vc_system(args.kind)
+    rc = vc.pull(args.dir, update=not args.no_update)
 
 def _vc_tip(args):
     parser = ArgumentParser(prog='mx mxt-vc-tip')
     parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
-    parser.add_argument('--vckind', action='store', help='vc kind (hg, git)', default='hg')
+    parser.add_argument('--kind', action='store', help='vc kind (hg, git)', default='hg')
     args = parser.parse_args(args)
-    vc = mx.vc_system(args.vckind)
+    vc = mx.vc_system(args.kind)
     rc = vc.tip(args.dir)
     print rc
 
 def _vc_locate(args):
     parser = ArgumentParser(prog='mx mxt-vc-locate')
     parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
-    parser.add_argument('--vckind', action='store', help='vc kind (hg, git)', default='hg')
+    parser.add_argument('--vind', action='store', help='vc kind (hg, git)', default='hg')
     parser.add_argument('--patterns', action='store', help='patterns)')
     args = parser.parse_args(args)
-    vc = mx.vc_system(args.vckind)
+    vc = mx.vc_system(args.kind)
     lines = vc.locate(args.dir, patterns=args.patterns)
     for line in lines:
         print line
