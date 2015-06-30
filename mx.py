@@ -1599,14 +1599,18 @@ class SuiteImport:
         return SuiteImport(name, version, urlinfos, kind)
 
     @staticmethod
-    def get_source_urls(source):
+    def get_source_urls(source, kind=None):
         '''
         Returns a list of SourceImportURLInfo instances
         If source is a string (dir) determine kind, else search the list of
         urlinfos and return the values for source repos
         '''
         if isinstance(source, str):
-            vc = VC.get_vc(source)
+            if kind:
+                vc = vc_system(kind)
+            else:
+                assert not source.startswith("http:")
+                vc = VC.get_vc(source)
             return [SuiteImportURLInfo(source, 'source', vc)]
         elif isinstance(source, list):
             result = [s for s in source if s.kind != 'binary']
@@ -3225,6 +3229,7 @@ class ArgParser(ArgumentParser):
         _opts.java_args_pfx = []
         _opts.java_args_sfx = []
         _opts.java_dbg_port = None
+        _opts.attach = None
         _opts.user_home = os.path.expanduser('~')
         _opts.no_download_progress = None
 
@@ -6979,6 +6984,7 @@ def sclone(args):
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
     parser.add_argument("--no-imports", action='store_true', help='do not clone imported suites')
+    parser.add_argument("--kind", help='vc kind for URL suites', default='hg')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
     # check for non keyword args
@@ -7002,18 +7008,18 @@ def sclone(args):
     if args.dest is not None:
         dest = args.dest
     else:
-        dest = basename(source)
+        dest = basename(source.rstrip('/'))
 
     dest = os.path.abspath(dest)
     # We can now set the primary dir for the src/dst suitemodel
     _dst_suitemodel.set_primary_dir(dest)
     _src_suitemodel.set_primary_dir(source)
 
-    _sclone(source, dest, None, args.no_imports)
+    _sclone(source, dest, None, args.no_imports, args.kind)
 
-def _sclone(source, dest, suite_import, no_imports):
+def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None):
     rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
-    url_vcs = SuiteImport.get_source_urls(source)
+    url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     for url_vc in url_vcs:
         if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
             break
@@ -7055,7 +7061,7 @@ def _scloneimports(s, suite_import, source):
             abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
         importee_suite.visit_imports(_scloneimports_visitor, source=importee_source)
     else:
-        _sclone(importee_source, importee_dest, suite_import, False)
+        _sclone(importee_source, importee_dest, suite_import)
         # _clone handles the recursive visit of the new imports
 
 def scloneimports(args):
@@ -8070,7 +8076,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.1")
+version = VersionSpec("4.0.2")
 
 currentUmask = None
 
