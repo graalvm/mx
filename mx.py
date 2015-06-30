@@ -1055,12 +1055,19 @@ class Library(BaseLibrary):
 Abstracts the operations of the version control systems
 Most operations take a vcdir as the dir in which to execute the operation
 Most operations abort on error unless abortOnError=False, and return True
-or False for success/failure. The command can be made visible by setting the
+or False for success/failure.
+
+Potentially long running operations should log the command. If '-v' is set
+'run'  will log the actual VC command. If '-V' is set the output from
+the command should be logged.
+
+The command can be made visible by setting the
 '-v' global option to mx
 '''
 class VC:
-    def __init__(self, kind):
+    def __init__(self, kind, proper_name):
         self.kind = kind
+        self.proper_name = proper_name
 
     @staticmethod
     def is_valid_kind(kind):
@@ -1131,11 +1138,30 @@ class VC:
         '''
         abort(self.vckind + " clone is not implemented")
 
+    def _log_clone(self, url, dest=None, rev=None):
+        msg = 'Cloning ' + url
+        if rev:
+            msg += ' revision ' + rev
+        if dest:
+            msg += ' to ' + dest
+        msg += ' with ' + self.proper_name
+        log(msg)
+
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
         '''
         Pull a given changeset (the head if 'rev='None'), optionally updating the working directory
         '''
         abort(self.vckind + " pull is not implemented")
+
+    def _log_pull(self, vcdir, rev):
+        msg = 'Pulling'
+        if rev:
+            msg += ' revision ' + rev
+        else:
+            msg += ' head updates '
+        msg += ' in ' + vcdir
+        msg += ' with ' + self.proper_name
+        log(msg)
 
     def can_push(self, vcdir, strict=True):
         '''
@@ -1172,6 +1198,18 @@ class VC:
         '''
         abort(self.vckind + ": push is not implemented")
 
+    def _log_push(self, vcdir, dest, rev):
+        msg = 'Pushing changes'
+        if rev:
+            msg += ' revision ' + rev
+        msg += ' from ' + vcdir
+        if dest:
+            msg += ' to ' + dest
+        else:
+            msg += ' to default'
+        msg += ' with ' + self.proper_name
+        log(msg)
+
     def update(self, vcdir, abortOnError=True):
         '''
         update 'vcdir' working directory
@@ -1202,7 +1240,7 @@ class HgConfig(VC):
     Encapsulates access to Mercurial (hg)
     """
     def __init__(self):
-        VC.__init__(self, 'hg')
+        VC.__init__(self, 'hg', 'Mercurial')
         self.missing = 'no hg executable found'
         self.has_hg = None
 
@@ -1253,7 +1291,12 @@ class HgConfig(VC):
         cmd.append(url)
         if dest:
             cmd.append(dest)
-        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+        self._log_clone(url, dest, rev)
+        out = OutputCapture()
+        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        if _opts.very_verbose:
+            log(out.data)
+        return rc == 0
 
     def incoming(self, vcdir, abortOnError=True):
         out = OutputCapture()
@@ -1285,7 +1328,12 @@ class HgConfig(VC):
             cmd.append(rev)
         if update:
             cmd.append('-u')
-        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+        self._log_pull(vcdir, rev)
+        out = OutputCapture()
+        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        if _opts.very_verbose:
+            log(out.data)
+        return rc == 0
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         out = OutputCapture()
@@ -1328,7 +1376,12 @@ class HgConfig(VC):
             cmd.append(rev)
         if dest:
             cmd.append(dest)
-        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+        self._log_push(vcdir, dest, rev)
+        out = OutputCapture()
+        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        if _opts.very_verbose:
+            log(out.data)
+        return rc == 0
 
     def update(self, vcdir, abortOnError=False):
         cmd = ['hg', '-R', vcdir, 'update']
@@ -3221,6 +3274,7 @@ class ArgParser(ArgumentParser):
 
         # minimal options to allow run/java to be used
         _opts.verbose = None
+        _opts.very_verbose = None
         _opts.ptimeout = 0
         _opts.timeout = 0
         _opts.killwithsigquit = False
@@ -3240,10 +3294,6 @@ class ArgParser(ArgumentParser):
                 abort('value expected with ' + arg)
 
         args = sys.argv[1:]
-        if len(args) == 0:
-            _argParser.print_help()
-            sys.exit(0)
-
         if len(args) == 1:
             if args[0] == '--version':
                 print 'mx version ' + str(version)
@@ -3273,9 +3323,9 @@ class ArgParser(ArgumentParser):
                 _warn = True
             elif arg == '--primary-suite-path':
                 _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
-            elif args == '-v':
+            elif arg == '-v':
                 _opts.verbose = True
-            elif args == '-V':
+            elif arg == '-V':
                 _opts.verbose = True
                 _opts.very_verbose = True
             i = i + 1
@@ -7074,7 +7124,7 @@ def scloneimports(args):
     if args.source is None:
         args.source = _kwArg(args.nonKWArgs)
     if not args.source:
-        abort('url/path of repo containing suite missing')
+        abort('scloneimports: url/path of repo containing suite missing')
 
     if not os.path.isdir(args.source):
         abort(args.source + ' is not a directory')
@@ -7232,18 +7282,19 @@ def sforceimports(args):
     args = parser.parse_args(args)
     _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
-def _spull_import_visitor(s, suite_import, update_versions):
+def _spull_import_visitor(s, suite_import, update_versions, only_imports):
     """pull visitor for Suite.visit_imports"""
-    _spull(s, suite(suite_import.name), suite_import, update_versions)
+    _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports)
 
-def _spull(importing_suite, imported_suite, suite_import, update_versions):
+def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports):
     # suite_import is None if importing_suite is primary suite
     # proceed top down to get any updated version ids first
 
-    vcs = imported_suite.vc
-    # by default we pull to the revision id in the import
-    rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
-    vcs.pull(imported_suite.dir, rev)
+    if suite_import or not only_imports:
+        vcs = imported_suite.vc
+        # by default we pull to the revision id in the import
+        rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
+        vcs.pull(imported_suite.dir, rev)
     if update_versions and suite_import:
         imported_tip = vcs.tip(imported_suite.dir)
         if imported_tip != suite_import.version:
@@ -7251,15 +7302,16 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions):
             # temp until we do it automatically
             print 'Please update import of ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + imported_tip
 
-    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions)
+    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports)
 
 def spull(args):
     """pull primary suite and all its imports"""
     parser = ArgumentParser(prog='mx spull')
     parser.add_argument('--update-versions', action='store_true', help='update version ids of imported suites')
+    parser.add_argument('--only-imports', action='store_true', help='only pull imported suites')
     args = parser.parse_args(args)
 
-    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions)
+    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
     _sincoming(suite(suite_import.name), suite_import)
@@ -8076,7 +8128,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.2")
+version = VersionSpec("4.0.3")
 
 currentUmask = None
 
