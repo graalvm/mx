@@ -1060,9 +1060,6 @@ or False for success/failure.
 Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
-
-The command can be made visible by setting the
-'-v' global option to mx
 '''
 class VC:
     def __init__(self, kind, proper_name):
@@ -1158,7 +1155,7 @@ class VC:
         if rev:
             msg += ' revision ' + rev
         else:
-            msg += ' head updates '
+            msg += ' head updates'
         msg += ' in ' + vcdir
         msg += ' with ' + self.proper_name
         log(msg)
