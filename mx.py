@@ -3187,6 +3187,11 @@ class ArgParser(ArgumentParser):
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
+
+            if opts.version:
+                print 'mx version ' + str(version)
+                sys.exit(0)
+
             if opts.vm: self.unknown += ['--vm', opts.vm]
             if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
 
@@ -8034,7 +8039,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.4")
+version = VersionSpec("4.0.5")
 
 currentUmask = None
 
