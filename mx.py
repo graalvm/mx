@@ -4159,6 +4159,9 @@ def abort(codeOrMessage):
 
     for p, args in _currentSubprocesses:
         if is_alive(p):
+            p.terminate()
+            time.sleep(0.1)
+        if is_alive(p):
             try:
                 if get_os() == 'windows':
                     p.terminate()
