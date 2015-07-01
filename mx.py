@@ -2070,44 +2070,37 @@ class Suite:
         if searchMode == 'binary':
             # check for a local binary suite
             dotDir = importing_suite.binary_suite_dir(suite_import.name)
-            if exists(dotDir):
-                importMxDir = join(dotDir, _mxDirName(suite_import.name))
-                return BinarySuite(importMxDir, importing_suite, None, suite_import.version)
-        else:
-            # use the SuiteModel to locate a local source copy of the suite
-            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+            importMxDir = join(dotDir, _mxDirName(suite_import.name))
+            return BinarySuite(importMxDir, importing_suite, None, suite_import.version)
 
+        # use the SuiteModel to locate a local source copy of the suite
+        importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
         if importMxDir is None:
             # No local copy, so use the URLs in order to "download" one
+            importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+            if exists(importDir):
+                abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
             fail = True
-            for urlinfo in suite_import.urlinfos:
-                if urlinfo.abs_kind() == searchMode:
-                    if urlinfo.kind == 'binary':
-                        binMxDir = join(importing_suite.binary_suite_dir(suite_import.name), _mxDirName(suite_import.name))
-                        # ignore versions cannot apply to a binary suite as it has no intepretation
-                        return BinarySuite(binMxDir, importing_suite, suite_import, suite_import.version)
+            urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
+            for urlinfo in urlinfos:
+                if not urlinfo.vc.check(abortOnError=False):
+                    continue
+                log("Cloning '{0}' suite to {1}".format(suite_import.name, importDir))
+                if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False):
+                    importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                    if importMxDir is None:
+                        # wasn't a suite after all, this is an error
+                        pass
                     else:
-                        # source, try a vc clone
-                        importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
-                        cloned = False
-                        if not urlinfo.vc.check(abortOnError=False):
-                            continue
-                        if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False):
-                            cloned = True
-                        else:
-                            # it is possible that the clone partially populated the target
-                            # which will mess an up an alternate, so we clean it
-                            if exists(importDir):
-                                shutil.rmtree(importDir)
-                        if cloned:
-                            importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
-                            if importMxDir is None:
-                                # wasn't a suite after all, this is an error
-                                pass
-                            else:
-                                fail = False
-                            # we are done searching either way
-                            break
+                        fail = False
+                    # we are done searching either way
+                    break
+                else:
+                    # it is possible that the clone partially populated the target
+                    # which will mess an up an alternate, so we clean it
+                    if exists(importDir):
+                        shutil.rmtree(importDir)
+
             # end of search
             if fail:
                 # check for optional dynamic suite load, which is not a failure
