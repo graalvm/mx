@@ -7941,6 +7941,7 @@ def main():
         # We explicitly load the 'env' file of the primary suite now as it might influence
         # the suite loading logic. It will get loaded again, to ensure it overrides any
         # settings in imported suites
+        PrimarySuite.load_env(primarySuiteMxDir)
         global _binary_suites
         bs = os.environ.get('MX_BINARY_SUITES')
         if bs is not None:
