@@ -6258,6 +6258,12 @@ test.src.dir=./test
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print >> out, content
 
+    # Add extra properties specified in suite.py for this project
+    if hasattr(p, 'netbeans.project.properties'):
+        properties = getattr(p, 'netbeans.project.properties')
+        for prop in [properties] if isinstance(properties, str) else properties:
+            print >> out, prop
+
     mainSrc = True
     for src in p.srcDirs:
         srcDir = join(p.dir, src)
