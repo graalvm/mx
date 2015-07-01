@@ -115,6 +115,7 @@ except:
 _projects = dict()
 _libs = dict()
 _jreLibs = dict()
+_jdkLibs = dict()
 _dists = dict()
 _suites = dict()
 _annotationProcessors = None
@@ -977,6 +978,8 @@ Any project or normal library that depends on a missing library
 will be removed from the global project and library dictionaries
 (i.e., _projects and _libs).
 
+The library is searched on the classpaths of the JRE.
+
 This mechanism exists primarily to be able to support code
 that may use functionality in one JRE (e.g., Oracle JRE)
 that is not present in another JRE (e.g., OpenJDK). A
@@ -995,13 +998,38 @@ class JreLibrary(BaseLibrary):
             return NotImplemented
 
     def is_present_in_jdk(self, jdk):
-        return jdk.containsJar(self.jar)
+        return jdk.hasJarOnClasspath(self.jar)
 
     def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
         """
         Add the transitive set of dependencies for this JRE library to the 'deps' list.
         """
         if includeJreLibs and includeSelf and not self in deps:
+            deps.append(self)
+        return sorted(deps)
+
+"""
+A library that will be provided by the JDK but may be absent.
+Any project or normal library that depends on a missing library
+will be removed from the global project and library dictionaries
+(i.e., _projects and _libs).
+"""
+class JdkLibrary(BaseLibrary):
+    def __init__(self, suite, name, path, optional):
+        BaseLibrary.__init__(self, suite, name, optional)
+        self.path = path
+
+    def __eq__(self, other):
+        if isinstance(other, JdkLibrary):
+            return self.path == other.path
+        else:
+            return NotImplemented
+
+    def is_present_in_jdk(self, jdk):
+        return exists(join(jdk.path, self.jar))
+
+    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
+        if includeLibs and includeSelf and not self in deps:
             deps.append(self)
         return sorted(deps)
 
@@ -1914,7 +1942,7 @@ def _load_suite_dict(mxDir):
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite else [])
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite else [])
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -1969,6 +1997,7 @@ class Suite:
         self.internal = internal
         self.libs = []
         self.jreLibs = []
+        self.jdkLibs = []
         self.suite_imports = []
         self.commands = None
         self.primary = primary
@@ -2013,6 +2042,12 @@ class Suite:
             if existing is not None and existing != l:
                 abort('inconsistent JRE library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
             _jreLibs[l.name] = l
+        for l in self.jdkLibs:
+            existing = _jdkLibs.get(l.name)
+            # Check that suites that define same library are consistent
+            if existing is not None and existing != l:
+                abort('inconsistent JDK library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+            _jdkLibs[l.name] = l
         for d in self.dists:
             existing = _dists.get(d.name)
             if existing is not None and _check_global_structures:
@@ -2050,6 +2085,7 @@ class Suite:
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
+        jdkLibsMap = self._check_suiteDict('jdklibraries')
         distsMap = self._check_suiteDict('distributions')
         importsMap = self._check_suiteDict('imports')
 
@@ -2059,6 +2095,13 @@ class Suite:
             optional = attrs.pop('optional', 'true') != 'false'
             l = JreLibrary(self, name, jar, optional)
             self.jreLibs.append(l)
+
+        for name, attrs in sorted(jdkLibsMap.iteritems()):
+            jar = attrs.pop('path')
+            # JRE libraries are optional by default
+            optional = attrs.pop('optional', 'true') != 'false'
+            l = JdkLibrary(self, name, jar, optional)
+            self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
             if name == 'suites':
@@ -3177,10 +3220,12 @@ def dependency(name, fatalIfMissing=True):
     d = _projects.get(name)
     if d is None:
         d = _libs.get(name)
-        if d is None:
-            d = _jreLibs.get(name)
-            if d is None:
-                d = _dists.get(name)
+    if d is None:
+        d = _jreLibs.get(name)
+    if d is None:
+        d = _jdkLibs.get(name)
+    if d is None:
+        d = _dists.get(name)
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
             abort('project named ' + name + ' is ignored')
@@ -4191,7 +4236,7 @@ class JavaConfig:
             args.append(_separatedCygpathU2W(self._endorseddirs))
         return args
 
-    def containsJar(self, jar):
+    def hasJarOnClasspath(self, jar):
         self._init_classpaths()
 
         if self._bootclasspath:
@@ -7739,6 +7784,7 @@ def show_suites(args):
         log(s.name)
         _show_section('libraries', s.libs)
         _show_section('jrelibraries', s.jreLibs)
+        _show_section('jdklibraries', s.jdkLibs)
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
@@ -8167,6 +8213,10 @@ def _remove_bad_deps():
             else:
                 for name in list(d.deps):
                     jreLib = _jreLibs.get(name)
+                    libType = 'JRE'
+                    if not jreLib:
+                        _jdkLibs.get(name)
+                        libType = 'JDK'
                     if jreLib:
                         if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
                             if jreLib.optional:
@@ -8175,7 +8225,7 @@ def _remove_bad_deps():
                                 del _projects[d.name]
                                 d.suite.projects.remove(d)
                             else:
-                                abort('JRE library {0} required by {1} not found'.format(jreLib, d))
+                                abort('{0} library {1} required by {2} not found'.format(libType, jreLib, d))
                     elif not dependency(name, fatalIfMissing=False):
                         logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
                         ommittedDeps.add(d.name)
@@ -8302,7 +8352,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.1.3")
+version = VersionSpec("4.2.0")
 
 currentUmask = None
 
