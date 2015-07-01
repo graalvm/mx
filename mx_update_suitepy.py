@@ -200,7 +200,7 @@ def update_suite_file(self, backup=True):
                             with Indent(f):
                                 _indent.writeKeyValueNL("path", relpath(d.path, d.suite.dir))
                                 if d.subDir:
-                                    _indent.writeKeyValueNL("subDir", d.subDir, d.suite.dir)
+                                    _indent.writeKeyValueNL("subDir", d.subDir)
                                 if d.sourcesPath:
                                     _indent.writeKeyValueNL("sourcesPath", relpath(d.sourcesPath))
                                 if d.javaCompliance:

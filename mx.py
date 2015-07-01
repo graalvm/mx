@@ -3174,55 +3174,55 @@ class ArgParser(ArgumentParser):
 
     def _parse_cmd_line(self, opts, firstParse):
         if firstParse:
-            
+
             parser = ArgParser(parents=[self])
             parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
-            
+
             # Legacy support - these options are recognized during first parse and
-            # appended to the unknown options to be reparsed in the second parse 
+            # appended to the unknown options to be reparsed in the second parse
             parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
             parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
-            
+
 
             # Parse the known mx global options and preserve the unknown args, command and
-            # command args for the second parse.            
+            # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
             if opts.vm: self.unknown += ['--vm', opts.vm]
             if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
-        
+
             self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
-            
+
             # Give the timeout options a default value to avoid the need for hasattr() tests
             opts.__dict__.setdefault('timeout', 0)
             opts.__dict__.setdefault('ptimeout', 0)
-    
+
             if opts.very_verbose:
                 opts.verbose = True
-    
+
             if opts.user_home is None or opts.user_home == '':
                 abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
-    
+
             if opts.primary and _primary_suite:
                 opts.specific_suites.append(_primary_suite.name)
-    
+
             if opts.java_home:
                 os.environ['JAVA_HOME'] = opts.java_home
             os.environ['HOME'] = opts.user_home
-    
+
             if os.environ.get('STRICT_COMPLIANCE'):
                 opts.strict_compliance = True
-    
+
             global _src_suitemodel, _dst_suitemodel
             _src_suitemodel = SuiteModel.create_suitemodel(opts, 'src')
             _dst_suitemodel = SuiteModel.create_suitemodel(opts, 'dst')
-    
+
             global _primary_suite_path
             _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
-    
+
             # Communicate primary suite path to mx subprocesses
             if _primary_suite_path:
                 os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
-    
+
             opts.ignored_projects = opts.ignored_projects + os.environ.get('IGNORED_PROJECTS', '').split(',')
         else:
             parser = ArgParser(parents=[self])
@@ -3231,7 +3231,7 @@ class ArgParser(ArgumentParser):
             parser.parse_args(args=args, namespace=opts)
             commandAndArgs = opts.__dict__.pop('commandAndArgs')
             if self.initialCommandAndArgs != commandAndArgs:
-                abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))            
+                abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))
             return commandAndArgs
 
 def _format_commands():
@@ -4871,35 +4871,38 @@ def pylint(args):
         log('pylint is not available')
         return
 
-    def findfiles_by_walk():
-        result = []
+    def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
             for root, dirs, files in os.walk(suite.dir):
                 for f in files:
                     if f.endswith('.py'):
                         pyfile = join(root, f)
-                        result.append(pyfile)
+                        pyfiles.append(pyfile)
                 if 'bin' in dirs:
                     dirs.remove('bin')
                 if 'lib' in dirs:
                     # avoids downloaded .py files
                     dirs.remove('lib')
-        return result
 
-    def findfiles_by_vc():
-        result = []
+    def findfiles_by_vc(pyfiles):
         for suite in suites(True, includeBinary=False):
-            pyfiles = suite.vc.locate(suite.dir, ['-f', '*.py'])
-            for pyfile in pyfiles:
+            files = suite.vc.locate(suite.dir, ['-f', '*.py'])
+            for pyfile in files:
                 if exists(pyfile):
-                    result.append(pyfile)
-        return result
+                    pyfiles.append(pyfile)
 
-    # Perhaps we should just look in suite.mxDir directories for .py files?
+    pyfiles = []
+
+    # Add mxtool's own py files
+    for root, _, files in os.walk(dirname(__file__)):
+        for f in files:
+            if f.endswith('.py'):
+                pyfile = join(root, f)
+                pyfiles.append(pyfile)
     if args.walk:
-        pyfiles = findfiles_by_walk()
+        findfiles_by_walk(pyfiles)
     else:
-        pyfiles = findfiles_by_vc()
+        findfiles_by_vc(pyfiles)
 
     env = os.environ.copy()
 

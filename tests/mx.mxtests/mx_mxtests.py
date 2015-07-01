@@ -75,7 +75,7 @@ def _update_suitepy(args):
     if not args.s:
         s = mx._check_primary_suite()
     else:
-        s = suite(args.s)
+        s = mx.suite(args.s)
     s.update_suite_file(args.file)
 
 from HTMLParser import HTMLParser
@@ -105,15 +105,15 @@ def _readurl(args):
     parser.add_argument('--url', action='store', help='target url', required=True)
     args = parser.parse_args(args)
     if 'file://' in args.url:
-        for file in os.listdir(args.url.replace('file://', '')):
-            print file
+        for f in os.listdir(args.url.replace('file://', '')):
+            print f
     else:
         f = urllib.urlopen(args.url)
         text = f.read()
         parser = DirHTMLParser()
         parser.feed(text)
-        for file in parser.files:
-            print file
+        for f in parser.files:
+            print f
 
 def _vc_clone(args):
     parser = ArgumentParser(prog='mx mxt-vc-clone')
@@ -134,7 +134,7 @@ def _vc_pull(args):
     parser.add_argument('--kind', action='store', help='vc kind (hg, git)', default='hg')
     args = parser.parse_args(args)
     vc = mx.vc_system(args.kind)
-    rc = vc.pull(args.dir, update=not args.no_update)
+    vc.pull(args.dir, update=not args.no_update)
 
 def _vc_tip(args):
     parser = ArgumentParser(prog='mx mxt-vc-tip')
@@ -160,7 +160,7 @@ def _command_info(args):
     parser = ArgumentParser(prog='mx mxt-command_function')
     parser.add_argument('--command', action='store', help='command', required=True)
     args = parser.parse_args(args)
-    c = mx.command_function(args.command)
+    mx.command_function(args.command)
 
 def mx_init(suite):
 
