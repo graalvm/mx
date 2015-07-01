@@ -124,7 +124,7 @@ _primary_suite_path = None
 _primary_suite = None
 _src_suitemodel = None
 _dst_suitemodel = None
-_opts = Namespace() # for early startup, overridden in ArgParser__init__
+_opts = Namespace()
 _extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
@@ -1506,15 +1506,21 @@ class SuiteModel:
             self.suitenamemap[mappair[0]] = mappair[1]
 
     @staticmethod
-    def set_suitemodel(kind, option, suitemap):
-        if option.startswith('sibling'):
-            return SiblingSuiteModel(kind, os.getcwd(), option, suitemap)
-        elif option.startswith('nested'):
-            return NestedImportsSuiteModel(kind, os.getcwd(), option, suitemap)
-        elif option.startswith('path'):
-            return PathSuiteModel(kind, option[len('path:'):])
+    def create_suitemodel(opts, kind):
+        envKey = 'MX_' + kind.upper() + '_SUITEMODEL'
+        optsKey = kind + '_suitemodel'
+        default = os.environ.get(envKey, 'sibling')
+        name = getattr(opts, optsKey) or default
+
+        # Communicate the suite model to mx subprocesses
+        os.environ[envKey] = name
+
+        if name.startswith('sibling'):
+            return SiblingSuiteModel(kind, os.getcwd(), name, opts.suitemap)
+        elif name.startswith('nested'):
+            return NestedImportsSuiteModel(kind, os.getcwd(), name, opts.suitemap)
         else:
-            abort('unknown suitemodel type: ' + option)
+            abort('unknown suitemodel type: ' + name)
 
 
 class SiblingSuiteModel(SuiteModel):
@@ -1567,36 +1573,6 @@ class NestedImportsSuiteModel(SuiteModel):
 
     def nestedsuites_dirname(self):
         return self._imported_suites_dirname()
-
-class PathSuiteModel(SuiteModel):
-    """The most general model. Uses a map from suitename to URL/path provided by the user"""
-    def __init__(self, kind, path):
-        SuiteModel.__init__(self, kind)
-        paths = path.split(',')
-        self.suit_to_url = {}
-        for path in paths:
-            pair = path.split('=')
-            if len(pair) > 1:
-                suitename = pair[0]
-                suiteurl = pair[1]
-            else:
-                suitename = basename(pair[0])
-                suiteurl = pair[0]
-            self.suit_to_url[suitename] = suiteurl
-
-    def find_suite_dir(self, suitename):
-        if self.suit_to_url.has_key(suitename):
-            return self.suit_to_url[suitename]
-        else:
-            return None
-
-    def importee_dir(self, importer_dir, suite_import):
-        # since this is completely explicit, we pay no attention to any suite_import.urlinfos
-        suitename = suite_import.name
-        if suitename in self.suit_to_url:
-            return self.suit_to_url[suitename]
-        else:
-            abort('suite ' + suitename + ' not found')
 
 '''
 Captures the info in the {"url", "kind", ["version-adjust"]} dict,
@@ -3175,10 +3151,14 @@ class ArgParser(ArgumentParser):
         return ArgumentParser.format_help(self) + _format_commands()
 
 
-    def __init__(self):
-        self.java_initialized = False
-        # this doesn't resolve the right way, but can't figure out how to override _handle_conflict_resolve in _ActionsContainer
-        ArgumentParser.__init__(self, prog='mx', conflict_handler='resolve')
+    def __init__(self, parents=None):
+        if not parents:
+            parents = []
+        ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0)
+
+        if len(parents) != 0:
+            # Arguments are inherited from the parents
+            return
 
         self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
         self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
@@ -3202,8 +3182,8 @@ class ArgParser(ArgumentParser):
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
-        self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>', default='sibling')
-        self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>', default='sibling')
+        self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
+        self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
         self.add_argument('--suitemap', help='explicit remapping of suite names', metavar='<args>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
@@ -3214,122 +3194,67 @@ class ArgParser(ArgumentParser):
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
             self.add_argument('--ptimeout', help='timeout (in seconds) for subprocesses', type=int, default=0, metavar='<secs>')
 
-    def _parse_cmd_line(self, args=None):
-        if args is None:
-            args = sys.argv[1:]
+    def _parse_cmd_line(self, opts, firstParse):
+        if firstParse:
+            
+            parser = ArgParser(parents=[self])
+            parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
+            
+            # Legacy support - these options are recognized during first parse and
+            # appended to the unknown options to be reparsed in the second parse 
+            parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
+            parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
+            
 
-        self.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
-
-        opts = self.parse_args()
-
-        global _opts
-        _opts = opts
-
-        # Give the timeout options a default value to avoid the need for hasattr() tests
-        opts.__dict__.setdefault('timeout', 0)
-        opts.__dict__.setdefault('ptimeout', 0)
-
-        if opts.very_verbose:
-            opts.verbose = True
-
-        if opts.user_home is None or opts.user_home == '':
-            abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
-
-        if opts.primary and _primary_suite:
-            opts.specific_suites.append(_primary_suite.name)
-
-        if opts.java_home:
-            os.environ['JAVA_HOME'] = opts.java_home
-        os.environ['HOME'] = opts.user_home
-
-        if os.environ.get('STRICT_COMPLIANCE'):
-            _opts.strict_compliance = True
-
-        opts.ignored_projects = opts.ignored_projects + os.environ.get('IGNORED_PROJECTS', '').split(',')
-
-        commandAndArgs = opts.__dict__.pop('commandAndArgs')
-        return opts, commandAndArgs
-
-    def _handle_conflict_resolve(self, action, conflicting_actions):
-        self._handle_conflict_error(action, conflicting_actions)
-
-    @staticmethod
-    def parse_startup_options():
-        '''
-        Manual parsing of critical options that are needed during suite loading.
-        Unfortunately, the fact a suite might add new global options, means we
-        can't use the standard parse_cmd_line since, if one of those new options is
-        present, the parse will fail. TODO Is there a way to finesse this?
-        '''
-
-        # minimal options to allow run/java to be used
-        _opts.verbose = None
-        _opts.very_verbose = None
-        _opts.ptimeout = 0
-        _opts.timeout = 0
-        _opts.killwithsigquit = False
-        _opts.java_home = None
-        _opts.java_args = None
-        _opts.java_args_pfx = []
-        _opts.java_args_sfx = []
-        _opts.java_dbg_port = None
-        _opts.attach = None
-        _opts.user_home = os.path.expanduser('~')
-        _opts.no_download_progress = None
-
-        def _get_argvalue(arg, args, i):
-            if i < len(args):
-                return args[i]
-            else:
-                abort('value expected with ' + arg)
-
-        args = sys.argv[1:]
-        if len(args) == 1:
-            if args[0] == '--version':
-                print 'mx version ' + str(version)
-                sys.exit(0)
-
-        # set defaults
-        env_src_suitemodel = os.environ.get('MX_SRC_SUITEMODEL')
-        env_dst_suitemodel = os.environ.get('MX_DST_SUITEMODEL')
-        src_suitemodel_arg = 'sibling' if env_src_suitemodel is None else env_src_suitemodel
-        dst_suitemodel_arg = 'sibling' if env_dst_suitemodel is None else env_dst_suitemodel
-        suitemap_arg = None
-        env_primary_suite_path = os.environ.get('MX_PRIMARY_SUITE_PATH')
-        global _primary_suite_path
-
-        i = 0
-        while i < len(args):
-            arg = args[i]
-            if arg == '--src-suitemodel':
-                src_suitemodel_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '--dst-suitemodel':
-                dst_suitemodel_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '--suitemap':
-                suitemap_arg = _get_argvalue(arg, args, i + 1)
-            elif arg == '-w':
-                # to get warnings on suite loading issues before command line is parsed
-                global _warn
-                _warn = True
-            elif arg == '--primary-suite-path':
-                _primary_suite_path = os.path.abspath(_get_argvalue(arg, args, i + 1))
-            elif arg == '-v':
-                _opts.verbose = True
-            elif arg == '-V':
-                _opts.verbose = True
-                _opts.very_verbose = True
-            i = i + 1
-
-        os.environ['MX_SRC_SUITEMODEL'] = src_suitemodel_arg
-        global _src_suitemodel
-        _src_suitemodel = SuiteModel.set_suitemodel("src", src_suitemodel_arg, suitemap_arg)
-        os.environ['MX_DST_SUITEMODEL'] = dst_suitemodel_arg
-        global _dst_suitemodel
-        _dst_suitemodel = SuiteModel.set_suitemodel("dst", dst_suitemodel_arg, suitemap_arg)
-        if _primary_suite_path is None:
-            if env_primary_suite_path is not None:
-                _primary_suite_path = env_primary_suite_path
-
+            # Parse the known mx global options and preserve the unknown args, command and
+            # command args for the second parse.            
+            _, self.unknown = parser.parse_known_args(namespace=opts)
+            if opts.vm: self.unknown += ['--vm', opts.vm]
+            if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
+        
+            self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
+            
+            # Give the timeout options a default value to avoid the need for hasattr() tests
+            opts.__dict__.setdefault('timeout', 0)
+            opts.__dict__.setdefault('ptimeout', 0)
+    
+            if opts.very_verbose:
+                opts.verbose = True
+    
+            if opts.user_home is None or opts.user_home == '':
+                abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
+    
+            if opts.primary and _primary_suite:
+                opts.specific_suites.append(_primary_suite.name)
+    
+            if opts.java_home:
+                os.environ['JAVA_HOME'] = opts.java_home
+            os.environ['HOME'] = opts.user_home
+    
+            if os.environ.get('STRICT_COMPLIANCE'):
+                opts.strict_compliance = True
+    
+            global _src_suitemodel, _dst_suitemodel
+            _src_suitemodel = SuiteModel.create_suitemodel(opts, 'src')
+            _dst_suitemodel = SuiteModel.create_suitemodel(opts, 'dst')
+    
+            global _primary_suite_path
+            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
+    
+            # Communicate primary suite path to mx subprocesses
+            if _primary_suite_path:
+                os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
+    
+            opts.ignored_projects = opts.ignored_projects + os.environ.get('IGNORED_PROJECTS', '').split(',')
+        else:
+            parser = ArgParser(parents=[self])
+            parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
+            args = self.unknown + self.initialCommandAndArgs
+            parser.parse_args(args=args, namespace=opts)
+            commandAndArgs = opts.__dict__.pop('commandAndArgs')
+            if self.initialCommandAndArgs != commandAndArgs:
+                abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))            
+            return commandAndArgs
 
 def _format_commands():
     msg = '\navailable commands:\n\n'
@@ -8013,7 +7938,7 @@ def main():
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
 
-    ArgParser.parse_startup_options()
+    _argParser._parse_cmd_line(_opts, firstParse=True)
 
     global _vc_systems
     _vc_systems = [HgConfig()]
@@ -8058,8 +7983,7 @@ def main():
         if _needs_primary_suite_cl():
             abort(primary_suite_error)
 
-    opts, commandAndArgs = _argParser._parse_cmd_line()
-    assert _opts == opts
+    commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
     if _warn and _deferred_warnings:
         for dw in _deferred_warnings:
@@ -8073,7 +7997,7 @@ def main():
     else:
         os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
-    if opts.mx_tests:
+    if _opts.mx_tests:
         MXTestsSuite()
 
     if primarySuiteMxDir:
@@ -8109,11 +8033,11 @@ def main():
         signal.signal(signal.SIGQUIT, quit_handler)
 
     try:
-        if opts.timeout != 0:
+        if _opts.timeout != 0:
             def alarm_handler(signum, frame):
-                abort('Command timed out after ' + str(opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
+                abort('Command timed out after ' + str(_opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
             signal.signal(signal.SIGALRM, alarm_handler)
-            signal.alarm(opts.timeout)
+            signal.alarm(_opts.timeout)
         retcode = c(command_args)
         if retcode is not None and retcode != 0:
             abort(retcode)
