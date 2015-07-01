@@ -1497,9 +1497,9 @@ class SuiteModel:
         os.environ[envKey] = name
 
         if name.startswith('sibling'):
-            return SiblingSuiteModel(kind, os.getcwd(), name)
+            return SiblingSuiteModel(kind, _primary_suite_path, name)
         elif name.startswith('nested'):
-            return NestedImportsSuiteModel(kind, os.getcwd(), name)
+            return NestedImportsSuiteModel(kind, _primary_suite_path, name)
         else:
             abort('unknown suitemodel type: ' + name)
 
@@ -3212,12 +3212,14 @@ class ArgParser(ArgumentParser):
             if os.environ.get('STRICT_COMPLIANCE'):
                 opts.strict_compliance = True
 
+            global _primary_suite_path
+            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
+            if _primary_suite_path:
+                _primary_suite_path = os.path.abspath(_primary_suite_path)
+
             global _src_suitemodel, _dst_suitemodel
             _src_suitemodel = SuiteModel.create_suitemodel(opts, 'src')
             _dst_suitemodel = SuiteModel.create_suitemodel(opts, 'dst')
-
-            global _primary_suite_path
-            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
 
             # Communicate primary suite path to mx subprocesses
             if _primary_suite_path:
@@ -7933,7 +7935,6 @@ def main():
         # We explicitly load the 'env' file of the primary suite now as it might influence
         # the suite loading logic. It will get loaded again, to ensure it overrides any
         # settings in imported suites
-        PrimarySuite.load_env(primarySuiteMxDir)
         global _binary_suites
         bs = os.environ.get('MX_BINARY_SUITES')
         if bs is not None:
@@ -8026,7 +8027,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.3")
+version = VersionSpec("4.0.4")
 
 currentUmask = None
 
