@@ -1486,25 +1486,6 @@ class SuiteModel:
             return suite_import.urlinfos
         return path
 
-    def _create_suitenamemap(self, optionspec, suitemap):
-        """Three ways to specify a suite name mapping, in order of precedence:
-        1. Explicitly in optionspec.
-        2. In suitemap.
-        3. in MX_SUITEMAP environment variable.
-        """
-        if optionspec != '':
-            spec = optionspec
-        elif suitemap is not None:
-            spec = suitemap
-        elif get_env('MX_SUITEMAP') is not None:
-            spec = get_env('MX_SUITEMAP')
-        else:
-            return
-        pairs = spec.split(',')
-        for pair in pairs:
-            mappair = pair.split('=')
-            self.suitenamemap[mappair[0]] = mappair[1]
-
     @staticmethod
     def create_suitemodel(opts, kind):
         envKey = 'MX_' + kind.upper() + '_SUITEMODEL'
@@ -1516,19 +1497,18 @@ class SuiteModel:
         os.environ[envKey] = name
 
         if name.startswith('sibling'):
-            return SiblingSuiteModel(kind, os.getcwd(), name, opts.suitemap)
+            return SiblingSuiteModel(kind, os.getcwd(), name)
         elif name.startswith('nested'):
-            return NestedImportsSuiteModel(kind, os.getcwd(), name, opts.suitemap)
+            return NestedImportsSuiteModel(kind, os.getcwd(), name)
         else:
             abort('unknown suitemodel type: ' + name)
 
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
-    def __init__(self, kind, suiteRootDir, option, suitemap):
+    def __init__(self, kind, suiteRootDir, option):
         SuiteModel.__init__(self, kind)
         self._suiteRootDir = suiteRootDir
-        self._create_suitenamemap(option[len('sibling:'):], suitemap)
 
     def find_suite_dir(self, name):
         return self._search_dir(self._suiteRootDir, name)
@@ -1549,10 +1529,9 @@ class NestedImportsSuiteModel(SuiteModel):
     def _imported_suites_dirname(self):
         return 'mx.imports/source'
 
-    def __init__(self, kind, primaryDir, option, suitemap):
+    def __init__(self, kind, primaryDir, option):
         SuiteModel.__init__(self, kind)
         self._primaryDir = primaryDir
-        self._create_suitenamemap(option[len('nested:'):], suitemap)
 
     def find_suite_dir(self, name):
         return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), name)
@@ -3184,7 +3163,6 @@ class ArgParser(ArgumentParser):
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
-        self.add_argument('--suitemap', help='explicit remapping of suite names', metavar='<args>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
