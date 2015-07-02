@@ -2168,7 +2168,6 @@ class SourceSuite(Suite):
                 javaCompliance = None
                 subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
                 d = Distribution(self, dname, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, True)
-                self.dists.append(d)
                 p.definedAnnotationProcessors = annotationProcessors
                 p.definedAnnotationProcessorsDist = d
                 d.definingProject = p
