@@ -2330,7 +2330,7 @@ class BinarySuite(Suite):
                 mx_jar_path = self.mx_distribution_path()
                 # aborts on failure
                 download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
-                run(['jar', 'xf', mx_jar_path], cwd=self.dir)
+                run([java().jar, 'xf', mx_jar_path], cwd=self.dir)
                 self.suiteDict, _ = _load_suite_dict(self.mxDir)
                 Suite._load_distributions(self, self._check_suiteDict('distributions'))
                 for dist in self.dists:
