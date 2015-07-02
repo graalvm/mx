@@ -2022,10 +2022,9 @@ class Suite:
                 version = None
 
         if searchMode == 'binary':
-            # check for a local binary suite
             dotDir = importing_suite.binary_suite_dir(suite_import.name)
             importMxDir = join(dotDir, _mxDirName(suite_import.name))
-            return BinarySuite(importMxDir, importing_suite, None, suite_import.version)
+            return BinarySuite(importMxDir, importing_suite, suite_import)
 
         # use the SuiteModel to locate a local source copy of the suite
         importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
@@ -2258,17 +2257,10 @@ A BinarySuite is stored in a Maven repository and there is
 a dependency on the URL format in this code.
 '''
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite, suite_import, version):
+    def __init__(self, mxDir, importing_suite, suite_import):
         Suite.__init__(self, mxDir, False, False, importing_suite)
-        self.versionid = version # fixed
-        self.existed = suite_import is None
-        if suite_import:
-            self._validate_binary_suite(suite_import)
-        else:
-            # already downloaded, just reload the metadata
-            # the default versions of _load_metadata and _post_init do all we need
-            self.suiteDict, _ = _load_suite_dict(self.mxDir)
-
+        self.versionid = suite_import.version # fixed
+        self._validate_binary_suite(suite_import)
         self._init_imports()
         self._load()
 
@@ -2318,8 +2310,6 @@ class BinarySuite(Suite):
                 f.close()
         return jar_files, sha_values
 
-    # This is not done in the constructor owing to problems
-    # running Java during the initial startup
     def _validate_binary_suite(self, suite_import):
         '''
         We map from the info in suite_import to a complete URL that we should be able to locate.
@@ -2362,8 +2352,7 @@ class BinarySuite(Suite):
     def _load_distributions(self, distsMap):
         # This gets done explicitly in _validate_binary_suite as we need the info there
         # so, in that mode, we don't want to call the superclass method again
-        if self.existed:
-            Suite._load_distributions(self, distsMap)
+        pass
 
     def _post_init_check(self):
         Suite._post_init_check(self)
