@@ -128,7 +128,6 @@ _opts = Namespace()
 _extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
-_warn = False
 _deferred_warnings = []
 _vc_systems = []
 _mvn = None
@@ -3141,7 +3140,7 @@ class ArgParser(ArgumentParser):
 
         self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
         self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
-        self.add_argument('-w', action='store_true', dest='warn', help='enable warning messages')
+        self.add_argument('--no-warning', action='store_false', dest='warn', help='disable warning messages')
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
@@ -7751,7 +7750,7 @@ def warn(msg):
     if _opts is None:
         _deferred_warnings.append(msg)
         return
-    if _warn:
+    if _opts.warn:
         print 'WARNING: ' + msg
 
 # Table of commands in alphabetical order.
@@ -7985,9 +7984,11 @@ def main():
 
     commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
-    if _warn and _deferred_warnings:
+    global _deferred_warnings
+    if _opts.warn and _deferred_warnings:
         for dw in _deferred_warnings:
             warn(dw)
+        _deferred_warnings = None
 
     if primarySuiteMxDir is None:
         if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
@@ -8045,7 +8046,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.5")
+version = VersionSpec("4.0.6")
 
 currentUmask = None
 
