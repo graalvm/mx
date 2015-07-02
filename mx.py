@@ -2038,7 +2038,6 @@ class Suite:
             for urlinfo in urlinfos:
                 if not urlinfo.vc.check(abortOnError=False):
                     continue
-                log("Cloning '{0}' suite to {1}".format(suite_import.name, importDir))
                 if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False):
                     importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
                     if importMxDir is None:
