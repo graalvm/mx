@@ -4992,9 +4992,6 @@ def canonicalizeprojects(args):
     nonCanonical = []
     for s in suites(True, includeBinary=False):
         for p in s.projects:
-            if p.name == 'com.oracle.truffle.r.nodes':
-#            if p.name == 'com.oracle.s1':
-                pass
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
                     if not pkg.startswith(p.name):
