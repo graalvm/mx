@@ -4799,6 +4799,7 @@ def build(args, parser=None):
                 dist.suite.create_mx_binary_distribution_jar()
                 if not exists(dist.path):
                     archive(['@' + dist.name])
+                    log('Creating jars for {0}'.format(dist.name))
                 elif dist not in updatedAnnotationProcessorDists:
                     projectsInDist = dist.sorted_deps()
                     n = len(rebuiltProjects.intersection(projectsInDist))
