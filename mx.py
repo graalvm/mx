@@ -374,7 +374,7 @@ class Distribution(Dependency):
                     isOverwrite = False
                     if existingSource and existingSource != source:
                         if arcname[-1] != os.path.sep:
-                            logv('warning: ' + self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                            warn(self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
                         isOverwrite = True
                     zf._provenance[arcname] = source
                     return isOverwrite
@@ -7848,7 +7848,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
                     found = True
                     classes.append(c)
             if not found:
-                log('warning: no tests matched by substring "' + t)
+                warn('no tests matched by substring "' + t)
 
     projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if not pcp.native and pcp.javaCompliance <= java().javaCompliance])
 
