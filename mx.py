@@ -6241,7 +6241,6 @@ javadoc.splitindex=true
 javadoc.use=true
 javadoc.version=false
 javadoc.windowtitle=
-main.class=com.oracle.truffle.api.impl.Accessor
 manifest.file=manifest.mf
 meta.inf.dir=${src.dir}/META-INF
 mkdist.disabled=false
@@ -6261,6 +6260,16 @@ test.src.dir=./test
 """ + annotationProcessorSrcFolder + """
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print >> out, content
+
+    # Workaround for NetBeans "too clever" behavior. If you want to be
+    # able to press F6 or Ctrl-F5 in NetBeans and run/debug unit tests
+    # then the project must have its main.class property set to an
+    # existing class with a properly defined main method. Until this
+    # behavior is remedied, we specify a well known Truffle class
+    # that will be on the class path for most Truffle projects.
+    # This can be overridden by defining a netbeans.project.properties
+    # attribute for a project in suite.py (see below).
+    print >> out, "main.class=com.oracle.truffle.api.impl.Accessor"
 
     # Add extra properties specified in suite.py for this project
     if hasattr(p, 'netbeans.project.properties'):
