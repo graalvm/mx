@@ -2175,13 +2175,6 @@ class Suite:
                 mxDirBase = basename(self.mxDir)
                 arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
 
-    def remove_mx_binary_distribution_jar(self):
-        '''remove for clean command'''
-        path = self.mx_binary_distribution_jar_path()
-        if exists(path):
-            log('Removing distribution {0}...'.format(path))
-            os.remove(path)
-
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """
@@ -5405,14 +5398,13 @@ def clean(args, parser=None):
 
     if args.java:
         if args.dist:
-            lsuites = suites(True)
+            lsuites = suites(True, includeBinary=False)
             for d in _dists.keys():
                 dd = distribution(d)
                 if dd.suite in lsuites:
                     log('Removing distribution {0}...'.format(d))
                     _rmIfExists(dd.path)
                     _rmIfExists(dd.sourcesPath)
-                    dd.suite.remove_mx_binary_distribution_jar()
 
     if suppliedParser:
         return args
@@ -8240,7 +8232,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.1.0")
+version = VersionSpec("4.1.1")
 
 currentUmask = None
 
