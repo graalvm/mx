@@ -597,6 +597,16 @@ class Project(Dependency):
             self._eclipse_settings = esdict
         return self._eclipse_settings
 
+    def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
+        """
+        Scan the sources of this project for Java source files containing a line starting with 'annotation'
+        (ignoring preceding whitespace) and return the fully qualified class name for each Java
+        source file matched in a list.
+        """
+
+        matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+        return self.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
+
     def find_classes_with_matching_source_line(self, pkgRoot, function, includeInnerClasses=False):
         """
         Scan the sources of this project for Java source files containing a line for which
@@ -1127,6 +1137,13 @@ class VC:
         '''
         abort(self.kind + " tip is not implemented")
 
+    def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
+        '''
+        Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
+        or None if no such tags exist.
+        '''
+        abort(self.kind + " release_version_from_tags is not implemented")
+
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         '''
         Clone the repo at url to 'dest' (None is vc specific) using 'rev' (None means tip)
@@ -1276,6 +1293,31 @@ class HgConfig(VC):
                 abort('hg tip failed')
             else:
                 return None
+
+    def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
+        prefix = prefix + '-'
+        try:
+            tags = [x.split() for x in subprocess.check_output(['hg', '-R', vcdir, 'tags']).split('\n') if x.startswith(prefix)]
+            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', 'tip']).strip()
+        except subprocess.CalledProcessError as e:
+            if abortOnError:
+                abort('hg tags or hg tip failed: ' + str(e))
+            else:
+                return None
+
+        if tags and current_id:
+            sorted_tags = sorted(tags, key=lambda e: [int(x) for x in e[0][len(prefix):].split('.')], reverse=True)
+            most_recent_tag_name, most_recent_tag_revision = sorted_tags[0]
+            most_recent_tag_id = most_recent_tag_revision[:most_recent_tag_revision.index(":")]
+            most_recent_tag_version = most_recent_tag_name[len(prefix):]
+
+            # tagged commit is one-off with commit that tags it
+            if int(current_id) - int(most_recent_tag_id) <= 1:
+                return most_recent_tag_version
+            else:
+                major, minor = map(int, most_recent_tag_version.split('.'))
+                return str(major) + '.' + str(minor + 1) + '-dev'
+        return None
 
     def metadir(self):
         return '.hg'
@@ -2289,6 +2331,7 @@ class SourceSuite(Suite):
         self.projects = []
         self.suiteDict, _ = _load_suite_dict(mxDir)
         self._init_imports()
+        self._releaseVersion = None
         if load:
             self._load()
 
@@ -2298,6 +2341,17 @@ class SourceSuite(Suite):
         '''
         # we do not cache the version because it changes in development
         return self.vc.tip(self.dir, abortOnError=abortOnError)
+
+    def release_version(self):
+        """
+        Gets the release tag from VC or create a time based once if VC is unavailable
+        """
+        if not self._releaseVersion:
+            tag = self.vc.release_version_from_tags(self.dir, self.name)
+            if not tag:
+                tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
+            self._releaseVersion = tag
+        return self._releaseVersion
 
     def _load_metadata(self):
         Suite._load_metadata(self)
@@ -3639,6 +3693,12 @@ def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
     if filtered:
         return filtered[0]
     return None
+
+def find_classpath_arg(vmArgs):
+    for index in range(len(vmArgs)):
+        if vmArgs[index] in ['-cp', '-classpath']:
+            return index + 1, vmArgs[index + 1]
+
 
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, javaConfig=None):
     if not javaConfig:
