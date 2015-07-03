@@ -2449,7 +2449,7 @@ class SourceSuite(Suite):
             existing = _projects.get(p.name)
             if existing is not None and _check_global_structures:
                 abort('cannot override project  ' + p.name + ' in ' + p.dir + " with project of the same name in  " + existing.dir)
-            if not p.name in _opts.ignored_projects:
+            if not hasattr(_opts, 'ignored_projects') or not p.name in _opts.ignored_projects:
                 _projects[p.name] = p
             # check all project dependencies are local
             for d in p.deps:
@@ -2554,6 +2554,7 @@ class InternalSuite(SourceSuite):
 class MXSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, _mx_home)
+        self._post_init_sequence()
 
 class MXTestsSuite(InternalSuite):
     def __init__(self):
@@ -3399,7 +3400,7 @@ class ArgParser(ArgumentParser):
             if _primary_suite_path:
                 os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
 
-            opts.ignored_projects = opts.ignored_projects + os.environ.get('IGNORED_PROJECTS', '').split(',')
+            opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
         else:
             parser = ArgParser(parents=[self])
             parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
