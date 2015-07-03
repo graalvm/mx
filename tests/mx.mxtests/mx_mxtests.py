@@ -81,6 +81,8 @@ def _update_suitepy(args):
 from HTMLParser import HTMLParser
 
 class MyHTMLParser(HTMLParser):
+    def __init__(self):
+        HTMLParser.__init__(self)
     def handle_starttag(self, tag, attrs):
         print "Start tag:", tag
         for attr in attrs:
@@ -103,6 +105,7 @@ class DirHTMLParser(HTMLParser):
 def _readurl(args):
     parser = ArgumentParser(prog='mx mxt-readurl')
     parser.add_argument('--url', action='store', help='target url', required=True)
+    parser.add_argument('--print-tags', action='store_true', help='print all tags')
     args = parser.parse_args(args)
     if 'file://' in args.url:
         for f in os.listdir(args.url.replace('file://', '')):
@@ -110,10 +113,11 @@ def _readurl(args):
     else:
         f = urllib.urlopen(args.url)
         text = f.read()
-        parser = DirHTMLParser()
+        parser = MyHTMLParser() if args.print_tags else DirHTMLParser()
         parser.feed(text)
-        for f in parser.files:
-            print f
+        if not args.print_tags:
+            for f in parser.files:
+                print f
 
 def _vc_clone(args):
     parser = ArgumentParser(prog='mx mxt-vc-clone')
@@ -139,7 +143,7 @@ def _vc_pull(args):
 def _vc_tip(args):
     parser = ArgumentParser(prog='mx mxt-vc-tip')
     parser.add_argument('--dir', action='store', help='repo url', default=os.getcwd())
-    parser.add_argument('--kind', action='store', help='vc kind (hg, git)', default='hg')
+    parser.add_argument('--kind', action='store', help='vc kind (hg, git, binary)', default='hg')
     args = parser.parse_args(args)
     vc = mx.vc_system(args.kind)
     rc = vc.tip(args.dir)

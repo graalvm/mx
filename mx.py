@@ -1100,39 +1100,40 @@ class VC:
         '''
         Intialize 'vcdir' for vc control
         '''
-        abort(self.vckind + " init is not implemented")
+        abort(self.kind + " init is not implemented")
 
     def metadir(self):
         '''
         Return name of metadata directory
         '''
-        abort(self.vckind + " metadir is not implemented")
+        abort(self.kind + " metadir is not implemented")
 
     def add(self, vcdir, path, abortOnError=True):
         '''
         Add path to repo
         '''
-        abort(self.vckind + " add is not implemented")
+        abort(self.kind + " add is not implemented")
 
     def commit(self, vcdir, msg, abortOnError=True):
         '''
         commit with msg
         '''
-        abort(self.vckind + " commit is not implemented")
+        abort(self.kind + " commit is not implemented")
 
     def tip(self, vcdir, abortOnError=True):
         '''
         Return the most recent changeset for repo at vcdir.
         Return None if fails and abortOnError=False
         '''
-        abort(self.vckind + " tip is not implemented")
+        abort(self.kind + " tip is not implemented")
 
-    def clone(self, url, dest=None, rev=None, abortOnError=True):
+    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         '''
         Clone the repo at url to 'dest' (None is vc specific) using 'rev' (None means tip)
         Result is True/False for success/failure respectively.
+        'extra_args' is for subclass-specific information in/out
         '''
-        abort(self.vckind + " clone is not implemented")
+        abort(self.kind + " clone is not implemented")
 
     def _log_clone(self, url, dest=None, rev=None):
         msg = 'Cloning ' + url
@@ -1147,7 +1148,7 @@ class VC:
         '''
         Pull a given changeset (the head if 'rev='None'), optionally updating the working directory
         '''
-        abort(self.vckind + " pull is not implemented")
+        abort(self.kind + " pull is not implemented")
 
     def _log_pull(self, vcdir, rev):
         msg = 'Pulling'
@@ -1168,31 +1169,31 @@ class VC:
         '''
         Return the default push target for this repo.
         '''
-        abort(self.vckind + " default_push is not implemented")
+        abort(self.kind + " default_push is not implemented")
 
     def force_version(self, vcdir, rev, abortOnError=True):
         '''
         force 'vcdir' to 'rev' and updating the working directory
         '''
-        abort(self.vckind + ": force_version is not implemented")
+        abort(self.kind + ": force_version is not implemented")
 
     def incoming(self, vcdir, abortOnError=True):
         '''
         list incoming changesets
         '''
-        abort(self.vckind + ": outgoing is not implemented")
+        abort(self.kind + ": outgoing is not implemented")
 
     def outgoing(self, vcdir, dest=None, abortOnError=True):
         '''
         list outgoing changesets to 'dest' or default-push if None
         '''
-        abort(self.vckind + ": outgoing is not implemented")
+        abort(self.kind + ": outgoing is not implemented")
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=True):
         '''
         Push 'vcdir' at rev 'rev', to default if 'target'=None else 'target'
         '''
-        abort(self.vckind + ": push is not implemented")
+        abort(self.kind + ": push is not implemented")
 
     def _log_push(self, vcdir, dest, rev):
         msg = 'Pushing changes'
@@ -1210,19 +1211,19 @@ class VC:
         '''
         update 'vcdir' working directory
         '''
-        abort(self.vckind + " update is not implemented")
+        abort(self.kind + " update is not implemented")
 
     def isDirty(self, vcdir, abortOnError=True):
         '''
         TBD, who uses this?
         '''
-        abort(self.vckind + " isDirty is not implemented")
+        abort(self.kind + " isDirty is not implemented")
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         '''
         Return a list of paths under vc control that match 'patterns'
         '''
-        abort(self.vckind + " locate is not implemented")
+        abort(self.kind + " locate is not implemented")
 
 
 class OutputCapture:
@@ -1279,7 +1280,7 @@ class HgConfig(VC):
     def metadir(self):
         return '.hg'
 
-    def clone(self, url, dest=None, rev=None, abortOnError=True):
+    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         cmd = ['hg', 'clone']
         if rev:
             cmd.append('-r')
@@ -1416,6 +1417,158 @@ class HgConfig(VC):
             else:
                 return None
 
+class DirHTMLParser(HTMLParser):
+    def __init__(self, files):
+        HTMLParser.__init__(self)
+        self.files = files
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            for attr in attrs:
+                if attr[0] == 'href':
+                    name = attr[1]
+                    self.files.append(name)
+
+class BinaryVC(VC):
+    """
+    Emulates a VC system for binary suites, as far as possible, but particularly pull/tip
+    """
+    def __init__(self):
+        VC.__init__(self, 'binary', 'MX Binary')
+
+    def check(self, abortOnError=True):
+        return True
+
+    def _scrape_repodir(self, url):
+        files = []
+        urlf = urllib.urlopen(url)
+        text = urlf.read()
+        parser = DirHTMLParser(files)
+        parser.feed(text)
+        urlf.close()
+        return files
+
+    def scrape_repodir_for_jars(self, url):
+        '''
+        Scrapes the directory at 'url' returning a list of files that are relevant for a binary suite
+        '''
+        files = self._scrape_repodir(url)
+        jar_files = [f for f in files if f.endswith('.jar')]
+        sha_files = [f for f in files if f.endswith('.jar.sha1')]
+        sha_values = []
+        for sha_file in sha_files:
+            f = urllib.urlopen(sha_file)
+            sha_values.append(f.read())
+            f.close()
+        return jar_files, sha_values
+
+
+    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
+        '''
+        clone is interpreted as downloading the mx-suitename.jar file
+        caller is responsible for downloading the suite distributions
+        Some additional information must be passed by caller in 'extra_args':
+          suite_name: the suite name
+          version_adjust: any pattern to adjust the normal vc changeset id
+          result: an empty dict for ouput values
+        On a successful return 'result' contains:
+          base_url: the adjusted url that is the base of the distribution jars
+          adj_version: actual version (adjusted)
+        The actual version downloaded is written to the file mx-suitename.jar.version
+        '''
+        assert dest
+        suite_name = extra_args['suite_name']
+        version_adjust = extra_args['version_adjust']
+        base_url = join(url, 'com', 'oracle')
+        if os.environ.get('MX_GROUPID_INCLUDES_SUITE'):
+            base_url = join(base_url, suite_name)
+        if not rev:
+            abort('binary suite clone of tip not implemented')
+        if version_adjust:
+            adj_rev = version_adjust.replace('{version}', rev)
+        else:
+            adj_rev = rev
+        mxname = _mx_binary_distribution_root(suite_name)
+        mx_url = join(base_url, mxname, adj_rev)
+        self._log_clone(base_url, dest, adj_rev)
+        mx_jar_urls, mx_jar_shas = self.scrape_repodir_for_jars(mx_url)
+        if len(mx_jar_urls) == 1 and len(mx_jar_shas) == 1:
+            mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
+            download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
+            run([java().jar, 'xf', mx_jar_path], cwd=dest)
+            result = extra_args['result']
+            result['base_url'] = base_url
+            result['adj_version'] = adj_rev
+            with open(join(dest, _mx_binary_distribution_version(suite_name)), 'w') as f:
+                f.write(rev + ',' + base_url)
+                if version_adjust:
+                    f.write(',' + version_adjust)
+            return True
+        else:
+            if abortOnError:
+                abort('binary suite clone: mx metadata jar not found')
+            else:
+                return False
+
+    def _get_vinfos_suite_name(self, vcdir):
+        suite_name = basename(vcdir)
+        # check what we have
+        with open(join(vcdir, _mx_binary_distribution_version(suite_name))) as f:
+            vinfos = f.read().split(',')
+        return suite_name, vinfos
+
+    def _get_versions(self, suite_name, vinfos):
+        mx_url = join(vinfos[1], _mx_binary_distribution_root(suite_name))
+        files = self._scrape_repodir(mx_url)
+        file_versions = [basename(f.rstrip('/')) for f in files if 'SNAPSHOT' in f]
+        # apply the version adjust if any
+        # TODO version adjust should be a regexp
+        if len(vinfos) > 2:
+            vadj = vinfos[2]
+            pre = vadj.partition('{')
+            post = vadj.rpartition('}')
+            versions = [f.replace(pre[0], '').replace(post[2], '') for f in file_versions]
+        else:
+            versions = file_versions
+        return versions
+
+    def pull(self, vcdir, rev=None, update=True, abortOnError=True):
+        suite_name, vinfos = self._get_vinfos_suite_name(vcdir)
+        cur_rev = vinfos[0]
+        if rev:
+            if rev == cur_rev:
+                return True
+
+        versions = self._get_versions(suite_name, vinfos)
+        # at this point we have no date to determine the tip
+        if rev:
+            match = [v for v in versions if v == rev]
+            if not match:
+                msg = 'no such version: ' + rev
+                if abortOnError:
+                    abort(msg)
+                else:
+                    log(msg)
+                    return False
+        else:
+            if len(versions) == 1:
+                rev = versions[0]
+                if rev == cur_rev:
+                    return True
+            else:
+                abort('tip for multi-versions not implemented')
+
+        # pull the new version and update 'working directory'
+        # i.e. delete first as everything will change
+        abort('binary suite update not implemented')
+
+    def tip(self, vcdir, abortOnError=True):
+        suite_name, vinfos = self._get_vinfos_suite_name(vcdir)
+        versions = self._get_versions(suite_name, vinfos)
+        if len(versions) == 1:
+            return versions[0]
+        else:
+            abort('tip for multi-versions not implemented')
 
 class MavenConfig:
     def __init__(self):
@@ -1591,14 +1744,13 @@ class SuiteImport:
             if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
                 version_adjust = None
-                if not (kind == 'binary' or VC.is_valid_kind(kind)):
+                if not VC.is_valid_kind(kind):
                     abort('suite import kind ' + kind + ' illegal')
                 if kind == 'binary':
                     version_adjust = urlinfo.get('version-adjust')
             else:
                 abort('suite import url must be a dict with {"url", kind", ["version-adjust]" attributes')
-            # this implicity checks the vc kind
-            vc = vc_system(kind) if kind != 'binary' else None
+            vc = vc_system(kind)
             urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, version_adjust))
         return SuiteImport(name, version, urlinfos, kind)
 
@@ -1851,6 +2003,11 @@ class Suite:
             os.makedirs(dotMxDir)
         return join(dotMxDir, name)
 
+    def _find_binary_suite_dir(self, name):
+        '''Attempts to locate a binary_suite directory for suite 'name', returns the mx dir or None'''
+        suite_dir = join(self.binary_imports_dir(), name)
+        return _is_suite_dir(suite_dir, _mxDirName(name))
+
     def _commands_name(self):
         return 'mx_' + self.name.replace('-', '_')
 
@@ -1953,13 +2110,13 @@ class Suite:
         self._post_init_check()
         self._post_init_finish()
 
-    def mx_distribution_path(self):
+    def mx_binary_distribution_jar_path(self):
         '''
-        returns the absolute path of the mx distribution jar.
+        returns the absolute path of the mx binary distribution jar.
         '''
-        return join(self.dir, 'dists', self.name + '-mx' + '.jar')
+        return join(self.dir, _mx_binary_distribution_jar(self.name))
 
-    def create_mx_distribution(self):
+    def create_mx_binary_distribution_jar(self):
         '''
         Creates a jar file named name-mx.jar that contains
         the metadata for another suite to import this suite as a BinarySuite.
@@ -1969,16 +2126,16 @@ class Suite:
         transformed suite.py file that only contained distribution info, to
         detect access to private (non-distribution) state
         '''
-        mxMetaJar = self.mx_distribution_path()
+        mxMetaJar = self.mx_binary_distribution_jar_path()
         pyfiles = glob.glob(join(self.mxDir, '*.py'))
         with Archiver(mxMetaJar) as arc:
             for pyfile in pyfiles:
                 mxDirBase = basename(self.mxDir)
                 arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
 
-    def remove_mx_distribution(self):
+    def remove_mx_binary_distribution_jar(self):
         '''remove for clean command'''
-        path = self.mx_distribution_path()
+        path = self.mx_binary_distribution_jar_path()
         if exists(path):
             log('Removing distribution {0}...'.format(path))
             os.remove(path)
@@ -2014,32 +2171,60 @@ class Suite:
                                 abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
                 return s
 
-        importMxDir = None
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
         version = suite_import.version
+        # experimental code to ignore versions, aka pull the tip
         if _suites_ignore_versions:
             if len(_suites_ignore_versions) == 0 or suite_import.name in _suites_ignore_versions:
                 version = None
 
-        if searchMode == 'binary':
-            dotDir = importing_suite.binary_suite_dir(suite_import.name)
-            importMxDir = join(dotDir, _mxDirName(suite_import.name))
-            return BinarySuite(importMxDir, importing_suite, suite_import)
+        # The following two functions abstract state that varies between binary and source suites
 
-        # use the SuiteModel to locate a local source copy of the suite
-        importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+        def _find_suite_dir():
+            '''
+            Attempts to locate an existing suite in the local context
+            Returns the path to the mx.name dir if found else None
+            '''
+            if searchMode == 'binary':
+                # binary suites are always stored relative to the importing suite in mx-private directory
+                return importing_suite._find_binary_suite_dir(suite_import.name)
+            else:
+                # use the SuiteModel to locate a local source copy of the suite
+                return _src_suitemodel.find_suite_dir(suite_import.name)
+
+        def _get_import_dir():
+            '''Return directory where the suite will be cloned to'''
+            if searchMode == 'binary':
+                return importing_suite.binary_suite_dir(suite_import.name)
+            else:
+                importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                if exists(importDir):
+                    abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
+                return importDir
+
+        def _clone_kwargs():
+            if searchMode == 'binary':
+                return dict(result=dict())
+            else:
+                return dict()
+
+        clone_kwargs = _clone_kwargs()
+        importMxDir = _find_suite_dir()
         if importMxDir is None:
             # No local copy, so use the URLs in order to "download" one
-            importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
-            if exists(importDir):
-                abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
+            importDir = _get_import_dir()
             fail = True
             urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
             for urlinfo in urlinfos:
                 if not urlinfo.vc.check(abortOnError=False):
                     continue
-                if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False):
-                    importMxDir = _src_suitemodel.find_suite_dir(suite_import.name)
+                if searchMode == 'binary':
+                    # pass extra necessary extra info
+                    clone_kwargs['suite_name'] = suite_import.name
+                    clone_kwargs['version_adjust'] = urlinfo.version_adjust
+
+                if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
+                    importMxDir = _find_suite_dir()
                     if importMxDir is None:
                         # wasn't a suite after all, this is an error
                         pass
@@ -2061,7 +2246,11 @@ class Suite:
                 else:
                     abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
 
-        return SourceSuite(importMxDir, importing_suite=importing_suite)
+        # Factory method?
+        if searchMode == 'binary':
+            return BinarySuite(importMxDir, importing_suite=importing_suite, cloneResult=clone_kwargs['result'])
+        else:
+            return SourceSuite(importMxDir, importing_suite=importing_suite)
 
     def visit_imports(self, visitor, **extra_args):
         """
@@ -2245,111 +2434,58 @@ class SourceSuite(Suite):
         return result
 
 '''
-A pre-built suite downloaded from a repository. Since the "output" of a build
-is a set of Distributions, this is the main metadata that is stored.
-On first download we create a directory hidden in the directory of the importing suite
-to store the mx metadata and the links to the downloaded distributions.
-This avoids any clash with a source suite and also allows a suite that only
-imports binary suites to be completely self contained in one directory
-
-A BinarySuite is stored in a Maven repository and there is
-a dependency on the URL format in this code.
+A pre-built suite downloaded from a Maven repository.
 '''
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite, suite_import):
+    def __init__(self, mxDir, importing_suite, cloneResult):
         Suite.__init__(self, mxDir, False, False, importing_suite)
-        self.versionid = suite_import.version # fixed
-        self._validate_binary_suite(suite_import)
+        # At this stage the suite directory is guaranteed to exist as is the mx.suitname
+        # directory. For a freshly downloaded suite, the actual distribution jars
+        # have not been downloaded as we need info from the suite.py for that
+        self.vc = BinaryVC()
+        self._load_binary_suite(cloneResult)
         self._init_imports()
         self._load()
+
+    def version_file(self):
+        return join(self.dir, _mx_binary_distribution_version(self.name))
 
     def version(self, abortOnError=True):
         return self.versionid
 
-    def _scrape_repodir(self, url):
+    def _load_binary_suite(self, cloneResult):
         '''
-        Scrapes the directory at 'url' returning a list of files that are relevent for a binary suite
+        Always load the suite.py file and the distribution info defined there,
+        download the jar files for a freshly cloned suite
         '''
-        class DirHTMLParser(HTMLParser):
-            def __init__(self, files):
-                HTMLParser.__init__(self)
-                self.files = files
+        self.suiteDict, _ = _load_suite_dict(self.mxDir)
+        Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
-            def handle_starttag(self, tag, attrs):
-                if tag == 'a':
-                    for attr in attrs:
-                        if attr[0] == 'href':
-                            name = attr[1]
-                            self.files.append(name)
+        with open(self.version_file()) as f:
+            vinfo = f.read()
+            self.versionId = vinfo.split(',')[0]
 
-        files = []
-        file_dir = None
-        file_url_prefix = 'file://'
-        if url.startswith(file_url_prefix):
-            file_dir = url.replace(file_url_prefix, '')
-            for f in os.listdir(file_dir):
-                files.append(file_url_prefix + join(file_dir, f))
-        else:
-            urlf = urllib.urlopen(url)
-            text = urlf.read()
-            parser = DirHTMLParser(files)
-            parser.feed(text)
-            urlf.close()
+        if not cloneResult:
+            return
 
-        jar_files = [f for f in files if f.endswith('.jar')]
-        sha_files = [f for f in files if f.endswith('.jar.sha1')]
-        sha_values = []
-        for sha_file in sha_files:
-            if file_dir:
-                with open(sha_file.replace(file_url_prefix, '')) as f:
-                    sha_values.append(f.read())
-            else:
-                f = urllib.urlopen(sha_file)
-                sha_values.append(f.read())
-                f.close()
-        return jar_files, sha_values
-
-    def _validate_binary_suite(self, suite_import):
-        '''
-        We map from the info in suite_import to a complete URL that we should be able to locate.
-        Every suite name 'name' must provide a jar called name-mx.jar where we
-        can find the mx metadata and other info about the distributions
-        '''
-        for urlinfo in suite_import.urlinfos:
-            if urlinfo.kind == 'binary':
-                mxname = suite_import.name + '-mx'
-                base_url = join(urlinfo.url, 'com', 'oracle')
-                if os.environ.get('MX_GROUPID_INCLUDES_SUITE'):
-                    base_url = join(base_url, suite_import.name)
-                sversion = suite_import.version
-                if urlinfo.version_adjust:
-                    sversion = urlinfo.version_adjust.replace('{version}', sversion)
-                mx_url = join(base_url, mxname, sversion)
-                mx_jar_urls, mx_jar_shas = self._scrape_repodir(mx_url)
-                mx_jar_path = self.mx_distribution_path()
-                # aborts on failure
-                download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
-                run([java().jar, 'xf', mx_jar_path], cwd=self.dir)
-                self.suiteDict, _ = _load_suite_dict(self.mxDir)
-                Suite._load_distributions(self, self._check_suiteDict('distributions'))
-                for dist in self.dists:
-                    dist_url = join(base_url, os.path.splitext(basename(dist.path))[0], sversion)
-                    dist_jars, dist_jars_shas = self._scrape_repodir(dist_url)
-                    for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
-                        urls = [dist_jar]
-                        if dist_jar.endswith('sources.jar'):
-                            sources = True
-                            dist_path = dist.sourcesPath
-                        else:
-                            sources = False
-                            dist_path = dist.path
-                        download_file_with_sha1(dist.name, dist_path, urls, dist_jar_sha, dist_path + '.sha1', resolve=True, mustExist=True, sources=sources)
+        for dist in self.dists:
+            dist_url = join(cloneResult['base_url'], os.path.splitext(basename(dist.path))[0], cloneResult['adj_version'])
+            dist_jars, dist_jars_shas = self.vc.scrape_repodir_for_jars(dist_url)
+            for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
+                urls = [dist_jar]
+                if dist_jar.endswith('sources.jar'):
+                    sources = True
+                    dist_path = dist.sourcesPath
+                else:
+                    sources = False
+                    dist_path = dist.path
+                download_file_with_sha1(dist.name, dist_path, urls, dist_jar_sha, dist_path + '.sha1', resolve=True, mustExist=True, sources=sources)
 
     def _load_env(self):
         pass
 
     def _load_distributions(self, distsMap):
-        # This gets done explicitly in _validate_binary_suite as we need the info there
+        # This gets done explicitly in _load_binary_suite as we need the info there
         # so, in that mode, we don't want to call the superclass method again
         pass
 
@@ -4544,7 +4680,7 @@ def build(args, parser=None):
         rebuiltProjects = frozenset([t.proj for t in tasks.itervalues()])
         for dist in sorted_dists():
             if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
-                dist.suite.create_mx_distribution()
+                dist.suite.create_mx_binary_distribution_jar()
                 if not exists(dist.path):
                     archive(['@' + dist.name])
                 elif dist not in updatedAnnotationProcessorDists:
@@ -5216,7 +5352,7 @@ def clean(args, parser=None):
                     log('Removing distribution {0}...'.format(d))
                     _rmIfExists(dd.path)
                     _rmIfExists(dd.sourcesPath)
-                    dd.suite.remove_mx_distribution()
+                    dd.suite.remove_mx_binary_distribution_jar()
 
     if suppliedParser:
         return args
@@ -7643,8 +7779,8 @@ def maven_install(args):
             if not dist.name.startswith('COM_ORACLE'):
                 arcdists.append(dist)
 
-        mxMetaName = s.name + '-mx'
-        mxMetaJar = s.mx_distribution_path()
+        mxMetaName = _mx_binary_distribution_root(s.name)
+        mxMetaJar = s.mx_binary_distribution_jar_path()
         if args.local:
             mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
             for dist in arcdists:
@@ -7798,6 +7934,17 @@ _argParser = ArgParser()
 def _mxDirName(name):
     return 'mx.' + name
 
+def _mx_binary_distribution_root(name):
+    return name + '-mx'
+
+def _mx_binary_distribution_jar(name):
+    '''the (relative) path to the location of the mx binary distribution jar'''
+    return join('dists', _mx_binary_distribution_root(name) + '.jar')
+
+def _mx_binary_distribution_version(name):
+    '''the (relative) path to the location of the mx binary distribution version file'''
+    return join('dists', _mx_binary_distribution_root(name) + '.version')
+
 def _suitename(mxDir):
     base = os.path.basename(mxDir)
     parts = base.split('.')
@@ -7927,7 +8074,7 @@ def main():
     _argParser._parse_cmd_line(_opts, firstParse=True)
 
     global _vc_systems
-    _vc_systems = [HgConfig()]
+    _vc_systems = [HgConfig(), BinaryVC()]
     global _mvn
     _mvn = MavenConfig()
 
@@ -8033,7 +8180,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.0.6")
+version = VersionSpec("4.1.0")
 
 currentUmask = None
 
