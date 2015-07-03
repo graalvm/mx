@@ -1,4 +1,5 @@
 bin
+lib
 .*\.orig$
 .*\.pyc$
 \.class$
