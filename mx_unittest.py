@@ -124,7 +124,7 @@ def _unittest(args, annotations, vmLauncher=None, prefixCp="", blacklist=None, w
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
         os.close(_)
 
-    coreCp = mx.classpath(['com.oracle.mxtool.junit', 'HCFDIS'])
+    coreCp = mx.classpath(['com.oracle.mxtool.junit'])
 
     coreArgs = []
     if verbose:
