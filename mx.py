@@ -2776,7 +2776,7 @@ def gate(args, gate_body=_basic_gate_body, parser=None):
             if t:
                 log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
                 if canonicalizeprojects([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
+                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite.py files.')
 
         with GateTask('Checkstyle', tasks) as t:
             if t and checkstyle([]) != 0:
@@ -7654,7 +7654,7 @@ def show_projects(args):
     """show all projects"""
     for s in suites():
         if len(s.projects) != 0:
-            log(join(s.mxDir, 'suite*.py'))
+            log(join(s.mxDir, 'suite.py'))
             for p in s.projects:
                 log('\t' + p.name)
 
