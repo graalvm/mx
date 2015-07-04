@@ -169,8 +169,53 @@ class Dependency:
     def isDistribution(self):
         return isinstance(self, Distribution)
 
+    def origin(self):
+        """
+        Gets a 2-tuple (file, line) describing the source file where this dependency
+        is defined or None if the location cannot be determined.
+        """
+        suitepy = join(self.suite.mxDir, 'suite.py')
+        if exists(suitepy):
+            import tokenize
+            with open(suitepy) as fp:
+                candidate = None
+                for t in tokenize.generate_tokens(fp.readline):
+                    _, tval, (srow, _), _, _ = t
+                    if candidate is None:
+                        if tval == '"' + self.name + '"' or tval == "'" + self.name + "'":
+                            candidate = srow
+                    else:
+                        if tval == ':':
+                            return (suitepy, srow)
+                        else:
+                            candidate = None
+        return None
+
+    def attach_origin(self, msg, asPrefix=True, sep='\n'):
+        '''
+        Adds a description of where this dependency was defined in terms of source file
+        and line to a given string.
+        If no such description can be generated, 'msg' is returned unmodified.
+        Otherwise, the result of prepending or appending the description (determined
+        by 'asPrefix') to 'msg' separated by 'sep' is returned.
+        '''
+        loc = self.origin()
+        if loc:
+            path, lineNo = loc
+            if asPrefix:
+                return 'In definition of {} at {}, line {}:{}{}'.format(self.name, path, lineNo, sep, msg)
+            else:
+                return '{}{}In definition of {} at {}, line {}:{}{}'.format(msg, sep, self.name, path, lineNo)
+        return msg
+
+    def abort(self, msg):
+        '''
+        Aborts with given message prefixed by the origin of this dependency.
+        '''
+        abort(self.attach_origin(msg))
+        
     """
-    Common method for all subclasses, this adds this objects dependencies (transitively) to "deps" and returns a new sorted list.
+    Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
     Not all the arguments are applicable to all subclasses.
     """
     def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
@@ -730,10 +775,10 @@ class Project(Dependency):
                             config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
                             if not exists(config):
                                 TimeStampFile(config).touch()
-                            abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                            self.abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
                                   'Please specify the annotation processors in ' + config)
                     else:
-                        abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
+                        self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
             allDeps = self.all_deps([], includeLibs=False, includeSelf=False, includeAnnotationProcessors=False)
             for p in allDeps:
@@ -2456,9 +2501,9 @@ class SourceSuite(Suite):
                 dp = project(d, False)
                 if dp:
                     if not dp in self.projects:
-                        abort("dependency on project '{0}' from imported suite, use '{1}:distribution-name' instead".format(dp.name, dp.suite.name))
+                        p.abort("dependency to project '{}' defined in an imported suite must use '{}:<name of distribution containing {}>' instead".format(dp.name, dp.suite.name, dp.name))
                     elif dp == p:
-                        abort("recursive dependency in suite '{0}' in project '{1}'".format(self.name, d))
+                        p.abort("recursive dependency in suite '{}' in project '{}'".format(self.name, d))
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
@@ -5171,7 +5216,7 @@ def canonicalizeprojects(args):
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
                     if not pkg.startswith(p.name):
-                        abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
+                        p.abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
 
             ignoredDeps = set([name for name in p.deps if project(name, False) is not None])
             for pkg in p.imported_java_packages():
@@ -5195,7 +5240,7 @@ def canonicalizeprojects(args):
                     candidates.difference_update(c.all_deps([], False, False))
                 candidates = [d.name for d in candidates]
 
-                abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
+                p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
                     p, ', '.join(ignoredDeps), ','.join(candidates)))
 
             excess = frozenset(p.deps) - set(p.canonical_deps())
@@ -5205,12 +5250,12 @@ def canonicalizeprojects(args):
         for p in nonCanonical:
             canonicalDeps = p.canonical_deps()
             if len(canonicalDeps) != 0:
-                log('Canonical dependencies for project ' + p.name + ' are: [')
+                log(p.attach_origin('Canonical dependencies for project ' + p.name + ' are: ['))
                 for d in canonicalDeps:
                     log('        "' + d + '",')
                 log('      ],')
             else:
-                log('Canonical dependencies for project ' + p.name + ' are: []')
+                log(p.attach_origin('Canonical dependencies for project ' + p.name + ' are: []'))
     return len(nonCanonical)
 
 
