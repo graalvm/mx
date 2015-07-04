@@ -189,7 +189,6 @@ class Dependency:
                             return (suitepy, srow)
                         else:
                             candidate = None
-        return None
 
     def attach_origin(self, msg, asPrefix=True, sep='\n'):
         '''
@@ -213,7 +212,7 @@ class Dependency:
         Aborts with given message prefixed by the origin of this dependency.
         '''
         abort(self.attach_origin(msg))
-        
+
     """
     Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
     Not all the arguments are applicable to all subclasses.
@@ -1975,6 +1974,7 @@ class Suite:
         self.primary = primary
         self.requiredMxVersion = None
         self.dists = []
+        self._metadata_initialized = False
         self.post_init = False
         _suites[self.name] = self
 
@@ -1984,7 +1984,6 @@ class Suite:
     def _load(self):
         '''
         Calls _load_env and _load_commands
-        Pre-condition is that _init.imports(0 has been called
         '''
         # load suites depth first
         self.loading_imports = True
@@ -1993,7 +1992,11 @@ class Suite:
         self._load_env()
         self._load_commands()
 
-    def _post_init_check(self):
+    def _register_metadata(self):
+        '''
+        Registers the metadata loaded by _load_metadata into the relevant
+        global dictionaries such as _projects, _libs, _jreLibs and _dists.
+        '''
         if self.requiredMxVersion is None:
             warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
         elif self.requiredMxVersion > version:
@@ -2186,15 +2189,24 @@ class Suite:
             self.libs.append(l)
 
     @staticmethod
+    def _init_metadata_visitor(importing_suite, suite_import, **extra_args):
+        imported_suite = suite(suite_import.name)
+        if not imported_suite._metadata_initialized:
+            imported_suite.visit_imports(imported_suite._init_metadata_visitor)
+            imported_suite._init_metadata()
+
+    @staticmethod
     def _post_init_visitor(importing_suite, suite_import, **extra_args):
         imported_suite = suite(suite_import.name)
         if not imported_suite.post_init:
             imported_suite.visit_imports(imported_suite._post_init_visitor)
-            imported_suite._post_init_sequence()
+            imported_suite._post_init()
 
-    def _post_init_sequence(self):
+    def _init_metadata(self):
         self._load_metadata()
-        self._post_init_check()
+        self._register_metadata()
+
+    def _post_init(self):
         self._post_init_finish()
 
     def mx_binary_distribution_jar_path(self):
@@ -2354,7 +2366,7 @@ class Suite:
             if urlinfos:
                 imported_suite.vc.pull(imported_suite.dir, rev=version, update=True)
             if not imported_suite.post_init:
-                imported_suite._post_init_sequence()
+                imported_suite._post_init()
         return imported_suite
 
     def suite_py(self):
@@ -2488,8 +2500,8 @@ class SourceSuite(Suite):
     def _load_env(self):
         SourceSuite._load_env_in_mxDir(self.mxDir)
 
-    def _post_init_check(self):
-        Suite._post_init_check(self)
+    def _register_metadata(self):
+        Suite._register_metadata(self)
         for p in self.projects:
             existing = _projects.get(p.name)
             if existing is not None and _check_global_structures:
@@ -2581,12 +2593,12 @@ class BinarySuite(Suite):
         # so, in that mode, we don't want to call the superclass method again
         pass
 
-    def _post_init_check(self):
-        Suite._post_init_check(self)
+    def _register_metadata(self):
+        Suite._register_metadata(self)
         # since we are working with the original suite.py file, we remove some
         # values that should not be visible
         for d in self.dists:
-            d.deps = [] # remeve project dependencies
+            d.deps = [] # remove project dependencies
         self.projects = []
 
 
@@ -2599,7 +2611,8 @@ class InternalSuite(SourceSuite):
 class MXSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, _mx_home)
-        self._post_init_sequence()
+        self._init_metadata()
+        self._post_init()
 
 class MXTestsSuite(InternalSuite):
     def __init__(self):
@@ -2611,8 +2624,10 @@ class PrimarySuite(SourceSuite):
 
     def _depth_first_post_init(self):
         '''depth first _post_init driven by imports graph'''
+        self.visit_imports(self._init_metadata_visitor)
+        self._init_metadata()
         self.visit_imports(self._post_init_visitor)
-        self._post_init_sequence()
+        self._post_init()
 
     @staticmethod
     def load_env(mxDir):
