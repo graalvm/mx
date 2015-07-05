@@ -2365,7 +2365,9 @@ class Suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
                 imported_suite.vc.pull(imported_suite.dir, rev=version, update=True)
+            # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
+                imported_suite._init_metadata()
                 imported_suite._post_init()
         return imported_suite
 
@@ -8293,7 +8295,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.1.1")
+version = VersionSpec("4.1.2")
 
 currentUmask = None
 
