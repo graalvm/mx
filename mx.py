@@ -7424,6 +7424,12 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         if currentTip != suite_import.version:
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
             # now (may) need to force imports of this suite if the above changed its import revs
+            # N.B. the suite_imports from the old version may now be invalid
+            # TODO it may be better to only load the primary suite on startup to
+            # avoid having to update stale information
+            imported_suite.suite_imports = []
+            imported_suite.suiteDict, _ = _load_suite_dict(imported_suite.mxDir)
+            imported_suite._init_imports()
             imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
     else:
         # simple case, pull the head
@@ -8295,7 +8301,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.1.2")
+version = VersionSpec("4.1.3")
 
 currentUmask = None
 
