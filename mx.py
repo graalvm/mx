@@ -1599,9 +1599,7 @@ class BinaryVC(VC):
         assert dest
         suite_name = extra_args['suite_name']
         version_adjust = extra_args['version_adjust']
-        base_url = join(url, 'com', 'oracle')
-        if os.environ.get('MX_GROUPID_INCLUDES_SUITE'):
-            base_url = join(base_url, suite_name)
+        base_url = join(url, 'com', 'oracle', suite_name)
         if not rev:
             abort('binary suite clone of tip not implemented')
         if version_adjust:
