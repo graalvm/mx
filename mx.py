@@ -3694,6 +3694,8 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     return selected
 
 def ask_persist_env(varName, value, valueSeparator=None):
+    if not _primary_suite:
+        return
     envPath = join(_primary_suite.mxDir, 'env')
     if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y'):
         envLines = []
@@ -8358,7 +8360,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.2.0")
+version = VersionSpec("4.2.1")
 
 currentUmask = None
 
