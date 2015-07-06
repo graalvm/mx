@@ -840,14 +840,20 @@ class Project(Dependency):
         if currentApsFileExists:
             with open(currentApsFile) as fp:
                 currentAps = [l.strip() for l in fp.readlines()]
-                if currentAps != aps:
-                    outOfDate = True
-        if outOfDate or not currentApsFileExists:
-            if not exists(dirname(currentApsFile)):
-                os.mkdir(dirname(currentApsFile))
-            with open(currentApsFile, 'w') as fp:
-                for ap in aps:
-                    print >> fp, ap
+            if currentAps != aps:
+                outOfDate = True
+            elif len(aps) == 0:
+                os.remove(currentApsFile)
+        else:
+            outOfDate = len(aps) != 0
+
+        if outOfDate:
+            if len(aps) != 0:
+                if not exists(dirname(currentApsFile)):
+                    os.mkdir(dirname(currentApsFile))
+                with open(currentApsFile, 'w') as fp:
+                    for ap in aps:
+                        print >> fp, ap
         return outOfDate
 
     def make_archive(self, path=None):
