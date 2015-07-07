@@ -3436,7 +3436,9 @@ def dependency(name, fatalIfMissing=True):
             d = _dists.get(name)
             if d is not None:
                 if d.suite != dep_suite:
-                    abort('suite ' + suite_name + ' does not export distribution ' + name)
+                    if fatalIfMissing:
+                        abort('Distribution {dist} exported by {asuite}, expected {dist} from {suite}'.format(dist=name, suite=dep_suite, asuite=d.suite))
+                    return None
                 else:
                     return d
             else:
