@@ -918,13 +918,14 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
-            print 'Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls)
+            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
             download(cachePath, urls)
 
         d = dirname(path)
         if d != '' and not exists(d):
             os.makedirs(d)
         if canSymlink and 'symlink' in dir(os):
+            logvv('Symlinking {} to {}'.format(path, cachePath))
             if exists(path):
                 os.unlink(path)
             try:
@@ -936,6 +937,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                     # It was some other error
                     raise e
         else:
+            logvv('Copying {} to {}'.format(path, cachePath))
             shutil.copy(cachePath, path)
 
     def _sha1Cached():
@@ -1411,8 +1413,7 @@ class HgConfig(VC):
         self._log_clone(url, dest, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def incoming(self, vcdir, abortOnError=True):
@@ -1448,8 +1449,7 @@ class HgConfig(VC):
         self._log_pull(vcdir, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
@@ -1496,8 +1496,7 @@ class HgConfig(VC):
         self._log_push(vcdir, dest, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def update(self, vcdir, abortOnError=False):
@@ -4355,6 +4354,11 @@ def get_env(key, default=None):
 def logv(msg=None):
     if _opts.verbose:
         log(msg)
+
+def logvv(msg=None):
+    if _opts.very_verbose:
+        log(msg)
+
 
 def log(msg=None):
     """
