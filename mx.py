@@ -5580,6 +5580,7 @@ def projectgraph(args, suite=None):
     """create graph for project structure ("mx projectgraph | dot -Tpdf -oprojects.pdf" or "mx projectgraph --igv")"""
 
     parser = ArgumentParser(prog='mx projectgraph')
+    parser.add_argument('--dist', action='store_true', help='group projects by distribution')
     parser.add_argument('--igv', action='store_true', help='output to IGV listening on 127.0.0.1:4444')
     parser.add_argument('--igv-format', action='store_true', help='output graph in IGV format')
 
@@ -5629,6 +5630,20 @@ def projectgraph(args, suite=None):
     print 'digraph projects {'
     print 'rankdir=BT;'
     print 'node [shape=rect];'
+    if args.dist:
+        projs = {}
+        for d in sorted_dists():
+            if not d.isProcessorDistribution:
+                print 'subgraph "cluster_' + d.name + '" {'
+                print 'label="' + d.name + '";'
+                for p in d.sorted_deps(includeLibs=False, transitive=True):
+                    if p in projs:
+                        if not projs[p] in d.get_dist_deps(includeSelf=False, transitive=True):
+                            raise RuntimeError('ERROR: project ' + p.name + ' in two dists: ' + projs[p].name + ' and ' + d.name)
+                    else:
+                        projs[p] = d
+                        print '"' + p.name + '";'
+                print '}'
     for p in projects():
         for dep in p.canonical_deps():
             print '"' + p.name + '"->"' + dep + '";'
