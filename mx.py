@@ -1688,6 +1688,71 @@ class BinaryVC(VC):
         else:
             abort('tip for multi-versions not implemented')
 
+# TODO use classifier for mx meta-data ?
+
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None):
+    if not exists(jarPath):
+        abort("'{0}' does not exist, run 'mx build' first".format(jarPath))
+    if srcPath and not exists(srcPath):
+        abort("'{0}' does not exist, run 'mx build' first".format(srcPath))
+
+    groupId = 'com.oracle.' + suite.name.lower().replace('_', '-')
+    artifactId = name
+    mavenVersion = '{0}-SNAPSHOT'.format(version)
+
+    cmd = ['mvn', '--batch-mode']
+
+    if not _opts.verbose:
+        cmd.append('--quiet')
+
+    if _opts.very_verbose:
+        cmd.append('--debug')
+
+    if settingsXml:
+        cmd += ['-s', settingsXml]
+
+    cmd += ['deploy:deploy-file',
+        '-DrepositoryId=' + repositoryId,
+        '-DgeneratePom=true',
+        '-Durl=' + repositoryUrl,
+        '-DgroupId=' + groupId,
+        '-DartifactId=' + artifactId,
+        '-Dversion=' + mavenVersion,
+        '-Dfile=' + jarPath
+    ]
+
+    if srcPath:
+        cmd.append('-Dsources=' + srcPath)
+
+    if description:
+        cmd.append('-Ddescription=' + description)
+
+    log('Deploying {0}:{1}...'.format(suite.name, name))
+    run(cmd)
+
+def deploy_binary(args):
+    parser = ArgumentParser(prog='mx deploy-binary')
+    parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
+    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
+    parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
+    args = parser.parse_args(args)
+
+    def _map_to_maven_dist_name(name):
+        return name.lower().replace('_', '-')
+
+    _mvn.check()
+    s = _primary_suite
+    version = s.vc.tip(s.dir)
+
+    log('Deploying {0} distributions for version {1}'.format(s.name, version))
+
+    mxMetaName = _mx_binary_distribution_root(s.name)
+    mxMetaJar = s.mx_binary_distribution_jar_path()
+    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
+    for dist in s.dists:
+        if not dist.isProcessorDistribution:
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
+
 class MavenConfig:
     def __init__(self):
         self.has_maven = None
@@ -8105,6 +8170,7 @@ _commands = {
     'intellijinit': [intellijinit, ''],
     'archive': [_archive, '[options]'],
     'maven-install' : [maven_install, ''],
+    'deploy-binary' : [deploy_binary, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
@@ -8386,7 +8452,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.2.2")
+version = VersionSpec("4.2.3")
 
 currentUmask = None
 
