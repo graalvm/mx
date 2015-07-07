@@ -1894,101 +1894,6 @@ class SuiteImport:
         else:
             abort('unexpected type in SuiteImport.get_source_urls')
 
-def _load_suite_dict(mxDir):
-
-    suite = None
-    dictName = 'suite'
-
-    def expand(value, context):
-        if isinstance(value, types.DictionaryType):
-            for n, v in value.iteritems():
-                value[n] = expand(v, context + [n])
-        elif isinstance(value, types.ListType):
-            for i in range(len(value)):
-                value[i] = expand(value[i], context + [str(i)])
-        else:
-            if not isinstance(value, types.StringTypes):
-                abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
-            value = expandvars(value)
-            if '$' in value or '%' in value:
-                abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
-
-        return value
-
-    moduleName = 'suite'
-    modulePath = join(mxDir, moduleName + '.py')
-    suffix = 1
-    while exists(modulePath):
-
-        savedModule = sys.modules.get(moduleName)
-        if savedModule:
-            warn(modulePath + ' conflicts with ' + savedModule.__file__)
-        # temporarily extend the Python path
-        sys.path.insert(0, mxDir)
-
-        snapshot = frozenset(sys.modules.keys())
-        module = __import__(moduleName)
-
-        if savedModule:
-            # restore the old module into the module name space
-            sys.modules[moduleName] = savedModule
-        else:
-            # remove moduleName from the module name space
-            sys.modules.pop(moduleName)
-
-        # For now fail fast if extra modules were loaded.
-        # This can later be relaxed to simply remove the extra modules
-        # from the sys.modules name space if necessary.
-        extraModules = frozenset(sys.modules.keys()) - snapshot
-        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
-
-        # revert the Python path
-        del sys.path[0]
-
-        if not hasattr(module, dictName):
-            abort(modulePath + ' must define a variable named "' + dictName + '"')
-        d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite else [])
-        unknown = frozenset(d.keys()) - frozenset(sections)
-        if unknown:
-            abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
-
-        if suite is None:
-            suite = d
-        else:
-            # Retire this code once all suites are converted as there should be exactly one suite.py file per suite.
-            # This is currently needed by the repo split tool
-            for s in sections:
-                existing = suite.get(s)
-                additional = d.get(s)
-                if additional:
-                    if not existing:
-                        suite[s] = additional
-                    else:
-                        conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
-                        if conflicting:
-                            abort(modulePath + ' redefines: ' + ', '.join(conflicting))
-                        existing.update(additional)
-            distExtensions = d.get('distribution_extensions')
-            if distExtensions:
-                existing = suite['distributions']
-                for n, attrs in distExtensions.iteritems():
-                    original = existing.get(n)
-                    if not original:
-                        abort('cannot extend non-existing distribution ' + n)
-                    for k, v in attrs.iteritems():
-                        if k != 'dependencies':
-                            abort('Only the dependencies of distribution ' + n + ' can be extended')
-                        if not isinstance(v, types.ListType):
-                            abort('distribution_extensions.' + n + '.dependencies must be a list')
-                        original['dependencies'] += v
-
-        dictName = 'extra'
-        moduleName = 'suite' + str(suffix)
-        modulePath = join(mxDir, moduleName + '.py')
-        suffix = suffix + 1
-
-    return suite, modulePath
 
 '''
 Command state and methods for all suite subclasses
@@ -2026,6 +1931,104 @@ class Suite:
         self.loading_imports = False
         self._load_env()
         self._load_commands()
+
+    def _load_suite_dict(self):
+
+        suite_dict = None
+        dictName = 'suite'
+
+        def expand(value, context):
+            if isinstance(value, types.DictionaryType):
+                for n, v in value.iteritems():
+                    value[n] = expand(v, context + [n])
+            elif isinstance(value, types.ListType):
+                for i in range(len(value)):
+                    value[i] = expand(value[i], context + [str(i)])
+            else:
+                if not isinstance(value, types.StringTypes):
+                    abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
+                value = expandvars(value)
+                if '$' in value or '%' in value:
+                    abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+
+            return value
+
+        moduleName = 'suite'
+        modulePath = join(self.mxDir, moduleName + '.py')
+        suffix = 1
+        while exists(modulePath):
+
+            savedModule = sys.modules.get(moduleName)
+            if savedModule:
+                warn(modulePath + ' conflicts with ' + savedModule.__file__)
+            # temporarily extend the Python path
+            sys.path.insert(0, self.mxDir)
+
+            snapshot = frozenset(sys.modules.keys())
+            module = __import__(moduleName)
+
+            if savedModule:
+                # restore the old module into the module name space
+                sys.modules[moduleName] = savedModule
+            else:
+                # remove moduleName from the module name space
+                sys.modules.pop(moduleName)
+
+            # For now fail fast if extra modules were loaded.
+            # This can later be relaxed to simply remove the extra modules
+            # from the sys.modules name space if necessary.
+            extraModules = frozenset(sys.modules.keys()) - snapshot
+            assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
+
+            # revert the Python path
+            del sys.path[0]
+
+            if not hasattr(module, dictName):
+                abort(modulePath + ' must define a variable named "' + dictName + '"')
+            d = expand(getattr(module, dictName), [dictName])
+            sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite_dict else [])
+            unknown = frozenset(d.keys()) - frozenset(sections)
+            if unknown:
+                abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
+
+            if suite_dict is None:
+                suite_dict = d
+            else:
+                # Retire this code once all suites are converted as there should be exactly one suite.py file per suite.
+                # This is currently needed by the repo split tool
+                for s in sections:
+                    existing = suite_dict.get(s)
+                    additional = d.get(s)
+                    if additional:
+                        if not existing:
+                            suite_dict[s] = additional
+                        else:
+                            conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
+                            if conflicting:
+                                abort(modulePath + ' redefines: ' + ', '.join(conflicting))
+                            existing.update(additional)
+                distExtensions = d.get('distribution_extensions')
+                if distExtensions:
+                    existing = suite_dict['distributions']
+                    for n, attrs in distExtensions.iteritems():
+                        original = existing.get(n)
+                        if not original:
+                            abort('cannot extend non-existing distribution ' + n)
+                        for k, v in attrs.iteritems():
+                            if k != 'dependencies':
+                                abort('Only the dependencies of distribution ' + n + ' can be extended')
+                            if not isinstance(v, types.ListType):
+                                abort('distribution_extensions.' + n + '.dependencies must be a list')
+                            original['dependencies'] += v
+
+            dictName = 'extra'
+            moduleName = 'suite' + str(suffix)
+            modulePath = join(self.mxDir, moduleName + '.py')
+            suffix = suffix + 1
+
+        self.suiteDict = suite_dict
+
+        return suite_dict, modulePath
 
     def _register_metadata(self):
         '''
@@ -2190,6 +2193,15 @@ class Suite:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
                 self.suite_imports.append(SuiteImport.parse_specification(entry))
+
+    def re_init_imports(self):
+        '''
+        If a suite is updated, e.g. by sforceimports, we must re-initialize the potentially
+        stale import date from the update suite.py file
+        '''
+        self.suite_imports = []
+        self._load_suite_dict()
+        self._init_imports()
 
     def _load_distributions(self, distsMap):
         for name, attrs in sorted(distsMap.iteritems()):
@@ -2430,7 +2442,7 @@ class SourceSuite(Suite):
         Suite.__init__(self, mxDir, primary, internal, importing_suite)
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
-        self.suiteDict, _ = _load_suite_dict(mxDir)
+        self._load_suite_dict()
         self._init_imports()
         self._releaseVersion = None
         if load:
@@ -2613,7 +2625,7 @@ class BinarySuite(Suite):
         Always load the suite.py file and the distribution info defined there,
         download the jar files for a freshly cloned suite
         '''
-        self.suiteDict, _ = _load_suite_dict(self.mxDir)
+        self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
         with open(self.version_file()) as f:
@@ -7474,21 +7486,21 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         import_map[imported_suite.name] = suite_import.version
 
     if suite_import.version:
+        # normal case, a specific version
         currentTip = imported_suite.version()
         if currentTip != suite_import.version:
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
-            # now (may) need to force imports of this suite if the above changed its import revs
-            # N.B. the suite_imports from the old version may now be invalid
-            # TODO it may be better to only load the primary suite on startup to
-            # avoid having to update stale information
-            imported_suite.suite_imports = []
-            imported_suite.suiteDict, _ = _load_suite_dict(imported_suite.mxDir)
-            imported_suite._init_imports()
-            imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
     else:
-        # simple case, pull the head
+        # unusual case, no vesion specified, so pull the head
         vc_system(imported_suite.vckind).pull(imported_suite.dir)
         imported_suite.vc.pull(imported_suite.dir)
+
+    # now (may) need to force imports of this suite if the above changed its import revs
+    # N.B. the suite_imports from the old version may now be invalid
+    # TODO it may be better to only load the primary suite on startup to
+    # avoid having to update stale information
+    imported_suite.re_init_imports()
+    imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
 
 def sforceimports(args):
     '''force working directory revision of imported suites to match primary suite imports'''
@@ -7517,6 +7529,7 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
             # temp until we do it automatically
             print 'Please update import of ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + imported_tip
 
+    imported_suite.re_init_imports()
     imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports)
 
 def spull(args):
@@ -8360,7 +8373,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.2.1")
+version = VersionSpec("4.2.2")
 
 currentUmask = None
 
