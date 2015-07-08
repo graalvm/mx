@@ -29,13 +29,6 @@ r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
 Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
-
-This version of mx is an evolution of mx 1.x (provided with the Graal distribution),
-and supports multiple suites in separate Mercurial repositories. It is intended to be backwards
-compatible and is periodically merged with mx 1.x. The following changeset id is the last mx.1.x
-version that was merged.
-
-6b5221d7b5c1197ce67a2c74ed263515c5b747a3
 """
 import sys
 if __name__ == '__main__':
