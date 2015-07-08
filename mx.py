@@ -1910,7 +1910,7 @@ class Suite:
         self.jreLibs = []
         self.jdkLibs = []
         self.suite_imports = []
-        self.commands = None
+        self.extensions = None
         self.primary = primary
         self.requiredMxVersion = None
         self.dists = []
@@ -1923,14 +1923,14 @@ class Suite:
 
     def _load(self):
         '''
-        Calls _load_env and _load_commands
+        Calls _load_env and _load_extensions
         '''
         # load suites depth first
         self.loading_imports = True
         self.visit_imports(self._find_and_loadsuite)
         self.loading_imports = False
         self._load_env()
-        self._load_commands()
+        self._load_extensions()
 
     def _load_suite_dict(self):
 
@@ -2150,38 +2150,38 @@ class Suite:
         suite_dir = join(self.binary_imports_dir(), name)
         return _is_suite_dir(suite_dir, _mxDirName(name))
 
-    def _commands_name(self):
+    def _extensions_name(self):
         return 'mx_' + self.name.replace('-', '_')
 
-    def _find_commands(self, name):
-        commandsPath = join(self.mxDir, name + '.py')
-        if exists(commandsPath):
+    def _find_extensions(self, name):
+        extensionsPath = join(self.mxDir, name + '.py')
+        if exists(extensionsPath):
             return name
         else:
             return None
 
-    def _load_commands(self):
-        commandsName = self._find_commands(self._commands_name())
-        if commandsName is not None:
-            if commandsName in sys.modules:
-                abort(commandsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[commandsName].__file__)
+    def _load_extensions(self):
+        extensionsName = self._find_extensions(self._extensions_name())
+        if extensionsName is not None:
+            if extensionsName in sys.modules:
+                abort(extensionsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[extensionsName].__file__)
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
-            mod = __import__(commandsName)
+            mod = __import__(extensionsName)
 
-            self.commands = sys.modules.pop(commandsName)
-            sys.modules[commandsName] = self.commands
+            self.extensions = sys.modules.pop(extensionsName)
+            sys.modules[extensionsName] = self.extensions
 
             # revert the Python path
             del sys.path[0]
 
             if not hasattr(mod, 'mx_init'):
-                abort(commandsName + '.py in suite ' + self.name + ' must define an mx_init(suite) function')
+                abort(extensionsName + '.py in suite ' + self.name + ' must define an mx_init(suite) function')
             if hasattr(mod, 'mx_post_parse_cmd_line'):
                 self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
             mod.mx_init(self)
-            self.commands = mod
+            self.extensions = mod
 
     def _init_imports(self):
         importsMap = self._check_suiteDict("imports")
@@ -4947,8 +4947,8 @@ def build_suite(s):
     # Note we must use the "build" method in "s" and not the one
     # in the dict. If there isn't one we use mx.build
     project_names = [p.name for p in s.projects]
-    if hasattr(s.commands, 'build'):
-        build_command = s.commands.build
+    if hasattr(s.extensions, 'build'):
+        build_command = s.extensions.build
     else:
         build_command = build
     build_command(['--projects', ','.join(project_names)])
