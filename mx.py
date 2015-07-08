@@ -64,7 +64,6 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
 
-import mx_update_suitepy
 import mx_unittest
 import mx_findbugs
 
@@ -2436,7 +2435,7 @@ class Suite:
     def re_init_imports(self):
         '''
         If a suite is updated, e.g. by sforceimports, we must re-initialize the potentially
-        stale import date from the update suite.py file
+        stale import data from the update suite.py file
         '''
         self.suite_imports = []
         self._load_suite_dict()
@@ -3308,53 +3307,6 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
         return result
     else:
         return suite_values
-
-def createsuite(args):
-    """create new suite in a subdirectory of cwd"""
-    parser = ArgumentParser(prog='mx createsuite')
-    parser.add_argument('--name', help='suite name', required=True)
-    parser.add_argument('--py', action='store_true', help='create (empty) extensions file')
-    parser.add_argument('--vc', help='vc kind', metavar='<arg>', default='hg')
-    args = parser.parse_args(args)
-
-    suite_name = args.name
-    if exists(suite_name):
-        abort('suite directory already exists')
-    os.mkdir(suite_name)
-    mx_dot_suite_name = 'mx.' + suite_name
-    mxDirPath = join(suite_name, mx_dot_suite_name)
-    os.mkdir(mxDirPath)
-
-    def update_file(template_file, target_file):
-        with open(join(dirname(__file__), 'templates', template_file)) as f:
-            content = f.read()
-        with open(target_file, 'w') as f:
-            f.write(content.replace('MXPROJECT', mx_dot_suite_name))
-
-    vcs = vc_system(args.vc)
-    vcs.init(suite_name)
-    if vcs.kind == 'hg':
-        hgignore = join(suite_name, '.hgignore')
-        update_file('hg-ignore', hgignore)
-        vcs.add(suite_name, hgignore)
-
-    cs = SourceSuite(mxDirPath)
-    cs.requiredMxVersion = version
-    mx_update_suitepy.update_suite_file(cs, False)
-
-    if args.py:
-        with open(join(mxDirPath, 'mx_' + suite_name + '.py'), 'w') as f:
-            f.write('import mx\n\n')
-            f.write('def mx_init(suite):\n')
-            f.write('    commands = {\n')
-            f.write('    }\n')
-            f.write('    mx.update_commands(suite, commands)\n')
-
-        update_file('eclipse-pyproject', join(mxDirPath, '.project'))
-        update_file('eclipse-pydevproject', join(mxDirPath, '.pydevproject'))
-
-    vcs.add(cs.dir, join(suite_name, mx_dot_suite_name))
-    vcs.commit(cs.dir, 'Initial suite creation')
 
 def suite(name, fatalIfMissing=True):
     """
@@ -8327,7 +8279,6 @@ _commands = {
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'clean': [clean, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
-    'createsuite': [createsuite, '[options]'],
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
     'exportlibs': [exportlibs, ''],
@@ -8408,7 +8359,7 @@ def _check_primary_suite():
     else:
         return _primary_suite
 
-Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'createsuite', 'sha1']
+Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1']
 
 def _needs_primary_suite(command):
     return not command in Needs_primary_suite_exemptions

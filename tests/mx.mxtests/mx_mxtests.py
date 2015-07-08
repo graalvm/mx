@@ -68,17 +68,6 @@ def _sorted_project_deps(args):
     for r in result:
         print r
 
-def _update_suitepy(args):
-    parser = ArgumentParser(prog='mx mxt-update-suitepy')
-    parser.add_argument('--file', action='store', help='target file', required=True)
-    parser.add_argument('--s', action='store', help='suite')
-    args = parser.parse_args(args)
-    if not args.s:
-        s = mx._check_primary_suite()
-    else:
-        s = mx.suite(args.s)
-    s.update_suite_file(args.file)
-
 from HTMLParser import HTMLParser
 
 class MyHTMLParser(HTMLParser):
@@ -175,7 +164,6 @@ mx.update_commands(_suite, {
     "mxt-classpath" : [_cp, '[options]'],
     "mxt-proj-ap-path" : [_ap, '[options]'],
     "mxt-sorted_project_deps" : [_sorted_project_deps, '[options]'],
-    "mxt-update-suitepy" : [_update_suitepy, '[options]'],
     "mxt-readurl" : [_readurl, '[options]'],
     "mxt-vc-tip" : [_vc_tip, '[options]'],
     "mxt-vc-clone" : [_vc_clone, '[options]'],
