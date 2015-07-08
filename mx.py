@@ -42,22 +42,27 @@ if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
 
-import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, xml.sax.saxutils, tempfile, platform
+try:
+    import defusedxml #pylint: disable=unused-import
+except ImportError:
+    pass
+
+import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
 import textwrap
 import socket
-import xml.parsers.expat
 import tarfile
 import hashlib
-import shutil, re, xml.dom.minidom
+# check defused usage
+import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom, xml.etree.ElementTree
+import shutil, re
 import pipes
 import difflib
 import glob
-import urllib
+import urllib2
 from collections import Callable
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
-from HTMLParser import HTMLParser
 
 import mx_update_suitepy
 import mx_unittest
@@ -918,13 +923,14 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
-            print 'Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls)
+            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
             download(cachePath, urls)
 
         d = dirname(path)
         if d != '' and not exists(d):
             os.makedirs(d)
         if canSymlink and 'symlink' in dir(os):
+            logvv('Symlinking {} to {}'.format(path, cachePath))
             if exists(path):
                 os.unlink(path)
             try:
@@ -936,6 +942,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                     # It was some other error
                     raise e
         else:
+            logvv('Copying {} to {}'.format(path, cachePath))
             shutil.copy(cachePath, path)
 
     def _sha1Cached():
@@ -1215,6 +1222,13 @@ class VC:
         '''
         abort(self.kind + " tip is not implemented")
 
+    def parent(self, vcdir, abortOnError=True):
+        '''
+        Return the parent changeset of the working directory for repo at vcdir.
+        Return None if fails and abortOnError=False
+        '''
+        abort(self.kind + " id is not implemented")
+
     def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
         '''
         Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
@@ -1372,6 +1386,22 @@ class HgConfig(VC):
             else:
                 return None
 
+    def parent(self, vcdir, abortOnError=True):
+        # We don't use run because this can be called very early before _opts is set
+        try:
+            out = subprocess.check_output(['hg', '-R', vcdir, 'parents', '--template', '{node}\n'])
+            parents = out.rstrip('\n').split('\n')
+            if len(parents) != 1:
+                if abortOnError:
+                    abort('hg parents returned {} parents (expected 1)'.format(len(parents)))
+                return None
+            return parents[0]
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('hg parents failed')
+            else:
+                return None
+
     def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
         prefix = prefix + '-'
         try:
@@ -1411,8 +1441,7 @@ class HgConfig(VC):
         self._log_clone(url, dest, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def incoming(self, vcdir, abortOnError=True):
@@ -1448,8 +1477,7 @@ class HgConfig(VC):
         self._log_pull(vcdir, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
@@ -1496,8 +1524,7 @@ class HgConfig(VC):
         self._log_push(vcdir, dest, rev)
         out = OutputCapture()
         rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        if _opts.very_verbose:
-            log(out.data)
+        logvv(out.data)
         return rc == 0
 
     def update(self, vcdir, abortOnError=False):
@@ -1537,18 +1564,6 @@ class HgConfig(VC):
             else:
                 return None
 
-class DirHTMLParser(HTMLParser):
-    def __init__(self, files):
-        HTMLParser.__init__(self)
-        self.files = files
-
-    def handle_starttag(self, tag, attrs):
-        if tag == 'a':
-            for attr in attrs:
-                if attr[0] == 'href':
-                    name = attr[1]
-                    self.files.append(name)
-
 class BinaryVC(VC):
     """
     Emulates a VC system for binary suites, as far as possible, but particularly pull/tip
@@ -1559,29 +1574,9 @@ class BinaryVC(VC):
     def check(self, abortOnError=True):
         return True
 
-    def _scrape_repodir(self, url):
-        files = []
-        urlf = urllib.urlopen(url)
-        text = urlf.read()
-        parser = DirHTMLParser(files)
-        parser.feed(text)
-        urlf.close()
-        return files
-
-    def scrape_repodir_for_jars(self, url):
-        '''
-        Scrapes the directory at 'url' returning a list of files that are relevant for a binary suite
-        '''
-        files = self._scrape_repodir(url)
-        jar_files = [f for f in files if f.endswith('.jar')]
-        sha_files = [f for f in files if f.endswith('.jar.sha1')]
-        sha_values = []
-        for sha_file in sha_files:
-            f = urllib.urlopen(sha_file)
-            sha_values.append(f.read())
-            f.close()
-        return jar_files, sha_values
-
+    def _groupId(self, suiteName):
+        groupId = 'com.oracle.' + suiteName
+        return groupId
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         '''
@@ -1589,106 +1584,360 @@ class BinaryVC(VC):
         caller is responsible for downloading the suite distributions
         Some additional information must be passed by caller in 'extra_args':
           suite_name: the suite name
-          version_adjust: any pattern to adjust the normal vc changeset id
           result: an empty dict for ouput values
         On a successful return 'result' contains:
-          base_url: the adjusted url that is the base of the distribution jars
           adj_version: actual version (adjusted)
         The actual version downloaded is written to the file mx-suitename.jar.version
         '''
         assert dest
         suite_name = extra_args['suite_name']
-        version_adjust = extra_args['version_adjust']
-        base_url = join(url, 'com', 'oracle')
-        if os.environ.get('MX_GROUPID_INCLUDES_SUITE'):
-            base_url = join(base_url, suite_name)
+        metadata = self.Metadata(suite_name, url, None)
         if not rev:
-            abort('binary suite clone of tip not implemented')
-        if version_adjust:
-            adj_rev = version_adjust.replace('{version}', rev)
-        else:
-            adj_rev = rev
+            rev = self._tip(metadata)
+        metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
+
         mxname = _mx_binary_distribution_root(suite_name)
-        mx_url = join(base_url, mxname, adj_rev)
-        self._log_clone(base_url, dest, adj_rev)
-        mx_jar_urls, mx_jar_shas = self.scrape_repodir_for_jars(mx_url)
-        if len(mx_jar_urls) == 1 and len(mx_jar_shas) == 1:
-            mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
-            download_file_with_sha1(mxname, mx_jar_path, mx_jar_urls, mx_jar_shas[0], mx_jar_path + '.sha1', resolve=True, mustExist=True)
-            run([java().jar, 'xf', mx_jar_path], cwd=dest)
-            result = extra_args['result']
-            result['base_url'] = base_url
-            result['adj_version'] = adj_rev
-            with open(join(dest, _mx_binary_distribution_version(suite_name)), 'w') as f:
-                f.write(rev + ',' + base_url)
-                if version_adjust:
-                    f.write(',' + version_adjust)
-            return True
-        else:
-            if abortOnError:
-                abort('binary suite clone: mx metadata jar not found')
-            else:
-                return False
+        self._log_clone("{}/{}/{}".format(url, self._groupId(suite_name), mxname), dest, rev)
+        mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
+        self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
+        run([java().jar, 'xf', mx_jar_path], cwd=dest)
+        self._writeMetadata(dest, metadata)
+        return True
 
-    def _get_vinfos_suite_name(self, vcdir):
-        suite_name = basename(vcdir)
-        # check what we have
-        with open(join(vcdir, _mx_binary_distribution_version(suite_name))) as f:
-            vinfos = f.read().split(',')
-        return suite_name, vinfos
+    def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True):
+        groupId = self._groupId(metadata.suiteName)
+        repo = MavenRepo(metadata.repourl)
+        snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
+        if not snapshot:
+            if abortOnVersionError:
+                abort('Version {} not found for {}:{}'.format(metadata.snapshotVersion, groupId, artifactId))
+            return False
+        build = snapshot.getCurrentSnapshotBuild()
+        try:
+            (jar_url, jar_sha_url) = build.getSubArtifact('jar')
+        except MavenSnapshotArtifact.NonUniqueSubArtifactException:
+            abort('Multiple jars found for {} in snapshot {} in reposiotry {}'.format(name, build.version, repo.repourl))
+        download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
+        if sourcePath:
+            try:
+                (source_url, source_sha_url) = build.getSubArtifactByClassifier('sources')
+            except MavenSnapshotArtifact.NonUniqueSubArtifactException:
+                abort('Multiple source artifacts found for {} in snapshot {} in reposiotry {}'.format(name, build.version, repo.repourl))
+            download_file_with_sha1(artifactId + ' sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
+        return True
 
-    def _get_versions(self, suite_name, vinfos):
-        mx_url = join(vinfos[1], _mx_binary_distribution_root(suite_name))
-        files = self._scrape_repodir(mx_url)
-        file_versions = [basename(f.rstrip('/')) for f in files if 'SNAPSHOT' in f]
-        # apply the version adjust if any
-        # TODO version adjust should be a regexp
-        if len(vinfos) > 2:
-            vadj = vinfos[2]
-            pre = vadj.partition('{')
-            post = vadj.rpartition('}')
-            versions = [f.replace(pre[0], '').replace(post[2], '') for f in file_versions]
-        else:
-            versions = file_versions
-        return versions
+    class Metadata:
+        def __init__(self, suiteName, repourl, snapshotVersion):
+            self.suiteName = suiteName
+            self.repourl = repourl
+            self.snapshotVersion = snapshotVersion
+
+    def _writeMetadata(self, vcdir, metadata):
+        with open(join(vcdir, _mx_binary_distribution_version(metadata.suiteName)), 'w') as f:
+            f.write("{0},{1}".format(metadata.repourl, metadata.snapshotVersion))
+
+    def _readMetadata(self, vcdir):
+        suiteName = basename(vcdir)
+        with open(join(vcdir, _mx_binary_distribution_version(suiteName))) as f:
+            repourl, snapshotVersion = f.read().split(',')
+        return self.Metadata(suiteName, repourl, snapshotVersion)
+
+    def _metadataMTime(self, vcdir):
+        suiteName = basename(vcdir)
+        return _getSymlinkMTime(join(vcdir, _mx_binary_distribution_version(suiteName)))
+
+    def getDistribution(self, vcdir, distribution):
+        if exists(distribution.path) and exists(distribution.sourcesPath) and self._metadataMTime(vcdir) < min(_getSymlinkMTime(distribution.path), _getSymlinkMTime(distribution.sourcesPath)):
+            return
+        metadata = self._readMetadata(vcdir)
+        artifactId = _map_to_maven_dist_name(distribution.name)
+        self._pull_artifact(metadata, artifactId, distribution.name, distribution.path, distribution.sourcesPath)
 
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
-        suite_name, vinfos = self._get_vinfos_suite_name(vcdir)
-        cur_rev = vinfos[0]
-        if rev:
-            if rev == cur_rev:
-                return True
+        if not update:
+            return False  # TODO or True?
+        metadata = self._readMetadata(vcdir)
+        if rev == self._id(metadata):
+            return True
 
-        versions = self._get_versions(suite_name, vinfos)
-        # at this point we have no date to determine the tip
-        if rev:
-            match = [v for v in versions if v == rev]
-            if not match:
-                msg = 'no such version: ' + rev
-                if abortOnError:
-                    abort(msg)
-                else:
-                    log(msg)
-                    return False
-        else:
-            if len(versions) == 1:
-                rev = versions[0]
-                if rev == cur_rev:
-                    return True
-            else:
-                abort('tip for multi-versions not implemented')
+        if not rev:
+            rev = self._tip(metadata)
+
+        artifactId = metadata.suiteName
+        metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
+        tmpdir = tempfile.mkdtemp()
+        mxname = _mx_binary_distribution_root(metadata.suiteName)
+        tmpmxjar = join(tmpdir, mxname + '.jar')
+        if not self._pull_artifact(metadata, artifactId, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+            shutil.rmtree(tmpdir)
+            return False
 
         # pull the new version and update 'working directory'
         # i.e. delete first as everything will change
-        abort('binary suite update not implemented')
+        shutil.rmtree(vcdir)
+
+        mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
+        os.mkdir(dirname(mx_jar_path))
+
+        shutil.copy2(tmpmxjar, mx_jar_path)
+        shutil.rmtree(tmpdir)
+        run([java().jar, 'xf', mx_jar_path], cwd=vcdir)
+
+        self._writeMetadata(vcdir, metadata)
+        return True
 
     def tip(self, vcdir, abortOnError=True):
-        suite_name, vinfos = self._get_vinfos_suite_name(vcdir)
-        versions = self._get_versions(suite_name, vinfos)
-        if len(versions) == 1:
-            return versions[0]
+        self._tip(self._readMetadata(vcdir))
+
+    def _tip(self, metadata):
+        repo = MavenRepo(metadata.repourl)
+        latestSnapshotversion = repo.getArtifactVersions(self._groupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
+        assert latestSnapshotversion.endswith('-SNAPSHOT')
+        return latestSnapshotversion[:-len('-SNAPSHOT')]
+
+    def parent(self, vcdir, abortOnError=True):
+        return self._id(self._readMetadata(vcdir))
+
+    def _id(self, metadata):
+        assert metadata.snapshotVersion.endswith('-SNAPSHOT')
+        return metadata.snapshotVersion[:-len('-SNAPSHOT')]
+
+def _getSymlinkMTime(path):
+    """ Returns the modification time of a file without following symlinks. """
+    return os.lstat(path).st_mtime
+
+def _hashFromUrl(url):
+    logvv('Retreiving SHA1 from {}'.format(url))
+    hashFile = urllib2.urlopen(url)
+    try:
+        return hashFile.read()
+    except urllib2.URLError as e:
+        abort('Error while retreiving sha1 {0}: {2}'.format(url, str(e)))
+    finally:
+        if hashFile:
+            hashFile.close()
+
+def _map_to_maven_dist_name(name):
+    return name.lower().replace('_', '-')
+
+class MavenArtifactVersions:
+    def __init__(self, latestVersion, releaseVersion, versions):
+        self.latestVersion = latestVersion
+        self.releaseVersion = releaseVersion
+        self.versions = versions
+
+class MavenSnapshotBuilds:
+    def __init__(self, currentTime, currentBuildNumber, snapshots):
+        self.currentTime = currentTime
+        self.currentBuildNumber = currentBuildNumber
+        self.snapshots = snapshots
+
+    def getCurrentSnapshotBuild(self):
+        return self.snapshots[(self.currentTime, self.currentBuildNumber)]
+
+class MavenSnapshotArtifact:
+    def __init__(self, groupId, artifactId, version, snapshotBuildVersion, repo):
+        self.groupId = groupId
+        self.artifactId = artifactId
+        self.version = version
+        self.snapshotBuildVersion = snapshotBuildVersion
+        self.subArtifacts = []
+        self.repo = repo
+
+    class SubArtifact:
+        def __init__(self, extension, classifier):
+            self.extension = extension
+            self.classifier = classifier
+
+        def __repr__(self):
+            return str(self)
+
+        def __str__(self):
+            return "{0}.{1}".format(self.classifier, self.extension) if self.classifier else self.extension
+
+    def addSubArtifact(self, extension, classifier):
+        self.subArtifacts.append(self.SubArtifact(extension, classifier))
+
+    class NonUniqueSubArtifactException(Exception):
+        pass
+
+    def _getUniqueSubArtifact(self, criterion):
+        filtered = [sub for sub in self.subArtifacts if criterion(sub.extension, sub.classifier)]
+        if len(filtered) == 0:
+            return None
+        if len(filtered) > 1:
+            raise self.NonUniqueSubArtifactException()
+        sub = filtered[0]
+        if sub.classifier:
+            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}-{classifier}.{extension}".format(
+                url=self.repo.repourl,
+                group=self.groupId.replace('.', '/'),
+                artifact=self.artifactId,
+                version=self.version,
+                snapshotBuildVersion=self.snapshotBuildVersion,
+                classifier=sub.classifier,
+                extension=sub.extension)
         else:
-            abort('tip for multi-versions not implemented')
+            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}.{extension}".format(
+                url=self.repo.repourl,
+                group=self.groupId.replace('.', '/'),
+                artifact=self.artifactId,
+                version=self.version,
+                snapshotBuildVersion=self.snapshotBuildVersion,
+                extension=sub.extension)
+        return (url, url + '.sha1')
+
+    def getSubArtifact(self, extension, classifier=None):
+        return self._getUniqueSubArtifact(lambda e, c: e == extension and c == classifier)
+
+    def getSubArtifactByClassifier(self, classifier):
+        return self._getUniqueSubArtifact(lambda e, c: c == classifier)
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        return "{0}:{1}:{2}-SNAPSHOT".format(self.groupId, self.artifactId, self.snapshotBuildVersion)
+
+class MavenRepo:
+    def __init__(self, repourl):
+        self.repourl = repourl
+        self.artifactDescs = {}
+
+    def getArtifactVersions(self, groupId, artifactId):
+        metadataUrl = "{0}/{1}/{2}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId)
+        logv('Retreiving and parsing {0}'.format(metadataUrl))
+        try:
+            metadataFile = urllib2.urlopen(metadataUrl)
+        except urllib2.HTTPError as e:
+            abort('Error while retreiving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
+        try:
+            tree = xml.etree.ElementTree.parse(metadataFile)
+            root = tree.getroot()
+            assert root.tag == 'metadata'
+            assert root.find('groupId').text == groupId
+            assert root.find('artifactId').text == artifactId
+
+            versioning = root.find('versioning')
+            latest = versioning.find('latest')
+            release = versioning.find('release')
+            versions = versioning.find('versions')
+            releaseVersionString = release.text if release else None
+            latestVersionString = latest.text
+            versionStrings = [v.text for v in versions.iter('version')]
+
+            return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
+        except urllib2.URLError as e:
+            abort('Error while retreiving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
+        finally:
+            if metadataFile:
+                metadataFile.close()
+
+    def getSnapshot(self, groupId, artifactId, version):
+        assert version.endswith('-SNAPSHOT')
+        metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId, version)
+        logv('Retreiving and parsing {0}'.format(metadataUrl))
+        try:
+            metadataFile = urllib2.urlopen(metadataUrl)
+        except urllib2.URLError as e:
+            if e.code == 404:
+                return None
+            abort('Error while retreiving snappshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
+        try:
+            tree = xml.etree.ElementTree.parse(metadataFile)
+            root = tree.getroot()
+            assert root.tag == 'metadata'
+            assert root.find('groupId').text == groupId
+            assert root.find('artifactId').text == artifactId
+            assert root.find('version').text == version
+
+            versioning = root.find('versioning')
+            snapshot = versioning.find('snapshot')
+            snapshotVersions = versioning.find('snapshotVersions')
+            currentSnapshotTime = snapshot.find('timestamp').text
+            currentSnapshotBuildElement = snapshot.find('buildNumber')
+            currentSnapshotBuildNumber = int(currentSnapshotBuildElement.text) if currentSnapshotBuildElement is not None else 0
+
+            versionPrefix = version[:-len('-SNAPSHOT')] + '-'
+            prefixLen = len(versionPrefix)
+            snapshots = {}
+            for snapshotVersion in snapshotVersions.iter('snapshotVersion'):
+                fullVersion = snapshotVersion.find('value').text
+                separatorIndex = fullVersion.index('-', prefixLen)
+                timeStamp = fullVersion[prefixLen:separatorIndex]
+                buildNumber = int(fullVersion[separatorIndex+1:])
+                extension = snapshotVersion.find('extension').text
+                classifier = snapshotVersion.find('classifier')
+                classifierString = None
+                if classifier is not None and len(classifier.text) > 0:
+                    classifierString = classifier.text
+                artifact = snapshots.setdefault((timeStamp, buildNumber), MavenSnapshotArtifact(groupId, artifactId, version, fullVersion, self))
+
+                artifact.addSubArtifact(extension, classifierString)
+            return MavenSnapshotBuilds(currentSnapshotTime, currentSnapshotBuildNumber, snapshots)
+        finally:
+            if metadataFile:
+                metadataFile.close()
+
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None):
+    if not exists(jarPath):
+        abort("'{0}' does not exist, run 'mx build' first".format(jarPath))
+    if srcPath and not exists(srcPath):
+        abort("'{0}' does not exist, run 'mx build' first".format(srcPath))
+
+    groupId = 'com.oracle.' + _map_to_maven_dist_name(suite.name)
+    artifactId = name
+    mavenVersion = '{0}-SNAPSHOT'.format(version)
+
+    cmd = ['mvn', '--batch-mode']
+
+    if not _opts.verbose:
+        cmd.append('--quiet')
+
+    if _opts.very_verbose:
+        cmd.append('--debug')
+
+    if settingsXml:
+        cmd += ['-s', settingsXml]
+
+    cmd += ['deploy:deploy-file',
+        '-DrepositoryId=' + repositoryId,
+        '-DgeneratePom=true',
+        '-Durl=' + repositoryUrl,
+        '-DgroupId=' + groupId,
+        '-DartifactId=' + artifactId,
+        '-Dversion=' + mavenVersion,
+        '-Dfile=' + jarPath
+    ]
+
+    if srcPath:
+        cmd.append('-Dsources=' + srcPath)
+
+    if description:
+        cmd.append('-Ddescription=' + description)
+
+    log('Deploying {0}:{1}...'.format(suite.name, name))
+    run(cmd)
+
+def deploy_binary(args):
+    parser = ArgumentParser(prog='mx deploy-binary')
+    parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
+    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
+    parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
+    args = parser.parse_args(args)
+
+    _mvn.check()
+    s = _primary_suite
+    version = s.vc.parent(s.dir)
+
+    log('Deploying {0} distributions for version {1}'.format(s.name, version))
+
+    mxMetaName = _mx_binary_distribution_root(s.name)
+    mxMetaJar = s.mx_binary_distribution_jar_path()
+    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
+    for dist in s.dists:
+        if not dist.isProcessorDistribution:
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
 
 class MavenConfig:
     def __init__(self):
@@ -1826,15 +2075,14 @@ class NestedImportsSuiteModel(SuiteModel):
         return self._imported_suites_dirname()
 
 '''
-Captures the info in the {"url", "kind", ["version-adjust"]} dict,
+Captures the info in the {"url", "kind"} dict,
 and adds a 'vc' field.
 '''
 class SuiteImportURLInfo:
-    def __init__(self, url, kind, vc, version_adjust=None):
+    def __init__(self, url, kind, vc):
         self.url = url
         self.kind = kind
         self.vc = vc
-        self.version_adjust = version_adjust
 
     def abs_kind(self):
         ''' Maps vc kinds to 'source'
@@ -1863,15 +2111,12 @@ class SuiteImport:
         for urlinfo in urls:
             if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
-                version_adjust = None
                 if not VC.is_valid_kind(kind):
                     abort('suite import kind ' + kind + ' illegal')
-                if kind == 'binary':
-                    version_adjust = urlinfo.get('version-adjust')
             else:
-                abort('suite import url must be a dict with {"url", kind", ["version-adjust]" attributes')
+                abort('suite import url must be a dict with {"url", kind", attributes')
             vc = vc_system(kind)
-            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc, version_adjust))
+            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
         return SuiteImport(name, version, urlinfos, kind)
 
     @staticmethod
@@ -2207,7 +2452,7 @@ class Suite:
         for name, attrs in sorted(distsMap.iteritems()):
             context = 'distribution ' + name
             subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path', join(self.dir, 'dists', name.lower().replace('_', '-') + '.jar'))
+            path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
             sourcesPath = attrs.pop('sourcesPath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
             mainClass = attrs.pop('mainClass', None)
@@ -2374,7 +2619,6 @@ class Suite:
                 if searchMode == 'binary':
                     # pass extra necessary extra info
                     clone_kwargs['suite_name'] = suite_import.name
-                    clone_kwargs['version_adjust'] = urlinfo.version_adjust
 
                 if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
                     importMxDir = _find_suite_dir()
@@ -2401,7 +2645,7 @@ class Suite:
 
         # Factory method?
         if searchMode == 'binary':
-            return BinarySuite(importMxDir, importing_suite=importing_suite, cloneResult=clone_kwargs['result'])
+            return BinarySuite(importMxDir, importing_suite=importing_suite)
         else:
             return SourceSuite(importMxDir, importing_suite=importing_suite)
 
@@ -2568,7 +2812,7 @@ class SourceSuite(Suite):
         for p in self.projects:
             existing = _projects.get(p.name)
             if existing is not None and _check_global_structures:
-                abort('cannot override project  ' + p.name + ' in ' + p.dir + " with project of the same name in  " + existing.dir)
+                abort('cannot override project {} in {} with project of the same name in {}'.format(p.name, existing.dir, p.dir))
             if not hasattr(_opts, 'ignored_projects') or not p.name in _opts.ignored_projects:
                 _projects[p.name] = p
             # check all project dependencies are local
@@ -2604,23 +2848,24 @@ class SourceSuite(Suite):
 A pre-built suite downloaded from a Maven repository.
 '''
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite, cloneResult):
+    def __init__(self, mxDir, importing_suite):
         Suite.__init__(self, mxDir, False, False, importing_suite)
         # At this stage the suite directory is guaranteed to exist as is the mx.suitname
         # directory. For a freshly downloaded suite, the actual distribution jars
         # have not been downloaded as we need info from the suite.py for that
         self.vc = BinaryVC()
-        self._load_binary_suite(cloneResult)
+        self._load_binary_suite()
         self._init_imports()
         self._load()
 
-    def version_file(self):
-        return join(self.dir, _mx_binary_distribution_version(self.name))
-
     def version(self, abortOnError=True):
-        return self.versionid
+        '''
+        Return the current head changeset of this suite.
+        '''
+        # we do not cache the version because it changes in development
+        return self.vc.parent(self.dir)
 
-    def _load_binary_suite(self, cloneResult):
+    def _load_binary_suite(self):
         '''
         Always load the suite.py file and the distribution info defined there,
         download the jar files for a freshly cloned suite
@@ -2628,25 +2873,8 @@ class BinarySuite(Suite):
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
-        with open(self.version_file()) as f:
-            vinfo = f.read()
-            self.versionId = vinfo.split(',')[0]
-
-        if not cloneResult:
-            return
-
         for dist in self.dists:
-            dist_url = join(cloneResult['base_url'], os.path.splitext(basename(dist.path))[0], cloneResult['adj_version'])
-            dist_jars, dist_jars_shas = self.vc.scrape_repodir_for_jars(dist_url)
-            for dist_jar, dist_jar_sha in zip(dist_jars, dist_jars_shas):
-                urls = [dist_jar]
-                if dist_jar.endswith('sources.jar'):
-                    sources = True
-                    dist_path = dist.sourcesPath
-                else:
-                    sources = False
-                    dist_path = dist.path
-                download_file_with_sha1(dist.name, dist_path, urls, dist_jar_sha, dist_path + '.sha1', resolve=True, mustExist=True, sources=sources)
+            self.vc.getDistribution(self.dir, dist)
 
     def _load_env(self):
         pass
@@ -3228,7 +3456,9 @@ def dependency(name, fatalIfMissing=True):
             d = _dists.get(name)
             if d is not None:
                 if d.suite != dep_suite:
-                    abort('suite ' + suite_name + ' does not export distribution ' + name)
+                    if fatalIfMissing:
+                        abort('Distribution {dist} exported by {asuite}, expected {dist} from {suite}'.format(dist=name, suite=dep_suite, asuite=d.suite))
+                    return None
                 else:
                     return d
             else:
@@ -4292,6 +4522,11 @@ def get_env(key, default=None):
 def logv(msg=None):
     if _opts.verbose:
         log(msg)
+
+def logvv(msg=None):
+    if _opts.very_verbose:
+        log(msg)
+
 
 def log(msg=None):
     """
@@ -5849,6 +6084,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
+    distributionDeps = set()
 
     for dep in p.all_deps([], True):
         if dep == p:
@@ -5862,9 +6098,16 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
+        elif dep.isDistribution():
+            distributionDeps.add(dep)
+        else:
+            abort('unxpected dependency: ' + str(dep))
 
     for dep in sorted(containerDeps):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
+
+    for dep in sorted(distributionDeps):
+        out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
 
     for dep in sorted(libraryDeps):
         path = dep.path
@@ -7970,9 +8213,6 @@ def maven_install(args):
     parser.add_argument('--local', action='store_true', help='install in local repository')
     args = parser.parse_args(args)
 
-    def _map_to_maven_dist_name(name):
-        return name.lower().replace('_', '-')
-
     _mvn.check()
     s = _primary_suite
     if args.no_checks or s.vc.can_push(s.dir, strict=False):
@@ -8107,6 +8347,7 @@ _commands = {
     'intellijinit': [intellijinit, ''],
     'archive': [_archive, '[options]'],
     'maven-install' : [maven_install, ''],
+    'deploy-binary' : [deploy_binary, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
@@ -8388,7 +8629,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.2.2")
+version = VersionSpec("4.2.4")
 
 currentUmask = None
 
