@@ -2799,7 +2799,7 @@ class SourceSuite(Suite):
         for p in self.projects:
             existing = _projects.get(p.name)
             if existing is not None and _check_global_structures:
-                abort('cannot override project  ' + p.name + ' in ' + p.dir + " with project of the same name in  " + existing.dir)
+                abort('cannot override project {} in {} with project of the same name in {}'.format(p.name, existing.dir, p.dir))
             if not hasattr(_opts, 'ignored_projects') or not p.name in _opts.ignored_projects:
                 _projects[p.name] = p
             # check all project dependencies are local
