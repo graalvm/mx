@@ -1593,7 +1593,7 @@ class BinaryVC(VC):
         suite_name = extra_args['suite_name']
         metadata = self.Metadata(suite_name, url, None)
         if not rev:
-            rev = self._tip(dest, metadata)
+            rev = self._tip(metadata)
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         
         mxname = _mx_binary_distribution_root(suite_name)
@@ -1657,14 +1657,14 @@ class BinaryVC(VC):
         if not update:
             return False  # TODO or True?
         metadata = self._readMetadata(vcdir)
-        if rev == metadata.snapshotVersion:
+        if rev == self._id(metadata):
             return True
 
         if not rev:
-            rev = self._tip(vcdir, metadata)
+            rev = self._tip(metadata)
 
         artifactId = metadata.suiteName
-        metadata.snapshotVersion = rev
+        metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
@@ -1675,26 +1675,32 @@ class BinaryVC(VC):
         # pull the new version and update 'working directory'
         # i.e. delete first as everything will change
         shutil.rmtree(vcdir)
-        os.mkdir(vcdir)
 
         mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
+        os.mkdir(dirname(mx_jar_path))
+        
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
         run([java().jar, 'xf', mx_jar_path], cwd=vcdir)
 
         self._writeMetadata(vcdir, metadata)
         return True
-        
-    def tip(self, vcdir, abortOnError=True):
-        self._tip(vcdir, self._readMetadata(vcdir))
 
-    def _tip(self, vcdir, metadata):
+    def tip(self, vcdir, abortOnError=True):
+        self._tip(self._readMetadata(vcdir))
+
+    def _tip(self, metadata):
         repo = MavenRepo(metadata.repourl)
-        return repo.getArtifactVersions(self._groupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
+        latestSnapshotversion = repo.getArtifactVersions(self._groupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
+        assert latestSnapshotversion.endswith('-SNAPSHOT')
+        return latestSnapshotversion[:-len('-SNAPSHOT')]
 
     def id(self, vcdir, abortOnError=True):
-        metadata = self._readMetadata(vcdir)
-        return metadata.snapshotVersion
+        return self._id(self._readMetadata(vcdir))
+
+    def _id(self, metadata):
+        assert metadata.snapshotVersion.endswith('-SNAPSHOT')
+        return metadata.snapshotVersion[:-len('-SNAPSHOT')]
 
 def _getSymlinkMTime(path):
     """ Returns the modification time of a file without following symlinks. """
@@ -1815,6 +1821,7 @@ class MavenRepo:
                 metadataFile.close()
 
     def getSnapshot(self, groupId, artifactId, version):
+        assert version.endswith('-SNAPSHOT')
         metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId, version)
         logv('Retreiving and parsing {0}'.format(metadataUrl))
         try:
