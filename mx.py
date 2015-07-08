@@ -1576,7 +1576,7 @@ class BinaryVC(VC):
         caller is responsible for downloading the suite distributions
         Some additional information must be passed by caller in 'extra_args':
           suite_name: the suite name
-          result: an empty dict for ouput values
+          result: an empty dict for output values
         On a successful return 'result' contains:
           adj_version: actual version (adjusted)
         The actual version downloaded is written to the file mx-suitename.jar.version
@@ -7647,28 +7647,30 @@ def supdate(args):
 
     _supdate(s, None)
 
-def _scheck_imports_visitor(s, suite_import, update_versions):
+def _scheck_imports_visitor(s, suite_import):
     """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import, update_versions)
+    _scheck_imports(s, suite(suite_import.name), suite_import)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import, update_versions):
+def _scheck_imports(importing_suite, imported_suite, suite_import):
     # check imports recursively
-    imported_suite.visit_imports(_scheck_imports_visitor, update_versions=update_versions)
+    imported_suite.visit_imports(_scheck_imports_visitor)
 
     currentTip = imported_suite.version()
     if currentTip != suite_import.version:
-        print 'imported version of ' + imported_suite.name + ' in ' + importing_suite.name + ' does not match tip' + (': updating' if update_versions else '')
-        if update_versions:
-            suite_import.version = currentTip
-            # temp until we do it automatically
-            print 'Please update import of ' + imported_suite.name + ' in ' + importing_suite.suite_py() + ' to ' + currentTip
+        print 'imported version of {} in {} ({}) does not match tip ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, currentTip)
+        if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
+            with open(importing_suite.suite_py()) as fp:
+                contents = fp.read()
+            if contents.count(str(suite_import.version)) == 1:
+                newContents = contents.replace(suite_import.version, str(currentTip))
+                update_file(importing_suite.suite_py(), newContents, showDiff=True)
+                suite_import.version = currentTip
+            else:
+                print 'Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py())
 
 def scheckimports(args):
     """check that suite import versions are up to date"""
-    parser = ArgumentParser(prog='mx scheckimports')
-    parser.add_argument('--update-versions', action='store_true', help='update imported version ids')
-    args = parser.parse_args(args)
-    _check_primary_suite().visit_imports(_scheck_imports_visitor, update_versions=args.update_versions)
+    _check_primary_suite().visit_imports(_scheck_imports_visitor)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
     """sforceimports visitor for Suite.visit_imports"""
