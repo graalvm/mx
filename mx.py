@@ -1222,7 +1222,7 @@ class VC:
         '''
         abort(self.kind + " tip is not implemented")
 
-    def id(self, vcdir, abortOnError=True):
+    def parent(self, vcdir, abortOnError=True):
         '''
         Return the parent changeset of the working directory for repo at vcdir.
         Return None if fails and abortOnError=False
@@ -1386,7 +1386,7 @@ class HgConfig(VC):
             else:
                 return None
 
-    def id(self, vcdir, abortOnError=True):
+    def parent(self, vcdir, abortOnError=True):
         # We don't use run because this can be called very early before _opts is set
         try:
             out = subprocess.check_output(['hg', '-R', vcdir, 'parents', '--template', '{node}\n'])
@@ -1595,12 +1595,12 @@ class BinaryVC(VC):
         if not rev:
             rev = self._tip(metadata)
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
-        
+
         mxname = _mx_binary_distribution_root(suite_name)
         self._log_clone("{}/{}/{}".format(url, self._groupId(suite_name), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
         self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
-        run([java().jar, 'xf', mx_jar_path], cwd=dest)        
+        run([java().jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
 
@@ -1678,7 +1678,7 @@ class BinaryVC(VC):
 
         mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
         os.mkdir(dirname(mx_jar_path))
-        
+
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
         run([java().jar, 'xf', mx_jar_path], cwd=vcdir)
@@ -1695,7 +1695,7 @@ class BinaryVC(VC):
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
 
-    def id(self, vcdir, abortOnError=True):
+    def parent(self, vcdir, abortOnError=True):
         return self._id(self._readMetadata(vcdir))
 
     def _id(self, metadata):
@@ -1731,7 +1731,7 @@ class MavenSnapshotBuilds:
         self.currentTime = currentTime
         self.currentBuildNumber = currentBuildNumber
         self.snapshots = snapshots
-        
+
     def getCurrentSnapshotBuild(self):
         return self.snapshots[(self.currentTime, self.currentBuildNumber)]
 
@@ -1743,7 +1743,7 @@ class MavenSnapshotArtifact:
         self.snapshotBuildVersion = snapshotBuildVersion
         self.subArtifacts = []
         self.repo = repo
-        
+
     class SubArtifact:
         def __init__(self, extension, classifier):
             self.extension = extension
@@ -1769,9 +1769,22 @@ class MavenSnapshotArtifact:
             raise self.NonUniqueSubArtifactException()
         sub = filtered[0]
         if sub.classifier:
-            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}-{classifier}.{extension}".format(url=self.repo.repourl, group=self.groupId.replace('.', '/'), artifact=self.artifactId, version=self.version, snapshotBuildVersion=self.snapshotBuildVersion, classifier=sub.classifier, extension=sub.extension)
+            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}-{classifier}.{extension}".format(
+                url=self.repo.repourl,
+                group=self.groupId.replace('.', '/'),
+                artifact=self.artifactId,
+                version=self.version,
+                snapshotBuildVersion=self.snapshotBuildVersion,
+                classifier=sub.classifier,
+                extension=sub.extension)
         else:
-            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}.{extension}".format(url=self.repo.repourl, group=self.groupId.replace('.', '/'), artifact=self.artifactId, version=self.version, snapshotBuildVersion=self.snapshotBuildVersion, extension=sub.extension)
+            url = "{url}/{group}/{artifact}/{version}/{artifact}-{snapshotBuildVersion}.{extension}".format(
+                url=self.repo.repourl,
+                group=self.groupId.replace('.', '/'),
+                artifact=self.artifactId,
+                version=self.version,
+                snapshotBuildVersion=self.snapshotBuildVersion,
+                extension=sub.extension)
         return (url, url + '.sha1')
 
     def getSubArtifact(self, extension, classifier=None):
@@ -1842,15 +1855,15 @@ class MavenRepo:
             snapshot = versioning.find('snapshot')
             snapshotVersions = versioning.find('snapshotVersions')
             currentSnapshotTime = snapshot.find('timestamp').text
-            currentSnapshotBuildNumberElement = snapshot.find('buildNumber')
-            currentSnapshotBuildNumber = int(currentSnapshotBuildNumberElement.text) if currentSnapshotBuildNumberElement is not None else 0
-            
+            currentSnapshotBuildElement = snapshot.find('buildNumber')
+            currentSnapshotBuildNumber = int(currentSnapshotBuildElement.text) if currentSnapshotBuildElement is not None else 0
+
             versionPrefix = version[:-len('-SNAPSHOT')] + '-'
             prefixLen = len(versionPrefix)
             snapshots = {}
             for snapshotVersion in snapshotVersions.iter('snapshotVersion'):
                 fullVersion = snapshotVersion.find('value').text
-                separatorIndex = fullVersion.index('-',prefixLen)
+                separatorIndex = fullVersion.index('-', prefixLen)
                 timeStamp = fullVersion[prefixLen:separatorIndex]
                 buildNumber = int(fullVersion[separatorIndex+1:])
                 extension = snapshotVersion.find('extension').text
@@ -1859,7 +1872,7 @@ class MavenRepo:
                 if classifier is not None and len(classifier.text) > 0:
                     classifierString = classifier.text
                 artifact = snapshots.setdefault((timeStamp, buildNumber), MavenSnapshotArtifact(groupId, artifactId, version, fullVersion, self))
-                
+
                 artifact.addSubArtifact(extension, classifierString)
             return MavenSnapshotBuilds(currentSnapshotTime, currentSnapshotBuildNumber, snapshots)
         finally:
@@ -1915,7 +1928,7 @@ def deploy_binary(args):
 
     _mvn.check()
     s = _primary_suite
-    version = s.vc.id(s.dir)
+    version = s.vc.parent(s.dir)
 
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
 
@@ -2850,7 +2863,7 @@ class BinarySuite(Suite):
         Return the current head changeset of this suite.
         '''
         # we do not cache the version because it changes in development
-        return self.vc.id(self.dir)
+        return self.vc.parent(self.dir)
 
     def _load_binary_suite(self):
         '''
