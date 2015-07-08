@@ -467,7 +467,7 @@ class Distribution(Dependency):
                 for service, providers in services.iteritems():
                     arcname = 'META-INF/services/' + service
                     # Convert providers to a set before printing to remove duplicates
-                    arc.zf.writestr(arcname, '\n'.join(frozenset(providers)))
+                    arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
         self.notify_updated()
 
@@ -2539,7 +2539,7 @@ class SourceSuite(Suite):
                             with zipfile.ZipFile(apsJar, 'r') as lp:
                                 for arcname in lp.namelist():
                                     if arcname == config:
-                                        arc.zf.writestr(arcname, '\n'.join(aps))
+                                        arc.zf.writestr(arcname, '\n'.join(aps) + '\n')
                                     else:
                                         arc.zf.writestr(arcname, lp.read(arcname))
                 d.add_update_listener(_refineAnnotationProcessorServiceConfig)
