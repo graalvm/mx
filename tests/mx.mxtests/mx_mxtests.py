@@ -6,9 +6,10 @@ import os
 import urllib
 import mx
 
+_suite = mx.suite('mxtests')
+
 def _build(args):
     mx.primary_suite().build(args)
-
 
 def _cp(args):
     parser = ArgumentParser(prog='mx mxt-classpath')
@@ -166,22 +167,19 @@ def _command_info(args):
     args = parser.parse_args(args)
     mx.command_function(args.command)
 
-def mx_init(suite):
-
-    commands = {
-        # overrrides
-        "build" : [_build, '[options]'],
-        # new commands
-        "mxt-alldeps" : [_alldeps, '[options]'],
-        "mxt-classpath" : [_cp, '[options]'],
-        "mxt-proj-ap-path" : [_ap, '[options]'],
-        "mxt-sorted_project_deps" : [_sorted_project_deps, '[options]'],
-        "mxt-update-suitepy" : [_update_suitepy, '[options]'],
-        "mxt-readurl" : [_readurl, '[options]'],
-        "mxt-vc-tip" : [_vc_tip, '[options]'],
-        "mxt-vc-clone" : [_vc_clone, '[options]'],
-        "mxt-vc-locate" : [_vc_locate, '[options]'],
-        'mxt-command-info' : [_command_info, '[options]'],
-    }
-    mx.update_commands(suite, commands)
+mx.update_commands(_suite, {
+    # overrides
+    "build" : [_build, '[options]'],
+    # new commands
+    "mxt-alldeps" : [_alldeps, '[options]'],
+    "mxt-classpath" : [_cp, '[options]'],
+    "mxt-proj-ap-path" : [_ap, '[options]'],
+    "mxt-sorted_project_deps" : [_sorted_project_deps, '[options]'],
+    "mxt-update-suitepy" : [_update_suitepy, '[options]'],
+    "mxt-readurl" : [_readurl, '[options]'],
+    "mxt-vc-tip" : [_vc_tip, '[options]'],
+    "mxt-vc-clone" : [_vc_clone, '[options]'],
+    "mxt-vc-locate" : [_vc_locate, '[options]'],
+    'mxt-command-info' : [_command_info, '[options]'],
+})
 

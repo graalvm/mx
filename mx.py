@@ -1229,7 +1229,7 @@ class VC:
         '''
         abort(self.kind + " id is not implemented")
 
-    def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
+    def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         '''
         Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
         or None if no such tags exist.
@@ -1402,7 +1402,7 @@ class HgConfig(VC):
             else:
                 return None
 
-    def release_version_from_tags(self, vcdir, prefix, abortOnError=True):
+    def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
         try:
             tags = [x.split() for x in subprocess.check_output(['hg', '-R', vcdir, 'tags']).split('\n') if x.startswith(prefix)]
@@ -1424,7 +1424,7 @@ class HgConfig(VC):
                 return most_recent_tag_version
             else:
                 major, minor = map(int, most_recent_tag_version.split('.'))
-                return str(major) + '.' + str(minor + 1) + '-dev'
+                return str(major) + '.' + str(minor + 1) + '-' + snapshotSuffix
         return None
 
     def metadir(self):
@@ -2420,12 +2420,6 @@ class Suite:
             # revert the Python path
             del sys.path[0]
 
-            if not hasattr(mod, 'mx_init'):
-                abort(extensionsName + '.py in suite ' + self.name + ' must define an mx_init(suite) function')
-            if hasattr(mod, 'mx_post_parse_cmd_line'):
-                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
-
-            mod.mx_init(self)
             self.extensions = mod
 
     def _init_imports(self):
@@ -2699,12 +2693,12 @@ class SourceSuite(Suite):
         # we do not cache the version because it changes in development
         return self.vc.tip(self.dir, abortOnError=abortOnError)
 
-    def release_version(self):
+    def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if not self._releaseVersion:
-            tag = self.vc.release_version_from_tags(self.dir, self.name)
+            tag = self.vc.release_version_from_tags(self.dir, self.name, snapshotSuffix=snapshotSuffix)
             if not tag:
                 tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
             self._releaseVersion = tag
@@ -8629,7 +8623,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.2.4")
+version = VersionSpec("4.3.4")
 
 currentUmask = None
 
