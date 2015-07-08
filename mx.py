@@ -6064,6 +6064,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
+    distributionDeps = set()
 
     for dep in p.all_deps([], True):
         if dep == p:
@@ -6077,9 +6078,16 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
+        elif dep.isDistribution():
+            distributionDeps.add(dep)
+        else:
+            abort('unxpected dependency: ' + str(dep))
 
     for dep in sorted(containerDeps):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
+
+    for dep in sorted(distributionDeps):
+        out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
 
     for dep in sorted(libraryDeps):
         path = dep.path
