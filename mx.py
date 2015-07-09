@@ -172,7 +172,7 @@ class Dependency:
         Gets a 2-tuple (file, line) describing the source file where this dependency
         is defined or None if the location cannot be determined.
         """
-        suitepy = join(self.suite.mxDir, 'suite.py')
+        suitepy = self.suite.suite_py()
         if exists(suitepy):
             import tokenize
             with open(suitepy) as fp:
@@ -200,16 +200,16 @@ class Dependency:
         if loc:
             path, lineNo = loc
             if asPrefix:
-                return 'In definition of {} at {}, line {}:{}{}'.format(self.name, path, lineNo, sep, msg)
+                return 'In definition of {} in {} starting at line {}:{}{}'.format(self.name, path, lineNo, sep, msg)
             else:
-                return '{}{}In definition of {} at {}, line {}:{}{}'.format(msg, sep, self.name, path, lineNo)
+                return '{}{}In definition of {} in {} starting at line {}:{}{}'.format(msg, sep, self.name, path, lineNo)
         return msg
 
     def abort(self, msg):
         '''
         Aborts with given message prefixed by the origin of this dependency.
         '''
-        abort(self.attach_origin(msg))
+        abort(msg, context=self)
 
     """
     Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
@@ -266,7 +266,7 @@ class Distribution(Dependency):
         try:
             excl = [dependency(d) for d in self.excludedDependencies]
         except SystemExit as e:
-            abort('invalid excluded dependency for {0} distribution: {1}'.format(self.name, e))
+            abort('invalid excluded dependency for {0} distribution: {1}'.format(self.name, e), context=self)
         return deps + [d for d in sorted_deps(self.deps, includeLibs=includeLibs, includeAnnotationProcessors=includeAnnotationProcessors) if d not in excl]
 
     def __str__(self):
@@ -301,7 +301,7 @@ class Distribution(Dependency):
         if includeSelf:
             deps.append(self)
         for name in self.distDependencies:
-            dist = distribution(name)
+            dist = distribution(name, context=self)
             if dist not in deps:
                 deps.append(dist)
         if transitive:
@@ -329,7 +329,7 @@ class Distribution(Dependency):
             if dist.deps:
                 for d in dist.deps:
                     # d is a string naming either a Project or a Library
-                    dep = dependency(d)
+                    dep = dependency(d, context=self)
                     dep.all_deps(deps, includeLibs=includeLibs, includeSelf=True, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
             else:
                 deps.append(dist)
@@ -425,7 +425,7 @@ class Distribution(Dependency):
 
                         if self.javaCompliance:
                             if p.javaCompliance > self.javaCompliance:
-                                abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance))
+                                abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
 
                         logv('[' + self.path + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
@@ -518,7 +518,7 @@ class Project(Dependency):
         if self in dependants:
             abort(str(self) + 'Project dependency cycle found:\n    ' +
                   '\n        |\n        V\n    '.join(map(str, dependants[dependants.index(self):])) +
-                  '\n        |\n        V\n    ' + self.name)
+                  '\n        |\n        V\n    ' + self.name, context=self)
         childDeps = list(self.deps)
         if includeAnnotationProcessors and len(self.annotation_processors()) > 0:
             childDeps = self.annotation_processors() + childDeps
@@ -526,7 +526,7 @@ class Project(Dependency):
             return deps
         for name in childDeps:
             assert name != self.name
-            dep = dependency(name)
+            dep = dependency(name, context=self)
             if not dep in deps:
                 if dep.isProject():
                     dep._all_deps_helper(deps, dependants + [self], includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
@@ -763,7 +763,7 @@ class Project(Dependency):
                 aps = set(self._declaredAnnotationProcessors)
                 for ap in aps:
                     # ap may be a Project or a Distribution
-                    apd = dependency(ap)
+                    apd = dependency(ap, context=self)
                     if apd.isDistribution() or apd.isLibrary():
                         # trust it, we could look inside I suppose
                         pass
@@ -1063,21 +1063,21 @@ class Library(BaseLibrary):
         abspath = _make_absolute(path, self.suite.dir)
         if not optional and not exists(abspath):
             if not len(urls):
-                abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath))
+                abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
         def _checkSha1PropertyCondition(propName, cond, inputPath):
             if not cond:
                 absInputPath = _make_absolute(inputPath, self.suite.dir)
                 if exists(absInputPath):
-                    abort('Missing "{0}" property for library {1}. Add the following line to projects file:\nlibrary@{2}@{3}={4}'.format(propName, name, name, propName, sha1OfFile(absInputPath)))
-                abort('Missing "{0}" property for library {1}'.format(propName, name))
+                    abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
+                abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
 
         _checkSha1PropertyCondition('sha1', sha1, path)
         _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
 
         for url in urls:
             if url.endswith('/') != self.path.endswith(os.sep):
-                abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url)
+                abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
     def __eq__(self, other):
         if isinstance(other, Library):
@@ -1168,8 +1168,8 @@ class VC:
         '''
         for vcs in _vc_systems:
             vcs.check()
-            tip = vcs.tip(vcdir, abortOnError=False)
-            if tip:
+            parent = vcs.parent(vcdir, abortOnError=False)
+            if parent:
                 return vcs
         if abortOnError:
             abort('cannot determine VC for ' + vcdir)
@@ -2088,25 +2088,25 @@ class SuiteImport:
         self.urlinfos = [] if urlinfos is None else urlinfos
 
     @staticmethod
-    def parse_specification(import_dict):
+    def parse_specification(import_dict, context):
         name = import_dict.get('name')
         if not name:
-            abort('suite import must have a "name" attribute')
+            abort('suite import must have a "name" attribute', context=context)
         # missing defaults to the tip
         version = import_dict.get("version")
         urls = import_dict.get("urls")
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
-            abort('suite import urls must be a list')
+            abort('suite import urls must be a list', context=context)
         urlinfos = []
         kind = None
         for urlinfo in urls:
             if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
                 if not VC.is_valid_kind(kind):
-                    abort('suite import kind ' + kind + ' illegal')
+                    abort('suite import kind ' + kind + ' illegal', context=context)
             else:
-                abort('suite import url must be a dict with {"url", kind", attributes')
+                abort('suite import url must be a dict with {"url", kind", attributes', context=context)
             vc = vc_system(kind)
             urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
         return SuiteImport(name, version, urlinfos, kind)
@@ -2428,7 +2428,7 @@ class Suite:
             for entry in suiteImports:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
-                self.suite_imports.append(SuiteImport.parse_specification(entry))
+                self.suite_imports.append(SuiteImport.parse_specification(entry, context=self))
 
     def re_init_imports(self):
         '''
@@ -2670,6 +2670,20 @@ class Suite:
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
 
+    def attach_origin(self, msg, asPrefix=True, sep='\n'):
+        '''
+        Adds a description of where this suite was defined in terms its source file.
+        If no such description can be generated, 'msg' is returned unmodified.
+        Otherwise, the result of prepending or appending the description (determined
+        by 'asPrefix') to 'msg' separated by 'sep' is returned.
+        '''
+        path = self.suite_py()
+        if exists(path):
+            if asPrefix:
+                return 'In definition of suite {} in {}:{}{}'.format(self.name, path, sep, msg)
+            else:
+                return '{}{}In definition of suite {} in {}:{}{}'.format(msg, sep, self.name, path)
+        return msg
 
 '''A source suite'''
 class SourceSuite(Suite):
@@ -3376,7 +3390,7 @@ def splitqualname(name):
     else:
         return None, name
 
-def distribution(name, fatalIfMissing=True):
+def distribution(name, fatalIfMissing=True, context=None):
     """
     Get the distribution for a given name. This will abort if the named distribution does
     not exist and 'fatalIfMissing' is true.
@@ -3384,14 +3398,15 @@ def distribution(name, fatalIfMissing=True):
     _, name = splitqualname(name)
     d = _dists.get(name)
     if d is None and fatalIfMissing:
-        abort('distribution named ' + name + ' not found')
+        abort('distribution named ' + name + ' not found', context=context)
     return d
 
-def dependency(name, fatalIfMissing=True):
+def dependency(name, fatalIfMissing=True, context=None):
     """
     Get the project, library or dependency for a given name. This will abort if the dependency
     not exist for 'name' and 'fatalIfMissing' is true.
     """
+
     suite_name, name = splitqualname(name)
     if suite_name:
         # reference to a distribution from a suite
@@ -3401,13 +3416,13 @@ def dependency(name, fatalIfMissing=True):
             if d is not None:
                 if d.suite != dep_suite:
                     if fatalIfMissing:
-                        abort('Distribution {dist} exported by {asuite}, expected {dist} from {suite}'.format(dist=name, suite=dep_suite, asuite=d.suite))
+                        abort('Distribution {dist} exported by {asuite}, expected {dist} from {suite}'.format(dist=name, suite=dep_suite, asuite=d.suite), context=context)
                     return None
                 else:
                     return d
             else:
                 if fatalIfMissing:
-                    abort('cannot resolve ' + name + ' as a distribution of ' + suite_name)
+                    abort('cannot resolve ' + name + ' as a distribution of ' + suite_name, context=context)
                 return d
     d = _projects.get(name)
     if d is None:
@@ -3420,11 +3435,11 @@ def dependency(name, fatalIfMissing=True):
         d = _dists.get(name)
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
-            abort('project named ' + name + ' is ignored')
-        abort('project or library named ' + name + ' not found')
+            abort('project named ' + name + ' is ignored', context=context)
+        abort('project or library named ' + name + ' not found', context=context)
     return d
 
-def project(name, fatalIfMissing=True):
+def project(name, fatalIfMissing=True, context=None):
     """
     Get the project for a given name. This will abort if the named project does
     not exist and 'fatalIfMissing' is true.
@@ -3432,11 +3447,11 @@ def project(name, fatalIfMissing=True):
     p = _projects.get(name)
     if p is None and fatalIfMissing:
         if name in _opts.ignored_projects:
-            abort('project named ' + name + ' is ignored')
-        abort('project named ' + name + ' not found')
+            abort('project named ' + name + ' is ignored', context=context)
+        abort('project named ' + name + ' not found', context=context)
     return p
 
-def library(name, fatalIfMissing=True):
+def library(name, fatalIfMissing=True, context=None):
     """
     Gets the library for a given name. This will abort if the named library does
     not exist and 'fatalIfMissing' is true.
@@ -3444,8 +3459,8 @@ def library(name, fatalIfMissing=True):
     l = _libs.get(name)
     if l is None and fatalIfMissing:
         if _projects.get(name):
-            abort(name + ' is a project, not a library')
-        abort('library named ' + name + ' not found')
+            abort(name + ' is a project, not a library', context=context)
+        abort('library named ' + name + ' not found', context=context)
     return l
 
 def _as_classpath(deps, resolve):
@@ -4532,12 +4547,14 @@ def _send_sigquit():
                 _kill_process_group(p.pid, sig=signal.SIGQUIT)
             time.sleep(0.1)
 
-def abort(codeOrMessage):
+def abort(codeOrMessage, context=None):
     """
     Aborts the program with a SystemExit exception.
     If 'codeOrMessage' is a plain integer, it specifies the system exit status;
     if it is None, the exit status is zero; if it has another type (such as a string),
     the object's value is printed and the exit status is one.
+    If 'context' is not None and defines an 'attach_origin(msg)' method, the
+    latter is used to attach context to the exception.
     """
 
     if _opts and _opts.killwithsigquit:
@@ -4566,6 +4583,16 @@ def abort(codeOrMessage):
     if _opts and _opts.verbose:
         import traceback
         traceback.print_stack()
+    if context is not None:
+        if hasattr(context, 'attach_origin'):
+            if isinstance(codeOrMessage, int):
+                # Log the context separately so that SystemExit
+                # communicates the intended ext status
+                msg = context.attach_origin("")
+                if msg:
+                    log(msg.strip())
+            else:
+                codeOrMessage = context.attach_origin(codeOrMessage)
     raise SystemExit(codeOrMessage)
 
 def download(path, urls, verbose=False, abortOnError=True):
