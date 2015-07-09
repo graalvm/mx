@@ -7754,11 +7754,19 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
         vcs.pull(imported_suite.dir, rev)
     if update_versions and suite_import:
-        imported_tip = vcs.tip(imported_suite.dir)
-        if imported_tip != suite_import.version:
-            suite_import.version = imported_tip
-            # temp until we do it automatically
-            print 'Please update import of ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + imported_tip
+        importedVersion = vcs.parent(imported_suite.dir)
+        if importedVersion != suite_import.version:
+            if exists(importing_suite.suite_py()):
+                with open(importing_suite.suite_py()) as fp:
+                    contents = fp.read()
+                if contents.count(str(suite_import.version)) == 1:
+                    newContents = contents.replace(suite_import.version, str(importedVersion))
+                    log('Updating "version" attribute in import of suite ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + importedVersion)
+                    update_file(importing_suite.suite_py(), newContents, showDiff=True)
+                else:
+                    log('Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py()))
+                    log('Please update "version" attribute in import of suite ' + suite_import.name + ' in ' + importing_suite.suite_py() + ' to ' + importedVersion)
+            suite_import.version = importedVersion
 
     imported_suite.re_init_imports()
     imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports)
