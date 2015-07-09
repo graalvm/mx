@@ -238,10 +238,11 @@ Attributes:
         as it defines the eventual content of the distribution
     distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
     excludedDependencies: Dependencies (usually Library instances) that should be excluded from the content
-    TODO more
+    isSyntheticProcessorDistribution: True if this distribution was created for a project that declares
+        an annotation processor. There is no definition in suite.py for such a distribution. 
 """
 class Distribution(Dependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isProcessorDistribution=False):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isSyntheticProcessorDistribution=False):
         Dependency.__init__(self, suite, name)
         self.subDir = subDir
         self.path = path.replace('/', os.sep)
@@ -254,7 +255,7 @@ class Distribution(Dependency):
         self.excludedDependencies = excludedDependencies
         self.distDependencies = distDependencies
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
-        self.isProcessorDistribution = isProcessorDistribution
+        self.isSyntheticProcessorDistribution = isSyntheticProcessorDistribution
 
     def sorted_deps(self, includeLibs=False, transitive=False, includeAnnotationProcessors=False):
         deps = []
@@ -1928,7 +1929,7 @@ def deploy_binary(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
     for dist in s.dists:
-        if not dist.isProcessorDistribution:
+        if not dist.isSyntheticProcessorDistribution:
             _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
 
 class MavenConfig:
@@ -2770,7 +2771,7 @@ class SourceSuite(Suite):
                 distDeps = []
                 javaCompliance = None
                 subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
-                d = Distribution(self, dname, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, True)
+                d = Distribution(self, dname, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, isSyntheticProcessorDistribution=True)
                 p.definedAnnotationProcessors = annotationProcessors
                 p.definedAnnotationProcessorsDist = d
                 d.definingProject = p
@@ -5079,7 +5080,7 @@ def build(args, parser=None):
                         dist.make_archive()
                     else:
                         logv('[all constituent projects for {0} are up to date - skipping jar updating]'.format(dist.name))
-            if args.check_distributions and not dist.isProcessorDistribution:
+            if args.check_distributions and not dist.isSyntheticProcessorDistribution:
                 with zipfile.ZipFile(dist.path, 'r') as zf:
                     files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
         dups = set([x for x in files if files.count(x) > 1])
@@ -5839,7 +5840,7 @@ def projectgraph(args, suite=None):
     if args.dist:
         projs = {}
         for d in sorted_dists():
-            if not d.isProcessorDistribution:
+            if not d.isSyntheticProcessorDistribution:
                 print 'subgraph "cluster_' + d.name + '" {'
                 print 'label="' + d.name + '";'
                 for p in d.sorted_deps(includeLibs=False, transitive=True):
