@@ -8386,17 +8386,17 @@ def _check_primary_suite():
     else:
         return _primary_suite
 
-Needs_primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1']
+_primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1', 'pylint']
 
 def _needs_primary_suite(command):
-    return not command in Needs_primary_suite_exemptions
+    return not command in _primary_suite_exemptions
 
 def _needs_primary_suite_cl():
     args = sys.argv[1:]
     if len(args) == 0:
         return False
     for s in args:
-        if s in Needs_primary_suite_exemptions:
+        if s in _primary_suite_exemptions:
             return False
     return True
 
@@ -8426,9 +8426,7 @@ def _findPrimarySuiteMxDir():
     mxDir = _findPrimarySuiteMxDirFrom(os.getcwd())
     if mxDir is not None:
         return mxDir
-    # backwards compatibility: search from parent of this file
-    # TODO can we retire this?
-    return _findPrimarySuiteMxDirFrom(dirname(dirname(__file__)))
+    return None
 
 def _remove_bad_deps():
     '''Remove projects and libraries that (recursively) depend on an optional library
@@ -8499,9 +8497,13 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
+    global _primary_suite
     primary_suite_error = 'no primary suite found'
     primarySuiteMxDir = _findPrimarySuiteMxDir()
-    if primarySuiteMxDir:
+    if primarySuiteMxDir == _mx_suite.mxDir:
+        # This will load all explicitly imported suites
+        _primary_suite = _mx_suite
+    elif primarySuiteMxDir:
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
         # We explicitly load the 'env' file of the primary suite now as it might influence
         # the suite loading logic. It will get loaded again, to ensure it overrides any
@@ -8525,11 +8527,10 @@ def main():
             else:
                 _suites_ignore_versions = []
 
-        global _primary_suite
         # This will load all explicitly imported suites
         _primary_suite = PrimarySuite(primarySuiteMxDir)
     else:
-        # in general this is an error, except for the Needs_primary_suite_exemptions commands,
+        # in general this is an error, except for the _primary_suite_exemptions commands,
         # and an extensions command will likely not parse in this case, as any extra arguments
         # will not have been added to _argParser.
         # If the command line does not contain a string matching one of the exemptions, we can safely abort,
@@ -8556,7 +8557,7 @@ def main():
     if _opts.mx_tests:
         MXTestsSuite()
 
-    if primarySuiteMxDir:
+    if primarySuiteMxDir and primarySuiteMxDir != _mx_suite.mxDir:
         _primary_suite._depth_first_post_init()
 
     _remove_bad_deps()
