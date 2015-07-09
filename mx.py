@@ -2412,6 +2412,8 @@ class Suite:
             # revert the Python path
             del sys.path[0]
 
+            if hasattr(mod, 'mx_post_parse_cmd_line'):
+                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
             self.extensions = mod
 
     def _init_imports(self):
@@ -8567,7 +8569,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.3.4")
+version = VersionSpec("4.3.5")
 
 currentUmask = None
 
