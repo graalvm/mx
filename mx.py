@@ -3424,7 +3424,7 @@ def dependency(name, fatalIfMissing=True, context=None):
             else:
                 if fatalIfMissing:
                     abort('cannot resolve ' + name + ' as a distribution of ' + suite_name, context=context)
-                return d
+                return None
     d = _projects.get(name)
     if d is None:
         d = _libs.get(name)
@@ -3436,8 +3436,8 @@ def dependency(name, fatalIfMissing=True, context=None):
         d = _dists.get(name)
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
-            abort('project named ' + name + ' is ignored', context=context)
-        abort('project or library named ' + name + ' not found', context=context)
+            abort('dependency named ' + name + ' is ignored', context=context)
+        abort('dependency named ' + name + ' not found', context=context)
     return d
 
 def project(name, fatalIfMissing=True, context=None):
