@@ -2414,6 +2414,9 @@ class Suite:
 
             if hasattr(mod, 'mx_post_parse_cmd_line'):
                 self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
+
+            if hasattr(mod, 'mx_init'):
+                mod.mx_init(self)
             self.extensions = mod
 
     def _init_imports(self):
