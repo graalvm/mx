@@ -6002,7 +6002,7 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
 
 def _check_ide_timestamp(suite, configZip, ide):
     """return True if and only if the projects file, imports file, eclipse-settings files, and mx itself are all older than configZip"""
-    suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e.startswith('suite') and e.endswith('.py')]
+    suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e == 'suite.py']
     if configZip.isOlderThan(suitePyFiles):
         return False
     # Assume that any mx change might imply changes to the generated IDE files
