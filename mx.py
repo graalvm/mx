@@ -6247,7 +6247,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         return
 
     if _check_ide_timestamp(suite, configZip, 'eclipse'):
-        logv('[Eclipse configurations are up to date - skipping]')
+        logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
 
 
