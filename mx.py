@@ -2702,7 +2702,7 @@ class SourceSuite(Suite):
         Return the current head changeset of this suite.
         '''
         # we do not cache the version because it changes in development
-        return self.vc.tip(self.dir, abortOnError=abortOnError)
+        return self.vc.parent(self.dir, abortOnError=abortOnError)
 
     def release_version(self, snapshotSuffix='dev'):
         """
@@ -7598,8 +7598,8 @@ def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_a
 
 def _spush_check_import_visitor(s, suite_import, **extra_args):
     """push check visitor for Suite.visit_imports"""
-    currentTip = suite(suite_import.name).version()
-    if currentTip != suite_import.version:
+    importedVersion = suite(suite_import.name).version()
+    if importedVersion != suite_import.version:
         abort('imported version of ' + suite_import.name + ' in suite ' + s.name + ' does not match tip')
 
 def _spush(s, suite_import, dest, checks, clonemissing):
@@ -7685,16 +7685,16 @@ def _scheck_imports(importing_suite, imported_suite, suite_import):
     # check imports recursively
     imported_suite.visit_imports(_scheck_imports_visitor)
 
-    currentTip = imported_suite.version()
-    if currentTip != suite_import.version:
-        print 'imported version of {} in {} ({}) does not match tip ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, currentTip)
+    importedVersion = imported_suite.version()
+    if importedVersion != suite_import.version:
+        print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
             with open(importing_suite.suite_py()) as fp:
                 contents = fp.read()
             if contents.count(str(suite_import.version)) == 1:
-                newContents = contents.replace(suite_import.version, str(currentTip))
+                newContents = contents.replace(suite_import.version, str(importedVersion))
                 update_file(importing_suite.suite_py(), newContents, showDiff=True)
-                suite_import.version = currentTip
+                suite_import.version = importedVersion
             else:
                 print 'Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py())
 
@@ -7718,8 +7718,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
 
     if suite_import.version:
         # normal case, a specific version
-        currentTip = imported_suite.version()
-        if currentTip != suite_import.version:
+        importedVersion = imported_suite.version()
+        if importedVersion != suite_import.version:
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
     else:
         # unusual case, no version specified, so pull the head
