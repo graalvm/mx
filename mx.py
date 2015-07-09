@@ -188,28 +188,22 @@ class Dependency:
                         else:
                             candidate = None
 
-    def attach_origin(self, msg, asPrefix=True, sep='\n'):
-        '''
-        Adds a description of where this dependency was defined in terms of source file
-        and line to a given string.
-        If no such description can be generated, 'msg' is returned unmodified.
-        Otherwise, the result of prepending or appending the description (determined
-        by 'asPrefix') to 'msg' separated by 'sep' is returned.
-        '''
-        loc = self.origin()
-        if loc:
-            path, lineNo = loc
-            if asPrefix:
-                return 'In definition of {} in {} starting at line {}:{}{}'.format(self.name, path, lineNo, sep, msg)
-            else:
-                return '{}{}In definition of {} in {} starting at line {}:{}{}'.format(msg, sep, self.name, path, lineNo)
-        return msg
-
     def abort(self, msg):
         '''
         Aborts with given message prefixed by the origin of this dependency.
         '''
         abort(msg, context=self)
+
+    def __abort_context__(self):
+        '''
+        Gets a description of where this dependency was defined in terms of source file
+        and line number. If no such description can be generated, None is returned.
+        '''
+        loc = self.origin()
+        if loc:
+            path, lineNo = loc
+            return 'In definition of {} in {} starting at line {}'.format(self.name, path, lineNo)
+        return None
 
     """
     Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
@@ -2671,20 +2665,15 @@ class Suite:
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
 
-    def attach_origin(self, msg, asPrefix=True, sep='\n'):
+    def __abort_context__(self):
         '''
-        Adds a description of where this suite was defined in terms its source file.
-        If no such description can be generated, 'msg' is returned unmodified.
-        Otherwise, the result of prepending or appending the description (determined
-        by 'asPrefix') to 'msg' separated by 'sep' is returned.
+        Returns a string describing where this suite was defined in terms its source file.
+        If no such description can be generated, returns None.
         '''
         path = self.suite_py()
         if exists(path):
-            if asPrefix:
-                return 'In definition of suite {} in {}:{}{}'.format(self.name, path, sep, msg)
-            else:
-                return '{}{}In definition of suite {} in {}:{}{}'.format(msg, sep, self.name, path)
-        return msg
+            return 'In definition of suite {} in {}'.format(self.name, path)
+        return None
 
 '''A source suite'''
 class SourceSuite(Suite):
@@ -4553,9 +4542,12 @@ def abort(codeOrMessage, context=None):
     Aborts the program with a SystemExit exception.
     If 'codeOrMessage' is a plain integer, it specifies the system exit status;
     if it is None, the exit status is zero; if it has another type (such as a string),
-    the object's value is printed and the exit status is one.
-    If 'context' is not None and defines an 'attach_origin(msg)' method, the
-    latter is used to attach context to the exception.
+    the object's value is printed and the exit status is 1.
+
+    The 'context' argument can provide extra context for an error message.
+    If 'context' is callable, it is called and the returned value is printed.
+    If 'context' defines a __abort_context__ method, the latter is called and
+    its return value is printed. Otherwise str(context) is printed.
     """
 
     if _opts and _opts.killwithsigquit:
@@ -4585,15 +4577,19 @@ def abort(codeOrMessage, context=None):
         import traceback
         traceback.print_stack()
     if context is not None:
-        if hasattr(context, 'attach_origin'):
-            if isinstance(codeOrMessage, int):
-                # Log the context separately so that SystemExit
-                # communicates the intended ext status
-                msg = context.attach_origin("")
-                if msg:
-                    log(msg.strip())
-            else:
-                codeOrMessage = context.attach_origin(codeOrMessage)
+        if callable(context):
+            contextMsg = context()
+        elif hasattr(context, '__abort_context__'):
+            contextMsg = context.__abort_context__()
+        else:
+            contextMsg = str(context)
+
+        if isinstance(codeOrMessage, int):
+            # Log the context separately so that SystemExit
+            # communicates the intended exit status
+            log(contextMsg)
+        else:
+            codeOrMessage = contextMsg + ":\n" + codeOrMessage
     raise SystemExit(codeOrMessage)
 
 def download(path, urls, verbose=False, abortOnError=True):
@@ -5540,12 +5536,12 @@ def canonicalizeprojects(args):
         for p in nonCanonical:
             canonicalDeps = p.canonical_deps()
             if len(canonicalDeps) != 0:
-                log(p.attach_origin('Canonical dependencies for project ' + p.name + ' are: ['))
+                log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: [')
                 for d in canonicalDeps:
                     log('        "' + d + '",')
                 log('      ],')
             else:
-                log(p.attach_origin('Canonical dependencies for project ' + p.name + ' are: []'))
+                log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: []')
     return len(nonCanonical)
 
 
