@@ -1608,13 +1608,13 @@ class BinaryVC(VC):
         try:
             (jar_url, jar_sha_url) = build.getSubArtifact('jar')
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-            abort('Multiple jars found for {} in snapshot {} in reposiotry {}'.format(name, build.version, repo.repourl))
+            abort('Multiple jars found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
         download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
         if sourcePath:
             try:
                 (source_url, source_sha_url) = build.getSubArtifactByClassifier('sources')
             except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-                abort('Multiple source artifacts found for {} in snapshot {} in reposiotry {}'.format(name, build.version, repo.repourl))
+                abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
             download_file_with_sha1(artifactId + ' sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
         return True
 
@@ -1699,12 +1699,12 @@ def _getSymlinkMTime(path):
     return os.lstat(path).st_mtime
 
 def _hashFromUrl(url):
-    logvv('Retreiving SHA1 from {}'.format(url))
+    logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = urllib2.urlopen(url)
     try:
         return hashFile.read()
     except urllib2.URLError as e:
-        abort('Error while retreiving sha1 {0}: {2}'.format(url, str(e)))
+        abort('Error while retrieving sha1 {0}: {2}'.format(url, str(e)))
     finally:
         if hashFile:
             hashFile.close()
@@ -6045,7 +6045,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         elif dep.isDistribution():
             distributionDeps.add(dep)
         else:
-            abort('unxpected dependency: ' + str(dep))
+            abort('unexpected dependency: ' + str(dep))
 
     for dep in sorted(containerDeps):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
@@ -7695,7 +7695,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         if currentTip != suite_import.version:
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
     else:
-        # unusual case, no vesion specified, so pull the head
+        # unusual case, no version specified, so pull the head
         vc_system(imported_suite.vckind).pull(imported_suite.dir)
         imported_suite.vc.pull(imported_suite.dir)
 
