@@ -148,8 +148,6 @@ def _unittest(args, annotations, vmLauncher=None, prefixCp="", blacklist=None, w
         with open(testfile) as fp:
             testclasses = [l.rstrip() for l in fp.readlines()]
 
-        # Run the VM in a mode where application/test classes can
-        # access classes normally hidden behind the JVMCI class loader
         cp = prefixCp + coreCp + os.pathsep + projectsCp
 
         # suppress menubar and dock when running on Mac
