@@ -1867,10 +1867,8 @@ class MavenRepo:
                 metadataFile.close()
 
 def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None):
-    if not exists(jarPath):
-        abort("'{0}' does not exist, run 'mx build' first".format(jarPath))
-    if srcPath and not exists(srcPath):
-        abort("'{0}' does not exist, run 'mx build' first".format(srcPath))
+    assert exists(jarPath)
+    assert not srcPath or exists(srcPath)
 
     groupId = 'com.oracle.' + _map_to_maven_dist_name(suite.name)
     artifactId = name
@@ -1907,6 +1905,21 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
     run(cmd)
 
 def deploy_binary(args):
+    """deploy binaries for the primary suite to remote maven repository.
+
+    All binaries must be built first using 'mx build'.
+
+    usage: mx deploy-binary [-h] [-s SETTINGS] repository-id repository-url
+
+    positional arguments:
+      repository-id         Repository ID used for Maven deploy
+      repository-url        Repository URL used for Maven deploy
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -s SETTINGS, --settings SETTINGS
+                            Path to settings.mxl file used for Maven
+    """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
@@ -1917,10 +1930,22 @@ def deploy_binary(args):
     s = _primary_suite
     version = s.vc.parent(s.dir)
 
-    log('Deploying {0} distributions for version {1}'.format(s.name, version))
+    def _check_dist_exists(jarPath, srcPath=None):
+        if not exists(jarPath):
+            abort("'{0}' does not exist, run 'mx build' first".format(jarPath))
+        if srcPath and not exists(srcPath):
+            abort("'{0}' does not exist, run 'mx build' first".format(srcPath))
+
 
     mxMetaName = _mx_binary_distribution_root(s.name)
     mxMetaJar = s.mx_binary_distribution_jar_path()
+
+    _check_dist_exists(mxMetaJar)
+    for dist in s.dists:
+        if not dist.isSynthProcessorDistribution:
+            _check_dist_exists(dist.path, dist.sourcesPath)
+
+    log('Deploying {0} distributions for version {1}'.format(s.name, version))
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
     for dist in s.dists:
         if not dist.isSynthProcessorDistribution:
