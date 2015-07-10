@@ -37,16 +37,17 @@ if __name__ == '__main__':
 
 try:
     import defusedxml #pylint: disable=unused-import
+    from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
-    pass
+    from xml.etree.ElementTree import parse as etreeParse
 
 import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
 import textwrap
 import socket
 import tarfile
 import hashlib
-# check defused usage
-import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom, xml.etree.ElementTree
+# TODO use defusedexpat?
+import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 import shutil, re
 import pipes
 import difflib
@@ -1799,7 +1800,7 @@ class MavenRepo:
         except urllib2.HTTPError as e:
             abort('Error while retreiving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
-            tree = xml.etree.ElementTree.parse(metadataFile)
+            tree = etreeParse(metadataFile)
             root = tree.getroot()
             assert root.tag == 'metadata'
             assert root.find('groupId').text == groupId
@@ -1831,7 +1832,7 @@ class MavenRepo:
                 return None
             abort('Error while retreiving snappshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
         try:
-            tree = xml.etree.ElementTree.parse(metadataFile)
+            tree = etreeParse(metadataFile)
             root = tree.getroot()
             assert root.tag == 'metadata'
             assert root.find('groupId').text == groupId
@@ -2973,7 +2974,6 @@ class XMLElement(xml.dom.minidom.Element):
             writer.write("/>%s" % (newl))
 
 class XMLDoc(xml.dom.minidom.Document):
-
     def __init__(self):
         xml.dom.minidom.Document.__init__(self)
         self.current = self
