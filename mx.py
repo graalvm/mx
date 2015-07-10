@@ -127,7 +127,6 @@ _opts = Namespace()
 _extra_java_homes = []
 _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
-_deferred_warnings = []
 _vc_systems = []
 _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
@@ -8317,9 +8316,6 @@ def command_function(name, fatalIfMissing=True):
             return None
 
 def warn(msg):
-    if _opts is None:
-        _deferred_warnings.append(msg)
-        return
     if _opts.warn:
         print 'WARNING: ' + msg
 
@@ -8569,12 +8565,6 @@ def main():
             abort(primary_suite_error)
 
     commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
-
-    global _deferred_warnings
-    if _opts.warn and _deferred_warnings:
-        for dw in _deferred_warnings:
-            warn(dw)
-        _deferred_warnings = None
 
     if primarySuiteMxDir is None:
         if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
