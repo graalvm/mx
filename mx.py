@@ -2484,6 +2484,7 @@ def deploy_binary(args):
 
 
     mxMetaName = _mx_binary_distribution_root(s.name)
+    s.create_mx_binary_distribution_jar()
     mxMetaJar = s.mx_binary_distribution_jar_path()
 
     _check_dist_exists(mxMetaJar)
@@ -3072,29 +3073,6 @@ class Suite:
     def _post_init(self):
         self._post_init_finish()
 
-    def mx_binary_distribution_jar_path(self):
-        '''
-        returns the absolute path of the mx binary distribution jar.
-        '''
-        return join(self.dir, _mx_binary_distribution_jar(self.name))
-
-    def create_mx_binary_distribution_jar(self):
-        '''
-        Creates a jar file named name-mx.jar that contains
-        the metadata for another suite to import this suite as a BinarySuite.
-        TODO check timestamps to avoid recreating this repeatedly, or would
-        the check dominate anyway?
-        TODO It would be cleaner for subsequent loading if we actually wrote a
-        transformed suite.py file that only contained distribution info, to
-        detect access to private (non-distribution) state
-        '''
-        mxMetaJar = self.mx_binary_distribution_jar_path()
-        pyfiles = glob.glob(join(self.mxDir, '*.py'))
-        with Archiver(mxMetaJar) as arc:
-            for pyfile in pyfiles:
-                mxDirBase = basename(self.mxDir)
-                arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
-
     @staticmethod
     def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
         """
@@ -3412,6 +3390,30 @@ class SourceSuite(Suite):
         visitmap = dict()
         self.visit_imports(self._projects_recursive_visitor, projects=result, visitmap=visitmap,)
         return result
+
+    def mx_binary_distribution_jar_path(self):
+        '''
+        returns the absolute path of the mx binary distribution jar.
+        '''
+        return join(self.dir, _mx_binary_distribution_jar(self.name))
+
+    def create_mx_binary_distribution_jar(self):
+        '''
+        Creates a jar file named name-mx.jar that contains
+        the metadata for another suite to import this suite as a BinarySuite.
+        TODO check timestamps to avoid recreating this repeatedly, or would
+        the check dominate anyway?
+        TODO It would be cleaner for subsequent loading if we actually wrote a
+        transformed suite.py file that only contained distribution info, to
+        detect access to private (non-distribution) state
+        '''
+        mxMetaJar = self.mx_binary_distribution_jar_path()
+        pyfiles = glob.glob(join(self.mxDir, '*.py'))
+        with Archiver(mxMetaJar) as arc:
+            for pyfile in pyfiles:
+                mxDirBase = basename(self.mxDir)
+                arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
+
 
 '''
 A pre-built suite downloaded from a Maven repository.
@@ -8515,6 +8517,7 @@ def maven_install(args):
                 arcdists.append(dist)
 
         mxMetaName = _mx_binary_distribution_root(s.name)
+        s.create_mx_binary_distribution_jar()
         mxMetaJar = s.mx_binary_distribution_jar_path()
         if args.local:
             mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
