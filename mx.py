@@ -304,7 +304,7 @@ class Dependency(object):
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
 
-    def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None):
+    def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None, visitEdge=None):
         '''
         Walk the dependency graph rooted at this object.
         See documentation for mx.walk_deps for more info.
@@ -317,10 +317,10 @@ class Dependency(object):
         if not ignoredEdges:
             # Default ignored edges
             ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED]
-        self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges)
+        self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
 
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
@@ -539,19 +539,23 @@ class Distribution(Dependency):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
         return self.path
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
         if not preVisit or preVisit(self, edge):
             if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
                 for d in self.deps:
+                    if visitEdge:
+                        visitEdge(self, DEP_STANDARD, d)
                     if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
             if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
                 for d in self.excludedDeps:
+                    if visitEdge:
+                        visitEdge(self, DEP_EXCLUDED, d)
                     if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
 
@@ -756,27 +760,23 @@ class Project(Dependency):
         Resolves symbolic dependency references to be Dependency objects.
         '''
         self._resolveDepsHelper(self.deps)
-        if hasattr(self, '_declaredAnnotationProcessors'):
-            self._resolveDepsHelper(self._declaredAnnotationProcessors)
-            #overlap = set(self.deps).intersection(self._declaredAnnotationProcessors)
-            #if overlap:
-            #    self.abort('overlap in normal dependencies and annotation processors not allowed: {}'.format([a.name for a in overlap]))
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
         if not preVisit or preVisit(self, edge):
-            if hasattr(self, '_declaredAnnotationProcessors') and not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
-                for d in self._declaredAnnotationProcessors:
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges)
-            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-                for d in self.deps:
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+            self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
     def _compute_max_dep_distances(self, dep, distances, dist):
         currentDist = distances.get(dep)
@@ -851,6 +851,23 @@ class JavaProject(Project):
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.definedAnnotationProcessorsDist = None
+        self.declaredAnnotationProcessors = []
+
+    def resolveDeps(self):
+        Project.resolveDeps(self)
+        self._resolveDepsHelper(self.declaredAnnotationProcessors)
+        #overlap = set(self.deps).intersection(self.declaredAnnotationProcessors)
+        #if overlap:
+        #    self.abort('overlap in normal dependencies and annotation processors not allowed: {}'.format([a.name for a in overlap]))
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
+            for d in self.declaredAnnotationProcessors:
+                if visitEdge:
+                    visitEdge(self, DEP_ANNOTATION_PROCESSOR, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges, visitEdge)
+        Project._walk_deps_visit_edges.(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def source_gen_dir(self):
         """
@@ -1029,27 +1046,26 @@ class JavaProject(Project):
     def annotation_processors(self):
         if not hasattr(self, '_annotationProcessors'):
             aps = set()
-            if hasattr(self, '_declaredAnnotationProcessors'):
-                # 1. Directly declared annotation processors
-                for apd in self._declaredAnnotationProcessors:
-                    if apd.isDistribution() or apd.isLibrary():
-                        aps.add(apd)
-                        jar = apd.path if apd.isDistribution() else apd.get_path(resolve=True)
-                        if exists(jar):
-                            if read_annotation_processors(jar) is None:
-                                self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                                      jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
-                        else:
-                            # Cannot check the jar it if does not exist
-                            pass
-                    elif apd.isProject():
-                        if apd.definedAnnotationProcessorsDist is None:
-                            config = join(apd.source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
-                            self.abort('Project ' + apd.name + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                                  'Please specify the annotation processors in ' + config)
-                        aps.add(apd.definedAnnotationProcessorsDist)
+            # 1. Directly declared annotation processors
+            for apd in self.declaredAnnotationProcessors:
+                if apd.isDistribution() or apd.isLibrary():
+                    aps.add(apd)
+                    jar = apd.path if apd.isDistribution() else apd.get_path(resolve=True)
+                    if exists(jar):
+                        if read_annotation_processors(jar) is None:
+                            self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                                  jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
                     else:
-                        self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
+                        # Cannot check the jar it if does not exist
+                        pass
+                elif apd.isProject():
+                    if apd.definedAnnotationProcessorsDist is None:
+                        config = join(apd.source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
+                        self.abort('Project ' + apd.name + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                              'Please specify the annotation processors in ' + config)
+                    aps.add(apd.definedAnnotationProcessorsDist)
+                else:
+                    self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
             def addToAps(dep, edge):
                 if dep is not self:
@@ -1709,15 +1725,17 @@ class Library(BaseLibrary):
         '''
         self._resolveDepsHelper(self.deps)
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
         if not preVisit or preVisit(self, edge):
             if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
                 for d in self.deps:
+                    if visitEdge:
+                        visitEdge(self, DEP_STANDARD, d)
                     if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
 
@@ -3390,8 +3408,8 @@ class SourceSuite(Suite):
                 p.checkstyleProj = attrs.pop('checkstyle', name)
                 p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                 ap = Suite._pop_list(attrs, 'annotationProcessors', context)
-                if len(ap) > 0:
-                    p._declaredAnnotationProcessors = ap
+                if ap:
+                    p.declaredAnnotationProcessors = ap
             p.__dict__.update(attrs)
             self.projects.append(p)
 
@@ -4015,7 +4033,7 @@ def projects(opt_limit_to_suite=False):
 
     sortedProjects = sorted(_projects.itervalues())
     if opt_limit_to_suite:
-        return _projects_opt_limit_to_suites(sortedProjects)
+        return _dependencies_opt_limit_to_suites(sortedProjects)
     else:
         return sortedProjects
 
@@ -4025,15 +4043,15 @@ def projects_opt_limit_to_suites():
     """
     return projects(True)
 
-def _projects_opt_limit_to_suites(projects):
+def _dependencies_opt_limit_to_suites(deps):
     if not _opts.specific_suites:
         return projects
     else:
         result = []
-        for p in projects:
-            s = p.suite
+        for d in deps:
+            s = d.suite
             if s.name in _opts.specific_suites:
-                result.append(p)
+                result.append(d)
         return result
 
 def annotation_processors():
@@ -5423,75 +5441,36 @@ def build(args, parser=None):
                     abort('Specified Eclipse compiler does not include annotation processing support. ' +
                           'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
                           'from within the plugins/ directory of an Eclipse IDE installation.')
-
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         projectNames = args.only.split(',')
-        sortedProjects = [project(name) for name in projectNames]
+        roots = [project(name) for name in projectNames]
+    elif args.projects is not None:
+        projectNames = args.projects.split(',')
+        roots = [project(name) for name in projectNames]
     else:
-        if args.projects is not None:
-            projectNames = args.projects.split(',')
-        else:
-            projectNames = None
+        root = None
 
-        projects = _projects_opt_limit_to_suites(projects_from_names(projectNames))
-        # N.B. Limiting to a suite only affects the starting set of projects. Dependencies in other suites will still be compiled
+    if root:
+        root = _dependencies_opt_limit_to_suites(root)
+        # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
 
-        sortedProjects = []
-        walk_deps(visit=lambda dep, edge: sortedProjects.append(dep) if dep.isProject() else None, roots=projects, ignoredEdges=[DEP_EXCLUDED])
+    sortedTasks = []
+    taskMap = {}
+    depsMap = {}
+    def _createTask(dep, edge):
+        task = dep.getBuildTask(args)
+        sortedTasks.append(task)
+        taskMap[dep] = task
+        lst = depsMap.getdefault(dep, [])
+        for d in lst:
+            task.deps.append(taskMap[d])
 
-    tasks = {}
-    for p in sortedProjects:
-        task = p.getBuildTask(args)
-        for dep in p.deps:
-            rDep = dependency(dep)
-            if rDep in tasks:
-                taskDep = tasks[rDep]
-            else:
-                if rDep.isLibrary():
-                    taskDep = rDep.getBuildTask(args)
-                    tasks[rDep] = taskDep
-                elif rDep.isDistribution():
-                    taskDep = rDep.getBuildTask(args)
-                    tasks[rDep] = taskDep
-                else:
-                    warn('unsopported dep: ' + dep)
-            task.deps.append(taskDep)
-        for adep in p.annotation_processors():
-            raDep = dependency(adep)
-            if raDep.isLibrary() or raDep.isDistribution():
-                if raDep in tasks:
-                    taskDep = tasks[raDep]
-                else:
-                    taskDep = raDep.getBuildTask(args)
-                    tasks[raDep] = taskDep
-            elif raDep.isJavaProject():
-                distDep = raDep.definedAnnotationProcessorsDist
-                if distDep in tasks:
-                    taskDep = tasks[distDep]
-                else:
-                    taskDep = distDep.getBuildTask(args)
-                    tasks[distDep] = taskDep
-            else:
-                warn('unsopported dep: ' + adep)
-            task.deps.append(taskDep)
-        tasks[p] = task
+    def _registerDep(src, type, dst):
+        lst = depsMap.getdefault(edge.src, [])
+        lst.append(dst)
 
-    if args.only or args.projects:
-        abort("nyi")  # need to compute the set of distributions that depend on those projects
-    for dist in sorted_dists():
-        if dist in tasks:
-            task = tasks[dist]
-        else:
-            task = dist.getBuildTask(args)
-            tasks[dist] = task
-        for dep in dist.distDependencies:
-            taskDep = tasks[dependency(dep)]
-            task.deps.append(taskDep)
-        if not isinstance(dist.suite, BinarySuite):
-            for dep in dist.deps:
-                taskDep = tasks[dependency(dep)]
-                task.deps.append(taskDep)
+    walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
 
     if args.parallelize:
         def joinTasks(tasks):
@@ -5533,7 +5512,7 @@ def build(args, parser=None):
             return sorted(tasks, compareTasks)
 
         cpus = cpu_count()
-        worklist = sortWorklist(tasks.values())
+        worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
         def _activeCpus():
@@ -5586,6 +5565,9 @@ def build(args, parser=None):
             for t in failed:
                 log('{0} failed'.format(t))
             abort('{0} build tasks failed'.format(len(failed)))
+    else:  # not parallelize
+        for t in sortedTasks:
+            t.execute()
 
     # TODO check for distributions overlap (while loading suites?)
 
@@ -6317,9 +6299,8 @@ def projectgraph(args, suite=None):
                 print '"' + p.name + '"->"' + dep.name + ':DUMMY" [lhead=cluster_' + dep.name + ' color=blue];'
             else:
                 print '"' + p.name + '"->"' + dep.name + '";'
-        if hasattr(p, '_declaredAnnotationProcessors'):
-            for apd in p._declaredAnnotationProcessors:
-                print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
+        for apd in p.declaredAnnotationProcessors:
+            print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 
 def _source_locator_memento(deps):
