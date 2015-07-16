@@ -227,6 +227,9 @@ class Dependency(object):
     def isJavaProject(self):
         return isinstance(self, JavaProject)
 
+    def isNativeProject(self):
+        return isinstance(self, NativeProject)
+
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -319,14 +322,17 @@ class Dependency(object):
             ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED]
         self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
 
-
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
         if not preVisit or preVisit(self, edge):
+            self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        nyi('_walk_deps_visit_edges', self)
 
     def classpath_repr(self, resolve=True):
         '''
@@ -539,25 +545,20 @@ class Distribution(Dependency):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
         return self.path
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        _debug_walk_deps_helper(self, edge, ignoredEdges)
-        assert self not in visited, self
-        visited.add(self)
-        if not preVisit or preVisit(self, edge):
-            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-                for d in self.deps:
-                    if visitEdge:
-                        visitEdge(self, DEP_STANDARD, d)
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
-            if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
-                for d in self.excludedDeps:
-                    if visitEdge:
-                        visitEdge(self, DEP_EXCLUDED, d)
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
-            if visit:
-                visit(self, edge)
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+        if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
+            for d in self.excludedDeps:
+                if visitEdge:
+                    visitEdge(self, DEP_EXCLUDED, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
+
 
     """
     Gets the directory in which the IDE project configuration
@@ -761,15 +762,6 @@ class Project(Dependency):
         '''
         self._resolveDepsHelper(self.deps)
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        _debug_walk_deps_helper(self, edge, ignoredEdges)
-        assert self not in visited, self
-        visited.add(self)
-        if not preVisit or preVisit(self, edge):
-            self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
-            if visit:
-                visit(self, edge)
-
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
             for d in self.deps:
@@ -826,12 +818,6 @@ class Project(Dependency):
         """
         abort('eclipse_settings_sources is not implemented for ' + str(type(self)))
 
-    def isJavaProject(self):
-        return isinstance(self, JavaProject)
-
-    def isNativeProject(self):
-        return isinstance(self, NativeProject)
-
 
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
@@ -867,7 +853,7 @@ class JavaProject(Project):
                     visitEdge(self, DEP_ANNOTATION_PROCESSOR, d)
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges, visitEdge)
-        Project._walk_deps_visit_edges.(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
+        Project._walk_deps_visit_edges(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def source_gen_dir(self):
         """
@@ -1599,6 +1585,9 @@ class BaseLibrary(Dependency):
             return result
         return not result
 
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        pass
+
 """
 A library that will be provided by the JRE but may be absent.
 Any project or normal library that depends on a missing library
@@ -1725,19 +1714,14 @@ class Library(BaseLibrary):
         '''
         self._resolveDepsHelper(self.deps)
 
-    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        _debug_walk_deps_helper(self, edge, ignoredEdges)
-        assert self not in visited, self
-        visited.add(self)
-        if not preVisit or preVisit(self, edge):
-            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-                for d in self.deps:
-                    if visitEdge:
-                        visitEdge(self, DEP_STANDARD, d)
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
-            if visit:
-                visit(self, edge)
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+
 
     def __eq__(self, other):
         if isinstance(other, Library):
@@ -4270,7 +4254,7 @@ def dependencies():
     '''
     return itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
 
-def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None):
+def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     '''
     Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
     'preVisit' function is not None, it is applied with these arguments:
@@ -4284,7 +4268,7 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None):
     '''
     visited = set()
     for dep in dependencies() if not roots else roots:
-        dep.walk_deps(preVisit, visit, visited, ignoredEdges)
+        dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
 
 def sorted_dists():
     """
@@ -5449,10 +5433,10 @@ def build(args, parser=None):
         projectNames = args.projects.split(',')
         roots = [project(name) for name in projectNames]
     else:
-        root = None
+        roots = None
 
-    if root:
-        root = _dependencies_opt_limit_to_suites(root)
+    if roots:
+        roots = _dependencies_opt_limit_to_suites(roots)
         # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
 
     sortedTasks = []
@@ -5462,12 +5446,12 @@ def build(args, parser=None):
         task = dep.getBuildTask(args)
         sortedTasks.append(task)
         taskMap[dep] = task
-        lst = depsMap.getdefault(dep, [])
+        lst = depsMap.setdefault(dep, [])
         for d in lst:
             task.deps.append(taskMap[d])
 
-    def _registerDep(src, type, dst):
-        lst = depsMap.getdefault(edge.src, [])
+    def _registerDep(src, edgeType, dst):
+        lst = depsMap.setdefault(src, [])
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
