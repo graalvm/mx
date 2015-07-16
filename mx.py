@@ -250,7 +250,7 @@ class BuildTask(object):
         self.proc = None
 
     def __str__(self):
-        return '{} for {}'.format(self.__class__.__name__, self.subject.name)
+        nyi('__str__', self)
 
     def __repr__(self):
         return str(self)
@@ -279,7 +279,10 @@ class BuildTask(object):
             self.logSkip(reason)
 
     def logBuild(self, reason):
-        nyi('logBuild', self)
+        if reason:
+            log('{}... [{}]'.format(self, reason))
+        else:
+            log('{}...'.format(self))
 
     def logSkip(self, reason):
         if reason:
@@ -583,6 +586,9 @@ class ArchiveTask(BuildTask):
     def build(self):
         self.subject.make_archive()
 
+    def __str__(self):
+        "Archiving {}".format(self.subject.name)
+
     def buildForbidden(self):
         return isinstance(self.subject.suite, BinarySuite)
 
@@ -599,12 +605,6 @@ class ArchiveTask(BuildTask):
             os.remove(self.subject.path)
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
-
-    def logBuild(self, reason):
-        if reason:
-            log('Archiving {}... [{}]'.format(self.subject.name, reason))
-        else:
-            log('Archiving {}...'.format(self.subject.name))
 
 """
 A Project is a collection of source code that is built by mx. For historical reasons
@@ -1036,6 +1036,9 @@ class JavaBuildTask(ProjectBuildTask):
         self.nonjavafilecount = None
         self._newestOutput = 0
 
+    def __str__(self):
+        return "Compiling {} with {}".format(self.subject.name, self._getCompiler().name())
+
     def needsBuild(self, newestInput):
         if not self.args.java:
             return (False, 'no-java build')
@@ -1195,13 +1198,6 @@ class JavaBuildTask(ProjectBuildTask):
             log('Cleaning {0}...'.format(outputDir))
             rmtree(outputDir)
 
-    def logBuild(self, reason):
-        compiler = self._getCompiler()
-        if reason:
-            log('Compiling {} with {}... [{}]'.format(self.subject.name, compiler.name(), reason))
-        else:
-            log('Compiling {} with {}...'.format(self.subject.name, compiler.name()))
-
 class JavaCompiler:
     def name(self):
         nyi('name', self)
@@ -1335,6 +1331,9 @@ class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
 
+    def __str__(self):
+        return 'Building {} with GNU Make'.format(self.subject.name)
+
     def build(self):
         run([gmake_cmd()], cwd=self.subject.dir)
 
@@ -1346,12 +1345,6 @@ class NativeBuildTask(ProjectBuildTask):
 
     def clean(self):
         run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
-
-    def logBuild(self, reason):
-        if reason:
-            log('Building {} with GNU Make... [{}]'.format(self.subject.name, reason))
-        else:
-            log('Building {} with GNU Make...'.format(self.subject.name))
 
 def _make_absolute(path, prefix):
     """
@@ -1514,6 +1507,9 @@ class JreLibrary(BaseLibrary):
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
         BuildTask.__init__(self, subject, args, 1)
+
+    def __str__(self):
+        return "NoOp"
 
     def logBuild(self, reason):
         pass
@@ -5437,7 +5433,7 @@ def build(args, parser=None):
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
                     task.proc.start()
                     active.append(task)
-                    task.sub = _addSubprocess(task.proc, ['JavaCompileTask', str(task)])  # TODOget name from task
+                    task.sub = _addSubprocess(task.proc, [str(task)])
                 if _activeCpus() >= cpus:
                     break
 
@@ -5445,10 +5441,9 @@ def build(args, parser=None):
 
         failed += joinTasks(active)
         if len(failed):
-            # TODO use task to report failure
             for t in failed:
-                log('Compiling {0} failed'.format(t))
-            abort('{0} Java compilation tasks failed'.format(len(failed)))
+                log('{0} failed'.format(t))
+            abort('{0} build tasks failed'.format(len(failed)))
 
     # TODO check for distributions overlap (while loading suites?)
 
