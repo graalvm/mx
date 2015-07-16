@@ -1144,9 +1144,9 @@ class JavaBuildTask(ProjectBuildTask):
             sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
             project=self.subject,
             jdk=self.jdk,
-            compliance=str(self.jdk.javaCompliance),  # TODO probably shouldn't be a string
+            compliance=self.jdk.javaCompliance,
             outputDir=_cygpathU2W(outputDir),
-            classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),  # TODO why do we include self
+            classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
             sourceGenDir=self.subject.source_gen_dir(),
             processorPath=self.subject.annotation_processors_path(),
             disableApiRestrictions=not self.args.warnAPI,
@@ -1214,7 +1214,7 @@ class JavacLikeCompiler(JavaCompiler):
     def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, showTasks):
         jvmArgs = ['-Xmx1500m']
-        javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', classPath, '-d', outputDir]
+        javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
         if processorPath:
             if not exists(sourceGenDir):
                 os.mkdir(sourceGenDir)
@@ -4671,7 +4671,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         for arg in args:
             # TODO: handle newlines in args once there's a use case
             if '\n' in arg:
-                pass
+                abort("nyi")
             assert '\n' not in arg
             print >> fp, arg
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
