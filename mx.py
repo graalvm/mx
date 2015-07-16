@@ -131,11 +131,15 @@ _vc_systems = []
 _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
+
+def nyi(name, obj):
+    abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
+
 """
 A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all classes of Dependency.
 """
-class Dependency:
+class Dependency(object):
     def __init__(self, suite, name):
         self.name = name
         self.suite = suite
@@ -164,6 +168,9 @@ class Dependency:
     def isProject(self):
         return isinstance(self, Project)
 
+    def isJavaProject(self):
+        return isinstance(self, JavaProject)
+
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -188,6 +195,12 @@ class Dependency:
                         else:
                             candidate = None
 
+    """
+    Return a BuildTask that can be used to build this dependency.
+    """
+    def getBuildTask(self, args):
+        nyi('getBuildTask', self)
+
     def abort(self, msg):
         '''
         Aborts with given message prefixed by the origin of this dependency.
@@ -205,6 +218,9 @@ class Dependency:
             return 'In definition of {} in {} starting at line {}'.format(self.name, path, lineNo)
         return None
 
+    def qualifiedName(self):
+        return '{}:{}'.format(self.suite.name, self.name)
+
     """
     Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
     Not all the arguments are applicable to all subclasses.
@@ -215,6 +231,82 @@ class Dependency:
     '''Only Projects define Java packages'''
     def defined_java_packages(self):
         return []
+
+"""
+A build task is used to build a dependency.
+
+Attributes:
+    parallelism: how many CPUs are used when running this task
+    deps: array of tasks this task depends on
+    built: True if a build was performed
+"""
+class BuildTask(object):
+    def __init__(self, subject, args, parallelism):
+        self.parallelism = parallelism
+        self.subject = subject
+        self.deps = []
+        self.built = False
+        self.args = args
+        self.proc = None
+
+    def __str__(self):
+        return '{} for {}'.format(self.__class__.__name__, self.subject.name)
+
+    def __repr__(self):
+        return str(self)
+
+    """
+    Execute the build task.
+    """
+    def execute(self):
+        buildNeeded = False
+        if self.args.clean:
+            self.clean()
+            buildNeeded = True
+            reason = 'clean'
+        if not buildNeeded and any((dep.built for dep in self.deps)):
+            buildNeeded = True
+            reason = 'dependencies updated'
+        if not buildNeeded:
+            buildNeeded, reason = self.needsBuild()
+        if buildNeeded and not self.buildForbidden():
+            if not self.args.clean:
+                self.clean()
+            self.logBuild(reason)
+            self.build()
+            self.built = True
+        else:
+            self.logSkip(reason)
+
+    def logBuild(self, reason):
+        nyi('logBuild', self)
+
+    def logSkip(self, reason):
+        if reason:
+            logv('[{} - skipping {}]'.format(reason, self.subject.name))
+
+    """
+    Returns True if the current artifacts are outdated.
+    Note: this method does not need to inspect the dependencies of the task:
+    if any dependency has been built, this task will be built.
+    """
+    def needsBuild(self):
+        nyi('needsBuild', self)
+
+    def buildForbidden(self):
+        return False
+
+    """
+    Build the artifacts.
+    """
+    def build(self):
+        nyi('build', self)
+
+    """
+    Clean the build artifacts.
+    """
+    def clean(self):
+        nyi('clean', self)
 
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
@@ -466,34 +558,56 @@ class Distribution(Dependency):
     def notify_updated(self):
         for l in self.update_listeners:
             l(self)
+
+    def getBuildTask(self, args):
+        return ArchiveTask(args, self)
+
+
+class ArchiveTask(BuildTask):
+    def __init__(self, args, dist):
+        BuildTask.__init__(self, dist, args, 1)
+
+    def build(self):
+        self.subject.make_archive()
+
+    def buildForbidden(self):
+        return isinstance(self.subject.suite, BinarySuite)
+
+    def needsBuild(self):
+        if exists(self.subject.path) and  (not self.subject.sourcesPath or exists(self.subject.sourcesPath)):
+            # build only if a dependency has been updated
+            return (False, None)
+        return (True, 'archive does not exist')
+
+    def clean(self):
+        if exists(self.subject.path):
+            os.remove(self.subject.path)
+        if self.subject.sourcesPath and exists(self.subject.sourcesPath):
+            os.remove(self.subject.sourcesPath)
+
+    def logBuild(self, reason):
+        if reason:
+            log('Archiving {}... [{}]'.format(self.subject.name, reason))
+        else:
+            log('Archiving {}...'.format(self.subject.name))
+
 """
 A Project is a collection of source code that is built by mx. For historical reasons
 it typically corresponds to an IDE project and the IDE support in mx assumes this.
-Most projects comprise Java code but a "native" (non-Java, typically C) project
-is indicated by the "native" field.
 Additional attributes:
   suite: definiing Suite
   name:  unique name (assumed as directory name)
   srcDirs: subdirectories of name containing sources to build
   deps: list of dependencies, Project, Library or Distribution
-  javaCompliance: minimum Java version for compiling
-  native: Java (false) or Native (true) source code
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d):
         Dependency.__init__(self, suite, name)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
-        self.checkstyleProj = name
-        self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
-        self.native = False
         self.workingSets = workingSets
         self.dir = d
-
-        # The annotation processors defined by this project
-        self.definedAnnotationProcessors = None
-        self.definedAnnotationProcessorsDist = None
 
         # Create directories for projects that don't yet exist
         if not exists(d):
@@ -573,33 +687,61 @@ class Project(Dependency):
         """
         return [join(self.dir, s) for s in self.srcDirs]
 
+    def eclipse_settings_sources(self):
+        """
+        Gets a dictionary from the name of an Eclipse settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        """
+        abort('eclipse_settings_sources is not implemented for ' + str(type(self)))
+
+    def isJavaProject(self):
+        return isinstance(self, JavaProject)
+
+    def isNativeProject(self):
+        return isinstance(self, NativeProject)
+
+
+class ProjectBuildTask(BuildTask):
+    def __init__(self, args, parallelism, project):
+        BuildTask.__init__(self, project, args, parallelism)
+
+    def buildForbidden(self):
+        if not self.args.only:
+            return False
+        projectNames = self.args.only.split(',')
+        return self.subject.name in projectNames
+
+class JavaProject(Project):
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d)
+        self.checkstyleProj = name
+        self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
+        # The annotation processors defined by this project
+        self.definedAnnotationProcessors = None
+        self.definedAnnotationProcessorsDist = None
+
     def source_gen_dir(self):
         """
         Get the directory in which source files generated by the annotation processor are found/placed.
         """
-        if self.native:
-            return None
         return join(self.dir, 'src_gen')
 
     def output_dir(self):
         """
         Get the directory in which the class files of this project are found/placed.
         """
-        if self.native:
-            return None
         return join(self.dir, 'bin')
 
     def jasmin_output_dir(self):
         """
         Get the directory in which the Jasmin assembled class files of this project are found/placed.
         """
-        if self.native:
-            return None
         return join(self.dir, 'jasmin_classes')
 
     def append_to_classpath(self, cp, resolve):
-        if not self.native:
-            cp.append(self.output_dir())
+        cp.append(self.output_dir())
 
     def eclipse_settings_sources(self):
         """
@@ -860,6 +1002,326 @@ class Project(Dependency):
                     arc.zf.write(join(root, f), arcname)
         return path
 
+    def getBuildTask(self, args):
+        requiredCompliance = self.javaCompliance if self.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
+        jdk = java(requiredCompliance)
+        if hasattr(args, 'parallelize') and args.parallelize:
+            # Best to initialize class paths on main process
+            jdk.bootclasspath()
+        return JavaBuildTask(args, self, jdk)
+
+
+class JavaBuildTask(ProjectBuildTask):
+    def __init__(self, args, project, jdk):
+        ProjectBuildTask.__init__(self, args, 1, project)
+        self.jdk = jdk
+        self.javafilelist = None
+        self.jasmfilelist = None
+        self.nonjavafiletuples = None
+        self.nonjavafilecount = None
+
+    def needsBuild(self):
+        if not self.args.java:
+            return (False, 'no-java build')
+        if exists(join(self.subject.dir, 'plugin.xml')):  # eclipse plugin project
+            return (False, 'eclipse plugin project')
+        if self.args.force:
+            return (True, 'forced build')
+
+        reason = self._collectFiles(checkBuildReason=True)
+        if reason:
+            return (True, reason)
+
+        if self.subject.update_current_annotation_processors_file():
+            return (True, 'annotation processor(s) changed')
+
+        if len(self._javaFileList()) == 0 and len(self._jasmFileList()) == 0 and self._nonJavaFileCount() == 0:
+            return (False, 'no sources')
+        return (False, 'all files are up to date')
+
+    def _javaFileList(self):
+        if not self.javafilelist:
+            self._collectFiles()
+        return self.javafilelist
+
+    def _jasmFileList(self):
+        if not self.jasmfilelist:
+            self._collectFiles()
+        return self.jasmfilelist
+
+    def _nonJavaFileTuples(self):
+        if not self.nonjavafiletuples:
+            self._collectFiles()
+        return self.nonjavafiletuples
+
+    def _nonJavaFileCount(self):
+        if self.nonjavafiletuples is None:
+            self._collectFiles()
+        return self.nonjavafiletuples
+
+    def _collectFiles(self, checkBuildReason=False):
+        self.javafilelist = []
+        self.jasmfilelist = []
+        self.nonjavafiletuples = []
+        self.nonjavafilecount = 0
+        buildReason = None
+        outputDir = self.subject.output_dir()
+        for sourceDir in self.subject.source_dirs():
+            for root, _, files in os.walk(sourceDir):
+                javafiles = [join(root, name) for name in files if name.endswith('.java')]
+                jasmfiles = [join(root, name) for name in files if name.endswith('.jasm')]
+                self.javafilelist += javafiles
+                self.jasmfilelist += jasmfiles
+                nonjavafiles = [join(root, name) for name in files if not name.endswith('.java') and not name.endswith('.jasm')]
+                self.nonjavafiletuples += [(sourceDir, nonjavafiles)]
+                self.nonjavafilecount += len(nonjavafiles)
+
+                if checkBuildReason and not buildReason:
+                    for javafile in javafiles:
+                        if basename(javafile) == 'package-info.java':
+                            continue
+                        classfile = TimeStampFile(outputDir + javafile[len(sourceDir):-len('java')] + 'class')
+                        if not classfile.exists() or classfile.isOlderThan(javafile):
+                            buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
+                            break
+                if checkBuildReason and not buildReason:
+                    for jasmfile in jasmfiles:
+                        classfile = TimeStampFile(outputDir + jasmfile[len(sourceDir):-len('jasm')] + 'class')
+                        if not classfile.exists() or classfile.isOlderThan(jasmfile):
+                            buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
+                            break
+                if checkBuildReason and not buildReason:
+                    for nonjavafile in nonjavafiles:
+                        resultfile = TimeStampFile(outputDir + nonjavafile[len(sourceDir):])
+                        if not resultfile.exists() or classfile.isOlderThan(nonjavafile):
+                            buildReason = 'resource file(s) out of date (witness: ' + resultfile.path + ')'
+                            break
+
+        self.javafilelist = sorted(self.javafilelist)  # for reproducibility
+        return buildReason
+
+    def _getCompiler(self):
+        if self.args.jdt:
+            return ECJCompiler(self.args.jdt)
+        else:
+            return JavacCompiler(self.args.alt_javac)
+
+    def build(self):
+        compiler = self._getCompiler()
+        outputDir = self.subject.output_dir()
+        os.mkdir(outputDir)
+        # Java build
+        compiler.build(
+            sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
+            project=self.subject,
+            jdk=self.jdk,
+            compliance=str(self.jdk.javaCompliance),  # TODO probably shouldn't be a string
+            outputDir=_cygpathU2W(outputDir),
+            classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),  # TODO why do we include self
+            sourceGenDir=self.subject.source_gen_dir(),
+            processorPath=self.subject.annotation_processors_path(),
+            disableApiRestrictions=not self.args.warnAPI,
+            warningsAsErrors=self.args.jdt_warning_as_error,
+            showTasks=self.args.jdt_show_task_tags
+        )
+        logvv('Finished Java compilation for {}'.format(self.subject.name))
+        # Jasmin build
+        for src in self._jasmFileList():
+            className = None
+            with open(src) as f:
+                for line in f:
+                    if line.lstrip().startswith('.class ') or line.lstrip().startswith('.interface '):
+                        className = line.split()[-1]
+                        break
+            if not className:
+                abort('could not file .class or .interface directive in Jasmin source: ' + src)
+            else:
+                jasminOutputDir = self.subject.jasmin_output_dir()
+                classFile = join(jasminOutputDir, className.replace('/', os.sep) + '.class')
+                if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
+                    logv('Assembling Jasmin file ' + src)
+                    run(['jasmin', '-d', jasminOutputDir, src])
+        if self._jasmFileList():
+            logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
+        for nonjavafiletuple in self._nonJavaFileTuples():
+            sourceDir = nonjavafiletuple[0]
+            nonjavafilelist = nonjavafiletuple[1]
+            for src in nonjavafilelist:
+                dst = join(outputDir, src[len(sourceDir) + 1:])
+                if not exists(dirname(dst)):
+                    os.makedirs(dirname(dst))
+                if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
+                    shutil.copyfile(src, dst)
+        if self._nonJavaFileCount():
+            logvv('Finished ressource copy for {}'.format(self.subject.name))
+
+    def clean(self):
+        genDir = self.subject.source_gen_dir()
+        if exists(genDir):
+            log('Cleaning {0}...'.format(genDir))
+            for f in os.listdir(genDir):
+                rmtree(join(genDir, f))
+
+
+        outputDir = self.subject.output_dir()
+        if exists(outputDir):
+            log('Cleaning {0}...'.format(outputDir))
+            rmtree(outputDir)
+
+    def logBuild(self, reason):
+        compiler = self._getCompiler()
+        if reason:
+            log('Compiling {} with {}... [{}]'.format(self.subject.name, compiler.name(), reason))
+        else:
+            log('Compiling {} with {}...'.format(self.subject.name, compiler.name()))
+
+class JavaCompiler:
+    def name(self):
+        nyi('name', self)
+
+    # TODO make sure paths have been 'cygwinized' before reaching here
+    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks):
+        nyi('build', self)
+
+class JavacLikeCompiler(JavaCompiler):
+    def __init__(self):
+        self.tmpFiles = []
+
+    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks):
+        jvmArgs = ['-Xmx1500m']
+        javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', classPath, '-d', outputDir]
+        if processorPath:
+            if not exists(sourceGenDir):
+                os.mkdir(sourceGenDir)
+            javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
+        else:
+            javacArgs += ['-proc:none']
+        if jdk.javaCompliance != compliance:
+            # cross-compilation
+            assert jdk.javaCompliance > compliance
+            javacArgs = jdk.javacLibOptions(javacArgs)
+        if _opts.very_verbose:
+            javacArgs.append('-verbose')
+
+        fileListFile = self.createFileListFile(sourceFiles, project.dir)
+        javacArgs.append('@' + _cygpathU2W(fileListFile))
+        try:
+            self.buildJavacLike(jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks)
+        finally:
+            # Do not clean up temp files if verbose as there's
+            # a good chance the user wants to copy and paste the
+            # Java compiler command directly
+            if not _opts.verbose:
+                for n in self.tmpFiles:
+                    os.remove(n)
+
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+        nyi('buildJavacLike', self)
+
+    def createFileListFile(self, files, directory):
+        if _opts.verbose:
+            # use a single file since it will be left on disk
+            f = os.open(join(directory, 'javafilelist.txt'), 'w')
+        else:
+            (fd, name) = tempfile.mkstemp(prefix='javafilelist', suffix='.txt', dir=directory)
+            f = os.fdopen(fd, 'w')
+        f.write(os.linesep.join(files))
+        f.close()
+        self.tmpFiles.append(name)
+        return name
+
+class JavacCompiler(JavacLikeCompiler):
+    def __init__(self, altJavac=None):
+        JavacLikeCompiler.__init__(self)
+        self.altJavac = altJavac
+
+    def name(self):
+        return 'javac'
+
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+        if disableApiRestrictions:
+            javacArgs.append('-XDignore.symbol.file')
+        if warningsAsErrors:
+            javacArgs.append('-Werror')
+        if showTasks:
+            abort('Showing task tags is not currently supported for javac')
+        javac = self.altJavac if self.altJavac else jdk.javac
+        jvmArgs += jdk.java_args
+        cmd = [javac] + ['-J' + arg for arg in jvmArgs] + javacArgs
+        run(cmd)
+
+class ECJCompiler(JavacLikeCompiler):
+    def __init__(self, jdtJar):
+        JavacLikeCompiler.__init__(self)
+        self.jdtJar = jdtJar
+
+    def name(self):
+        return 'JDT'
+
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+        jvmArgs += ['-jar', self.jdtJar]
+        jdtArgs = javacArgs
+
+        jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
+        jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
+        if not exists(jdtProperties) or os.path.getmtime(jdtProperties) < min(map(os.path.getmtime, jdtPropertiesSources)):
+            # Try to fix a missing or out of date properties file by running eclipseinit
+            _eclipseinit_project(project)
+        if not exists(jdtProperties):
+            log('JDT properties file {0} not found'.format(jdtProperties))
+        else:
+            with open(jdtProperties) as fp:
+                origContent = fp.read()
+                content = origContent
+                if project.uses_annotation_processor_library():
+                    # unfortunately, the command line compiler doesn't let us ignore warnings for generated files only
+                    content = content.replace('=warning', '=ignore')
+                elif warningsAsErrors:
+                    content = content.replace('=warning', '=error')
+                if not showTasks:
+                    content = content + '\norg.eclipse.jdt.core.compiler.problem.tasks=ignore'
+                if disableApiRestrictions:
+                    content = content + '\norg.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore'
+                    content = content + '\norg.eclipse.jdt.core.compiler.problem.discouragedReference=ignore'
+            if origContent != content:
+                jdtPropertiesTmp = jdtProperties + '.tmp'
+                with open(jdtPropertiesTmp, 'w') as fp:
+                    fp.write(content)
+                self.tmpFiles.append(jdtPropertiesTmp)
+                jdtArgs += ['-properties', _cygpathU2W(jdtPropertiesTmp)]
+            else:
+                jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
+
+        run_java(jvmArgs + jdtArgs)
+
+
+class NativeProject(Project):
+    def clean(self):
+        run([gmake_cmd(), '-C', self.dir, 'clean'])
+
+    def getBuildTask(self, args, projectsToBuild):
+        return NativeBuildTask(args, self)
+
+class NativeBuildTask(ProjectBuildTask):
+    def __init__(self, args, project):
+        ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
+
+    def build(self):
+        run([gmake_cmd()], cwd=self.subject.dir)
+
+    def needsBuild(self):
+        return (True, None)  # let make decide
+
+    def clean(self):
+        run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
+
+    def logBuild(self, reason):
+        if reason:
+            log('Building {} with GNU Make... [{}]'.format(self.subject.name, reason))
+        else:
+            log('Building {} with GNU Make...'.format(self.subject.name))
 
 def _make_absolute(path, prefix):
     """
@@ -900,7 +1362,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     '''
     sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
-    def _download_lib():
+    if not _check_file_with_sha1(path, sha1, sha1path, resolve and mustExist):
         cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
         if not exists(cacheDir):
             os.makedirs(cacheDir)
@@ -932,6 +1394,18 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             logvv('Copying {} to {}'.format(path, cachePath))
             shutil.copy(cachePath, path)
 
+        if not _check_file_with_sha1(path, sha1, sha1path):
+            abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
+
+    return path
+
+"""
+Checks if a file exists and is up to date according to the sha1.
+Returns Flse if the file is not there or does not have the right checksum.
+"""
+def _check_file_with_sha1(path, sha1, sha1path, mustExist=True):
+    sha1Check = sha1 and sha1 != 'NOCHECK'
+
     def _sha1Cached():
         with open(sha1path, 'r') as f:
             return f.read()[0:40]
@@ -940,22 +1414,18 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         with open(sha1path, 'w') as f:
             f.write(sha1OfFile(path))
 
-    if resolve and mustExist and not exists(path):
-        assert not len(urls) == 0, 'cannot find required library ' + name + ' ' + path
-        _download_lib()
-
     if exists(path):
         if sha1Check:
             if sha1 and not exists(sha1path):
                 _writeSha1Cached()
 
             if sha1 and sha1 != _sha1Cached():
-                _download_lib()
-                if sha1 != sha1OfFile(path):
-                    abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
-                _writeSha1Cached()
+                return False
+    elif mustExist:
+        return False
 
-    return path
+    return True
+
 
 """
 A BaseLibrary is an entity that is an object that has no structure understood by mx,
@@ -1008,6 +1478,28 @@ class JreLibrary(BaseLibrary):
             deps.append(self)
         return sorted(deps)
 
+    def getBuildTask(self, args):
+        return NoOpTask(self, args)
+
+class NoOpTask(BuildTask):
+    def __init__(self, subject, args):
+        BuildTask.__init__(self, subject, args, 1)
+
+    def logBuild(self, reason):
+        pass
+
+    def logSkip(self, reason):
+        pass
+
+    def needsBuild(self):
+        return (False, None)
+
+    def build(self):
+        pass
+
+    def clean(self):
+        pass
+
 """
 A library that will be provided by the JDK but may be absent.
 Any project or normal library that depends on a missing library
@@ -1032,6 +1524,9 @@ class JdkLibrary(BaseLibrary):
         if includeLibs and includeSelf and not self in deps:
             deps.append(self)
         return sorted(deps)
+
+    def getBuildTask(self, args):
+        return NoOpTask(self, args)
 
 """
 A library that is provided (built) by some third-party and made available via a URL.
@@ -1087,14 +1582,14 @@ class Library(BaseLibrary):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
 
-        includedInJDK = getattr(self, 'includedInJDK', None)
-        # TODO since we don't know which JDK will be used, this check is dubious
-        if includedInJDK and java().javaCompliance >= JavaCompliance(includedInJDK):
-            return None
-
         bootClassPathAgent = getattr(self, 'bootClassPathAgent').lower() == 'true' if hasattr(self, 'bootClassPathAgent') else False
 
         return download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+
+    def _check_download_needed(self):
+        path = _make_absolute(self.path, self.suite.dir)
+        sha1path = path + '.sha1'
+        return not _check_file_with_sha1(path, self.sha1, sha1path)
 
     def get_source_path(self, resolve):
         if self.sourcePath is None:
@@ -1131,6 +1626,28 @@ class Library(BaseLibrary):
         if not self in deps and includeSelf:
             deps.append(self)
         return sorted(deps)
+
+    def getBuildTask(self, args):
+        return LibarayDownloadTask(args, self)
+
+class LibarayDownloadTask(BuildTask):
+    def __init__(self, args, lib):
+        BuildTask.__init__(self, lib, args, 1)  # TODO use all CPUs to avoid output problems?
+
+    def logBuild(self, reason):
+        pass
+
+    def logSkip(self, reason):
+        pass
+
+    def needsBuild(self):
+        return (self.subject._check_download_needed(), None)
+
+    def build(self):
+        self.subject.get_path(resolve=True)
+
+    def clean(self):
+        pass
 
 '''
 Abstracts the operations of the version control systems
@@ -2742,22 +3259,25 @@ class SourceSuite(Suite):
             context = 'project ' + name
             srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
-            ap = Suite._pop_list(attrs, 'annotationProcessors', context)
-            javaCompliance = attrs.pop('javaCompliance', None)
             subDir = attrs.pop('subDir', None)
             if subDir is None:
                 d = join(self.dir, name)
             else:
                 d = join(self.dir, subDir, name)
             workingSets = attrs.pop('workingSets', None)
-            p = Project(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
-            p.checkstyleProj = attrs.pop('checkstyle', name)
-            p.native = attrs.pop('native', '') == 'true'
-            p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
-            if not p.native and p.javaCompliance is None:
-                abort('javaCompliance property required for non-native project ' + name)
-            if len(ap) > 0:
-                p._declaredAnnotationProcessors = ap
+            native = attrs.pop('native', '') == 'true'
+            if native:
+                p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, d)
+            else:
+                javaCompliance = attrs.pop('javaCompliance', None)
+                if javaCompliance is None:
+                    abort('javaCompliance property required for non-native project ' + name)
+                p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
+                p.checkstyleProj = attrs.pop('checkstyle', name)
+                p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
+                ap = Suite._pop_list(attrs, 'annotationProcessors', context)
+                if len(ap) > 0:
+                    p._declaredAnnotationProcessors = ap
             p.__dict__.update(attrs)
             self.projects.append(p)
 
@@ -4681,144 +5201,6 @@ def update_file(path, content, showDiff=False):
 def _defaultEcjPath():
     return get_env('JDT', join(_primary_suite.mxDir, 'ecj.jar'))
 
-class JavaCompileTask:
-    def __init__(self, args, proj, reason, javafilelist, jdk, outputDir, jdtJar, deps):
-        self.proj = proj
-        self.reason = reason
-        self.javafilelist = javafilelist
-        self.deps = deps
-        self.jdk = jdk
-        self.outputDir = outputDir
-        self.done = False
-        self.jdtJar = jdtJar
-        self.args = args
-
-    def __str__(self):
-        return self.proj.name
-
-    def logCompilation(self, compiler):
-        log('Compiling Java sources for {0} with {1}... [{2}]'.format(self.proj.name, compiler, self.reason))
-
-    def execute(self):
-        argfileName = join(self.proj.dir, 'javafilelist.txt')
-        argfile = open(argfileName, 'wb')
-        argfile.write('\n'.join(map(_cygpathU2W, self.javafilelist)))
-        argfile.close()
-
-        processorArgs = []
-
-        processorPath = self.proj.annotation_processors_path()
-        if processorPath:
-            genDir = self.proj.source_gen_dir()
-            if exists(genDir):
-                shutil.rmtree(genDir)
-            os.mkdir(genDir)
-            processorArgs += ['-processorpath', _separatedCygpathU2W(join(processorPath)), '-s', _cygpathU2W(genDir)]
-        else:
-            processorArgs += ['-proc:none']
-
-        args = self.args
-        jdk = self.jdk
-        outputDir = _cygpathU2W(self.outputDir)
-        compliance = str(jdk.javaCompliance)
-        cp = _separatedCygpathU2W(classpath(self.proj.name, includeSelf=True))
-        toBeDeleted = [argfileName]
-
-        try:
-            if not self.jdtJar:
-                mainJava = java()
-                if not args.error_prone:
-                    javac = args.alt_javac if args.alt_javac else mainJava.javac
-                    self.logCompilation('javac' if not args.alt_javac else args.alt_javac)
-                    javacCmd = [javac, '-g', '-J-Xmx1500m', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
-                    if _opts.very_verbose:
-                        javacCmd.append('-verbose')
-                    jdk.javacLibOptions(javacCmd)
-
-                    attach = None
-                    if _opts.attach is not None:
-                        attach = 'server=n,address=' + _opts.attach
-                    else:
-                        if _opts.java_dbg_port is not None:
-                            attach = 'server=y,address=' + str(_opts.java_dbg_port)
-
-                    if attach is not None:
-                        javacCmd += ['-J-Xdebug', '-J-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
-                    javacCmd += processorArgs
-                    javacCmd += ['@' + _cygpathU2W(argfile.name)]
-
-                    if not args.warnAPI:
-                        javacCmd.append('-XDignore.symbol.file')
-                    run(javacCmd)
-                else:
-                    self.logCompilation('javac (with error-prone)')
-                    javaArgs = ['-Xmx1500m']
-                    javacArgs = ['-g', '-source', compliance, '-target', compliance, '-classpath', cp, '-d', outputDir]
-                    if _opts.very_verbose:
-                        javacArgs.append('-verbose')
-                    jdk.javacLibOptions(javacCmd)
-                    javacArgs += processorArgs
-                    javacArgs += ['@' + argfile.name]
-                    if not args.warnAPI:
-                        javacArgs.append('-XDignore.symbol.file')
-                    run_java(javaArgs + ['-cp', os.pathsep.join([mainJava.toolsjar, args.error_prone]), 'com.google.errorprone.ErrorProneCompiler'] + javacArgs)
-            else:
-                self.logCompilation('JDT')
-
-                jdtVmArgs = ['-Xmx1500m', '-jar', _cygpathU2W(self.jdtJar)]
-
-                jdtArgs = ['-' + compliance,
-                         '-cp', cp, '-g', '-enableJavadoc',
-                         '-d', outputDir]
-                if _opts.very_verbose:
-                    jdtArgs.append('-verbose')
-                jdk.javacLibOptions(jdtArgs)
-                jdtArgs += processorArgs
-
-                jdtProperties = join(self.proj.dir, '.settings', 'org.eclipse.jdt.core.prefs')
-                jdtPropertiesSources = self.proj.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
-                if not exists(jdtProperties) or os.path.getmtime(jdtProperties) < min(map(os.path.getmtime, jdtPropertiesSources)):
-                    # Try to fix a missing or out of date properties file by running eclipseinit
-                    _eclipseinit_project(self.proj)
-                if not exists(jdtProperties):
-                    log('JDT properties file {0} not found'.format(jdtProperties))
-                else:
-                    with open(jdtProperties) as fp:
-                        origContent = fp.read()
-                        content = origContent
-                        if self.proj.uses_annotation_processor_library():
-                            # unfortunately, the command line compiler doesn't let us ignore warnings for generated files only
-                            content = content.replace('=warning', '=ignore')
-                        elif args.jdt_warning_as_error:
-                            content = content.replace('=warning', '=error')
-                        if not args.jdt_show_task_tags:
-                            content = content + '\norg.eclipse.jdt.core.compiler.problem.tasks=ignore'
-                    if origContent != content:
-                        jdtPropertiesTmp = jdtProperties + '.tmp'
-                        with open(jdtPropertiesTmp, 'w') as fp:
-                            fp.write(content)
-                        toBeDeleted.append(jdtPropertiesTmp)
-                        jdtArgs += ['-properties', _cygpathU2W(jdtPropertiesTmp)]
-                    else:
-                        jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
-                jdtArgs.append('@' + _cygpathU2W(argfile.name))
-
-                run_java(jdtVmArgs + jdtArgs)
-
-            # Create annotation processor jar for a project that defines annotation processors
-            if self.proj.definedAnnotationProcessorsDist:
-                self.proj.definedAnnotationProcessorsDist.make_archive()
-
-        finally:
-            # Do not clean up temp files if verbose as there's
-            # a good chance the user wants to copy and paste the
-            # Java compiler command directly
-            if not _opts.verbose:
-                for n in toBeDeleted:
-                    os.remove(n)
-
-            self.done = True
-
 def build(args, parser=None):
     """compile the Java and C sources, linking the latter
 
@@ -4855,22 +5237,19 @@ def build(args, parser=None):
 
     if is_jython():
         if args.parallelize:
-            logv('[multiprocessing not available in jython]')
-            args.parallelize = False
+            abort('multiprocessing not available in jython: can not use -p')
 
-    jdtJar = None
     if not args.javac and args.jdt is not None:
         if not args.jdt.endswith('.jar'):
             abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
-        jdtJar = args.jdt
-        if not exists(jdtJar):
-            if os.path.abspath(jdtJar) == os.path.abspath(_defaultEcjPath()) and get_env('JDT', None) is None:
+        if not exists(args.jdt):
+            if os.path.abspath(args.jdt) == os.path.abspath(_defaultEcjPath()) and get_env('JDT', None) is None:
                 # Silently ignore JDT if default location is used but does not exist
-                jdtJar = None
+                args.jdt = None
             else:
                 abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
         else:
-            with zipfile.ZipFile(jdtJar, 'r') as zf:
+            with zipfile.ZipFile(args.jdt, 'r') as zf:
                 if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
                     abort('Specified Eclipse compiler does not include annotation processing support. ' +
                           'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
@@ -4880,7 +5259,6 @@ def build(args, parser=None):
         # N.B. This build will not include dependencies including annotation processor dependencies
         projectNames = args.only.split(',')
         sortedProjects = [project(name) for name in projectNames]
-
     else:
         if args.projects is not None:
             projectNames = args.projects.split(',')
@@ -4891,101 +5269,60 @@ def build(args, parser=None):
         # N.B. Limiting to a suite only affects the starting set of projects. Dependencies in other suites will still be compiled
         sortedProjects = sorted_project_deps(projects, includeAnnotationProcessors=True)
 
-    if args.java and jdtJar:
-        ideinit([], refreshOnly=True, buildProcessorJars=False)
-
     tasks = {}
-    updatedAnnotationProcessorDists = set()
     for p in sortedProjects:
-        if p.native:
-            if args.native:
-                # resolve any dependency downloads
-                for dep in p.all_deps([], includeLibs=True, includeAnnotationProcessors=False, includeSelf=False):
-                    dep.get_path(True)
+        task = p.getBuildTask(args)
+        for dep in p.deps:
+            rDep = dependency(dep)
+            if rDep in tasks:
+                taskDep = tasks[rDep]
+            else:
+                if rDep.isLibrary():
+                    taskDep = rDep.getBuildTask(args)
+                    tasks[rDep] = taskDep
+                elif rDep.isDistribution():
+                    taskDep = rDep.getBuildTask(args)
+                    tasks[rDep] = taskDep
+                else:
+                    warn('unsopported dep: ' + dep)
+            task.deps.append(taskDep)
+        for adep in p.annotation_processors():
+            raDep = dependency(adep)
+            if raDep.isLibrary() or raDep.isDistribution():
+                if raDep in tasks:
+                    taskDep = tasks[raDep]
+                else:
+                    taskDep = raDep.getBuildTask(args)
+                    tasks[raDep] = taskDep
+            elif raDep.isJavaProject():
+                distDep = raDep.definedAnnotationProcessorsDist
+                if distDep in tasks:
+                    taskDep = tasks[distDep]
+                else:
+                    taskDep = distDep.getBuildTask(args)
+                    tasks[distDep] = taskDep
+            else:
+                warn('unsopported dep: ' + adep)
+            task.deps.append(taskDep)
+        tasks[p] = task
 
-                log('Calling GNU make {0}...'.format(p.dir))
-
-                if args.clean:
-                    run([gmake_cmd(), 'clean'], cwd=p.dir)
-
-                run([gmake_cmd()], cwd=p.dir)
-            continue
+    if args.only or args.projects:
+        abort("nyi")  # need to compute the set of distributions that depend on those projects
+    for dist in sorted_dists():
+        if dist in tasks:
+            task = tasks[dist]
         else:
-            if not args.java:
-                continue
-            if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
-                continue
-
-        # skip building this Java project if its Java compliance level is "higher" than the configured JDK
-        requiredCompliance = p.javaCompliance if p.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
-        jdk = java(requiredCompliance)
-
-        outputDir = p.output_dir()
-
-        sourceDirs = p.source_dirs()
-        buildReason = None
-        if args.force:
-            buildReason = 'forced build'
-        elif args.clean:
-            buildReason = 'clean'
-
-        taskDeps = []
-
-        for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
-            taskDep = tasks.get(dep.name)
-            if taskDep:
-                if not buildReason:
-                    buildReason = dep.name + ' rebuilt'
-                taskDeps.append(taskDep)
-
-        javafilelist = []
-        nonjavafiletuples = []
-        for sourceDir in sourceDirs:
-            for root, _, files in os.walk(sourceDir):
-                javafiles = [join(root, name) for name in files if name.endswith('.java')]
-                javafilelist += javafiles
-
-                nonjavafiletuples += [(sourceDir, [join(root, name) for name in files if not name.endswith('.java')])]
-
-                if not buildReason:
-                    for javafile in javafiles:
-                        classfile = TimeStampFile(outputDir + javafile[len(sourceDir):-len('java')] + 'class')
-                        if not classfile.exists() or classfile.isOlderThan(javafile):
-                            if basename(classfile.path) != 'package-info.class':
-                                buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
-                                break
-
-        apsOutOfDate = p.update_current_annotation_processors_file()
-        if apsOutOfDate:
-            buildReason = 'annotation processor(s) changed'
-
-        if not buildReason:
-            logv('[all class files for {0} are up to date - skipping]'.format(p.name))
-            _handleNonJavaFiles(outputDir, p, False, nonjavafiletuples)
-            continue
-
-        _handleNonJavaFiles(outputDir, p, True, nonjavafiletuples)
-
-        if len(javafilelist) == 0:
-            logv('[no Java sources for {0} - skipping]'.format(p.name))
-            continue
-
-        javafilelist = sorted(javafilelist)
-
-        task = JavaCompileTask(args, p, buildReason, javafilelist, jdk, outputDir, jdtJar, taskDeps)
-        if p.definedAnnotationProcessorsDist:
-            updatedAnnotationProcessorDists.add(p.definedAnnotationProcessorsDist)
-
-        tasks[p.name] = task
-        if args.parallelize:
-            # Best to initialize class paths on main process
-            jdk.bootclasspath()
-            task.proc = None
-        else:
-            task.execute()
+            task = dist.getBuildTask(args)
+            tasks[dist] = task
+        for dep in dist.distDependencies:
+            taskDep = tasks[dependency(dep)]
+            task.deps.append(taskDep)
+        if not isinstance(dist.suite, BinarySuite):
+            for dep in dist.deps:
+                taskDep = tasks[dependency(dep)]
+                task.deps.append(taskDep)
 
     if args.parallelize:
-
         def joinTasks(tasks):
             failed = []
             for t in tasks:
@@ -5001,6 +5338,7 @@ def build(args, parser=None):
                 if t.proc.is_alive():
                     active.append(t)
                 else:
+                    t.built = bool(t._builtBox.value)  # copy built from shared-memory box
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
             return (active, [])
@@ -5016,10 +5354,6 @@ def build(args, parser=None):
 
         def compareTasks(t1, t2):
             d = remainingDepsDepth(t1) - remainingDepsDepth(t2)
-            if d == 0:
-                t1Work = (1 + len(t1.proj.annotation_processors())) * len(t1.javafilelist)
-                t2Work = (1 + len(t2.proj.annotation_processors())) * len(t2.javafilelist)
-                d = t1Work - t2Work
             return d
 
         def sortWorklist(tasks):
@@ -5031,13 +5365,18 @@ def build(args, parser=None):
         worklist = sortWorklist(tasks.values())
         active = []
         failed = []
+        def _activeCpus():
+            cpus = 0
+            for t in active:
+                cpus += t.parallelism
+            return cpus
         while len(worklist) != 0:
             while True:
                 active, failed = checkTasks(active)
                 if len(failed) != 0:
                     assert not active, active
                     break
-                if len(active) == cpus:
+                if _activeCpus() >= cpus:
                     # Sleep for 1 second
                     time.sleep(1)
                 else:
@@ -5050,6 +5389,7 @@ def build(args, parser=None):
                 # Clear sub-process list cloned from parent process
                 del _currentSubprocesses[:]
                 task.execute()
+                task._builtBox.value = 1 if task.built else 0  # push built value into shared-memory box
 
             def depsDone(task):
                 for d in task.deps:
@@ -5058,116 +5398,30 @@ def build(args, parser=None):
                 return True
 
             for task in worklist:
-                if depsDone(task):
+                if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
                     worklist.remove(task)
+                    task._builtBox = multiprocessing.Value('b', 1 if task.built else 0)  # init shared-memory box
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
                     task.proc.start()
                     active.append(task)
-                    task.sub = _addSubprocess(task.proc, ['JavaCompileTask', str(task)])
-                if len(active) == cpus:
+                    task.sub = _addSubprocess(task.proc, ['JavaCompileTask', str(task)])  # TODOget name from task
+                if _activeCpus() >= cpus:
                     break
 
             worklist = sortWorklist(worklist)
 
         failed += joinTasks(active)
         if len(failed):
+            # TODO use task to report failure
             for t in failed:
-                log('Compiling {0} failed'.format(t.proj.name))
+                log('Compiling {0} failed'.format(t))
             abort('{0} Java compilation tasks failed'.format(len(failed)))
 
-    if args.java:
-        # do not process a distribution unless it corresponds to one of sortedProjects
-        # limit it even further if an explicit list of projects given as arg
-        if projectNames:
-            distProjects = projects_from_names(projectNames)
-        else:
-            distProjects = sortedProjects
-        suites = {p.suite for p in distProjects}
-
-        files = []
-        rebuiltProjects = frozenset([t.proj for t in tasks.itervalues()])
-        for dist in sorted_dists():
-            if dist.suite in suites and not isinstance(dist.suite, BinarySuite):
-                dist.suite.create_mx_binary_distribution_jar()
-                if not exists(dist.path):
-                    archive(['@' + dist.name])
-                    log('Creating jars for {0}'.format(dist.name))
-                elif dist not in updatedAnnotationProcessorDists:
-                    projectsInDist = dist.sorted_deps()
-                    n = len(rebuiltProjects.intersection(projectsInDist))
-                    if n != 0:
-                        log('Updating jars for {0} [{1} constituent projects (re)built]'.format(dist.name, n))
-                        dist.make_archive()
-                    else:
-                        logv('[all constituent projects for {0} are up to date - skipping jar updating]'.format(dist.name))
-            if args.check_distributions and not dist.isSynthProcessorDistribution:
-                with zipfile.ZipFile(dist.path, 'r') as zf:
-                    files.extend([member for member in zf.namelist() if not member.startswith('META-INF')])
-        dups = set([x for x in files if files.count(x) > 1])
-        if len(dups) > 0:
-            abort('Distributions overlap! duplicates: ' + str(dups))
+    # TODO check for distributions overlap (while loading suites?)
 
     if suppliedParser:
         return args
     return None
-
-def _handleNonJavaFiles(outputDir, p, clean, nonjavafiletuples):
-    if exists(outputDir):
-        if clean:
-            log('Cleaning {0}...'.format(outputDir))
-            shutil.rmtree(outputDir)
-            os.mkdir(outputDir)
-    else:
-        os.mkdir(outputDir)
-    genDir = p.source_gen_dir()
-    if genDir != '' and exists(genDir) and clean:
-        log('Cleaning {0}...'.format(genDir))
-        for f in os.listdir(genDir):
-            shutil.rmtree(join(genDir, f))
-
-    # Copy all non Java resources or assemble Jasmin files
-    jasminAvailable = None
-    for nonjavafiletuple in nonjavafiletuples:
-        sourceDir = nonjavafiletuple[0]
-        nonjavafilelist = nonjavafiletuple[1]
-
-        for src in nonjavafilelist:
-            if src.endswith('.jasm'):
-                className = None
-                with open(src) as f:
-                    for line in f:
-                        if line.startswith('.class '):
-                            className = line.split()[-1]
-                            break
-
-                if className is not None:
-                    jasminOutputDir = p.jasmin_output_dir()
-                    classFile = join(jasminOutputDir, className.replace('/', os.sep) + '.class')
-                    if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
-                        if jasminAvailable is None:
-                            try:
-                                with open(os.devnull) as devnull:
-                                    subprocess.call('jasmin', stdout=devnull, stderr=subprocess.STDOUT)
-                                jasminAvailable = True
-                            except OSError:
-                                jasminAvailable = False
-
-                        if jasminAvailable:
-                            log('Assembling Jasmin file ' + src)
-                            run(['jasmin', '-d', jasminOutputDir, src])
-                        else:
-                            log('The jasmin executable could not be found - skipping ' + src)
-                            with file(classFile, 'a'):
-                                os.utime(classFile, None)
-
-                else:
-                    log('could not file .class directive in Jasmin source: ' + src)
-            else:
-                dst = join(outputDir, src[len(sourceDir) + 1:])
-                if not exists(dirname(dst)):
-                    os.makedirs(dirname(dst))
-                if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
-                    shutil.copyfile(src, dst)
 
 def build_suite(s):
     '''build all projects in suite (for dynamic import)'''
@@ -5312,7 +5566,7 @@ def eclipseformat(args):
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
     for p in projects:
-        if p.native:
+        if not p.isJavaProject():
             continue
         sourceDirs = p.source_dirs()
 
@@ -5616,7 +5870,7 @@ def checkstyle(args):
 
     totalErrors = 0
     for p in projects_opt_limit_to_suites():
-        if p.native:
+        if not p.isJavaProject():
             continue
         if args.primary and not p.suite.primary:
             continue
@@ -5697,6 +5951,12 @@ def checkstyle(args):
                     os.unlink(auditfileName)
     return totalErrors
 
+def rmtree(dirPath):
+    path = dirPath
+    if get_os() == 'windows':
+        path = unicode("\\\\?\\" + dirPath)
+    shutil.rmtree(path)
+
 def clean(args, parser=None):
     """remove all class files, images, and executables
 
@@ -5719,38 +5979,17 @@ def clean(args, parser=None):
     else:
         projects = projects_opt_limit_to_suites()
 
-    def _rmtree(dirPath):
-        path = dirPath
-        if get_os() == 'windows':
-            path = unicode("\\\\?\\" + dirPath)
-        shutil.rmtree(path)
-
     def _rmIfExists(name):
         if name and os.path.isfile(name):
             os.unlink(name)
 
     for p in projects:
-        if p.native:
-            if args.native:
-                run([gmake_cmd(), '-C', p.dir, 'clean'])
-        else:
-            if args.java:
-                genDir = p.source_gen_dir()
-                if genDir != '' and exists(genDir):
-                    log('Clearing {0}...'.format(genDir))
-                    for f in os.listdir(genDir):
-                        _rmtree(join(genDir, f))
+        p.getBuildTask(args).clean()
 
-
-                outputDir = p.output_dir()
-                if outputDir != '' and exists(outputDir):
-                    log('Removing {0}...'.format(outputDir))
-                    _rmtree(outputDir)
-
-            for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
-                config = TimeStampFile(join(p.suite.mxDir, configName))
-                if config.exists():
-                    os.unlink(config.path)
+        for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
+            config = TimeStampFile(join(p.suite.mxDir, configName))
+            if config.exists():
+                os.unlink(config.path)
 
     if args.java:
         if args.dist:
@@ -5895,7 +6134,7 @@ def _source_locator_memento(deps):
                 memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
                 slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
         elif dep.isProject():
-            if dep.native:
+            if not dep.isJavaProject():
                 continue
             memento = XMLDoc().element('javaProject', {'name' : dep.name}).xml(standalone='no')
             slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.javaProject'})
@@ -6278,7 +6517,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         files += _processorjars_suite(suite)
 
     for p in suite.projects:
-        if p.native:
+        if not p.isJavaProject():
             continue
         _eclipseinit_project(p, files, libFiles)
 
@@ -6905,7 +7144,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     libFiles = []
     jdks = set()
     for p in suite.projects:
-        if p.native:
+        if not p.isJavaProject():
             continue
 
         if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
@@ -6961,7 +7200,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     # create the modules (1 module  = 1 Intellij project)
     for p in suite.projects_recursive():
-        if p.native:
+        if not p.isJavaProject():
             continue
 
         assert java(p.javaCompliance)
@@ -7120,7 +7359,7 @@ def ideclean(args):
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
 
     for p in projects():
-        if p.native:
+        if not p.isJavaProject():
             continue
 
         shutil.rmtree(join(p.dir, '.settings'), ignore_errors=True)
@@ -7239,7 +7478,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
     projects = []
     for p in candidates:
-        if not p.native:
+        if p.isJavaProject():
             if includeDeps:
                 deps = p.all_deps([], includeLibs=False, includeSelf=False)
                 for d in deps:
@@ -8159,7 +8398,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
 
     candidates = []
     for p in projects_opt_limit_to_suites():
-        if p.native or java().javaCompliance < p.javaCompliance:
+        if not p.isJavaProject() or java().javaCompliance < p.javaCompliance:
             continue
         candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
 
@@ -8177,7 +8416,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t)
 
-    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if not pcp.native and pcp.javaCompliance <= java().javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= java().javaCompliance])
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
