@@ -5017,7 +5017,7 @@ def build(args, parser=None):
                           'from within the plugins/ directory of an Eclipse IDE installation.')
 
     if args.only is not None:
-        # N.B. This build will not include dependencies including annotation processor dependencies
+        # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         projectNames = args.only.split(',')
         sortedProjects = [project(name) for name in projectNames]
 
@@ -5071,7 +5071,7 @@ def build(args, parser=None):
             buildReason = 'clean'
 
         taskDeps = []
-        p.walk_deps(visit=lambda dep, edge: taskDeps.append(tasks.get(dep.name)) if tasks.get(dep.name) else None)
+        p.walk_deps(visit=lambda dep, edge: taskDeps.append(tasks.get(dep.name)) if tasks.get(dep.name) else None, ignoredEdges=[DEP_EXCLUDED])
 
         if taskDeps:
             if not buildReason:
