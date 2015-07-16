@@ -316,6 +316,9 @@ class Dependency:
     def classpath_repr(self, resolve=True):
         '''
         Gets this dependency as an element on a class path.
+
+        If 'resolve' is True, then this method aborts if the file or directory
+        denoted by the class path element does not exist.
         '''
         return None
 
@@ -425,7 +428,9 @@ class Distribution(Dependency):
         self.archiveparticipant = archiveparticipant
 
     def classpath_repr(self, resolve=True):
-        return self.path if exists(self.path) else None
+        if resolve and not exists(self.path):
+            abort('unbuilt distribution {} can not be on a class path'.format(self))
+        return self.path
 
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
@@ -709,9 +714,9 @@ class Project(Dependency):
         return join(self.dir, 'jasmin_classes')
 
     def classpath_repr(self, resolve=True):
-        if not self.native:
-            return self.output_dir()
-        return None
+        if self.native:
+            abort('native project ' + self.name + ' cannot be added to a class path')
+        return self.output_dir()
 
     def eclipse_settings_sources(self):
         """
@@ -3614,11 +3619,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
     for dist in rootDists:
-        cpe = dist.classpath_repr(resolve)
-        if cpe:
-            cp.append(cpe)
-        else:
-            abort('Unresolvable distribution {} cannot be on a class path'.format(dist))
+        cp.append(dist.classpath_repr(resolve))
     for dep in cpEntries:
         if dep.isDistribution() or not inRootDist(dep):
             cpe = dep.classpath_repr(resolve)
