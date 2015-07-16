@@ -403,6 +403,15 @@ class BuildTask(object):
     def __repr__(self):
         return str(self)
 
+    def initSharedMemoryState(self):
+        self._builtBox = multiprocessing.Value('b', 1 if self.built else 0)
+
+    def pushSharedMemoryState(self):
+        self._builtBox.value = 1 if self.built else 0
+
+    def pullSharedMemoryState(self):
+        self.built = bool(self._builtBox.value)
+
     """
     Execute the build task.
     """
@@ -416,7 +425,7 @@ class BuildTask(object):
             buildNeeded = True
             reason = 'dependencies updated'
         if not buildNeeded:
-            buildNeeded, reason = self.needsBuild(max((dep.newestOutput() for dep in self.deps)))
+            buildNeeded, reason = self.needsBuild(max((dep.newestOutput() for dep in self.deps)) if self.deps else 0)
         if buildNeeded and not self.buildForbidden():
             if not self.args.clean:
                 self.clean()
@@ -470,7 +479,7 @@ def _maxTime(*args):
     return max((os.path.getmtime(f) for f in iterable if f))
 
 def _needsUpdate(minTime, f):
-    return not exists(file) or os.path.getmtime(f) < minTime
+    return not exists(f) or os.path.getmtime(f) < minTime
 
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
@@ -712,7 +721,7 @@ class ArchiveTask(BuildTask):
         self.subject.make_archive()
 
     def __str__(self):
-        "Archiving {}".format(self.subject.name)
+        return "Archiving {}".format(self.subject.name)
 
     def buildForbidden(self):
         return isinstance(self.subject.suite, BinarySuite)
@@ -1159,6 +1168,18 @@ class JavaBuildTask(ProjectBuildTask):
     def __str__(self):
         return "Compiling {} with {}".format(self.subject.name, self._getCompiler().name())
 
+    def initSharedMemoryState(self):
+        ProjectBuildTask.initSharedMemoryState(self)
+        self._newestBox = multiprocessing.Value('f', float(self._newestOutput))
+
+    def pushSharedMemoryState(self):
+        ProjectBuildTask.pushSharedMemoryState(self)
+        self._newestBox.value = float(self._newestOutput)
+
+    def pullSharedMemoryState(self):
+        ProjectBuildTask.pullSharedMemoryState(self)
+        self._newestOutput = self._newestBox.value
+
     def needsBuild(self, newestInput):
         if not self.args.java:
             return (False, 'no-java build')
@@ -1179,7 +1200,7 @@ class JavaBuildTask(ProjectBuildTask):
         return (False, 'all files are up to date')
 
     def newestOutput(self):
-        assert self._newestOutput > 0
+        assert self._newestOutput > 0, "{}, {}".format(self, self._newestOutput)
         return self._newestOutput
 
     def _javaFileList(self):
@@ -1366,7 +1387,8 @@ class JavacLikeCompiler(JavaCompiler):
     def createFileListFile(self, files, directory):
         if _opts.verbose:
             # use a single file since it will be left on disk
-            f = os.open(join(directory, 'javafilelist.txt'), 'w')
+            f = open(join(directory, 'javafilelist.txt'), 'w')
+            name = f.name
         else:
             (fd, name) = tempfile.mkstemp(prefix='javafilelist', suffix='.txt', dir=directory)
             f = os.fdopen(fd, 'w')
@@ -1766,14 +1788,20 @@ class LibarayDownloadTask(BuildTask):
     def __init__(self, args, lib):
         BuildTask.__init__(self, lib, args, 1)  # TODO use all CPUs to avoid output problems?
 
+    def __str__(self):
+        return "Downloading {}".format(self.subject.name)
+
     def logBuild(self, reason):
         pass
 
     def logSkip(self, reason):
         pass
 
-    def needsBuild(self):
+    def needsBuild(self, newestInput):
         return (self.subject._check_download_needed(), None)
+
+    def newestOutput(self):
+        return os.path.getmtime(_make_absolute(self.subject.path, self.subject.suite.dir))
 
     def build(self):
         self.subject.get_path(resolve=True)
@@ -5472,7 +5500,7 @@ def build(args, parser=None):
                 if t.proc.is_alive():
                     active.append(t)
                 else:
-                    t.built = bool(t._builtBox.value)  # copy built from shared-memory box
+                    t.pullSharedMemoryState()
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
             return (active, [])
@@ -5522,8 +5550,10 @@ def build(args, parser=None):
             def executeTask(task):
                 # Clear sub-process list cloned from parent process
                 del _currentSubprocesses[:]
+                for d in task.deps:
+                    d.pullSharedMemoryState()
                 task.execute()
-                task._builtBox.value = 1 if task.built else 0  # push built value into shared-memory box
+                task.pushSharedMemoryState()
 
             def depsDone(task):
                 for d in task.deps:
@@ -5534,7 +5564,7 @@ def build(args, parser=None):
             for task in worklist:
                 if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
                     worklist.remove(task)
-                    task._builtBox = multiprocessing.Value('b', 1 if task.built else 0)  # init shared-memory box
+                    task.initSharedMemoryState()
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
                     task.proc.start()
                     active.append(task)
@@ -5985,7 +6015,7 @@ class TimeStampFile:
 
     def isNewerThan(self, arg):
         if not self.timestamp:
-            return True
+            return False
         if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
             return self.timestamp > arg
         if isinstance(arg, TimeStampFile):
