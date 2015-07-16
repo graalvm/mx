@@ -57,17 +57,6 @@ def _alldeps(args):
     for d in deps:
         print d.__class__.__name__, ":", d.name
 
-def _sorted_project_deps(args):
-    parser = ArgumentParser(prog='mx mxt-sorted-project-deps')
-    parser.add_argument('--project', action='store', help='name of project')
-    parser.add_argument('--includeAP', action='store_true', help='include annotation processors')
-    args = parser.parse_args(args)
-
-    result = mx.sorted_project_deps([mx.project(args.project)], args.includeAP)
-    print 'sorted_project_deps(', args.project, ')'
-    for r in result:
-        print r
-
 from HTMLParser import HTMLParser
 
 class MyHTMLParser(HTMLParser):
@@ -163,7 +152,6 @@ mx.update_commands(_suite, {
     "mxt-alldeps" : [_alldeps, '[options]'],
     "mxt-classpath" : [_cp, '[options]'],
     "mxt-proj-ap-path" : [_ap, '[options]'],
-    "mxt-sorted_project_deps" : [_sorted_project_deps, '[options]'],
     "mxt-readurl" : [_readurl, '[options]'],
     "mxt-vc-tip" : [_vc_tip, '[options]'],
     "mxt-vc-clone" : [_vc_clone, '[options]'],
