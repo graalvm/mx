@@ -5475,6 +5475,11 @@ def build(args, parser=None):
         for d in lst:
             task.deps.append(taskMap[d])
 
+        # Inject a task for the synthetic distribution created for a
+        # project that defines one or more annotation processors
+        if dep.isJavaProject() and dep.definedAnnotationProcessors:
+            _createTask(dep.definedAnnotationProcessorsDist, edge)
+
     def _registerDep(src, edgeType, dst):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
