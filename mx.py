@@ -145,12 +145,42 @@ def _is_edge_ignored(edge, ignoredEdges):
 
 DEBUG_WALK_DEPS = False
 DEBUG_WALK_DEPS_LINE = 1
-def _debug_walk_deps_helper(dep, path, edge, ignoredEdges):
+def _debug_walk_deps_helper(dep, edge, ignoredEdges):
     assert edge not in ignoredEdges
     global DEBUG_WALK_DEPS_LINE
     if DEBUG_WALK_DEPS:
-        print '{}:walk_deps:{}{}    # {}'.format(DEBUG_WALK_DEPS_LINE, '  ' * len(path), dep, edge)
+        if edge:
+            print '{}:walk_deps:{}{}    # {}'.format(DEBUG_WALK_DEPS_LINE, '  ' * edge.path_len(), dep, edge.kind)
+        else:
+            print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
         DEBUG_WALK_DEPS_LINE += 1
+
+'''
+Represents an edge traversed while visiting a spanning tree of the dependency graph.
+'''
+class DepEdge:
+    def __init__(self, src, kind, prev):
+        '''
+        src - the source of this dependency edge
+        kind - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
+               of graph edge from 'src' to the dependency targeted by this edge
+        prev - the dependency edge traversed to reach 'src' or None if 'src' is a root of a dependency
+               graph traversal
+        '''
+        self.src = src
+        self.kind = kind
+        self.prev = prev
+
+    def __str__(self):
+        return '{}@{}'.format(self.src, self.kind)
+
+    def path(self):
+        if self.prev:
+            return self.prev.path() + [self.src]
+        return [self.src]
+
+    def path_len(self):
+        return 1 + self.prev.path_len() if self.prev else 0
 
 """
 A dependency is a library, distribution or project specified in a suite.
@@ -272,16 +302,16 @@ class Dependency:
         if not ignoredEdges:
             # Default ignored edges
             ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED]
-        self._walk_deps_helper(visited, [], None, preVisit, visit, ignoredEdges)
+        self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges)
 
 
-    def _walk_deps_helper(self, visited, path, edge, preVisit=None, visit=None, ignoredEdges=None):
-        _debug_walk_deps_helper(self, path, edge, ignoredEdges)
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
-        if not preVisit or preVisit(path, self, edge):
+        if not preVisit or preVisit(self, edge):
             if visit:
-                visit(path, self, edge)
+                visit(self, edge)
 
     def classpath_repr(self, resolve=True):
         '''
@@ -397,21 +427,21 @@ class Distribution(Dependency):
     def classpath_repr(self, resolve=True):
         return self.path if exists(self.path) else None
 
-    def _walk_deps_helper(self, visited, path, edge, preVisit=None, visit=None, ignoredEdges=None):
-        _debug_walk_deps_helper(self, path, edge, ignoredEdges)
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
-        if not preVisit or preVisit(path, self, edge):
+        if not preVisit or preVisit(self, edge):
             if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
                 for d in self.deps:
                     if d not in visited:
-                        d._walk_deps_helper(visited, path + [self], DEP_STANDARD, preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
             if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
                 for d in self.excludedDeps:
                     if d not in visited:
-                        d._walk_deps_helper(visited, path + [self], DEP_EXCLUDED, preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges)
             if visit:
-                visit(path, self, edge)
+                visit(self, edge)
 
     """
     Gets the directory in which the IDE project configuration
@@ -435,9 +465,9 @@ class Distribution(Dependency):
         '''
         if not hasattr(self, '_archived_deps'):
             excluded = set()
-            self.walk_deps(visit=lambda path, dep, edge: excluded.update(dep.archived_deps()) if edge is DEP_EXCLUDED and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
+            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
             deps = []
-            self.walk_deps(visit=lambda path, dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
+            self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
             self._archived_deps = deps
         return self._archived_deps
 
@@ -599,21 +629,21 @@ class Project(Dependency):
             #if overlap:
             #    self.abort('overlap in normal dependencies and annotation processors not allowed: {}'.format([a.name for a in overlap]))
 
-    def _walk_deps_helper(self, visited, path, edge, preVisit=None, visit=None, ignoredEdges=None):
-        _debug_walk_deps_helper(self, path, edge, ignoredEdges)
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
-        if not preVisit or preVisit(path, self, edge):
+        if not preVisit or preVisit(self, edge):
             if hasattr(self, '_declaredAnnotationProcessors') and not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
                 for d in self._declaredAnnotationProcessors:
                     if d not in visited:
-                        d._walk_deps_helper(visited, path + [self], DEP_ANNOTATION_PROCESSOR, preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges)
             if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
                 for d in self.deps:
                     if d not in visited:
-                        d._walk_deps_helper(visited, path + [self], DEP_STANDARD, preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
             if visit:
-                visit(path, self, edge)
+                visit(self, edge)
 
     def _compute_max_dep_distances(self, dep, distances, dist):
         currentDist = distances.get(dep)
@@ -774,7 +804,7 @@ class Project(Dependency):
             packages = set()
             extendedPackages = set()
             depPackages = set()
-            def visit(path, dep, edge):
+            def visit(dep, edge):
                 if dep is not self and dep.isProject():
                     depPackages.update(dep.defined_java_packages())
             self.walk_deps(visit=visit)
@@ -860,7 +890,7 @@ class Project(Dependency):
                     else:
                         self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
-            def addToAps(path, dep, edge):
+            def addToAps(dep, edge):
                 if dep is not self:
                     if dep.isDistribution():
                         aps.add(dep)
@@ -884,7 +914,7 @@ class Project(Dependency):
     def annotation_processors_path(self):
         aps = self.annotation_processors()
         libAps = []
-        self.walk_deps(visit=lambda path, dep, edge: libAps.append(dep) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
+        self.walk_deps(visit=lambda dep, edge: libAps.append(dep) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
         if len(aps) + len(libAps):
             allAps = set(aps + libAps)
             assert len(allAps) == len(aps) + len(libAps), self
@@ -895,7 +925,7 @@ class Project(Dependency):
 
     def uses_annotation_processor_library(self):
         answer = [False]
-        self.walk_deps(visit=lambda path, dep, edge: answer.insert(0, True) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
+        self.walk_deps(visit=lambda dep, edge: answer.insert(0, True) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
         return answer[0]
 
     def update_current_annotation_processors_file(self):
@@ -1141,17 +1171,17 @@ class Library(BaseLibrary):
         '''
         self._resolveDepsHelper(self.deps)
 
-    def _walk_deps_helper(self, visited, path, edge, preVisit=None, visit=None, ignoredEdges=None):
-        _debug_walk_deps_helper(self, path, edge, ignoredEdges)
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
         visited.add(self)
-        if not preVisit or preVisit(path, self, edge):
+        if not preVisit or preVisit(self, edge):
             if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
                 for d in self.deps:
                     if d not in visited:
-                        d._walk_deps_helper(visited, path + [self], DEP_STANDARD, preVisit, visit, ignoredEdges)
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
             if visit:
-                visit(path, self, edge)
+                visit(self, edge)
 
     def __eq__(self, other):
         if isinstance(other, Library):
@@ -3565,7 +3595,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
         return False
 
     cpEntries = []
-    walk_deps(roots=rootProjects, visit=lambda path, dep, edge: cpEntries.append(dep) if dep not in cpEntries else None)
+    walk_deps(roots=rootProjects, visit=lambda dep, edge: cpEntries.append(dep) if dep not in cpEntries else None)
 
     cp = []
     if includeBootClasspath:
@@ -3634,10 +3664,9 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None):
     '''
     Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
     'preVisit' function is not None, it is applied with these arguments:
-        path - the path of dependencies walked to arrive at 'dep' or None if 'dep' is a leaf
         dep - the dependency node being visited
-        edge - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
-               of graph edge between the last element of 'path' and 'dep' or None if 'path' is None
+        edge - a DepEdge object representing last element in the path of dependencies walked to arrive
+               at 'dep' or None if 'dep' is a leaf
     If 'preVisit' is None or returns a true condition, then the unvisited dependencies of 'dep' are
     walked. Once all the dependencies of 'dep' have been visited, and 'visit' is not None,
     it is applied with the same arguments as for 'preVisit' and the return value is ignored. Note that
@@ -4959,7 +4988,7 @@ def build(args, parser=None):
         # N.B. Limiting to a suite only affects the starting set of projects. Dependencies in other suites will still be compiled
 
         sortedProjects = []
-        walk_deps(visit=lambda p, dep, edge: sortedProjects.append(dep) if dep.isProject() else None, roots=projects, ignoredEdges=[DEP_EXCLUDED])
+        walk_deps(visit=lambda dep, edge: sortedProjects.append(dep) if dep.isProject() else None, roots=projects, ignoredEdges=[DEP_EXCLUDED])
 
     if args.java and jdtJar:
         ideinit([], refreshOnly=True, buildProcessorJars=False)
@@ -4970,7 +4999,7 @@ def build(args, parser=None):
         if p.native:
             if args.native:
                 # resolve any dependency downloads
-                p.walk_deps(visit=lambda path, dep, edge: dep.get_path(True) if dep.isLibrary() else None)
+                p.walk_deps(visit=lambda dep, edge: dep.get_path(True) if dep.isLibrary() else None)
 
                 log('Calling GNU make {0}...'.format(p.dir))
 
@@ -4999,7 +5028,7 @@ def build(args, parser=None):
             buildReason = 'clean'
 
         taskDeps = []
-        p.walk_deps(visit=lambda path, dep, edge: taskDeps.append(tasks.get(dep.name)) if tasks.get(dep.name) else None)
+        p.walk_deps(visit=lambda dep, edge: taskDeps.append(tasks.get(dep.name)) if tasks.get(dep.name) else None)
 
         if taskDeps:
             if not buildReason:
@@ -5160,7 +5189,6 @@ def build(args, parser=None):
                     archive(['@' + dist.name])
                     log('Creating jars for {0}'.format(dist.name))
                 elif dist not in updatedAnnotationProcessorDists:
-                    dist.archived_deps()
                     projectsInDist = frozenset([p for p in dist.archived_deps() if p.isProject()])
                     n = len(rebuiltProjects.intersection(projectsInDist))
                     if n != 0:
@@ -5615,7 +5643,7 @@ def canonicalizeprojects(args):
                         candidates.add(d)
                 # Remove non-canonical candidates
                 for c in list(candidates):
-                    c.walk_deps(visit=lambda path, dep, edge: candidates.discard(dep) if dep.isProject() else None)
+                    c.walk_deps(visit=lambda dep, edge: candidates.discard(dep) if dep.isProject() else None)
                 candidates = [d.name for d in candidates]
 
                 p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
@@ -5891,7 +5919,7 @@ def projectgraph(args, suite=None):
         igv.close('properties')
         igv.open('graph', {'name' : 'dependencies'})
         igv.open('nodes')
-        def visit(path, dep, edge):
+        def visit(dep, edge):
             ident = len(ids)
             ids[dep.name] = str(ident)
             igv.open('node', {'id' : str(ident)})
@@ -6158,14 +6186,14 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     projectDeps = set()
     distributionDeps = set()
 
-    def processDep(path, dep, edge):
+    def processDep(dep, edge):
         if dep is p:
             return
         if dep.isLibrary():
             if hasattr(dep, 'eclipse.container'):
                 container = getattr(dep, 'eclipse.container')
                 containerDeps.add(container)
-                dep.walk_deps(visit=lambda path2, dep2, edge2: libraryDeps.discard(dep2))
+                dep.walk_deps(visit=lambda dep2, edge2: libraryDeps.discard(dep2))
             else:
                 libraryDeps.add(dep)
         elif dep.isProject():
@@ -6785,7 +6813,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
 
     firstDep = []
 
-    def processDep(path, dep, edge):
+    def processDep(dep, edge):
         if dep is p:
             return
 
@@ -6927,7 +6955,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     javacClasspath = []
 
     deps = []
-    p.walk_deps(visit=lambda path, dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
+    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
     annotationProcessorOnlyDeps = []
     if len(p.annotation_processors()) > 0:
         for apDep in p.annotation_processors():
@@ -7086,7 +7114,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(p.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
-        def processDep(path, dep, edge):
+        def processDep(dep, edge):
             if dep is p:
                 return
 
@@ -7321,7 +7349,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     for p in candidates:
         if not p.native:
             if includeDeps:
-                p.walk_deps(visit=lambda path, dep, edge: assess_candidate(dep, projects) if dep.isProject() else None)
+                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects) if dep.isProject() else None)
             if not assess_candidate(p, projects):
                 logv('[package-list file exists - skipping {0}]'.format(p.name))
 
@@ -7354,7 +7382,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             pkgs = find_packages(p.source_dirs(), set())
             links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
             out = outDir(p)
-            def visit(path, dep, edge):
+            def visit(dep, edge):
                 if dep.isProject():
                     depOut = outDir(dep)
                     links.append('-link')
@@ -7469,7 +7497,7 @@ def site(args):
         projects = [project(name) for name in args.projects.split(',')]
     else:
         projects = []
-        walk_deps(visit=lambda p, dep, edge: projects.append(dep) if dep.isProject() else None, ignoredEdges=[DEP_EXCLUDED])
+        walk_deps(visit=lambda dep, edge: projects.append(dep) if dep.isProject() else None, ignoredEdges=[DEP_EXCLUDED])
 
     extra_javadoc_args = []
     for a in args.jd:
@@ -8551,7 +8579,7 @@ def _remove_bad_deps():
     Removed projects and libraries are also removed from
     distributions in they are listed as dependencies.'''
     ommittedDeps = set()
-    def visit(referrers, dep, edge):
+    def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
                 try:
