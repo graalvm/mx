@@ -722,7 +722,7 @@ class Project(Dependency):
         """
         if not hasattr(self, '_eclipse_settings'):
             esdict = {}
-            hasAps = self.annotation_processors_path() is not None
+            hasAps = self.annotation_processors()
             # start with the mxtool defaults
             defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
             if exists(defaultEclipseSettingsDir):
@@ -859,50 +859,67 @@ class Project(Dependency):
         return self._imported_java_packages
 
     """
-    Gets the list of projects/distributions defining the annotation processors that will be applied
-    when compiling this project. This consists of the projects/distributions declared by this project's
-    annotationProcessors property and any of their project dependencies. It also includes
-    any project dependencies that define an annotation processors.
+    Gets the list of dependencies defining the annotation processors that will be applied
+    when compiling this project. This is composed of:
+    1. The value of this project's "annotationProcessors" attribute in suite.py.
+    2. Library dependencies of this project that have an "annotationProcessor" attribute defined to "true".
+    3. Project dependencies of this project that define an annotation processor (i.e. they have a
+       non-empty META-INF/services/javax.annotation.processing.Processor file)
     """
     def annotation_processors(self):
         if not hasattr(self, '_annotationProcessors'):
             aps = set()
             if hasattr(self, '_declaredAnnotationProcessors'):
-                aps = set(self._declaredAnnotationProcessors)
-                for apd in aps:
+                # 1. Directly declared annotation processors
+                for apd in self._declaredAnnotationProcessors:
                     if apd.isDistribution() or apd.isLibrary():
+                        aps.add(apd)
                         jar = apd.path if apd.isDistribution() else apd.get_path(resolve=True)
                         if exists(jar):
-                            with zipfile.ZipFile(jar, 'r') as zf:
-                                if 'META-INF/services/javax.annotation.processing.Processor' not in zf.namelist():
-                                    self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                                          jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
+                            if read_annotation_processors(jar) is None:
+                                self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                                      jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
                         else:
                             # Cannot check the jar it if does not exist
                             pass
                     elif apd.isProject():
                         if apd.definedAnnotationProcessorsDist is None:
                             config = join(apd.source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
-                            if not exists(config):
-                                TimeStampFile(config).touch()
                             self.abort('Project ' + apd.name + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
                                   'Please specify the annotation processors in ' + config)
+                        aps.add(apd.definedAnnotationProcessorsDist)
                     else:
                         self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
             def addToAps(dep, edge):
                 if dep is not self:
-                    if dep.isDistribution():
-                        aps.add(dep)
-
-                    elif dep.isProject():
-                        # Add an annotation processor dependency
+                    if dep.isProject():
+                        # 3. Project dependencies that define an annotation processor
                         if dep.definedAnnotationProcessorsDist is not None:
-                            aps.add(dep)
+                            aps.add(dep.definedAnnotationProcessorsDist)
 
                         # Inherit annotation processors from dependencies
                         aps.update(dep.annotation_processors())
-            self.walk_deps(visit=addToAps)
+                    elif dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true':
+                        # 2. Library dependencies that have an "annotationProcessor" attribute defined to "true".
+                        aps.add(dep)
+
+            # Note use of preVisit to stop visiting at Distributions
+            self.walk_deps(visit=addToAps, preVisit=lambda dep, edge: not dep.isDistribution())
+
+            apByJar = {}
+            for apd in aps:
+                jar = apd.get_path(resolve=True) if apd.isLibrary() else apd.path
+                if exists(jar):
+                    definedAps = read_annotation_processors(jar)
+                    if not definedAps:
+                        abort('no annotation processors are defined in ' + jar, context=apd)
+                    for ap in definedAps:
+                        definingJar = apByJar.get(ap)
+                        if definingJar:
+                            abort('annotation processor ' + ap + ' defined in multiple jars: ' + definingJar + ' and ' + jar)
+                        else:
+                            apByJar[ap] = jar
 
             self._annotationProcessors = sorted(list(aps))
         return self._annotationProcessors
@@ -913,14 +930,8 @@ class Project(Dependency):
     """
     def annotation_processors_path(self):
         aps = self.annotation_processors()
-        libAps = []
-        self.walk_deps(visit=lambda dep, edge: libAps.append(dep) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
-        if len(aps) + len(libAps):
-            allAps = set(aps + libAps)
-            assert len(allAps) == len(aps) + len(libAps), self
-            return os.pathsep.join([ap.definedAnnotationProcessorsDist.classpath_repr(resolve=True) for ap in aps if ap.isProject() and ap.definedAnnotationProcessorsDist] + \
-                                   [ap.classpath_repr(resolve=True) for ap in aps if ap.isDistribution()] + \
-                                   [lib.get_path(False) for lib in libAps])
+        if len(aps):
+            return os.pathsep.join([apd.get_path(resolve=True) if apd.isLibrary() else apd.path for apd in aps])
         return None
 
     def uses_annotation_processor_library(self):
@@ -3643,14 +3654,45 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
                     entryPath = zi.filename
                     yield zf, entryPath
 
-def isinstanceAny(obj, types):
+def read_annotation_processors(path):
+    r'''
+    Reads the META-INF/services/javax.annotation.processing.Processor file based
+    in the directory or zip file located at 'path'. Returns the list of lines
+    in the file or None if the file does not exist at 'path'.
+
+    From http://docs.oracle.com/javase/8/docs/api/java/util/ServiceLoader.html:
+
+    A service provider is identified by placing a provider-configuration file in
+    the resource directory META-INF/services. The file's name is the fully-qualified
+    binary name of the service's type. The file contains a list of fully-qualified
+    binary names of concrete provider classes, one per line. Space and tab
+    characters surrounding each name, as well as blank lines, are ignored.
+    The comment character is '#' ('\u0023', NUMBER SIGN); on each line all characters
+    following the first comment character are ignored. The file must be encoded in UTF-8.
     '''
-    Determines is 'obj' is an instance of any type in 'types'
-    '''
-    for t in types:
-        if isinstance(object, t):
-            return True
-    return False
+
+    def parse(fp):
+        lines = []
+        for line in fp:
+            line = line.split('#')[0].strip()
+            if line:
+                lines.append(line)
+        return lines
+
+    if exists(path):
+        name = 'META-INF/services/javax.annotation.processing.Processor'
+        if isdir(path):
+            configFile = join(path, name.replace('/', os.sep))
+            if exists(configFile):
+                with open(configFile) as fp:
+                    return parse(fp)
+        else:
+            assert path.endswith('.jar') or path.endswith('.zip'), path
+            with zipfile.ZipFile(path, 'r') as zf:
+                if name in zf.namelist():
+                    with zf.open(name) as fp:
+                        return parse(fp)
+    return None
 
 def dependencies():
     '''
