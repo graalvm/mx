@@ -549,6 +549,11 @@ class Distribution(Dependency):
         """
         self.archiveparticipant = archiveparticipant
 
+    def origin(self):
+        if self.isSynthProcessorDistribution and hasattr(self, 'definingProject'):
+            return self.definingProject.origin()
+        return Dependency.origin(self)
+
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
@@ -1324,7 +1329,7 @@ class JavaBuildTask(ProjectBuildTask):
                     shutil.copyfile(src, dst)
         self._newestOutput = time.time()
         if self._nonJavaFileCount():
-            logvv('Finished ressource copy for {}'.format(self.subject.name))
+            logvv('Finished resource copy for {}'.format(self.subject.name))
 
     def clean(self):
         genDir = self.subject.source_gen_dir()
@@ -4057,7 +4062,7 @@ def projects_opt_limit_to_suites():
 
 def _dependencies_opt_limit_to_suites(deps):
     if not _opts.specific_suites:
-        return projects
+        return deps
     else:
         result = []
         for d in deps:
@@ -5327,12 +5332,13 @@ def abort(codeOrMessage, context=None):
         else:
             contextMsg = str(context)
 
-        if isinstance(codeOrMessage, int):
-            # Log the context separately so that SystemExit
-            # communicates the intended exit status
-            log(contextMsg)
-        else:
-            codeOrMessage = contextMsg + ":\n" + codeOrMessage
+        if contextMsg:
+            if isinstance(codeOrMessage, int):
+                # Log the context separately so that SystemExit
+                # communicates the intended exit status
+                log(contextMsg)
+            else:
+                codeOrMessage = contextMsg + ":\n" + codeOrMessage
     raise SystemExit(codeOrMessage)
 
 def download(path, urls, verbose=False, abortOnError=True):
