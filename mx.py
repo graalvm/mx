@@ -268,7 +268,7 @@ class BuildTask(object):
             buildNeeded = True
             reason = 'dependencies updated'
         if not buildNeeded:
-            buildNeeded, reason = self.needsBuild()
+            buildNeeded, reason = self.needsBuild(max((dep.newestOutput() for dep in self.deps)))
         if buildNeeded and not self.buildForbidden():
             if not self.args.clean:
                 self.clean()
@@ -290,7 +290,10 @@ class BuildTask(object):
     Note: this method does not need to inspect the dependencies of the task:
     if any dependency has been built, this task will be built.
     """
-    def needsBuild(self):
+    def needsBuild(self, newestInput):
+        nyi('needsBuild', self)
+
+    def newestOutput(self):
         nyi('needsBuild', self)
 
     def buildForbidden(self):
@@ -307,6 +310,16 @@ class BuildTask(object):
     """
     def clean(self):
         nyi('clean', self)
+
+def _maxTime(*args):
+    iterable = args
+    if len(args) == 1:
+        if hasattr(args, '__iter__'):
+            iterable = args[0]
+    return max((os.path.getmtime(f) for f in iterable if f))
+
+def _needsUpdate(minTime, f):
+    return not exists(file) or os.path.getmtime(f) < minTime
 
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
@@ -573,11 +586,13 @@ class ArchiveTask(BuildTask):
     def buildForbidden(self):
         return isinstance(self.subject.suite, BinarySuite)
 
-    def needsBuild(self):
-        if exists(self.subject.path) and  (not self.subject.sourcesPath or exists(self.subject.sourcesPath)):
-            # build only if a dependency has been updated
-            return (False, None)
-        return (True, 'archive does not exist')
+    def needsBuild(self, newestInput):
+        if _needsUpdate(newestInput, self.subject.path) or  (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
+            return (True, 'archive does not exist or out of date')
+        return (False, None)
+
+    def newestOutput(self):
+        return _maxTime(self.subject.path, self.subject.sourcesPath)
 
     def clean(self):
         if exists(self.subject.path):
@@ -1019,8 +1034,9 @@ class JavaBuildTask(ProjectBuildTask):
         self.jasmfilelist = None
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
+        self._newestOutput = 0
 
-    def needsBuild(self):
+    def needsBuild(self, newestInput):
         if not self.args.java:
             return (False, 'no-java build')
         if exists(join(self.subject.dir, 'plugin.xml')):  # eclipse plugin project
@@ -1028,7 +1044,7 @@ class JavaBuildTask(ProjectBuildTask):
         if self.args.force:
             return (True, 'forced build')
 
-        reason = self._collectFiles(checkBuildReason=True)
+        reason = self._collectFiles(checkBuildReason=True, newestInput=newestInput)
         if reason:
             return (True, reason)
 
@@ -1038,6 +1054,10 @@ class JavaBuildTask(ProjectBuildTask):
         if len(self._javaFileList()) == 0 and len(self._jasmFileList()) == 0 and self._nonJavaFileCount() == 0:
             return (False, 'no sources')
         return (False, 'all files are up to date')
+
+    def newestOutput(self):
+        assert self._newestOutput > 0
+        return self._newestOutput
 
     def _javaFileList(self):
         if not self.javafilelist:
@@ -1059,7 +1079,7 @@ class JavaBuildTask(ProjectBuildTask):
             self._collectFiles()
         return self.nonjavafiletuples
 
-    def _collectFiles(self, checkBuildReason=False):
+    def _collectFiles(self, checkBuildReason=False, newestInput=0):
         self.javafilelist = []
         self.jasmfilelist = []
         self.nonjavafiletuples = []
@@ -1081,20 +1101,26 @@ class JavaBuildTask(ProjectBuildTask):
                         if basename(javafile) == 'package-info.java':
                             continue
                         classfile = TimeStampFile(outputDir + javafile[len(sourceDir):-len('java')] + 'class')
-                        if not classfile.exists() or classfile.isOlderThan(javafile):
+                        if classfile.isNewerThan(self._newestOutput):
+                            self._newestOutput = classfile.timestamp
+                        if not classfile.exists() or classfile.isOlderThan(javafile) or classfile.isOlderThan(newestInput):
                             buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
                             break
                 if checkBuildReason and not buildReason:
                     for jasmfile in jasmfiles:
                         classfile = TimeStampFile(outputDir + jasmfile[len(sourceDir):-len('jasm')] + 'class')
-                        if not classfile.exists() or classfile.isOlderThan(jasmfile):
+                        if classfile.isNewerThan(self._newestOutput):
+                            self._newestOutput = classfile.timestamp
+                        if not classfile.exists() or classfile.isOlderThan(jasmfile) or classfile.isOlderThan(newestInput):
                             buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
                             break
                 if checkBuildReason and not buildReason:
                     for nonjavafile in nonjavafiles:
-                        resultfile = TimeStampFile(outputDir + nonjavafile[len(sourceDir):])
-                        if not resultfile.exists() or classfile.isOlderThan(nonjavafile):
-                            buildReason = 'resource file(s) out of date (witness: ' + resultfile.path + ')'
+                        copied = TimeStampFile(outputDir + nonjavafile[len(sourceDir):])
+                        if copied.isNewerThan(self._newestOutput):
+                            self._newestOutput = classfile.timestamp
+                        if not copied.exists() or classfile.isOlderThan(nonjavafile) or classfile.isOlderThan(newestInput):
+                            buildReason = 'resource file(s) out of date (witness: ' + copied.path + ')'
                             break
 
         self.javafilelist = sorted(self.javafilelist)  # for reproducibility
@@ -1152,6 +1178,7 @@ class JavaBuildTask(ProjectBuildTask):
                     os.makedirs(dirname(dst))
                 if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
                     shutil.copyfile(src, dst)
+        self._newestOutput = time.time()
         if self._nonJavaFileCount():
             logvv('Finished ressource copy for {}'.format(self.subject.name))
 
@@ -1311,8 +1338,11 @@ class NativeBuildTask(ProjectBuildTask):
     def build(self):
         run([gmake_cmd()], cwd=self.subject.dir)
 
-    def needsBuild(self):
+    def needsBuild(self, newestInput):
         return (True, None)  # let make decide
+
+    def newestOutput(self):
+        return 0 #  not supported, rely on built flag
 
     def clean(self):
         run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
@@ -1491,8 +1521,11 @@ class NoOpTask(BuildTask):
     def logSkip(self, reason):
         pass
 
-    def needsBuild(self):
+    def needsBuild(self, newestInput):
         return (False, None)
+
+    def newestOutput(self):
+        return 0
 
     def build(self):
         pass
@@ -5831,6 +5864,8 @@ class TimeStampFile:
     def isOlderThan(self, arg):
         if not self.timestamp:
             return True
+        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+            return self.timestamp < arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
                 return False
@@ -5845,6 +5880,25 @@ class TimeStampFile:
                 return True
         return False
 
+    def isNewerThan(self, arg):
+        if not self.timestamp:
+            return True
+        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+            return self.timestamp > arg
+        if isinstance(arg, TimeStampFile):
+            if arg.timestamp is None:
+                return False
+            else:
+                return arg.timestamp < self.timestamp
+        elif isinstance(arg, types.ListType):
+            files = arg
+        else:
+            files = [arg]
+        for f in files:
+            if os.path.getmtime(f) < self.timestamp:
+                return True
+        return False
+
     def exists(self):
         return exists(self.path)
 
@@ -5855,6 +5909,7 @@ class TimeStampFile:
             if not isdir(dirname(self.path)):
                 os.makedirs(dirname(self.path))
             file(self.path, 'a')
+        self.timestamp = os.path.getmtime(self.path)
 
 def checkstyle(args):
     """run Checkstyle on the Java sources
