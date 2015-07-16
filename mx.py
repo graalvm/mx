@@ -46,6 +46,7 @@ import textwrap
 import socket
 import tarfile
 import hashlib
+import itertools
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 import shutil, re
@@ -115,7 +116,10 @@ _libs = dict()
 _jreLibs = dict()
 _jdkLibs = dict()
 _dists = dict()
+
 _suites = dict()
+_loadedSuites = []
+
 _annotationProcessors = None
 _mx_suite = None
 _mx_tests_suite = None
@@ -135,9 +139,55 @@ _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
+DEP_STANDARD = "standard dependency"
+DEP_ANNOTATION_PROCESSOR = "annotation processor dependency"
+DEP_EXCLUDED = "excluded dependency"
+
+def _is_edge_ignored(edge, ignoredEdges):
+    return ignoredEdges and edge in ignoredEdges
+
+DEBUG_WALK_DEPS = False
+DEBUG_WALK_DEPS_LINE = 1
+def _debug_walk_deps_helper(dep, edge, ignoredEdges):
+    assert edge not in ignoredEdges
+    global DEBUG_WALK_DEPS_LINE
+    if DEBUG_WALK_DEPS:
+        if edge:
+            print '{}:walk_deps:{}{}    # {}'.format(DEBUG_WALK_DEPS_LINE, '  ' * edge.path_len(), dep, edge.kind)
+        else:
+            print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
+        DEBUG_WALK_DEPS_LINE += 1
+
+'''
+Represents an edge traversed while visiting a spanning tree of the dependency graph.
+'''
+class DepEdge:
+    def __init__(self, src, kind, prev):
+        '''
+        src - the source of this dependency edge
+        kind - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
+               of graph edge from 'src' to the dependency targeted by this edge
+        prev - the dependency edge traversed to reach 'src' or None if 'src' is a root of a dependency
+               graph traversal
+        '''
+        self.src = src
+        self.kind = kind
+        self.prev = prev
+
+    def __str__(self):
+        return '{}@{}'.format(self.src, self.kind)
+
+    def path(self):
+        if self.prev:
+            return self.prev.path() + [self.src]
+        return [self.src]
+
+    def path_len(self):
+        return 1 + self.prev.path_len() if self.prev else 0
+
 """
 A dependency is a library, distribution or project specified in a suite.
-The name must be unique across all classes of Dependency.
+The name must be unique across all Dependency instances.
 """
 class Dependency(object):
     def __init__(self, suite, name):
@@ -159,11 +209,17 @@ class Dependency(object):
     def __hash__(self):
         return hash(self.name)
 
+    def isBaseLibrary(self):
+        return isinstance(self, BaseLibrary)
+
     def isLibrary(self):
         return isinstance(self, Library)
 
     def isJreLibrary(self):
         return isinstance(self, JreLibrary)
+
+    def isJdkLibrary(self):
+        return isinstance(self, JdkLibrary)
 
     def isProject(self):
         return isinstance(self, Project)
@@ -173,6 +229,33 @@ class Dependency(object):
 
     def isDistribution(self):
         return isinstance(self, Distribution)
+
+    def isProjectOrLibrary(self):
+        return self.isProject() or self.isLibrary()
+
+    def getGlobalRegistry(self):
+        if self.isProject():
+            return _projects
+        if self.isLibrary():
+            return _libs
+        if self.isDistribution():
+            return _dists
+        if self.isJreLibrary():
+            return _jreLibs
+        assert self.isJdkLibrary()
+        return _jdkLibs
+
+    def getSuiteRegistry(self):
+        if self.isProject():
+            return self.suite.projects
+        if self.isLibrary():
+            return self.suite.libs
+        if self.isDistribution():
+            return self.suite.dists
+        if self.isJreLibrary():
+            return self.suite.jreLibs
+        assert self.isJdkLibrary()
+        return self.suite.jdkLibs
 
     def origin(self):
         """
@@ -221,16 +304,75 @@ class Dependency(object):
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
 
-    """
-    Common method for all subclasses, this adds this object's dependencies (transitively) to "deps" and returns a new sorted list.
-    Not all the arguments are applicable to all subclasses.
-    """
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        abort("all_deps is not implemented")
+    def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None):
+        '''
+        Walk the dependency graph rooted at this object.
+        See documentation for mx.walk_deps for more info.
+        '''
+        if visited is not None:
+            if self in visited:
+                return
+        else:
+            visited = set()
+        if not ignoredEdges:
+            # Default ignored edges
+            ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED]
+        self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges)
+
+
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
+        assert self not in visited, self
+        visited.add(self)
+        if not preVisit or preVisit(self, edge):
+            if visit:
+                visit(self, edge)
+
+    def classpath_repr(self, resolve=True):
+        '''
+        Gets this dependency as an element on a class path.
+
+        If 'resolve' is True, then this method aborts if the file or directory
+        denoted by the class path element does not exist.
+        '''
+        return None
+
+    def contains_dep(self, dep, includeAnnotationProcessors=False):
+        '''
+        Determines if the dependency graph rooted at this object contains 'dep'.
+        Returns the path from this object to 'dep' if so, otherwise returns None.
+        '''
+        if dep == self:
+            return [self]
+        class FoundPath(StopIteration):
+            def __init__(self, path):
+                StopIteration.__init__(self)
+                self.path = path
+        def visit(path, d, edge):
+            if dep is d:
+                raise FoundPath(path)
+        try:
+            ignoredEdges = [DEP_EXCLUDED] if includeAnnotationProcessors else None
+            self.walk_deps(visit=visit, ignoredEdges=ignoredEdges)
+        except FoundPath as e:
+            return e.path
+        return None
 
     '''Only Projects define Java packages'''
     def defined_java_packages(self):
         return []
+
+    def _resolveDepsHelper(self, deps):
+        '''
+        Resolves any string entries in 'deps' to the Dependency objects named
+        by the strings. The 'deps' list is updated in place.
+        '''
+        if deps:
+            if isinstance(deps[0], str):
+                deps[:] = [dependency(name, context=self) for name in deps]
+            else:
+                # If the first element has been resolved, then all elements should have been resolved
+                assert len([d for d in deps if not isinstance(d, str)])
 
 """
 A build task is used to build a dependency.
@@ -339,41 +481,34 @@ Attributes:
         This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
         as it defines the eventual content of the distribution
     distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
-    excludedDependencies: Dependencies (usually Library instances) that should be excluded from the content
+    excludedDeps: Dependencies (usually Library instances) that should be excluded from the content
     isSynthProcessorDistribution: True if this distribution was created for a project that declares
-        an annotation processor. There is no definition in suite.py for such a distribution. 
+        an annotation processor. There is no definition in suite.py for such a distribution.
 """
 class Distribution(Dependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDependencies, distDependencies, javaCompliance, isSynthProcessorDistribution=False):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDeps, distDependencies, javaCompliance, isSynthProcessorDistribution=False):
         Dependency.__init__(self, suite, name)
         self.subDir = subDir
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
-        self.deps = deps
+        self.deps = deps + distDependencies
         self.update_listeners = set()
         self.archiveparticipant = None
         self.mainClass = mainClass
-        self.excludedDependencies = excludedDependencies
-        self.distDependencies = distDependencies
+        self.excludedDeps = excludedDeps
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.isSynthProcessorDistribution = isSynthProcessorDistribution
 
-    def sorted_deps(self, includeLibs=False, transitive=False, includeAnnotationProcessors=False):
-        deps = []
-        if transitive:
-            for depDist in [distribution(name) for name in self.distDependencies]:
-                for d in depDist.sorted_deps(includeLibs=includeLibs, transitive=True):
-                    if d not in deps:
-                        deps.append(d)
-        try:
-            excl = [dependency(d) for d in self.excludedDependencies]
-        except SystemExit as e:
-            abort('invalid excluded dependency for {0} distribution: {1}'.format(self.name, e), context=self)
-        return deps + [d for d in sorted_deps(self.deps, includeLibs=includeLibs, includeAnnotationProcessors=includeAnnotationProcessors) if d not in excl]
-
     def __str__(self):
         return self.name
+
+    def resolveDeps(self):
+        '''
+        Resolves symbolic dependency references to be Dependency objects.
+        '''
+        self._resolveDepsHelper(self.deps)
+        self._resolveDepsHelper(self.excludedDeps)
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
@@ -399,44 +534,26 @@ class Distribution(Dependency):
         """
         self.archiveparticipant = archiveparticipant
 
-    def get_dist_deps(self, includeSelf=True, transitive=False):
-        deps = []
-        if includeSelf:
-            deps.append(self)
-        for name in self.distDependencies:
-            dist = distribution(name, context=self)
-            if dist not in deps:
-                deps.append(dist)
-        if transitive:
-            for depName in self.distDependencies:
-                for recDep in distribution(depName).get_dist_deps(False, True):
-                    if recDep not in deps:
-                        deps.append(recDep)
-        return list(deps)
+    def classpath_repr(self, resolve=True):
+        if resolve and not exists(self.path):
+            abort('unbuilt distribution {} can not be on a class path'.format(self))
+        return self.path
 
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        """
-        Add the transitive set of dependencies for this distribution to the 'deps' list.
-        We "see through" the Distribution to its components. I.e., the result
-        only contains Project and Library (if includeLibs=True) instances, even
-        if the distribution is from another suite.
-        This is consistent with the prior model where projects expressed
-        dependencies on projects in other suites directly. Now they express
-        a dependency on a Distribution instead (i.e. projects are private to a suite).
-
-        A Distribution from a BinarySuite will have deps = [], in which
-        case we add the Distribution itself.
-        """
-        dist_deps = self.get_dist_deps(includeSelf=includeSelf, transitive=True)
-        for dist in dist_deps:
-            if dist.deps:
-                for d in dist.deps:
-                    # d is a string naming either a Project or a Library
-                    dep = dependency(d, context=self)
-                    dep.all_deps(deps, includeLibs=includeLibs, includeSelf=True, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-            else:
-                deps.append(dist)
-        return sorted(deps)
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
+        assert self not in visited, self
+        visited.add(self)
+        if not preVisit or preVisit(self, edge):
+            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+                for d in self.deps:
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+            if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
+                for d in self.excludedDeps:
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges)
+            if visit:
+                visit(self, edge)
 
     """
     Gets the directory in which the IDE project configuration
@@ -452,6 +569,20 @@ class Distribution(Dependency):
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
             return join(self.suite.dir, self.name + '.dist')
+
+    def archived_deps(self):
+        '''
+        Gets the projects and libraries whose artifacts are the contents of the archive
+        created by self.make_archive().
+        '''
+        if not hasattr(self, '_archived_deps'):
+            excluded = set()
+            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
+            deps = []
+            self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
+            self._archived_deps = deps
+        return self._archived_deps
+
 
     def make_archive(self):
         # are sources combined into main archive?
@@ -485,18 +616,7 @@ class Distribution(Dependency):
                     if not overwriteCheck(arc.zf, "META-INF/MANIFEST.MF", "project files"):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
-                for dep in self.sorted_deps(includeLibs=True):
-                    isCoveredByDependecy = False
-                    for d in self.distDependencies:
-                        _, d = splitqualname(d)
-                        if dep in _dists[d].sorted_deps(includeLibs=True, transitive=True):
-                            logv("Excluding {0} from {1} because it's provided by the dependency {2}".format(dep.name, self.path, d))
-                            isCoveredByDependecy = True
-                            break
-
-                    if isCoveredByDependecy:
-                        continue
-
+                for dep in self.archived_deps():
                     if dep.isLibrary():
                         l = dep
                         # merge library jar into distribution jar
@@ -631,45 +751,40 @@ class Project(Dependency):
             if not exists(s):
                 os.mkdir(s)
 
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        """
-        Add the transitive set of dependencies for this project, including
-        libraries if 'includeLibs' is true, to the 'deps' list.
-        """
-        return sorted(self._all_deps_helper(deps, [], includeLibs, includeSelf, includeJreLibs, includeAnnotationProcessors))
+    def resolveDeps(self):
+        '''
+        Resolves symbolic dependency references to be Dependency objects.
+        '''
+        self._resolveDepsHelper(self.deps)
+        if hasattr(self, '_declaredAnnotationProcessors'):
+            self._resolveDepsHelper(self._declaredAnnotationProcessors)
+            #overlap = set(self.deps).intersection(self._declaredAnnotationProcessors)
+            #if overlap:
+            #    self.abort('overlap in normal dependencies and annotation processors not allowed: {}'.format([a.name for a in overlap]))
 
-    def _all_deps_helper(self, deps, dependants, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        if self in dependants:
-            abort(str(self) + 'Project dependency cycle found:\n    ' +
-                  '\n        |\n        V\n    '.join(map(str, dependants[dependants.index(self):])) +
-                  '\n        |\n        V\n    ' + self.name, context=self)
-        childDeps = list(self.deps)
-        if includeAnnotationProcessors and len(self.annotation_processors()) > 0:
-            childDeps = self.annotation_processors() + childDeps
-        if self in deps:
-            return deps
-        for name in childDeps:
-            assert name != self.name
-            dep = dependency(name, context=self)
-            if not dep in deps:
-                if dep.isProject():
-                    dep._all_deps_helper(deps, dependants + [self], includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-                elif (dep.isLibrary() and includeLibs) or (dep.isJreLibrary() and includeJreLibs):
-                    dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-                elif dep.isDistribution():
-                    dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-        if not self in deps and includeSelf:
-            deps.append(self)
-        return deps
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
+        assert self not in visited, self
+        visited.add(self)
+        if not preVisit or preVisit(self, edge):
+            if hasattr(self, '_declaredAnnotationProcessors') and not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
+                for d in self._declaredAnnotationProcessors:
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges)
+            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+                for d in self.deps:
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+            if visit:
+                visit(self, edge)
 
-    def _compute_max_dep_distances(self, name, distances, dist):
-        currentDist = distances.get(name)
+    def _compute_max_dep_distances(self, dep, distances, dist):
+        currentDist = distances.get(dep)
         if currentDist is None or currentDist < dist:
-            distances[name] = dist
-            p = project(name, False)
-            if p is not None:
-                for dep in p.deps:
-                    self._compute_max_dep_distances(dep, distances, dist + 1)
+            distances[dep] = dist
+            if dep.isProject():
+                for depDep in dep.deps:
+                    self._compute_max_dep_distances(depDep, distances, dist + 1)
 
     def canonical_deps(self):
         """
@@ -678,9 +793,9 @@ class Project(Dependency):
         """
         distances = dict()
         result = set()
-        self._compute_max_dep_distances(self.name, distances, 0)
+        self._compute_max_dep_distances(self, distances, 0)
         for n, d in distances.iteritems():
-            assert d > 0 or n == self.name
+            assert d > 0 or n is self
             if d == 1:
                 result.add(n)
 
@@ -755,8 +870,8 @@ class JavaProject(Project):
         """
         return join(self.dir, 'jasmin_classes')
 
-    def append_to_classpath(self, cp, resolve):
-        cp.append(self.output_dir())
+    def classpath_repr(self, resolve=True):
+        return self.output_dir()
 
     def eclipse_settings_sources(self):
         """
@@ -767,7 +882,7 @@ class JavaProject(Project):
         """
         if not hasattr(self, '_eclipse_settings'):
             esdict = {}
-            hasAps = self.annotation_processors_path() is not None
+            hasAps = self.annotation_processors()
             # start with the mxtool defaults
             defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
             if exists(defaultEclipseSettingsDir):
@@ -849,8 +964,10 @@ class JavaProject(Project):
             packages = set()
             extendedPackages = set()
             depPackages = set()
-            for d in self.all_deps([], includeLibs=False, includeSelf=False):
-                depPackages.update(d.defined_java_packages())
+            def visit(dep, edge):
+                if dep is not self and dep.isProject():
+                    depPackages.update(dep.defined_java_packages())
+            self.walk_deps(visit=visit)
             imports = set()
             importRe = re.compile(r'import\s+(?:static\s+)?([^;]+);')
             for sourceDir in self.source_dirs():
@@ -902,45 +1019,67 @@ class JavaProject(Project):
         return self._imported_java_packages
 
     """
-    Gets the list of projects/distributions defining the annotation processors that will be applied
-    when compiling this project. This includes the projects/distributions declared by the annotationProcessors property
-    of this project and any of its project dependencies. It also includes
-    any project dependencies that define an annotation processors.
-    N.B.In the case of a distribution we just trust it
+    Gets the list of dependencies defining the annotation processors that will be applied
+    when compiling this project. This is composed of:
+    1. The value of this project's "annotationProcessors" attribute in suite.py.
+    2. Library dependencies of this project that have an "annotationProcessor" attribute defined to "true".
+    3. Project dependencies of this project that define an annotation processor (i.e. they have a
+       non-empty META-INF/services/javax.annotation.processing.Processor file)
     """
     def annotation_processors(self):
         if not hasattr(self, '_annotationProcessors'):
             aps = set()
             if hasattr(self, '_declaredAnnotationProcessors'):
-                aps = set(self._declaredAnnotationProcessors)
-                for ap in aps:
-                    # ap may be a Project or a Distribution
-                    apd = dependency(ap, context=self)
+                # 1. Directly declared annotation processors
+                for apd in self._declaredAnnotationProcessors:
                     if apd.isDistribution() or apd.isLibrary():
-                        # trust it, we could look inside I suppose
-                        pass
+                        aps.add(apd)
+                        jar = apd.path if apd.isDistribution() else apd.get_path(resolve=True)
+                        if exists(jar):
+                            if read_annotation_processors(jar) is None:
+                                self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                                      jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
+                        else:
+                            # Cannot check the jar it if does not exist
+                            pass
                     elif apd.isProject():
                         if apd.definedAnnotationProcessorsDist is None:
-                            config = join(project(ap).source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
-                            if not exists(config):
-                                TimeStampFile(config).touch()
-                            self.abort('Project ' + ap + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
+                            config = join(apd.source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
+                            self.abort('Project ' + apd.name + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
                                   'Please specify the annotation processors in ' + config)
+                        aps.add(apd.definedAnnotationProcessorsDist)
                     else:
                         self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
 
-            allDeps = self.all_deps([], includeLibs=False, includeSelf=False, includeAnnotationProcessors=False)
-            for p in allDeps:
-                if p.isDistribution():
-                    aps.add(p.name)
+            def addToAps(dep, edge):
+                if dep is not self:
+                    if dep.isProject():
+                        # 3. Project dependencies that define an annotation processor
+                        if dep.definedAnnotationProcessorsDist is not None:
+                            aps.add(dep.definedAnnotationProcessorsDist)
 
-                # Add an annotation processor dependency
-                if p.isProject() and p.definedAnnotationProcessorsDist is not None:
-                    aps.add(p.name)
+                        # Inherit annotation processors from dependencies
+                        aps.update(dep.annotation_processors())
+                    elif dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true':
+                        # 2. Library dependencies that have an "annotationProcessor" attribute defined to "true".
+                        aps.add(dep)
 
-                # Inherit annotation processors from dependencies
-                if p.isProject():
-                    aps.update(p.annotation_processors())
+            # Note use of preVisit to stop visiting at Distributions
+            self.walk_deps(visit=addToAps, preVisit=lambda dep, edge: not dep.isDistribution())
+
+            apByJar = {}
+            for apd in aps:
+                jar = apd.get_path(resolve=True) if apd.isLibrary() else apd.path
+                if exists(jar):
+                    definedAps = read_annotation_processors(jar)
+                    if not definedAps:
+                        abort('no annotation processors are defined in ' + jar, context=apd)
+                    for ap in definedAps:
+                        definingJar = apByJar.get(ap)
+                        if definingJar:
+                            abort('annotation processor ' + ap + ' defined in multiple jars: ' + definingJar + ' and ' + jar)
+                        else:
+                            apByJar[ap] = jar
 
             self._annotationProcessors = sorted(list(aps))
         return self._annotationProcessors
@@ -948,38 +1087,17 @@ class JavaProject(Project):
     """
     Gets the class path composed of the jars containing the
     annotation processors that will be applied when compiling this project.
-    TODO This code is very complex and repetitive and should be simplified
     """
     def annotation_processors_path(self):
-        aps = [dependency(ap) for ap in self.annotation_processors()]
-        libAps = set()
-        for dep in self.all_deps([], includeLibs=True, includeSelf=False):
-            if dep.isLibrary() and hasattr(dep, 'annotationProcessor') and getattr(dep, 'annotationProcessor').lower() == 'true':
-                libAps = libAps.union(dep.all_deps([], includeLibs=True, includeSelf=True))
-        if len(aps) + len(libAps):
-            apPaths = []
-            for ap in aps:
-                if ap.isDistribution():
-                    ddeps = ap.all_deps([], includeLibs=False)
-                    for ddep in ddeps:
-                        if ddep.isDistribution():
-                            if not ddep.path in apPaths:
-                                apPaths.append(ddep.path)
-                        elif ddep.definedAnnotationProcessorsDist:
-                            apPaths.append(ddep.definedAnnotationProcessorsDist.path)
-                elif ap.isLibrary():
-                    for dep in ap.all_deps([], includeLibs=True):
-                        dep.append_to_classpath(apPaths, True)
-                elif ap.definedAnnotationProcessorsDist:
-                    apPaths.append(ap.definedAnnotationProcessorsDist.path)
-            return os.pathsep.join(apPaths + [lib.get_path(False) for lib in libAps])
+        aps = self.annotation_processors()
+        if len(aps):
+            return os.pathsep.join([apd.get_path(resolve=True) if apd.isLibrary() else apd.path for apd in aps])
         return None
 
     def uses_annotation_processor_library(self):
-        for dep in self.all_deps([], includeLibs=True, includeSelf=False):
-            if dep.isLibrary() and hasattr(dep, 'annotationProcessor'):
-                return True
-        return False
+        answer = [False]
+        self.walk_deps(visit=lambda dep, edge: answer.insert(0, True) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
+        return answer[0]
 
     def update_current_annotation_processors_file(self):
         aps = self.annotation_processors()
@@ -989,7 +1107,7 @@ class JavaProject(Project):
         if currentApsFileExists:
             with open(currentApsFile) as fp:
                 currentAps = [l.strip() for l in fp.readlines()]
-            if currentAps != aps:
+            if currentAps != [ap.name for ap in aps]:
                 outOfDate = True
             elif len(aps) == 0:
                 os.remove(currentApsFile)
@@ -1493,14 +1611,6 @@ class JreLibrary(BaseLibrary):
     def is_present_in_jdk(self, jdk):
         return jdk.hasJarOnClasspath(self.jar)
 
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        """
-        Add the transitive set of dependencies for this JRE library to the 'deps' list.
-        """
-        if includeJreLibs and includeSelf and not self in deps:
-            deps.append(self)
-        return sorted(deps)
-
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
@@ -1549,11 +1659,6 @@ class JdkLibrary(BaseLibrary):
     def is_present_in_jdk(self, jdk):
         return exists(join(jdk.path, self.jar))
 
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        if includeLibs and includeSelf and not self in deps:
-            deps.append(self)
-        return sorted(deps)
-
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
@@ -1598,6 +1703,24 @@ class Library(BaseLibrary):
             if url.endswith('/') != self.path.endswith(os.sep):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
+    def resolveDeps(self):
+        '''
+        Resolves symbolic dependency references to be Dependency objects.
+        '''
+        self._resolveDepsHelper(self.deps)
+
+    def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None):
+        _debug_walk_deps_helper(self, edge, ignoredEdges)
+        assert self not in visited, self
+        visited.add(self)
+        if not preVisit or preVisit(self, edge):
+            if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+                for d in self.deps:
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges)
+            if visit:
+                visit(self, edge)
+
     def __eq__(self, other):
         if isinstance(other, Library):
             if len(self.urls) == 0:
@@ -1628,33 +1751,11 @@ class Library(BaseLibrary):
 
         return download_file_with_sha1(self.name, path, self.sourceUrls, self.sourceSha1, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
 
-    def append_to_classpath(self, cp, resolve):
+    def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
         if path and (exists(path) or not resolve):
-            cp.append(path)
-
-    def all_deps(self, deps, includeLibs, includeSelf=True, includeJreLibs=False, includeAnnotationProcessors=False):
-        """
-        Add the transitive set of dependencies for this library to the 'deps' list.
-        All such dependencies must also be Library instances.
-        N.B. if includeLibs=False this will do nothing as self is a Library
-        """
-        if not includeLibs:
-            # since our children are all Library instances nothing to do
-            return sorted(deps)
-        childDeps = list(self.deps)
-        if self in deps:
-            # Already added
-            return sorted(deps)
-        for name in childDeps:
-            assert name != self.name
-            dep = library(name)
-            if not dep in deps:
-                # recursively add child dependencies
-                dep.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-        if not self in deps and includeSelf:
-            deps.append(self)
-        return sorted(deps)
+            return path
+        return None
 
     def getBuildTask(self, args):
         return LibarayDownloadTask(args, self)
@@ -2735,6 +2836,7 @@ class Suite:
         self.loading_imports = False
         self._load_env()
         self._load_extensions()
+        _loadedSuites.append(self)
 
     def _load_suite_dict(self):
 
@@ -2847,28 +2949,32 @@ class Suite:
             existing = _libs.get(l.name)
             # Check that suites that define same library are consistent
             if existing is not None and existing != l and _check_global_structures:
-                abort('inconsistent library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+                abort('inconsistent library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir, context=l)
             _libs[l.name] = l
         for l in self.jreLibs:
             existing = _jreLibs.get(l.name)
             # Check that suites that define same library are consistent
             if existing is not None and existing != l:
-                abort('inconsistent JRE library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+                abort('inconsistent JRE library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir, context=l)
             _jreLibs[l.name] = l
         for l in self.jdkLibs:
             existing = _jdkLibs.get(l.name)
             # Check that suites that define same library are consistent
             if existing is not None and existing != l:
-                abort('inconsistent JDK library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir)
+                abort('inconsistent JDK library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir, context=l)
             _jdkLibs[l.name] = l
         for d in self.dists:
             existing = _dists.get(d.name)
             if existing is not None and _check_global_structures:
                 # allow redefinition, so use path from existing
                 # abort('cannot redefine distribution  ' + d.name)
-                warn('distribution ' + d.name + ' redefined')
+                warn('distribution ' + d.name + ' redefined', context=l)
                 d.path = existing.path
             _dists[d.name] = d
+
+    def _resolve_dependencies(self):
+        for d in self.projects + self.libs + self.dists:
+            d.resolveDeps()
 
     def _post_init_finish(self):
         if hasattr(self, 'mx_post_parse_cmd_line'):
@@ -3069,6 +3175,7 @@ class Suite:
     def _init_metadata(self):
         self._load_metadata()
         self._register_metadata()
+        self._resolve_dependencies()
 
     def _post_init(self):
         self._post_init_finish()
@@ -3875,23 +3982,18 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     Get the list of all loaded suites.
     """
-    suite_values = [s for s in _suites.values() if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
+    res = [s for s in _loadedSuites if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
     if opt_limit_to_suite and _opts.specific_suites:
-        result = []
-        for s in suite_values:
-            if s.name in _opts.specific_suites:
-                result.append(s)
-        return result
-    else:
-        return suite_values
+        res = [s for s in res and s.name in _opts.specific_suites]
+    return res
 
-def suite(name, fatalIfMissing=True):
+def suite(name, fatalIfMissing=True, context=None):
     """
     Get the suite for a given name.
     """
     s = _suites.get(name)
     if s is None and fatalIfMissing:
-        abort('suite named ' + name + ' not found')
+        abort('suite named ' + name + ' not found', context=context)
     return s
 
 def primary_suite():
@@ -3911,7 +4013,7 @@ def projects(opt_limit_to_suite=False):
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True
     """
 
-    sortedProjects = sorted(_projects.values(), key=lambda p: p.name)
+    sortedProjects = sorted(_projects.itervalues())
     if opt_limit_to_suite:
         return _projects_opt_limit_to_suites(sortedProjects)
     else:
@@ -3975,7 +4077,7 @@ def dependency(name, fatalIfMissing=True, context=None):
     suite_name, name = splitqualname(name)
     if suite_name:
         # reference to a distribution from a suite
-        dep_suite = suite(suite_name)
+        dep_suite = suite(suite_name, context=context)
         if dep_suite:
             d = _dists.get(name)
             if d is not None:
@@ -4028,65 +4130,54 @@ def library(name, fatalIfMissing=True, context=None):
         abort('library named ' + name + ' not found', context=context)
     return l
 
-def _as_classpath(deps, resolve):
-    cp = []
-    if _opts.cp_prefix is not None:
-        cp = [_opts.cp_prefix]
-    for d in deps:
-        d.append_to_classpath(cp, resolve)
-    if _opts.cp_suffix is not None:
-        cp += [_opts.cp_suffix]
-    return os.pathsep.join(cp)
-
 def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
     """
-    Get the class path for a list of given dependencies and distributions, resolving each entry in the
-    path (e.g. downloading a missing library) if 'resolve' is true.
+    Get the class path for a list of named projects and distributions, resolving each entry in the
+    path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
+    then all registered dependencies are used.
     """
     if names is None:
-        deps = sorted_deps(includeLibs=True)
-        dists = list(_dists.values())
+        rootDeps = dependencies()
     else:
-        deps = []
-        dists = []
         if isinstance(names, types.StringTypes):
             names = [names]
-        for n in names:
-            dep = dependency(n, fatalIfMissing=False)
-            if dep is None:
-                abort('project, library or distribution named ' + n + ' not found')
-            if dep.isDistribution():
-                dist = distribution(n)
-                dists.append(dist)
-            else:
-                dep.all_deps(deps, True, includeSelf)
+        rootDeps = [dependency(n) for n in names]
 
-    for d in deps:
-        if d.isDistribution():
-            dists.append(d)
-
-    if len(dists):
-        distsDeps = set()
-        for d in dists:
-            distsDeps.update(d.sorted_deps())
-
-        # remove deps covered by a dist that will be on the class path
-        deps = [d for d in deps if d not in distsDeps and not d.isDistribution()]
-
-    result = _as_classpath(deps, resolve)
-
-    # prepend distributions
-    if len(dists):
-        distsCp = os.pathsep.join(dist.path for dist in dists)
-        if len(result):
-            result = distsCp + os.pathsep + result
+    rootProjects = []
+    rootDists = []
+    for dep in rootDeps:
+        if dep.isProject():
+            rootProjects.append(dep)
+        elif dep.isDistribution():
+            rootDists.append(dep)
         else:
-            result = distsCp
+            abort('class path roots must be a project or a distribution: ' + str(dep))
 
+    def inRootDist(dep):
+        for dist in rootDists:
+            if dep in dist.archived_deps():
+                return True
+        return False
+
+    cpEntries = []
+    walk_deps(roots=rootProjects, visit=lambda dep, edge: cpEntries.append(dep) if dep not in cpEntries else None)
+
+    cp = []
     if includeBootClasspath:
-        result = os.pathsep.join([java().bootclasspath(), result])
+        cp.append(java().bootclasspath())
+    if _opts.cp_prefix is not None:
+        cp.append(_opts.cp_prefix)
+    for dist in rootDists:
+        cp.append(dist.classpath_repr(resolve))
+    for dep in cpEntries:
+        if dep.isDistribution() or not inRootDist(dep):
+            cpe = dep.classpath_repr(resolve)
+            if cpe:
+                cp.append(cpe)
+    if _opts.cp_suffix is not None:
+        cp.append(_opts.cp_suffix)
 
-    return result
+    return os.pathsep.join(cp)
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
     """
@@ -4113,15 +4204,69 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
                     entryPath = zi.filename
                     yield zf, entryPath
 
-def sorted_deps(projectNames=None, includeLibs=False, includeJreLibs=False, includeAnnotationProcessors=False):
-    """
-    Gets projects and libraries sorted such that dependencies
-    are before the projects that depend on them. Unless 'includeLibs' is
-    true, libraries are omitted from the result.
-    """
-    projects = projects_from_names(projectNames)
+def read_annotation_processors(path):
+    r'''
+    Reads the META-INF/services/javax.annotation.processing.Processor file based
+    in the directory or zip file located at 'path'. Returns the list of lines
+    in the file or None if the file does not exist at 'path'.
 
-    return sorted_project_deps(projects, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
+    From http://docs.oracle.com/javase/8/docs/api/java/util/ServiceLoader.html:
+
+    A service provider is identified by placing a provider-configuration file in
+    the resource directory META-INF/services. The file's name is the fully-qualified
+    binary name of the service's type. The file contains a list of fully-qualified
+    binary names of concrete provider classes, one per line. Space and tab
+    characters surrounding each name, as well as blank lines, are ignored.
+    The comment character is '#' ('\u0023', NUMBER SIGN); on each line all characters
+    following the first comment character are ignored. The file must be encoded in UTF-8.
+    '''
+
+    def parse(fp):
+        lines = []
+        for line in fp:
+            line = line.split('#')[0].strip()
+            if line:
+                lines.append(line)
+        return lines
+
+    if exists(path):
+        name = 'META-INF/services/javax.annotation.processing.Processor'
+        if isdir(path):
+            configFile = join(path, name.replace('/', os.sep))
+            if exists(configFile):
+                with open(configFile) as fp:
+                    return parse(fp)
+        else:
+            assert path.endswith('.jar') or path.endswith('.zip'), path
+            with zipfile.ZipFile(path, 'r') as zf:
+                if name in zf.namelist():
+                    with zf.open(name) as fp:
+                        return parse(fp)
+    return None
+
+def dependencies():
+    '''
+    Gets an iterable over all the registered dependencies. If changes are made to the registered
+    dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
+    None, only dependencies of a type in 'types
+    '''
+    return itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
+
+def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None):
+    '''
+    Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
+    'preVisit' function is not None, it is applied with these arguments:
+        dep - the dependency node being visited
+        edge - a DepEdge object representing last element in the path of dependencies walked to arrive
+               at 'dep' or None if 'dep' is a leaf
+    If 'preVisit' is None or returns a true condition, then the unvisited dependencies of 'dep' are
+    walked. Once all the dependencies of 'dep' have been visited, and 'visit' is not None,
+    it is applied with the same arguments as for 'preVisit' and the return value is ignored. Note that
+    'visit' is not called if 'preVisit' returns a false condition.
+    '''
+    visited = set()
+    for dep in dependencies() if not roots else roots:
+        dep.walk_deps(preVisit, visit, visited, ignoredEdges)
 
 def sorted_dists():
     """
@@ -4131,22 +4276,15 @@ def sorted_dists():
     dists = []
     def add_dist(dist):
         if not dist in dists:
-            for depDist in [distribution(name) for name in dist.distDependencies]:
-                add_dist(depDist)
+            for dep in dist.deps:
+                if dep.isDistribution():
+                    add_dist(dep)
             if not dist in dists:
                 dists.append(dist)
 
     for d in _dists.itervalues():
         add_dist(d)
     return dists
-
-def sorted_project_deps(projects, includeLibs=False, includeJreLibs=False, includeAnnotationProcessors=False):
-    deps = []
-    for p in projects:
-        p.all_deps(deps, includeLibs=includeLibs, includeJreLibs=includeJreLibs, includeAnnotationProcessors=includeAnnotationProcessors)
-    # Distributions can occur as deps when using binary suites, need to filter them out
-    deps[:] = [el for el in deps if not isinstance(el, Distribution)]
-    return deps
 
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False):
     """
@@ -5287,7 +5425,7 @@ def build(args, parser=None):
                           'from within the plugins/ directory of an Eclipse IDE installation.')
 
     if args.only is not None:
-        # N.B. This build will not include dependencies including annotation processor dependencies
+        # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         projectNames = args.only.split(',')
         sortedProjects = [project(name) for name in projectNames]
     else:
@@ -5298,7 +5436,9 @@ def build(args, parser=None):
 
         projects = _projects_opt_limit_to_suites(projects_from_names(projectNames))
         # N.B. Limiting to a suite only affects the starting set of projects. Dependencies in other suites will still be compiled
-        sortedProjects = sorted_project_deps(projects, includeAnnotationProcessors=True)
+
+        sortedProjects = []
+        walk_deps(visit=lambda dep, edge: sortedProjects.append(dep) if dep.isProject() else None, roots=projects, ignoredEdges=[DEP_EXCLUDED])
 
     tasks = {}
     for p in sortedProjects:
@@ -5531,9 +5671,10 @@ def eclipseformat(args):
     eclipseinit([], buildProcessorJars=False)
 
     # build list of projects to be processed
-    projects = sorted_deps()
     if args.projects is not None:
         projects = [project(name) for name in args.projects.split(',')]
+    else:
+        projects = [p for p in dependencies() if p.isProject()]
 
     class Batch:
         def __init__(self, settingsDir):
@@ -5812,26 +5953,25 @@ def canonicalizeprojects(args):
                     if not pkg.startswith(p.name):
                         p.abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
 
-            ignoredDeps = set([name for name in p.deps if project(name, False) is not None])
+            ignoredDeps = set([d for d in p.deps if d.isProject()])
             for pkg in p.imported_java_packages():
-                for name in p.deps:
-                    dep = project(name, False)
-                    if dep is None:
-                        ignoredDeps.discard(name)
+                for dep in p.deps:
+                    if not dep.isProject():
+                        ignoredDeps.discard(dep)
                     else:
                         if pkg in dep.defined_java_packages():
-                            ignoredDeps.discard(name)
+                            ignoredDeps.discard(dep)
                         if pkg in dep.extended_java_packages():
-                            ignoredDeps.discard(name)
+                            ignoredDeps.discard(dep)
             if len(ignoredDeps) != 0:
                 candidates = set()
                 # Compute dependencies based on projects required by p
-                for d in sorted_deps():
-                    if not d.defined_java_packages().isdisjoint(p.imported_java_packages()):
+                for d in dependencies():
+                    if d.isProject() and not d.defined_java_packages().isdisjoint(p.imported_java_packages()):
                         candidates.add(d)
                 # Remove non-canonical candidates
                 for c in list(candidates):
-                    candidates.difference_update(c.all_deps([], False, False))
+                    c.walk_deps(visit=lambda dep, edge: candidates.discard(dep) if dep.isProject() else None)
                 candidates = [d.name for d in candidates]
 
                 p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
@@ -5846,7 +5986,7 @@ def canonicalizeprojects(args):
             if len(canonicalDeps) != 0:
                 log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: [')
                 for d in canonicalDeps:
-                    log('        "' + d + '",')
+                    log('        "' + d.name + '",')
                 log('      ],')
             else:
                 log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: []')
@@ -6046,12 +6186,11 @@ def clean(args, parser=None):
     if args.java:
         if args.dist:
             lsuites = suites(True, includeBinary=False)
-            for d in _dists.keys():
-                dd = distribution(d)
-                if dd.suite in lsuites:
-                    log('Removing distribution {0}...'.format(d))
-                    _rmIfExists(dd.path)
-                    _rmIfExists(dd.sourcesPath)
+            for d in _dists.itervalues():
+                if d.suite in lsuites:
+                    log('Removing distribution {0}...'.format(d.name))
+                    _rmIfExists(d.path)
+                    _rmIfExists(d.sourcesPath)
 
     if suppliedParser:
         return args
@@ -6115,14 +6254,15 @@ def projectgraph(args, suite=None):
         igv.close('properties')
         igv.open('graph', {'name' : 'dependencies'})
         igv.open('nodes')
-        for p in sorted_deps(includeLibs=True, includeJreLibs=True):
+        def visit(dep, edge):
             ident = len(ids)
-            ids[p.name] = str(ident)
+            ids[dep.name] = str(ident)
             igv.open('node', {'id' : str(ident)})
             igv.open('properties')
-            igv.element('p', {'name' : 'name'}, p.name)
+            igv.element('p', {'name' : 'name'}, dep.name)
             igv.close('properties')
             igv.close('node')
+        walk_deps(visit=visit)
         igv.close('nodes')
         igv.open('edges')
         for p in projects():
@@ -6149,25 +6289,37 @@ def projectgraph(args, suite=None):
     print 'rankdir=BT;'
     print 'node [shape=rect];'
     if args.dist:
-        projs = {}
+        projToDist = {}
         for d in sorted_dists():
             if not d.isSynthProcessorDistribution:
                 print 'subgraph "cluster_' + d.name + '" {'
                 print 'label="' + d.name + '";'
-                for p in d.sorted_deps(includeLibs=False, transitive=True):
-                    if p in projs:
-                        if not projs[p] in d.get_dist_deps(includeSelf=False, transitive=True):
-                            raise RuntimeError('ERROR: project ' + p.name + ' in two dists: ' + projs[p].name + ' and ' + d.name)
-                    else:
-                        projs[p] = d
+                print 'color=blue;'
+                print '"' + d.name + ':DUMMY" [shape=point style=invis]'
+
+                for p in d.archived_deps():
+                    if p.isProject():
+                        owner = projToDist.get(p)
+                        if owner:
+                            msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
+                            for path in [owner.contains_dep(p), d.contains_dep(p)]:
+                                indent = '\n'
+                                for e in path:
+                                    msg += indent + e.name
+                                    indent += ' '
+                            abort(msg)
+                        projToDist[p] = d
                         print '"' + p.name + '";'
                 print '}'
     for p in projects():
         for dep in p.canonical_deps():
-            print '"' + p.name + '"->"' + dep + '";'
+            if args.dist and dep.isDistribution():
+                print '"' + p.name + '"->"' + dep.name + ':DUMMY" [lhead=cluster_' + dep.name + ' color=blue];'
+            else:
+                print '"' + p.name + '"->"' + dep.name + '";'
         if hasattr(p, '_declaredAnnotationProcessors'):
-            for ap in p._declaredAnnotationProcessors:
-                print '"' + p.name + '"->"' + ap + '" [style="dashed"];'
+            for apd in p._declaredAnnotationProcessors:
+                print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 
 def _source_locator_memento(deps):
@@ -6369,22 +6521,23 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     projectDeps = set()
     distributionDeps = set()
 
-    for dep in p.all_deps([], True):
-        if dep == p:
-            continue
+    def processDep(dep, edge):
+        if dep is p:
+            return
         if dep.isLibrary():
             if hasattr(dep, 'eclipse.container'):
                 container = getattr(dep, 'eclipse.container')
                 containerDeps.add(container)
-                libraryDeps -= set(dep.all_deps([], True))
+                dep.walk_deps(visit=lambda dep2, edge2: libraryDeps.discard(dep2))
             else:
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
-        elif dep.isDistribution():
-            distributionDeps.add(dep)
+        elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
+            pass
         else:
             abort('unexpected dependency: ' + str(dep))
+    p.walk_deps(visit=processDep)
 
     for dep in sorted(containerDeps):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
@@ -6489,12 +6642,12 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         # jar any time one of its sources is modified.
         dist = p.definedAnnotationProcessorsDist
 
-        distProjects = [d for d in dist.sorted_deps(transitive=True) if d.isProject()]
+        distProjects = [dp for dp in dist.archived_deps() if dp.isProject()]
         relevantResources = []
-        for p in distProjects:
-            for srcDir in p.source_dirs():
-                relevantResources.append(join(p.name, os.path.relpath(srcDir, p.dir)))
-            relevantResources.append(join(p.name, os.path.relpath(p.output_dir(), p.dir)))
+        for dp in distProjects:
+            for srcDir in dp.source_dirs():
+                relevantResources.append(join(dp.name, os.path.relpath(srcDir, dp.dir)))
+            relevantResources.append(join(dp.name, os.path.relpath(dp.output_dir(), dp.dir)))
 
         # The path should always be p.name/dir independent of where the workspace actually is.
         # So we use the parent folder of the project, whatever that is, to generate such a relative path.
@@ -6573,7 +6726,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             continue
         _eclipseinit_project(p, files, libFiles)
 
-    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=sorted_deps(projectNames=None, includeLibs=True))
+    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies())
     files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
@@ -6585,25 +6738,23 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
             continue
         if not exists(projectDir):
             os.makedirs(projectDir)
-        distProjects = [d for d in dist.sorted_deps(transitive=True) if d.isProject()]
         relevantResources = []
-        for p in distProjects:
-            for srcDir in p.source_dirs():
-                relevantResources.append(join(p.name, os.path.relpath(srcDir, p.dir)))
-            relevantResources.append(join(p.name, os.path.relpath(p.output_dir(), p.dir)))
+        for d in dist.archived_deps():
+            if d.isProject():
+                for srcDir in d.source_dirs():
+                    relevantResources.append(join(d.name, os.path.relpath(srcDir, d.dir)))
+                relevantResources.append(join(d.name, os.path.relpath(d.output_dir(), d.dir)))
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
         out.element('comment', data='Updates ' + dist.path + ' if a project dependency of ' + dist.name + ' is updated')
         out.open('projects')
-        for p in distProjects:
-            out.element('project', data=p.name)
-        for d in dist.distDependencies:
-            out.element('project', data=d)
+        for d in dist.deps:
+            out.element('project', data=d.name)
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        dist.javaCompliance = max([p.javaCompliance for p in distProjects])
+        dist.javaCompliance = max([p.javaCompliance for p in dist.archived_deps() if p.isProject()])
         _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=False, appendToLogFile=False)
         out.close('buildSpec')
         out.open('natures')
@@ -6995,16 +7146,17 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('test-roots')
     out.close('data')
 
-    firstDep = True
-    for dep in p.all_deps([], includeLibs=False, includeAnnotationProcessors=True):
-        if dep == p:
-            continue
+    firstDep = []
+
+    def processDep(dep, edge):
+        if dep is p:
+            return
 
         if dep.isProject():
             n = dep.name.replace('.', '_')
-            if firstDep:
+            if not firstDep:
                 out.open('references', {'xmlns' : 'http://www.netbeans.org/ns/ant-project-references/1'})
-                firstDep = False
+                firstDep.append(dep)
 
             out.open('reference')
             out.element('foreign-project', data=n)
@@ -7014,8 +7166,9 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
             out.element('clean-target', data='clean')
             out.element('id', data='jar')
             out.close('reference')
+    p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
-    if not firstDep:
+    if firstDep:
         out.close('references')
 
     out.close('configuration')
@@ -7136,11 +7289,11 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     javacClasspath = []
 
-    deps = p.all_deps([], True)
+    deps = []
+    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
     annotationProcessorOnlyDeps = []
     if len(p.annotation_processors()) > 0:
-        for ap in p.annotation_processors():
-            apDep = dependency(ap)
+        for apDep in p.annotation_processors():
             if not apDep in deps:
                 deps.append(apDep)
                 annotationProcessorOnlyDeps.append(apDep)
@@ -7296,16 +7449,16 @@ def _intellij_suite(args, suite, refreshOnly=False):
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(p.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
-        deps = p.all_deps([], True, includeAnnotationProcessors=True)
-        for dep in deps:
-            if dep == p:
-                continue
+        def processDep(dep, edge):
+            if dep is p:
+                return
 
             if dep.isLibrary():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isProject():
                 moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
+        p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
         moduleXml.close('component')
         moduleXml.close('module')
@@ -7365,18 +7518,17 @@ def _intellij_suite(args, suite, refreshOnly=False):
     if annotationProcessorProfiles:
         compilerXml.open('annotationProcessing')
         for processors, modules in sorted(annotationProcessorProfiles.iteritems()):
-            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join(processors), 'enabled': 'true'})
+            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]), 'enabled': 'true'})
             compilerXml.element('sourceOutputDir', attributes={'name': 'src_gen'})  # TODO use p.source_gen_dir() ?
             compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
-            for apName in processors:
-                pDep = dependency(apName)
-                for entry in pDep.all_deps([], True):
+            for apDep in processors:
+                def processApDep(path, entry, edge):
                     if entry.isLibrary():
                         compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(entry.path, suite.dir)})
                     elif entry.isProject():
-                        assert entry.isProject()
                         compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(entry.output_dir(), suite.dir)})
+                apDep.walk_deps(visit=processApDep)
             compilerXml.close('processorPath')
             for module in modules:
                 compilerXml.element('module', attributes={'name': module.name})
@@ -7532,9 +7684,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     for p in candidates:
         if p.isJavaProject():
             if includeDeps:
-                deps = p.all_deps([], includeLibs=False, includeSelf=False)
-                for d in deps:
-                    assess_candidate(d, projects)
+                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects) if dep.isProject() else None)
             if not assess_candidate(p, projects):
                 logv('[package-list file exists - skipping {0}]'.format(p.name))
 
@@ -7565,13 +7715,14 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             build(['--no-native', '--projects', p.name])
 
             pkgs = find_packages(p.source_dirs(), set())
-            deps = p.all_deps([], includeLibs=False, includeSelf=False)
             links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
             out = outDir(p)
-            for d in deps:
-                depOut = outDir(d)
-                links.append('-link')
-                links.append(os.path.relpath(depOut, out))
+            def visit(dep, edge):
+                if dep.isProject():
+                    depOut = outDir(dep)
+                    links.append('-link')
+                    links.append(os.path.relpath(depOut, out))
+            p.walk_deps(visit=visit)
             cp = classpath(p.name, includeSelf=True)
             sp = os.pathsep.join(p.source_dirs())
             overviewFile = join(p.dir, 'overview.html')
@@ -7675,11 +7826,13 @@ def site(args):
     if args.exclude_packages is not None:
         exclude_packages_arg = ['--exclude-packages', args.exclude_packages]
 
-    projects = sorted_deps()
     projects_arg = []
     if args.projects is not None:
         projects_arg = ['--projects', args.projects]
         projects = [project(name) for name in args.projects.split(',')]
+    else:
+        projects = []
+        walk_deps(visit=lambda dep, edge: projects.append(dep) if dep.isProject() else None, ignoredEdges=[DEP_EXCLUDED])
 
     extra_javadoc_args = []
     for a in args.jd:
@@ -8607,8 +8760,16 @@ def command_function(name, fatalIfMissing=True):
         else:
             return None
 
-def warn(msg):
+def warn(msg, context=None):
     if _opts.warn:
+        if context is not None:
+            if callable(context):
+                contextMsg = context()
+            elif hasattr(context, '__abort_context__'):
+                contextMsg = context.__abort_context__()
+            else:
+                contextMsg = str(context)
+            msg = contextMsg + ":\n" + msg
         print 'WARNING: ' + msg
 
 # Table of commands in alphabetical order.
@@ -8754,54 +8915,45 @@ def _remove_bad_deps():
     Removed projects and libraries are also removed from
     distributions in they are listed as dependencies.'''
     ommittedDeps = set()
-    for d in sorted_deps(includeLibs=True):
-        if d.isLibrary():
-            if d.optional:
+    def visit(dep, edge):
+        if dep.isLibrary():
+            if dep.optional:
                 try:
-                    d.optional = False
-                    path = d.get_path(resolve=True)
+                    dep.optional = False
+                    path = dep.get_path(resolve=True)
                 except SystemExit:
                     path = None
                 finally:
-                    d.optional = True
+                    dep.optional = True
                 if not path:
-                    logv('[omitting optional library {0} as {1} does not exist]'.format(d, d.path))
-                    ommittedDeps.add(d.name)
-                    del _libs[d.name]
-                    d.suite.libs.remove(d)
-        elif d.isProject():
-            if java(d.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(d.javaCompliance)) is None:
-                logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(d, d.javaCompliance))
-                ommittedDeps.add(d.name)
-                del _projects[d.name]
-                d.suite.projects.remove(d)
+                    logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
+                    ommittedDeps.add(dep)
+        elif dep.isProject():
+            if java(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance)) is None:
+                logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
+                ommittedDeps.add(dep)
             else:
-                for name in list(d.deps):
-                    jreLib = _jreLibs.get(name)
-                    libType = 'JRE'
-                    if not jreLib:
-                        _jdkLibs.get(name)
-                        libType = 'JDK'
-                    if jreLib:
-                        if not jreLib.is_present_in_jdk(java(d.javaCompliance)):
-                            if jreLib.optional:
-                                logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
-                                ommittedDeps.add(d.name)
-                                del _projects[d.name]
-                                d.suite.projects.remove(d)
+                for depDep in list(dep.deps):
+                    if depDep.isJreLibrary() or depDep.isJdkLibrary():
+                        lib = depDep
+                        if not lib.is_present_in_jdk(java(dep.javaCompliance)):
+                            if depDep.optional:
+                                logv('[omitting project {} as dependency {} is missing]'.format(dep, lib))
+                                ommittedDeps.add(dep)
                             else:
-                                abort('{0} library {1} required by {2} not found'.format(libType, jreLib, d))
-                    elif not dependency(name, fatalIfMissing=False):
-                        logv('[omitting project {0} as dependency {1} is missing]'.format(d, name))
-                        ommittedDeps.add(d.name)
-                        del _projects[d.name]
-                        d.suite.projects.remove(d)
+                                abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
+        elif dep.isDistribution():
+            dist = dep
+            for distDep in list(dist.deps):
+                if distDep in ommittedDeps:
+                    logv('[omitting {0} from distribution {1}]'.format(distDep, dist))
+                    dist.deps.remove(distDep)
 
-    for dist in _dists.itervalues():
-        for name in list(dist.deps):
-            if name in ommittedDeps:
-                logv('[omitting {0} from distribution {1}]'.format(name, dist))
-                dist.deps.remove(name)
+    walk_deps(visit=visit)
+
+    for dep in ommittedDeps:
+        dep.getSuiteRegistry().remove(dep)
+        dep.getGlobalRegistry().pop(dep.name)
 
 def main():
     global _mx_suite
