@@ -1039,8 +1039,7 @@ class JavaProject(Project):
     Gets the list of dependencies defining the annotation processors that will be applied
     when compiling this project. This is composed of:
     1. The value of this project's "annotationProcessors" attribute in suite.py.
-    2. Library dependencies of this project that have an "annotationProcessor" attribute defined to "true".
-    3. Project dependencies of this project that define an annotation processor (i.e. they have a
+    2. Project dependencies of this project that define an annotation processor (i.e. they have a
        non-empty META-INF/services/javax.annotation.processing.Processor file)
     """
     def annotation_processors(self):
@@ -1070,15 +1069,12 @@ class JavaProject(Project):
             def addToAps(dep, edge):
                 if dep is not self:
                     if dep.isProject():
-                        # 3. Project dependencies that define an annotation processor
+                        # 2. Project dependencies that define an annotation processor
                         if dep.definedAnnotationProcessorsDist is not None:
                             aps.add(dep.definedAnnotationProcessorsDist)
 
                         # Inherit annotation processors from dependencies
                         aps.update(dep.annotation_processors())
-                    elif dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true':
-                        # 2. Library dependencies that have an "annotationProcessor" attribute defined to "true".
-                        aps.add(dep)
 
             # Note use of preVisit to stop visiting at Distributions
             self.walk_deps(visit=addToAps, preVisit=lambda dep, edge: not dep.isDistribution())
@@ -1109,11 +1105,6 @@ class JavaProject(Project):
         if len(aps):
             return os.pathsep.join([apd.get_path(resolve=True) if apd.isLibrary() else apd.path for apd in aps])
         return None
-
-    def uses_annotation_processor_library(self):
-        answer = [False]
-        self.walk_deps(visit=lambda dep, edge: answer.insert(0, True) if dep.isLibrary() and getattr(dep, 'annotationProcessor', 'false').lower() == 'true' else None)
-        return answer[0]
 
     def update_current_annotation_processors_file(self):
         aps = self.annotation_processors()
@@ -6502,11 +6493,6 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if not exists(genDir):
             os.mkdir(genDir)
         out.open('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
-        if p.uses_annotation_processor_library():
-            # ignore warnings produced by third-party annotation processors
-            out.open('attributes')
-            out.element('attribute', {'name' : 'ignore_optional_problems', 'value' : 'true'})
-            out.close('attributes')
         out.close('classpathentry')
         if files:
             files.append(genDir)
