@@ -334,15 +334,6 @@ class Dependency(object):
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         nyi('_walk_deps_visit_edges', self)
 
-    def classpath_repr(self, resolve=True):
-        '''
-        Gets this dependency as an element on a class path.
-
-        If 'resolve' is True, then this method aborts if the file or directory
-        denoted by the class path element does not exist.
-        '''
-        return None
-
     def contains_dep(self, dep, includeAnnotationProcessors=False):
         '''
         Determines if the dependency graph rooted at this object contains 'dep'.
@@ -368,17 +359,30 @@ class Dependency(object):
     def defined_java_packages(self):
         return []
 
-    def _resolveDepsHelper(self, deps):
+    def _resolveDepsHelper(self, deps, fatalIfMissing=True):
         '''
         Resolves any string entries in 'deps' to the Dependency objects named
         by the strings. The 'deps' list is updated in place.
         '''
         if deps:
             if isinstance(deps[0], str):
-                deps[:] = [dependency(name, context=self) for name in deps]
+                deps[:] = [dependency(name, context=self, fatalIfMissing=fatalIfMissing) for name in deps]
             else:
                 # If the first element has been resolved, then all elements should have been resolved
                 assert len([d for d in deps if not isinstance(d, str)])
+
+class ClasspathDependency(Dependency):
+    def __init__(self):
+        pass
+
+    def classpath_repr(self, resolve=True):
+        '''
+        Gets this dependency as an element on a class path.
+
+        If 'resolve' is True, then this method aborts if the file or directory
+        denoted by the class path element does not exist.
+        '''
+        nyi('classpath_repr', self)
 
 """
 A build task is used to build a dependency.
@@ -508,9 +512,10 @@ Attributes:
     isSynthProcessorDistribution: True if this distribution was created for a project that declares
         an annotation processor. There is no definition in suite.py for such a distribution.
 """
-class Distribution(Dependency):
+class Distribution(ClasspathDependency):
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDeps, distDependencies, javaCompliance, isSynthProcessorDistribution=False):
         Dependency.__init__(self, suite, name)
+        ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
@@ -530,7 +535,7 @@ class Distribution(Dependency):
         '''
         Resolves symbolic dependency references to be Dependency objects.
         '''
-        self._resolveDepsHelper(self.deps)
+        self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedDeps)
 
     def add_update_listener(self, listener):
@@ -851,9 +856,10 @@ class ProjectBuildTask(BuildTask):
         projectNames = self.args.only.split(',')
         return self.subject.name in projectNames
 
-class JavaProject(Project):
+class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d)
+        ClasspathDependency.__init__(self)
         self.checkstyleProj = name
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
         # The annotation processors defined by this project
@@ -1112,7 +1118,9 @@ class JavaProject(Project):
     def annotation_processors_path(self):
         aps = self.annotation_processors()
         if len(aps):
-            return os.pathsep.join([apd.get_path(resolve=True) if apd.isLibrary() else apd.path for apd in aps])
+            entries = classpath_entries(names=aps) 
+            # TODO check those are jars
+            return os.pathsep.join((e for e in (e.classpath_repr(resolve=True) for e in entries) if e))
         return None
 
     def check_current_annotation_processors_file(self):
@@ -1634,9 +1642,10 @@ that is not present in another JRE (e.g., OpenJDK). A
 motivating example is the Java Flight Recorder library
 found in the Oracle JRE.
 """
-class JreLibrary(BaseLibrary):
+class JreLibrary(BaseLibrary, ClasspathDependency):
     def __init__(self, suite, name, jar, optional):
         BaseLibrary.__init__(self, suite, name, optional)
+        ClasspathDependency.__init__(self)
         self.jar = jar
 
     def __eq__(self, other):
@@ -1650,6 +1659,9 @@ class JreLibrary(BaseLibrary):
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
+
+    def classpath_repr(self, resolve=True):
+        return None  # TODO should have a jdk arg and should fail if not available
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
@@ -1682,9 +1694,10 @@ Any project or normal library that depends on a missing library
 will be removed from the global project and library dictionaries
 (i.e., _projects and _libs).
 """
-class JdkLibrary(BaseLibrary):
+class JdkLibrary(BaseLibrary, ClasspathDependency):
     def __init__(self, suite, name, path, optional):
         BaseLibrary.__init__(self, suite, name, optional)
+        ClasspathDependency.__init__(self)
         self.path = path
 
     def __eq__(self, other):
@@ -1699,6 +1712,9 @@ class JdkLibrary(BaseLibrary):
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
+    def classpath_repr(self, resolve=True):
+        return self.path  # TODO should have a jdk arg and should fail if not available
+
 """
 A library that is provided (built) by some third-party and made available via a URL.
 A Library may have dependencies on other Library's as expressed by the "deps" field.
@@ -1708,9 +1724,10 @@ A Library is effectively an "import" into the suite since, unlike a Project or D
 it is not built by the Suite.
 N.B. Not obvious but a Library can be an annotationProcessor
 """
-class Library(BaseLibrary):
+class Library(BaseLibrary, ClasspathDependency):
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
         BaseLibrary.__init__(self, suite, name, optional)
+        ClasspathDependency.__init__(self)
         self.path = path.replace('/', os.sep)
         self.urls = urls
         self.sha1 = sha1
@@ -3603,13 +3620,16 @@ class BinarySuite(Suite):
         pass
 
     def _register_metadata(self):
-        Suite._register_metadata(self)
         # since we are working with the original suite.py file, we remove some
         # values that should not be visible
-        for d in self.dists:
-            d.deps = [] # remove project dependencies
         self.projects = []
+        Suite._register_metadata(self)
 
+    def _resolve_dependencies(self):
+        for d in self.libs + self.dists:
+            d.resolveDeps()
+        for d in self.dists:
+            d.deps = [dep for dep in d.deps if dep and dep.isDistribution()]
 
 class InternalSuite(SourceSuite):
     def __init__(self, mxDir):
@@ -4113,6 +4133,8 @@ def dependency(name, fatalIfMissing=True, context=None):
     Get the project, library or dependency for a given name. This will abort if the dependency
     not exist for 'name' and 'fatalIfMissing' is true.
     """
+    if isinstance(name, Dependency):
+        return name
 
     suite_name, name = splitqualname(name)
     if suite_name:
@@ -4170,50 +4192,52 @@ def library(name, fatalIfMissing=True, context=None):
         abort('library named ' + name + ' not found', context=context)
     return l
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
+def classpath_entries(names=None, includeSelf=True, preferProjects=False):
+    if names is None:
+        roots = dependencies()
+    else:
+        if isinstance(names, types.StringTypes):
+            names = [names]
+        elif isinstance(names, Dependency):
+            names = [names]
+        roots = [dependency(n) for n in names]
+    invalid = [d for d in roots if not isinstance(d, ClasspathDependency)]
+    if invalid:
+        abort('class path roots must be a project or a distribution: ' + str(invalid))
+
+    cpEntries = []
+    def _preVisit(dst, edge):
+        if not isinstance(dst, ClasspathDependency):
+            return False
+        if edge and edge.src.isDistribution():
+            preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
+            return dst.isDistribution() if preferDist else dst.isProject()
+        return True
+    def _visit(dep, edge):
+        if preferProjects and dep.isDistribution() and not isinstance(dep.suite, BinarySuite):
+            return
+        if not includeSelf and dep in roots:
+            return
+        cpEntries.append(dep)
+    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit)
+    return cpEntries
+
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
     then all registered dependencies are used.
     """
-    if names is None:
-        rootDeps = dependencies()
-    else:
-        if isinstance(names, types.StringTypes):
-            names = [names]
-        rootDeps = [dependency(n) for n in names]
-
-    rootProjects = []
-    rootDists = []
-    for dep in rootDeps:
-        if dep.isProject():
-            rootProjects.append(dep)
-        elif dep.isDistribution():
-            rootDists.append(dep)
-        else:
-            abort('class path roots must be a project or a distribution: ' + str(dep))
-
-    def inRootDist(dep):
-        for dist in rootDists:
-            if dep in dist.archived_deps():
-                return True
-        return False
-
-    cpEntries = []
-    walk_deps(roots=rootProjects, visit=lambda dep, edge: cpEntries.append(dep) if dep not in cpEntries else None)
-
+    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     cp = []
     if includeBootClasspath:
         cp.append(java().bootclasspath())
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
-    for dist in rootDists:
-        cp.append(dist.classpath_repr(resolve))
     for dep in cpEntries:
-        if dep.isDistribution() or not inRootDist(dep):
-            cpe = dep.classpath_repr(resolve)
-            if cpe:
-                cp.append(cpe)
+        cp_repr = dep.classpath_repr(resolve)
+        if cp_repr:
+            cp.append(cp_repr)
     if _opts.cp_suffix is not None:
         cp.append(_opts.cp_suffix)
 
