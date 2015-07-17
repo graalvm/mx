@@ -1113,7 +1113,7 @@ class JavaProject(Project):
             return os.pathsep.join([apd.get_path(resolve=True) if apd.isLibrary() else apd.path for apd in aps])
         return None
 
-    def update_current_annotation_processors_file(self):
+    def check_current_annotation_processors_file(self):
         aps = self.annotation_processors()
         outOfDate = False
         currentApsFile = join(self.suite.mxDir, 'currentAnnotationProcessors', self.name)
@@ -1127,18 +1127,20 @@ class JavaProject(Project):
                 os.remove(currentApsFile)
         else:
             outOfDate = len(aps) != 0
-
-        if outOfDate:
-            if len(aps) != 0:
-                if not exists(dirname(currentApsFile)):
-                    os.mkdir(dirname(currentApsFile))
-                with open(currentApsFile, 'w') as fp:
-                    for ap in aps:
-                        print >> fp, ap
-            else:
-                if exists(currentApsFile):
-                    os.remove(currentApsFile)
         return outOfDate
+
+    def update_current_annotation_processors_file(self):
+        aps = self.annotation_processors()
+        currentApsFile = join(self.suite.mxDir, 'currentAnnotationProcessors', self.name)
+        if len(aps) != 0:
+            if not exists(dirname(currentApsFile)):
+                os.mkdir(dirname(currentApsFile))
+            with open(currentApsFile, 'w') as fp:
+                for ap in aps:
+                    print >> fp, ap
+        else:
+            if exists(currentApsFile):
+                os.remove(currentApsFile)
 
     def make_archive(self, path=None):
         outputDir = self.output_dir()
@@ -1198,7 +1200,7 @@ class JavaBuildTask(ProjectBuildTask):
         if reason:
             return (True, reason)
 
-        if self.subject.update_current_annotation_processors_file():
+        if self.subject.check_current_annotation_processors_file():
             return (True, 'annotation processor(s) changed')
 
         if len(self._javaFileList()) == 0 and len(self._jasmFileList()) == 0 and self._nonJavaFileCount() == 0:
@@ -1317,6 +1319,7 @@ class JavaBuildTask(ProjectBuildTask):
                 if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
                     logv('Assembling Jasmin file ' + src)
                     run(['jasmin', '-d', jasminOutputDir, src])
+        self.subject.update_current_annotation_processors_file()
         if self._jasmFileList():
             logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
         for nonjavafiletuple in self._nonJavaFileTuples():
