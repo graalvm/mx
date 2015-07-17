@@ -418,6 +418,7 @@ class BuildTask(object):
     def execute(self):
         buildNeeded = False
         if self.args.clean:
+            self.logClean()
             self.clean()
             buildNeeded = True
             reason = 'clean'
@@ -440,6 +441,9 @@ class BuildTask(object):
             log('{}... [{}]'.format(self, reason))
         else:
             log('{}...'.format(self))
+
+    def logClean(self):
+        log('Cleaning {}...'.format(self.subject.name))
 
     def logSkip(self, reason):
         if reason:
@@ -1331,14 +1335,13 @@ class JavaBuildTask(ProjectBuildTask):
     def clean(self):
         genDir = self.subject.source_gen_dir()
         if exists(genDir):
-            log('Cleaning {0}...'.format(genDir))
+            logv('Cleaning {0}...'.format(genDir))
             for f in os.listdir(genDir):
                 rmtree(join(genDir, f))
 
-
         outputDir = self.subject.output_dir()
         if exists(outputDir):
-            log('Cleaning {0}...'.format(outputDir))
+            logv('Cleaning {0}...'.format(outputDir))
             rmtree(outputDir)
 
 class JavaCompiler:
@@ -6186,7 +6189,9 @@ def clean(args, parser=None):
             os.unlink(name)
 
     for dep in deps:
-        dep.getBuildTask(args).clean()
+        task = dep.getBuildTask(args)
+        task.logClean()
+        task.clean()
 
         for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
             config = TimeStampFile(join(dep.suite.mxDir, configName))
