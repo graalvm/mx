@@ -856,7 +856,7 @@ class JavaProject(Project):
     def resolveDeps(self):
         Project.resolveDeps(self)
         self._resolveDepsHelper(self.declaredAnnotationProcessors)
-        
+
         # Translate an AP dependency on a project to instead be a dependency
         # on the synthetic AP distribution defined by the project
         self.declaredAnnotationProcessors = [ap.definedAnnotationProcessorsDist if ap.isProject() else ap for ap in self.declaredAnnotationProcessors]
