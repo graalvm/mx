@@ -1118,8 +1118,7 @@ class JavaProject(Project, ClasspathDependency):
         return self._annotationProcessors
 
     """
-    Gets the class path composed of the jars containing the
-    annotation processors that will be applied when compiling this project.
+    Gets the class path composed of the annotation processor jars and the jars they depend upon.
     """
     def annotation_processors_path(self):
         aps = self.annotation_processors()
@@ -5444,10 +5443,7 @@ def _defaultEcjPath():
     return get_env('JDT', join(_primary_suite.mxDir, 'ecj.jar'))
 
 def build(args, parser=None):
-    """compile the Java and C sources, linking the latter
-
-    Compile all the Java source code using the appropriate compilers
-    and linkers for the various source code types."""
+    """builds the artifacts of one or more dependencies"""
 
     suppliedParser = parser is not None
     if not suppliedParser:
