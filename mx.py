@@ -856,9 +856,10 @@ class JavaProject(Project):
     def resolveDeps(self):
         Project.resolveDeps(self)
         self._resolveDepsHelper(self.declaredAnnotationProcessors)
-        #overlap = set(self.deps).intersection(self.declaredAnnotationProcessors)
-        #if overlap:
-        #    self.abort('overlap in normal dependencies and annotation processors not allowed: {}'.format([a.name for a in overlap]))
+        
+        # Translate an AP dependency on a project to instead be a dependency
+        # on the synthetic AP distribution defined by the project
+        self.declaredAnnotationProcessors = [ap.definedAnnotationProcessorsDist if ap.isProject() else ap for ap in self.declaredAnnotationProcessors]
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
@@ -5467,20 +5468,15 @@ def build(args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
-    def _createTask(dep, edge, definingProject=None):
+
+    def _createTask(dep, edge):
         task = dep.getBuildTask(args)
+        assert task.subject not in taskMap
         sortedTasks.append(task)
         taskMap[dep] = task
         lst = depsMap.setdefault(dep, [])
         for d in lst:
             task.deps.append(taskMap[d])
-        if definingProject:
-            task.deps.append(taskMap[definingProject])
-
-        # Inject a task for the synthetic distribution created for a
-        # project that defines one or more annotation processors
-        if dep.isJavaProject() and dep.definedAnnotationProcessors:
-            _createTask(dep.definedAnnotationProcessorsDist, edge, definingProject=dep)
 
     def _registerDep(src, edgeType, dst):
         lst = depsMap.setdefault(src, [])
