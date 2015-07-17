@@ -5415,8 +5415,8 @@ def build(args, parser=None):
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     parser.add_argument('--check-distributions', action='store_true', dest='check_distributions', help='check built distributions for overlap')
-    parser.add_argument('--projects', action='store', help='comma separated projects to build (omit to build all projects)')
-    parser.add_argument('--only', action='store', help='comma separated projects to build, without checking their dependencies (omit to build all projects)')
+    parser.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
+    parser.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
     parser.add_argument('--jdt-warning-as-error', action='store_true', help='convert all Eclipse batch compiler warnings to errors')
@@ -5453,11 +5453,11 @@ def build(args, parser=None):
                           'from within the plugins/ directory of an Eclipse IDE installation.')
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
-        projectNames = args.only.split(',')
-        roots = [project(name) for name in projectNames]
-    elif args.projects is not None:
-        projectNames = args.projects.split(',')
-        roots = [project(name) for name in projectNames]
+        names = args.only.split(',')
+        roots = [dependency(name) for name in names]
+    elif args.dependencies is not None:
+        names = args.dependencies.split(',')
+        roots = [dependency(name) for name in names]
     else:
         roots = None
 
@@ -5607,7 +5607,7 @@ def build_suite(s):
         build_command = s.extensions.build
     else:
         build_command = build
-    build_command(['--projects', ','.join(project_names)])
+    build_command(['--dependencies', ','.join(project_names)])
 
 def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
     """
@@ -5805,13 +5805,13 @@ def processorjars():
         _processorjars_suite(s)
 
 def _processorjars_suite(s):
-    projs = [p for p in s.projects if p.definedAnnotationProcessors is not None]
-    if len(projs) <= 0:
+    apDists = [p.definedAnnotationProcessorsDist for p in s.projects if p.definedAnnotationProcessors is not None]
+    if len(apDists) <= 0:
         return []
 
-    pnames = [p.name for p in projs]
-    build(['--jdt-warning-as-error', '--projects', ",".join(pnames)])
-    return [p.definedAnnotationProcessorsDist.path for p in s.projects if p.definedAnnotationProcessorsDist is not None]
+    names = [ap.name for ap in apDists]
+    build(['--jdt-warning-as-error', '--dependencies', ",".join(names)])
+    return [ap.path for ap in apDists]
 
 def pylint(args):
     """run pylint (if available) over Python source files (found by 'hg locate' or by tree walk with -walk)"""
@@ -6166,25 +6166,25 @@ def clean(args, parser=None):
     parser = parser if suppliedParser else ArgumentParser(prog='mx clean')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
-    parser.add_argument('--projects', action='store', help='comma separated projects to clean (omit to clean all projects)')
+    parser.add_argument('--dependencies', '--projects', action='store', help='comma separated projects to clean (omit to clean all projects)')
     parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
 
     args = parser.parse_args(args)
 
-    if args.projects is not None:
-        projects = [project(name) for name in args.projects.split(',')]
+    if args.dependencies is not None:
+        deps = [dependency(name) for name in args.dependencies.split(',')]
     else:
-        projects = projects_opt_limit_to_suites()
+        deps = projects_opt_limit_to_suites()
 
     def _rmIfExists(name):
         if name and os.path.isfile(name):
             os.unlink(name)
 
-    for p in projects:
-        p.getBuildTask(args).clean()
+    for dep in deps:
+        dep.getBuildTask(args).clean()
 
         for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
-            config = TimeStampFile(join(p.suite.mxDir, configName))
+            config = TimeStampFile(join(dep.suite.mxDir, configName))
             if config.exists():
                 os.unlink(config.path)
 
@@ -7711,7 +7711,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     if not args.unified:
         for p in projects:
             # The project must be built to ensure javadoc can find class files for all referenced classes
-            build(['--no-native', '--projects', p.name])
+            build(['--no-native', '--dependencies', p.name])
 
             pkgs = find_packages(p.source_dirs(), set())
             links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
