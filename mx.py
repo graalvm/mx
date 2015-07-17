@@ -444,6 +444,8 @@ class BuildTask(object):
     def logSkip(self, reason):
         if reason:
             logv('[{} - skipping {}]'.format(reason, self.subject.name))
+        else:
+            logv('[skipping {}]'.format(self.subject.name))
 
     """
     Returns True if the current artifacts are outdated.
