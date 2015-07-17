@@ -5846,9 +5846,13 @@ def processorjars():
         _processorjars_suite(s)
 
 def _processorjars_suite(s):
-    apDists = [p.definedAnnotationProcessorsDist for p in s.projects if p.definedAnnotationProcessors is not None]
-    if len(apDists) <= 0:
-        return []
+    """
+    Builds all distributions in this suite that implement an annotation processor. This will
+    be the synthetic annotation processor distributions as well as any normal distribution
+    that has a direct dependency on a project that defines one or more annotation processors.
+    Returns the jar files for the built distributions.
+    """
+    apDists = [d for d in s.dists if d.isSynthProcessorDistribution or [distDep for distDep in d.deps if distDep.isProject() and distDep.definedAnnotationProcessorsDist]]
 
     names = [ap.name for ap in apDists]
     build(['--jdt-warning-as-error', '--dependencies', ",".join(names)])
