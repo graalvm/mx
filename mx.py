@@ -372,7 +372,7 @@ class Dependency(object):
                 assert len([d for d in deps if not isinstance(d, str)])
 
 class ClasspathDependency(Dependency):
-    def __init__(self):
+    def __init__(self): # pylint: disable=super-init-not-called
         pass
 
     def classpath_repr(self, resolve=True):
@@ -383,6 +383,12 @@ class ClasspathDependency(Dependency):
         denoted by the class path element does not exist.
         '''
         nyi('classpath_repr', self)
+
+    def isJar(self):
+        cp_repr = self.classpath_repr()
+        if cp_repr:
+            return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR')
+        return True
 
 """
 A build task is used to build a dependency.
@@ -1118,8 +1124,10 @@ class JavaProject(Project, ClasspathDependency):
     def annotation_processors_path(self):
         aps = self.annotation_processors()
         if len(aps):
-            entries = classpath_entries(names=aps) 
-            # TODO check those are jars
+            entries = classpath_entries(names=aps)
+            invalid = [e for e in entries if not e.isJar()]
+            if invalid:
+                abort('Annotation processor path can only contain jars: ' + str(invalid))
             return os.pathsep.join((e for e in (e.classpath_repr(resolve=True) for e in entries) if e))
         return None
 
