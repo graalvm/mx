@@ -5484,6 +5484,15 @@ def build(args, parser=None):
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
 
+    if _opts.verbose:
+        log("++ Serialized build plan ++")
+        for task in sortedTasks:
+            if task.deps:
+                log(str(task) + " [depends on " + ', '.join([str(t.subject) for t in task.deps]) + ']')
+            else:
+                log(str(task))
+        log("-- Serialized build plan --")
+
     if args.parallelize:
         def joinTasks(tasks):
             failed = []
