@@ -1131,6 +1131,9 @@ class JavaProject(Project):
                 with open(currentApsFile, 'w') as fp:
                     for ap in aps:
                         print >> fp, ap
+            else:
+                if exists(currentApsFile):
+                    os.remove(currentApsFile)
         return outOfDate
 
     def make_archive(self, path=None):
