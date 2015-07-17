@@ -426,13 +426,15 @@ class BuildTask(object):
             buildNeeded = True
             reason = 'dependencies updated'
         if not buildNeeded:
-            buildNeeded, reason = self.needsBuild(max((dep.newestOutput() for dep in self.deps)) if self.deps else 0)
+            newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
+            buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded and not self.buildForbidden():
             if not self.args.clean:
                 self.clean()
             self.logBuild(reason)
             self.build()
             self.built = True
+            logv('Finished {}'.format(self))
         else:
             self.logSkip(reason)
 
@@ -738,7 +740,7 @@ class ArchiveTask(BuildTask):
         return isinstance(self.subject.suite, BinarySuite)
 
     def needsBuild(self, newestInput):
-        if _needsUpdate(newestInput, self.subject.path) or  (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
+        if _needsUpdate(newestInput, self.subject.path) or (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
             return (True, 'archive does not exist or out of date')
         return (False, None)
 
@@ -1297,7 +1299,7 @@ class JavaBuildTask(ProjectBuildTask):
             outputDir=_cygpathU2W(outputDir),
             classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
             sourceGenDir=self.subject.source_gen_dir(),
-            processorPath=self.subject.annotation_processors_path(),
+            processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
             disableApiRestrictions=not self.args.warnAPI,
             warningsAsErrors=self.args.jdt_warning_as_error,
             showTasks=self.args.jdt_show_task_tags
