@@ -1287,8 +1287,8 @@ class JavaBuildTask(ProjectBuildTask):
                     for nonjavafile in nonjavafiles:
                         copied = TimeStampFile(outputDir + nonjavafile[len(sourceDir):])
                         if copied.isNewerThan(self._newestOutput):
-                            self._newestOutput = classfile.timestamp
-                        if not copied.exists() or classfile.isOlderThan(nonjavafile) or classfile.isOlderThan(newestInput):
+                            self._newestOutput = copied.timestamp
+                        if not copied.exists() or copied.isOlderThan(nonjavafile) or copied.isOlderThan(newestInput):
                             buildReason = 'resource file(s) out of date (witness: ' + copied.path + ')'
                             break
 
