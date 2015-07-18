@@ -1056,71 +1056,17 @@ class JavaProject(Project, ClasspathDependency):
         self._init_packages_and_imports()
         return self._imported_java_packages
 
-    """
-    Gets the list of dependencies defining the annotation processors that will be applied
-    when compiling this project. This is composed of:
-    1. The value of this project's "annotationProcessors" attribute in suite.py.
-    2. Project dependencies of this project that define an annotation processor (i.e. they have a
-       non-empty META-INF/services/javax.annotation.processing.Processor file)
-    """
     def annotation_processors(self):
-        if not hasattr(self, '_annotationProcessors'):
-            aps = set()
-            # 1. Directly declared annotation processors
-            for apd in self.declaredAnnotationProcessors:
-                if apd.isDistribution() or apd.isLibrary():
-                    aps.add(apd)
-                    jar = apd.path if apd.isDistribution() else apd.get_path(resolve=True)
-                    if exists(jar):
-                        if read_annotation_processors(jar) is None:
-                            self.abort(str(apd) + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                                  jar + '!META-INF/services/javax.annotation.processing.Processor does not exist')
-                    else:
-                        # Cannot check the jar it if does not exist
-                        pass
-                elif apd.isProject():
-                    if apd.definedAnnotationProcessorsDist is None:
-                        config = join(apd.source_dirs()[0], 'META-INF', 'services', 'javax.annotation.processing.Processor')
-                        self.abort('Project ' + apd.name + ' declared in annotationProcessors property of ' + self.name + ' does not define any annotation processors.\n' +
-                              'Please specify the annotation processors in ' + config)
-                    aps.add(apd.definedAnnotationProcessorsDist)
-                else:
-                    self.abort('annotationProcessors property of ' + self.name + ' is not a project or distribution')
+        """
+        Gets the list of dependencies defining the annotation processors that will be applied
+        when compiling this project.
+        """
+        return self.declaredAnnotationProcessors
 
-            def addToAps(dep, edge):
-                if dep is not self:
-                    if dep.isProject():
-                        # 2. Project dependencies that define an annotation processor
-                        if dep.definedAnnotationProcessorsDist is not None:
-                            aps.add(dep.definedAnnotationProcessorsDist)
-
-                        # Inherit annotation processors from dependencies
-                        aps.update(dep.annotation_processors())
-
-            # Note use of preVisit to stop visiting at Distributions
-            self.walk_deps(visit=addToAps, preVisit=lambda dep, edge: not dep.isDistribution())
-
-            apByJar = {}
-            for apd in aps:
-                jar = apd.get_path(resolve=True) if apd.isLibrary() else apd.path
-                if exists(jar):
-                    definedAps = read_annotation_processors(jar)
-                    if not definedAps:
-                        abort('no annotation processors are defined in ' + jar, context=apd)
-                    for ap in definedAps:
-                        definingJar = apByJar.get(ap)
-                        if definingJar:
-                            abort('annotation processor ' + ap + ' defined in multiple jars: ' + definingJar + ' and ' + jar)
-                        else:
-                            apByJar[ap] = jar
-
-            self._annotationProcessors = sorted(list(aps))
-        return self._annotationProcessors
-
-    """
-    Gets the class path composed of the annotation processor jars and the jars they depend upon.
-    """
     def annotation_processors_path(self):
+        """
+        Gets the class path composed of this project's annotation processor jars and the jars they depend upon.
+        """
         aps = self.annotation_processors()
         if len(aps):
             entries = classpath_entries(names=aps)
