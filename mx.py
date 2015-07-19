@@ -370,8 +370,8 @@ class Dependency(object):
                 for name in deps:
                     s, _ = splitqualname(name)
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
-                    if dep.isDistribution() and s is None and self.suite is not dep.suite:
-                        abort('inter-suite distribution reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                    if not dep.isLibrary() and s is None and self.suite is not dep.suite:
+                        abort('inter-suite project or distribution reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
