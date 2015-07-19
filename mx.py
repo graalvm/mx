@@ -366,7 +366,14 @@ class Dependency(object):
         '''
         if deps:
             if isinstance(deps[0], str):
-                deps[:] = [dependency(name, context=self, fatalIfMissing=fatalIfMissing) for name in deps]
+                resolvedDeps = []
+                for name in deps:
+                    s, _ = splitqualname(name)
+                    dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
+                    if dep.isDistribution() and s is None and self.suite is not dep.suite:
+                        abort('inter-suite distribution reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                    resolvedDeps.append(dep)
+                deps[:] = resolvedDeps
             else:
                 # If the first element has been resolved, then all elements should have been resolved
                 assert len([d for d in deps if not isinstance(d, str)])
