@@ -355,7 +355,7 @@ class Dependency(object):
             return e.path
         return None
 
-    '''Only Projects define Java packages'''
+    '''Only JavaProjects define Java packages'''
     def defined_java_packages(self):
         return []
 
@@ -947,8 +947,8 @@ class JavaProject(Project, ClasspathDependency):
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
         """
         Scan the sources of this project for Java source files containing a line starting with 'annotation'
-        (ignoring preceding whitespace) and return the fully qualified class name for each Java
-        source file matched in a list.
+        (ignoring preceding whitespace) and return a dict mapping fully qualified class names to a tuple
+        consisting of the source file and line number of a match.
         """
 
         matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
@@ -967,21 +967,23 @@ class JavaProject(Project, ClasspathDependency):
             for root, _, files in os.walk(srcDir):
                 for name in files:
                     if name.endswith('.java') and name != 'package-info.java':
-                        matchFound = False
+                        matchingLineFound = None
                         source = join(root, name)
                         with open(source) as f:
                             pkg = None
+                            lineNo = 1
                             for line in f:
                                 if line.startswith("package "):
                                     match = pkgDecl.match(line)
                                     if match:
                                         pkg = match.group(1)
                                 if function(line.strip()):
-                                    matchFound = True
-                                if pkg and matchFound:
+                                    matchingLineFound = lineNo
+                                if pkg and matchingLineFound:
                                     break
+                                lineNo += 1
 
-                        if matchFound:
+                        if matchingLineFound:
                             simpleClassName = name[:-len('.java')]
                             assert pkg is not None, 'could not find package statement in file ' + name
                             if pkgRoot is None or pkg.startswith(pkgRoot):
@@ -991,10 +993,10 @@ class JavaProject(Project, ClasspathDependency):
                                         if includeInnerClasses:
                                             if e.endswith('.class') and (e.startswith(simpleClassName) or e.startswith(simpleClassName + '$')):
                                                 className = pkg + '.' + e[:-len('.class')]
-                                                result[className] = source
+                                                result[className] = (source, matchingLineFound)
                                         elif e == simpleClassName + '.class':
                                             className = pkg + '.' + simpleClassName
-                                            result[className] = source
+                                            result[className] = (source, matchingLineFound)
         return result
 
     def _init_packages_and_imports(self):

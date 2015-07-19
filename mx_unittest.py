@@ -55,7 +55,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     for p in mx.projects_opt_limit_to_suites():
         if mx.java().javaCompliance < p.javaCompliance:
             continue
-        for c in _find_classes_with_annotations(p, None, annotations).keys():
+        for c in _find_classes_with_annotations(p, None, annotations):
             candidates[c] = p
 
     classes = []
