@@ -522,11 +522,9 @@ Attributes:
         as it defines the eventual content of the distribution
     distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
     excludedDeps: Dependencies (usually Library instances) that should be excluded from the content
-    isSynthProcessorDistribution: True if this distribution was created for a project that declares
-        an annotation processor. There is no definition in suite.py for such a distribution.
 """
 class Distribution(ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDeps, distDependencies, javaCompliance, isSynthProcessorDistribution=False):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDeps, distDependencies, javaCompliance):
         Dependency.__init__(self, suite, name)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -539,7 +537,7 @@ class Distribution(ClasspathDependency):
         self.mainClass = mainClass
         self.excludedDeps = excludedDeps
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
-        self.isSynthProcessorDistribution = isSynthProcessorDistribution
+        self.definedAnnotationProcessors = []
 
     def __str__(self):
         return self.name
@@ -576,8 +574,6 @@ class Distribution(ClasspathDependency):
         self.archiveparticipant = archiveparticipant
 
     def origin(self):
-        if self.isSynthProcessorDistribution and hasattr(self, 'definingProject'):
-            return self.definingProject.origin()
         return Dependency.origin(self)
 
     def classpath_repr(self, resolve=True):
@@ -601,15 +597,9 @@ class Distribution(ClasspathDependency):
 
 
     """
-    Gets the directory in which the IDE project configuration
-    for this distribution is generated. If this is a distribution
-    derived from a project defining an annotation processor, then
-    None is return to indicate no IDE configuration should be
-    created for this distribution.
+    Gets the directory in which the IDE project configuration for this distribution is generated.
     """
     def get_ide_project_dir(self):
-        if hasattr(self, 'definingProject') and self.definingProject.definedAnnotationProcessorsDist == self:
-            return None
         if self.subDir:
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
@@ -877,16 +867,14 @@ class JavaProject(Project, ClasspathDependency):
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
-        self.definedAnnotationProcessorsDist = None
         self.declaredAnnotationProcessors = []
 
     def resolveDeps(self):
         Project.resolveDeps(self)
         self._resolveDepsHelper(self.declaredAnnotationProcessors)
-
-        # Translate an AP dependency on a project to instead be a dependency
-        # on the synthetic AP distribution defined by the project
-        self.declaredAnnotationProcessors = [ap.definedAnnotationProcessorsDist if ap.isProject() else ap for ap in self.declaredAnnotationProcessors]
+        for ap in self.declaredAnnotationProcessors:
+            if not ap.isDistribution() and not ap.isLibrary():
+                abort('annotation processor dependency must be a distribution or a library: ' + ap.name, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
@@ -2609,14 +2597,12 @@ def deploy_binary(args):
 
     _check_dist_exists(mxMetaJar)
     for dist in s.dists:
-        if not dist.isSynthProcessorDistribution:
-            _check_dist_exists(dist.path, dist.sourcesPath)
+        _check_dist_exists(dist.path, dist.sourcesPath)
 
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
     for dist in s.dists:
-        if not dist.isSynthProcessorDistribution:
-            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
+        _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
 
 class MavenConfig:
     def __init__(self):
@@ -3416,6 +3402,7 @@ class SourceSuite(Suite):
 
 
         # Create a distribution for each project that defines annotation processors
+        apProjects = {}
         for p in self.projects:
             annotationProcessors = None
             for srcDir in p.source_dirs():
@@ -3428,39 +3415,35 @@ class SourceSuite(Suite):
                                 if not ap.startswith(p.name):
                                     abort(ap + ' in ' + configFile + ' does not start with ' + p.name)
             if annotationProcessors:
-                dname = p.name.replace('.', '_').upper()
-                apDir = join(p.dir, 'ap')
-                path = join(apDir, p.name + '.jar')
-                sourcesPath = None
-                deps = [p.name]
-                mainClass = None
-                exclDeps = []
-                distDeps = []
-                javaCompliance = None
-                subDir = os.path.relpath(os.path.dirname(p.dir), self.dir)
-                d = Distribution(self, dname, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance, isSynthProcessorDistribution=True)
                 p.definedAnnotationProcessors = annotationProcessors
-                p.definedAnnotationProcessorsDist = d
-                d.definingProject = p
+                apProjects[p.name] = p
 
-                # Restrict exported annotation processors to those explicitly defined by the project
+        # Initialize the definedAnnotationProcessors list for distributions with direct
+        # dependencies on projects that define one or more annotation processors.
+        for dist in self.dists:
+            aps = []
+            for dep in dist.deps:
+                name = dep if isinstance(dep, str) else dep.name
+                if name in apProjects:
+                    aps += apProjects[name].definedAnnotationProcessors
+            if aps:
+                dist.definedAnnotationProcessors = aps
+                # Restrict exported annotation processors to those explicitly defined by the projects
                 def _refineAnnotationProcessorServiceConfig(dist):
-                    aps = dist.definingProject.definedAnnotationProcessors
                     apsJar = dist.path
                     config = 'META-INF/services/javax.annotation.processing.Processor'
                     with zipfile.ZipFile(apsJar, 'r') as zf:
                         currentAps = zf.read(config).split()
-                    if currentAps != aps:
+                    if currentAps != dist.definedAnnotationProcessors:
                         logv('[updating ' + config + ' in ' + apsJar + ']')
                         with Archiver(apsJar) as arc:
                             with zipfile.ZipFile(apsJar, 'r') as lp:
                                 for arcname in lp.namelist():
                                     if arcname == config:
-                                        arc.zf.writestr(arcname, '\n'.join(aps) + '\n')
+                                        arc.zf.writestr(arcname, '\n'.join(dist.definedAnnotationProcessors) + '\n')
                                     else:
                                         arc.zf.writestr(arcname, lp.read(arcname))
-                d.add_update_listener(_refineAnnotationProcessorServiceConfig)
-                self.dists.append(d)
+                dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
     def _load_env_in_mxDir(mxDir):
@@ -5802,12 +5785,10 @@ def processorjars():
 
 def _processorjars_suite(s):
     """
-    Builds all distributions in this suite that implement an annotation processor. This will
-    be the synthetic annotation processor distributions as well as any normal distribution
-    that has a direct dependency on a project that defines one or more annotation processors.
+    Builds all distributions in this suite that define one or more annotation processors.
     Returns the jar files for the built distributions.
     """
-    apDists = [d for d in s.dists if d.isSynthProcessorDistribution or [distDep for distDep in d.deps if distDep.isProject() and distDep.definedAnnotationProcessorsDist]]
+    apDists = [d for d in s.dists if d.definedAnnotationProcessors]
 
     names = [ap.name for ap in apDists]
     build(['--jdt-warning-as-error', '--dependencies', ",".join(names)])
@@ -6298,26 +6279,25 @@ def projectgraph(args, suite=None):
     if args.dist:
         projToDist = {}
         for d in sorted_dists():
-            if not d.isSynthProcessorDistribution:
-                print 'subgraph "cluster_' + d.name + '" {'
-                print 'label="' + d.name + '";'
-                print 'color=blue;'
-                print '"' + d.name + ':DUMMY" [shape=point style=invis]'
+            print 'subgraph "cluster_' + d.name + '" {'
+            print 'label="' + d.name + '";'
+            print 'color=blue;'
+            print '"' + d.name + ':DUMMY" [shape=point style=invis]'
 
-                for p in d.archived_deps():
-                    if p.isProject():
-                        owner = projToDist.get(p)
-                        if owner:
-                            msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
-                            for path in [owner.contains_dep(p), d.contains_dep(p)]:
-                                indent = '\n'
-                                for e in path:
-                                    msg += indent + e.name
-                                    indent += ' '
-                            abort(msg)
-                        projToDist[p] = d
-                        print '"' + p.name + '";'
-                print '}'
+            for p in d.archived_deps():
+                if p.isProject():
+                    owner = projToDist.get(p)
+                    if owner:
+                        msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
+                        for path in [owner.contains_dep(p), d.contains_dep(p)]:
+                            indent = '\n'
+                            for e in path:
+                                msg += indent + e.name
+                                indent += ' '
+                        abort(msg)
+                    projToDist[p] = d
+                    print '"' + p.name + '";'
+            print '}'
     for p in projects():
         for dep in p.canonical_deps():
             if args.dist and dep.isDistribution():
@@ -6637,24 +6617,6 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             out.element('name', data=buildCommand)
             out.element('arguments', data='')
             out.close('buildCommand')
-
-    if p.definedAnnotationProcessorsDist:
-        # Create a launcher that will (re)build the annotation processor
-        # jar any time one of its sources is modified.
-        dist = p.definedAnnotationProcessorsDist
-
-        distProjects = [dp for dp in dist.archived_deps() if dp.isProject()]
-        relevantResources = []
-        for dp in distProjects:
-            for srcDir in dp.source_dirs():
-                relevantResources.append(join(dp.name, os.path.relpath(srcDir, dp.dir)))
-            relevantResources.append(join(dp.name, os.path.relpath(dp.output_dir(), dp.dir)))
-
-        # The path should always be p.name/dir independent of where the workspace actually is.
-        # So we use the parent folder of the project, whatever that is, to generate such a relative path.
-        logicalWorkspaceRoot = os.path.dirname(p.dir)
-        refreshFile = os.path.relpath(p.definedAnnotationProcessorsDist.path, logicalWorkspaceRoot)
-        _genEclipseBuilder(out, p, 'CreateAnnotationProcessorJar', 'archive @' + dist.name, refresh=True, refreshFile=refreshFile, relevantResources=relevantResources, async=True, xmlIndent='', xmlStandalone='no')
 
     out.close('buildSpec')
     out.open('natures')
