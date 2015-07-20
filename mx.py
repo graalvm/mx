@@ -439,9 +439,13 @@ class BuildTask(object):
             self.clean()
             buildNeeded = True
             reason = 'clean'
-        if not buildNeeded and any((dep.built for dep in self.deps)):
-            buildNeeded = True
-            reason = 'dependencies updated'
+        if not buildNeeded:
+            updated = [dep for dep in self.deps if dep.built]
+            if any(updated):
+                buildNeeded = True
+                reason = 'dependencies updated'
+                if _opts.verbose:
+                    reason += ': ' + ', '.join(updated)
         if not buildNeeded:
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
             buildNeeded, reason = self.needsBuild(newestInput)
