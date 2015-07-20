@@ -5046,6 +5046,8 @@ class JavaConfig:
 
         if not exists(self.java):
             raise JavaConfigException('Java launcher does not exist: ' + self.java)
+        if not exists(self.javac):
+            raise JavaConfigException('Javac launcher does not exist: ' + self.java)
 
         def delAtAndSplit(s):
             return shlex.split(s.lstrip('@'))
