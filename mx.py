@@ -370,6 +370,8 @@ class Dependency(object):
                 for name in deps:
                     s, _ = splitqualname(name)
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
+                    if not dep:
+                        continue
                     if not dep.isLibrary() and s is None and self.suite is not dep.suite:
                         abort('inter-suite project or distribution reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     resolvedDeps.append(dep)
@@ -850,7 +852,7 @@ class Project(Dependency):
         (i.e., settings from files later in the list override settings from
         files earlier in the list).
         """
-        abort('eclipse_settings_sources is not implemented for ' + str(type(self)))
+        nyi('eclipse_settings_sources', self)
 
 
 class ProjectBuildTask(BuildTask):
@@ -8546,7 +8548,7 @@ def assessannotationprocessors(args):
             matches = p.find_classes_with_annotations(None, ['@SupportedAnnotationTypes'])
             if matches:
                 for apFqn, pathAndLineNo in matches.iteritems():
-                    pkg, cls = pkgAndClass(apFqn)
+                    pkg, _ = pkgAndClass(apFqn)
                     apProject = packageToProject[pkg]
                     assert apProject, apFqn
                     path, lineNo = pathAndLineNo
