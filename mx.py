@@ -8497,6 +8497,109 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
 
     return (myDir, binDir)
 
+def assessannotationprocessors(args):
+    '''apply heuristics to determine if projects declare exactly the
+    annotation processors they need
+
+    This process automatically analyzes annotation processors annotated
+    with @SupportedAnnotationTypes. Extra annotation processor dependencies
+    and the annotation types they support can be supplied on the command line.
+    Note that this tool is only based on heuristics and may thus result in
+    incorrect suggestions. For example, two different annotations that have
+    the same unqualified name (e.g. @NodeInfo) will cause misleading suggestions
+    about missing annotation processors.
+    '''
+    parser = ArgumentParser(prog='mx assesaps')
+    parser.add_argument('apspecs', help='annotation processor spec with the format <name>:<ap>,... where <name> is a ' +
+                        'substring matching the name of a unique dependency defining one or more annotation processors ' +
+                        'and the list of comma separated <ap>\'s are annotation types processed by <name>', nargs='*', metavar='apspec')
+
+    args = parser.parse_args(args)
+
+    allProjects = [p for p in dependencies() if p.isJavaProject()]
+    apDists = [d for d in dependencies() if d.isDistribution() and d.definedAnnotationProcessors]
+    packageToProject = {}
+    for p in allProjects:
+        for pkg in p.defined_java_packages():
+            packageToProject[pkg] = p
+
+    def pkgAndClass(fqn):
+        '''Partitions a fully qualified class name into a package name and class name.
+        Assumes package components always start with a lower case letter and class names
+        start with an upper case letter.'''
+        m = re.search(r'\.[A-Z]', fqn)
+        assert m, fqn
+        return fqn[0:m.start()], fqn[m.start() + 1:]
+
+    apdepToAnnotations = {}
+    supportedAnnotationTypesRE = re.compile(r'@SupportedAnnotationTypes\({?([^}\)]+)}?\)')
+    annotationRE = re.compile(r'"([^"]+)"')
+
+    for apDist in apDists:
+        for p in [p for p in apDist.deps if p.isJavaProject()]:
+            matches = p.find_classes_with_annotations(None, ['@SupportedAnnotationTypes'])
+            if matches:
+                for apFqn, pathAndLineNo in matches.iteritems():
+                    pkg, cls = pkgAndClass(apFqn)
+                    apProject = packageToProject[pkg]
+                    assert apProject, apFqn
+                    path, lineNo = pathAndLineNo
+                    with open(path) as fp:
+                        for m in supportedAnnotationTypesRE.finditer(fp.read()):
+                            sat = m.group(1)
+                            for annotation in annotationRE.finditer(sat):
+                                parts = annotation.group(1).split('.')
+                                name = None
+                                for p in reversed(parts):
+                                    name = (p + '.' + name) if name else p
+                                    if p[0].isupper():
+                                        apdepToAnnotations.setdefault(apDist, []).append(name)
+                                assert not name[0].isupper()
+                                apdepToAnnotations[apDist].append(name)
+
+    for apspec in args.apspecs:
+        if ':' not in apspec:
+            abort(apspec + ' does not contain ":"')
+        apdep, annotations = apspec.split(':', 1)
+        candidates = [d for d in dependencies() if apdep in d.name]
+        if not candidates:
+            abort(apdep + ' does not match any dependency')
+        elif len(candidates) > 1:
+            abort('"{}" matches more than one dependency: {}'.format(apdep, ', '.join([c.name for c in candidates])))
+        apdep = candidates[0]
+        annotations = annotations.split(',')
+        apdepToAnnotations[apdep] = annotations
+
+    for apdep, annotations in apdepToAnnotations.iteritems():
+        annotations = ['@' + a for a in annotations]
+        log('-- Analyzing ' + str(apdep) + ' with supported annotations ' + ','.join(annotations) + ' --')
+        for p in allProjects:
+            matches = p.find_classes_with_annotations(None, annotations)
+            apdepName = apdep.name if apdep.suite is p.suite else apdep.suite.name + ':' + apdep.name
+            if matches:
+                if apdep not in p.declaredAnnotationProcessors:
+                    context = p.__abort_context__()
+                    if context:
+                        log(context)
+                        log('"annotationProcessors" attribute should include "{}"'.format(apdepName))
+                    else:
+                        log('"annotationProcessors" attribute of {} should include "{}":'.format(p, apdepName))
+                    log("Witness:")
+                    witness = matches.popitem()
+                    (_, (path, lineNo)) = witness
+                    log(path + ':' + str(lineNo))
+                    with open(path) as fp:
+                        log(fp.readlines()[lineNo - 1])
+            else:
+                if apdep in p.declaredAnnotationProcessors:
+                    context = p.__abort_context__()
+                    if context:
+                        log(context)
+                        log('"annotationProcessors" attribute should not include {}'.format(apdepName))
+                    else:
+                        log('"annotationProcessors" attribute of {} should not include {}'.format(p, apdepName))
+                    log('Could not find any matches for these patterns: ' + ', '.join(annotations))
+
 def checkcopyrights(args):
     '''run copyright check on the sources'''
     class CP(ArgumentParser):
@@ -8742,6 +8845,7 @@ def warn(msg, context=None):
 # Suite extensions should not update this table directly, but use update_commands
 _commands = {
     'about': [about, ''],
+    'assessaps': [assessannotationprocessors, '[options]'],
     'bench': [bench, ''],
     'build': [build, '[options]'],
     'checkstyle': [checkstyle, ''],
