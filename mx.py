@@ -4455,7 +4455,7 @@ _canceled_java_requests = set()
 
 def java(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None):
     """
-    Get a JavaConfig object containing Java commands launch details.
+    Get a JDKConfig object containing Java commands launch details.
     """
 
     if defaultJdk is None:
@@ -4706,10 +4706,10 @@ def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
     filtered = []
     for candidate in candidates:
         try:
-            config = JavaConfig(candidate)
+            config = JDKConfig(candidate)
             if versionCheck(config.version):
                 filtered.append(config)
-        except JavaConfigException as e:
+        except JDKConfigException as e:
             if warn:
                 log('Path in ' + source + "' is not pointing to a JDK (" + e.message + ")")
     return filtered
@@ -5022,14 +5022,14 @@ def _filter_non_existant_paths(paths):
         return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
     return None
 
-class JavaConfigException(Exception):
+class JDKConfigException(Exception):
     def __init__(self, value):
         Exception.__init__(self, value)
 
 """
-A JavaConfig object encapsulates info on how Java commands are run.
+A JDKConfig object encapsulates info on how Java commands are run.
 """
-class JavaConfig:
+class JDKConfig:
     def __init__(self, java_home):
         self.jdk = java_home
         self.jar = exe_suffix(join(self.jdk, 'bin', 'jar'))
@@ -5045,9 +5045,9 @@ class JavaConfig:
         self._endorseddirs = None
 
         if not exists(self.java):
-            raise JavaConfigException('Java launcher does not exist: ' + self.java)
+            raise JDKConfigException('Java launcher does not exist: ' + self.java)
         if not exists(self.javac):
-            raise JavaConfigException('Javac launcher does not exist: ' + self.java)
+            raise JDKConfigException('Javac launcher does not exist: ' + self.java)
 
         def delAtAndSplit(s):
             return shlex.split(s.lstrip('@'))
@@ -5064,7 +5064,7 @@ class JavaConfig:
             try:
                 output = subprocess.check_output([self.java, '-version'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
-                raise JavaConfigException(e.returncode + " :" + e.output)
+                raise JDKConfigException(e.returncode + " :" + e.output)
 
         def _checkOutput(out):
             return 'version' in out
@@ -5104,7 +5104,7 @@ class JavaConfig:
             self._classpaths_initialized = True
 
     def __repr__(self):
-        return "JavaConfig(" + str(self.jdk) + ")"
+        return "JDKConfig(" + str(self.jdk) + ")"
 
     def __str__(self):
         return "Java " + str(self.version) + " (" + str(self.javaCompliance) + ") from " + str(self.jdk)
@@ -5115,7 +5115,7 @@ class JavaConfig:
     def __cmp__(self, other):
         if other is None:
             return False
-        if isinstance(other, JavaConfig):
+        if isinstance(other, JDKConfig):
             compilanceCmp = cmp(self.javaCompliance, other.javaCompliance)
             if compilanceCmp:
                 return compilanceCmp
