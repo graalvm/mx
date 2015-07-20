@@ -995,11 +995,13 @@ class JavaProject(Project, ClasspathDependency):
                         if matchingLineFound:
                             simpleClassName = name[:-len('.java')]
                             assert pkg is not None, 'could not find package statement in file ' + name
-                            if pkgRoot is None or pkg.startswith(pkgRoot):
-                                pkgOutputDir = join(outputDir, pkg.replace('.', os.path.sep))
-                                if exists(pkgOutputDir):
-                                    for e in os.listdir(pkgOutputDir):
-                                        if includeInnerClasses:
+                            className = pkg + '.' + simpleClassName
+                            result[className] = (source, matchingLineFound)
+                            if includeInnerClasses:
+                                if pkgRoot is None or pkg.startswith(pkgRoot):
+                                    pkgOutputDir = join(outputDir, pkg.replace('.', os.path.sep))
+                                    if exists(pkgOutputDir):
+                                        for e in os.listdir(pkgOutputDir):
                                             if e.endswith('.class') and (e.startswith(simpleClassName) or e.startswith(simpleClassName + '$')):
                                                 className = pkg + '.' + e[:-len('.class')]
                                                 result[className] = (source, matchingLineFound)
