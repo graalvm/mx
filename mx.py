@@ -141,7 +141,7 @@ def nyi(name, obj):
 
 DEP_STANDARD = "standard dependency"
 DEP_ANNOTATION_PROCESSOR = "annotation processor dependency"
-DEP_EXCLUDED = "excluded dependency"
+DEP_EXCLUDED = "excluded library"
 
 def _is_edge_ignored(edge, ignoredEdges):
     return ignoredEdges and edge in ignoredEdges
@@ -527,10 +527,10 @@ Attributes:
         This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
         as it defines the eventual content of the distribution
     distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
-    excludedDeps: Dependencies (usually Library instances) that should be excluded from the content
+    excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
 class Distribution(ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedDeps, distDependencies, javaCompliance):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance):
         Dependency.__init__(self, suite, name)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -541,7 +541,7 @@ class Distribution(ClasspathDependency):
         self.update_listeners = set()
         self.archiveparticipant = None
         self.mainClass = mainClass
-        self.excludedDeps = excludedDeps
+        self.excludedLibs = excludedLibs
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
 
@@ -553,7 +553,10 @@ class Distribution(ClasspathDependency):
         Resolves symbolic dependency references to be Dependency objects.
         '''
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
-        self._resolveDepsHelper(self.excludedDeps)
+        self._resolveDepsHelper(self.excludedLibs)
+        for l in self.excludedLibs:
+            if not l.isLibrary():
+                abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
@@ -595,7 +598,7 @@ class Distribution(ClasspathDependency):
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
         if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
-            for d in self.excludedDeps:
+            for d in self.excludedLibs:
                 if visitEdge:
                     visitEdge(self, DEP_EXCLUDED, d)
                 if d not in visited:
@@ -618,7 +621,12 @@ class Distribution(ClasspathDependency):
         '''
         if not hasattr(self, '_archived_deps'):
             excluded = set()
+            # Exclude libraries specified in "exclude" attribute
             self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
+            # Exclude my direct distribution dependencies
+            for dep in self.deps:
+                if dep.isDistribution():
+                    excluded.update(dep.archived_deps())
             deps = []
             self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
             self._archived_deps = deps
@@ -995,9 +1003,6 @@ class JavaProject(Project, ClasspathDependency):
                                             if e.endswith('.class') and (e.startswith(simpleClassName) or e.startswith(simpleClassName + '$')):
                                                 className = pkg + '.' + e[:-len('.class')]
                                                 result[className] = (source, matchingLineFound)
-                                        elif e == simpleClassName + '.class':
-                                            className = pkg + '.' + simpleClassName
-                                            result[className] = (source, matchingLineFound)
         return result
 
     def _init_packages_and_imports(self):
@@ -3131,10 +3136,10 @@ class Suite:
             sourcesPath = attrs.pop('sourcesPath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
             mainClass = attrs.pop('mainClass', None)
-            exclDeps = Suite._pop_list(attrs, 'exclude', context)
+            exclLibs = Suite._pop_list(attrs, 'exclude', context)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclDeps, distDeps, javaCompliance)
+            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance)
             d.__dict__.update(attrs)
             self.dists.append(d)
 
