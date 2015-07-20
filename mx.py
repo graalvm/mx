@@ -1142,7 +1142,7 @@ class JavaBuildTask(ProjectBuildTask):
 
     def initSharedMemoryState(self):
         ProjectBuildTask.initSharedMemoryState(self)
-        self._newestBox = multiprocessing.Value('f', float(self._newestOutput))
+        self._newestBox = multiprocessing.Value('d', float(self._newestOutput))
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
