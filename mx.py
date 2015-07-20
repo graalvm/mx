@@ -8974,6 +8974,22 @@ def _findPrimarySuiteMxDir():
         return mxDir
     return None
 
+def _check_dependency_cycles():
+    '''
+    Checks for cycles in the dependency graph.
+    '''
+    path = []
+    def _visitEdge(src, edgeType, dst):
+        if dst in path:
+            abort('dependency cycle detected: ' + ' -> '.join([d.name for d in path] + [dst.name]), context=dst)
+    def _preVisit(dep, edge):
+        path.append(dep)
+        return True
+    def _visit(dep, edge):
+        last = path.pop(-1)
+        assert last is dep
+    walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
+
 def _remove_bad_deps():
     '''Remove projects and libraries that (recursively) depend on an optional library
     whose artifact does not exist or on a JRE library that is not present in the
@@ -9091,6 +9107,7 @@ def main():
     if primarySuiteMxDir and primarySuiteMxDir != _mx_suite.mxDir:
         _primary_suite._depth_first_post_init()
 
+    _check_dependency_cycles()
     _remove_bad_deps()
 
     if len(commandAndArgs) == 0:
