@@ -301,7 +301,7 @@ class Dependency(object):
         loc = self.origin()
         if loc:
             path, lineNo = loc
-            return 'In definition of {} in {} starting at line {}'.format(self.name, path, lineNo)
+            return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
         return None
 
     def qualifiedName(self):
