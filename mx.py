@@ -3382,28 +3382,34 @@ class SourceSuite(Suite):
 
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
-            srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
-            deps = Suite._pop_list(attrs, 'dependencies', context)
-            subDir = attrs.pop('subDir', None)
-            if subDir is None:
-                d = join(self.dir, name)
+            className =  attrs.pop('class', None)
+            if className:
+                if not self.extensions or not hasattr(self.extensions, className):
+                    abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
+                p = getattr(self.extensions, className)(**attrs)
             else:
-                d = join(self.dir, subDir, name)
-            workingSets = attrs.pop('workingSets', None)
-            native = attrs.pop('native', '') == 'true'
-            if native:
-                p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, d)
-            else:
-                javaCompliance = attrs.pop('javaCompliance', None)
-                if javaCompliance is None:
-                    abort('javaCompliance property required for non-native project ' + name)
-                p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
-                p.checkstyleProj = attrs.pop('checkstyle', name)
-                p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
-                ap = Suite._pop_list(attrs, 'annotationProcessors', context)
-                if ap:
-                    p.declaredAnnotationProcessors = ap
-            p.__dict__.update(attrs)
+                srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
+                deps = Suite._pop_list(attrs, 'dependencies', context)
+                subDir = attrs.pop('subDir', None)
+                if subDir is None:
+                    d = join(self.dir, name)
+                else:
+                    d = join(self.dir, subDir, name)
+                workingSets = attrs.pop('workingSets', None)
+                native = attrs.pop('native', '') == 'true'
+                if native:
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, d)
+                else:
+                    javaCompliance = attrs.pop('javaCompliance', None)
+                    if javaCompliance is None:
+                        abort('javaCompliance property required for non-native project ' + name)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
+                    p.checkstyleProj = attrs.pop('checkstyle', name)
+                    p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
+                    ap = Suite._pop_list(attrs, 'annotationProcessors', context)
+                    if ap:
+                        p.declaredAnnotationProcessors = ap
+                p.__dict__.update(attrs)
             self.projects.append(p)
 
 
