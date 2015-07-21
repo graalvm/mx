@@ -447,7 +447,7 @@ class BuildTask(object):
                 buildNeeded = True
                 reason = 'dependencies updated'
                 if _opts.verbose:
-                    reason += ': ' + ', '.join([u.name for u in updated])
+                    reason += ': ' + ', '.join([u.subject.name for u in updated])
         if not buildNeeded:
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
             buildNeeded, reason = self.needsBuild(newestInput)
