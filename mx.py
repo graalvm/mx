@@ -486,13 +486,18 @@ class BuildTask(object):
     if any dependency has been built, this task will be built.
     """
     def needsBuild(self, newestInput):
-        nyi('needsBuild', self)
+        if self.args.force:
+            return (True, 'forced build')
+        return (False, 'unimplemented')
 
     def newestOutput(self):
         nyi('needsBuild', self)
 
     def buildForbidden(self):
-        return False
+        if not self.args.only:
+            return False
+        projectNames = self.args.only.split(',')
+        return self.subject.name in projectNames
 
     """
     Build the artifacts.
@@ -783,6 +788,9 @@ class ArchiveTask(BuildTask):
 
 class JARArchiveTask(ArchiveTask):
     def needsBuild(self, newestInput):
+        sup = ArchiveTask.needsBuild(self, newestInput)
+        if sup[0]:
+            return sup
         if _needsUpdate(newestInput, self.subject.path) or (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
             return (True, 'archive does not exist or out of date')
         return (False, None)
@@ -899,12 +907,6 @@ class Project(Dependency):
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
-
-    def buildForbidden(self):
-        if not self.args.only:
-            return False
-        projectNames = self.args.only.split(',')
-        return self.subject.name in projectNames
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
@@ -1194,14 +1196,19 @@ class JavaBuildTask(ProjectBuildTask):
         ProjectBuildTask.pullSharedMemoryState(self)
         self._newestOutput = self._newestBox.value
 
-    def needsBuild(self, newestInput):
+    def buildForbidden(self):
+        if ProjectBuildTask.buildForbidden(self):
+            return True
         if not self.args.java:
-            return (False, 'no-java build')
+            return True
         if exists(join(self.subject.dir, 'plugin.xml')):  # eclipse plugin project
-            return (False, 'eclipse plugin project')
-        if self.args.force:
-            return (True, 'forced build')
+            return True
+        return False
 
+    def needsBuild(self, newestInput):
+        sup = ProjectBuildTask.needsBuild(self, newestInput)
+        if sup[0]:
+            return sup
         reason = self._collectFiles(checkBuildReason=True, newestInput=newestInput)
         if reason:
             return (True, reason)
@@ -1495,6 +1502,12 @@ class NativeBuildTask(ProjectBuildTask):
 
     def needsBuild(self, newestInput):
         return (True, None)  # let make decide
+
+    def buildForbidden(self):
+        if ProjectBuildTask.buildForbidden(self):
+            return True
+        if not self.args.native:
+            return True
 
     def newestOutput(self):
         return 0 #  not supported, rely on built flag
@@ -1822,6 +1835,9 @@ class LibarayDownloadTask(BuildTask):
         pass
 
     def needsBuild(self, newestInput):
+        sup = BuildTask.needsBuild(self, newestInput)
+        if sup[0]:
+            return sup
         return (self.subject._check_download_needed(), None)
 
     def newestOutput(self):
