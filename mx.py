@@ -447,7 +447,7 @@ class BuildTask(object):
                 buildNeeded = True
                 reason = 'dependencies updated'
                 if _opts.verbose:
-                    reason += ': ' + ', '.join(updated)
+                    reason += ': ' + ', '.join([u.name for u in updated])
         if not buildNeeded:
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
             buildNeeded, reason = self.needsBuild(newestInput)
@@ -1447,7 +1447,7 @@ class NativeProject(Project):
     def clean(self):
         run([gmake_cmd(), '-C', self.dir, 'clean'])
 
-    def getBuildTask(self, args, projectsToBuild):
+    def getBuildTask(self, args):
         return NativeBuildTask(args, self)
 
 class NativeBuildTask(ProjectBuildTask):
@@ -7512,11 +7512,11 @@ def _intellij_suite(args, suite, refreshOnly=False):
             compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
             for apDep in processors:
-                def processApDep(path, entry, edge):
-                    if entry.isLibrary():
-                        compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(entry.path, suite.dir)})
-                    elif entry.isProject():
-                        compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(entry.output_dir(), suite.dir)})
+                def processApDep(dep, edge):
+                    if dep.isLibrary():
+                        compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.path, suite.dir)})
+                    elif dep.isProject():
+                        compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.output_dir(), suite.dir)})
                 apDep.walk_deps(visit=processApDep)
             compilerXml.close('processorPath')
             for module in modules:
@@ -9037,7 +9037,7 @@ def _remove_bad_deps():
                 if not path:
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     ommittedDeps.add(dep)
-        elif dep.isProject():
+        elif dep.isJavaProject():
             if java(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance)) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 ommittedDeps.add(dep)
