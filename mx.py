@@ -5453,6 +5453,7 @@ def build(args, parser=None):
         names = args.only.split(',')
         roots = [dependency(name) for name in names]
     elif args.dependencies is not None:
+        assert args.dependencies
         names = args.dependencies.split(',')
         roots = [dependency(name) for name in names]
     else:
@@ -5807,6 +5808,8 @@ def _processorjars_suite(s):
     Returns the jar files for the built distributions.
     """
     apDists = [d for d in s.dists if d.definedAnnotationProcessors]
+    if not apDists:
+        return []
 
     names = [ap.name for ap in apDists]
     build(['--jdt-warning-as-error', '--dependencies', ",".join(names)])
@@ -9173,7 +9176,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("4.3.5")
+version = VersionSpec("5.0.0")
 
 currentUmask = None
 
