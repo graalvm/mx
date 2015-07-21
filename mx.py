@@ -5399,7 +5399,7 @@ def update_file(path, content, showDiff=False):
 # Builtin commands
 
 def _defaultEcjPath():
-    return get_env('JDT', join(_primary_suite.mxDir, 'ecj.jar'))
+    return get_env('JDT')
 
 def build(args, parser=None):
     """builds the artifacts of one or more dependencies"""
@@ -5424,8 +5424,9 @@ def build(args, parser=None):
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
-    compilerSelect.add_argument('--jdt', help='path to ecj.jar, the stand alone Eclipse batch compiler', default=_defaultEcjPath(), metavar='<path>')
-    compilerSelect.add_argument('--force-javac', action='store_true', dest='javac', help='use javac whether ecj.jar is found or not')
+    compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
+                                'This can also be specified with the JDT environment variable.', default=_defaultEcjPath(), metavar='<path>')
+    compilerSelect.add_argument('--force-javac', action='store_true', dest='javac', help='use javac even if an Eclipse batch compiler jar is specified')
 
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
@@ -5440,11 +5441,7 @@ def build(args, parser=None):
         if not args.jdt.endswith('.jar'):
             abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
         if not exists(args.jdt):
-            if os.path.abspath(args.jdt) == os.path.abspath(_defaultEcjPath()) and get_env('JDT', None) is None:
-                # Silently ignore JDT if default location is used but does not exist
-                args.jdt = None
-            else:
-                abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
+            abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
         else:
             with zipfile.ZipFile(args.jdt, 'r') as zf:
                 if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
