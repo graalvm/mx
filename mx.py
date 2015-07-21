@@ -3157,6 +3157,7 @@ class Suite:
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
             os_arch = attrs.pop('os_arch', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
             if os_arch:
                 arch = os_arch.pop(get_os(), None)
                 if not arch:
@@ -3172,7 +3173,8 @@ class Suite:
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
-            deps = Suite._pop_list(attrs, 'dependencies', context)
+            os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
+            deps += os_arch_deps
             # Add support for optional external libraries if we have a good use case
             optional = False
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
