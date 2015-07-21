@@ -118,7 +118,17 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
         f_testfile.close()
         harness(projectsCp, vmLauncher, vmArgs)
 
-def _unittest(args, annotations, vmLauncher=None, prefixCp="", blacklist=None, whitelist=None, verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False):
+_vm_launcher = None
+_config_participants = []
+def set_vm_launcher(name, launcher):
+    global _vm_launcher
+    assert _vm_launcher is None, 'cannot override unit test VM launcher ' + _vm_launcher[0]
+    _vm_launcher = (name, launcher)
+
+def add_config_participant(p):
+    _config_participants.append(p)
+
+def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -157,8 +167,14 @@ def _unittest(args, annotations, vmLauncher=None, prefixCp="", blacklist=None, w
         # replaying the VM execution in a native debugger (e.g., gdb).
         mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
 
-        vmLauncher(vmArgs, mainClass, mainClassArgs)
+        config = (vmArgs, mainClass, mainClassArgs)
+        for p in _config_participants:
+            config = p(config)
 
+        _, launcher = vmLauncher
+        launcher(*config)
+
+    vmLauncher = _vm_launcher
     if vmLauncher is None:
         vmLauncher = lambda vmArgs, mainClass, mainClassArgs: mx.run_java(vmArgs + [mainClass] + mainClassArgs)
 
@@ -208,8 +224,8 @@ unittestHelpSuffix = """
     it uses to run the VM.
 """
 
-def unittest(args, vmLauncher=None):
-    """run the JUnit tests (all testcases)"""
+def unittest(args):
+    """run the JUnit tests"""
 
     parser = ArgumentParser(prog='mx unittest',
           description='run the JUnit tests',
@@ -257,4 +273,4 @@ def unittest(args, vmLauncher=None):
         except IOError:
             mx.log('warning: could not read blacklist: ' + parsed_args.blacklist)
 
-    _unittest(args, ['@Test', '@Parameters'], vmLauncher=vmLauncher, **parsed_args.__dict__)
+    _unittest(args, ['@Test', '@Parameters'], **parsed_args.__dict__)
