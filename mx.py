@@ -3495,7 +3495,14 @@ class SourceSuite(Suite):
                 dp = project(d, False)
                 if dp:
                     if not dp in self.projects:
-                        p.abort("dependency to project '{}' defined in an imported suite must use '{}:<name of distribution containing {}>' instead".format(dp.name, dp.suite.name, dp.name))
+                        dists = [(dist.suite.name + ':' + dist.name) for dist in dp.suite.dists if dp in dist.archived_deps()]
+                        if len(dists) > 1:
+                            dists = ', '.join(dists[:-1]) + ' or ' + dists[-1]
+                        elif dists:
+                            dists = dists[0]
+                        else:
+                            dists = '<name of distribution containing ' + dp.name + '>'
+                        p.abort("dependency to project '{}' defined in an imported suite must use {} instead".format(dp.name, dists))
                     elif dp == p:
                         p.abort("recursive dependency in suite '{}' in project '{}'".format(self.name, d))
 
