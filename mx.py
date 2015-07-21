@@ -116,6 +116,7 @@ _libs = dict()
 _jreLibs = dict()
 _jdkLibs = dict()
 _dists = dict()
+_distTemplates = dict()
 
 _suites = dict()
 _loadedSuites = []
@@ -232,6 +233,9 @@ class Dependency(object):
 
     def isDistribution(self):
         return isinstance(self, Distribution)
+
+    def isJARDistribution(self):
+        return isinstance(self, JARDistribution)
 
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
@@ -512,6 +516,41 @@ def _maxTime(*args):
 def _needsUpdate(minTime, f):
     return not exists(f) or os.path.getmtime(f) < minTime
 
+class DistributionTemplate(object):
+    def __init__(self, suite, name, attrs, parameters):
+        self.suite = suite
+        self.name = name
+        self.attrs = attrs
+        self.parameters = parameters
+
+# TODO doc!
+class Distribution(Dependency):
+    def __init__(self, suite, name, deps):
+        Dependency.__init__(self, suite, name)
+        self.deps = deps
+        self.update_listeners = set()
+
+    def add_update_listener(self, listener):
+        self.update_listeners.add(listener)
+
+    def notify_updated(self):
+        for l in self.update_listeners:
+            l(self)
+
+    def resolveDeps(self):
+        self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+
+    def make_archive(self):
+        nyi('make_archive', self)
+
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
 In some sense it is the ultimate "result" of a build (there can be more than one).
@@ -529,37 +568,29 @@ Attributes:
     distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
     excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
-class Distribution(ClasspathDependency):
+class JARDistribution(Distribution, ClasspathDependency):
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance):
-        Dependency.__init__(self, suite, name)
+        Distribution.__init__(self, suite, name, deps + distDependencies)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = path.replace('/', os.sep)
         self.path = _make_absolute(self.path, suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
-        self.deps = deps + distDependencies
-        self.update_listeners = set()
         self.archiveparticipant = None
         self.mainClass = mainClass
         self.excludedLibs = excludedLibs
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
 
-    def __str__(self):
-        return self.name
-
     def resolveDeps(self):
         '''
         Resolves symbolic dependency references to be Dependency objects.
         '''
-        self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        Distribution.resolveDeps(self)
         self._resolveDepsHelper(self.excludedLibs)
         for l in self.excludedLibs:
             if not l.isLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
-
-    def add_update_listener(self, listener):
-        self.update_listeners.add(listener)
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -591,19 +622,13 @@ class Distribution(ClasspathDependency):
         return self.path
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps:
-                if visitEdge:
-                    visitEdge(self, DEP_STANDARD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+        Distribution._walk_deps_visit_edges(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
         if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
             for d in self.excludedLibs:
                 if visitEdge:
                     visitEdge(self, DEP_EXCLUDED, d)
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
-
 
     """
     Gets the directory in which the IDE project configuration for this distribution is generated.
@@ -622,10 +647,10 @@ class Distribution(ClasspathDependency):
         if not hasattr(self, '_archived_deps'):
             excluded = set()
             # Exclude libraries specified in "exclude" attribute
-            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
+            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isJARDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
             # Exclude my direct distribution dependencies
             for dep in self.deps:
-                if dep.isDistribution():
+                if dep.isJARDistribution():
                     excluded.update(dep.archived_deps())
             deps = []
             self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
@@ -740,13 +765,8 @@ class Distribution(ClasspathDependency):
 
         self.notify_updated()
 
-    def notify_updated(self):
-        for l in self.update_listeners:
-            l(self)
-
     def getBuildTask(self, args):
-        return ArchiveTask(args, self)
-
+        return JARArchiveTask(args, self)
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -761,6 +781,7 @@ class ArchiveTask(BuildTask):
     def buildForbidden(self):
         return isinstance(self.subject.suite, BinarySuite)
 
+class JARArchiveTask(ArchiveTask):
     def needsBuild(self, newestInput):
         if _needsUpdate(newestInput, self.subject.path) or (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
             return (True, 'archive does not exist or out of date')
@@ -769,12 +790,24 @@ class ArchiveTask(BuildTask):
     def newestOutput(self):
         return _maxTime(self.subject.path, self.subject.sourcesPath)
 
+    # TODO make sure we never clean distributions from BinarySuites
     def clean(self):
         if exists(self.subject.path):
             os.remove(self.subject.path)
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
 
+class NativeDistribution(Distribution):
+    def __init__(self, suite, name, deps, path, dbgPath):
+        Distribution.__init__(self, suite, name, deps)
+        self.path = path
+        self.dbgPath = dbgPath
+
+    def make_archive(self):
+        pass
+
+    def getBuildTask(self, args):
+        return NoOpTask(self, args)
 """
 A Project is a collection of source code that is built by mx. For historical reasons
 it typically corresponds to an IDE project and the IDE support in mx assumes this.
@@ -1643,6 +1676,7 @@ class NoOpTask(BuildTask):
         return (False, None)
 
     def newestOutput(self):
+        # TODO Should still return something for jdk/jre library and NativeDistributions
         return 0
 
     def build(self):
@@ -2838,6 +2872,7 @@ class Suite:
         self.dists = []
         self._metadata_initialized = False
         self.post_init = False
+        self.distTemplates = []
         _suites[self.name] = self
 
     def __str__(self):
@@ -2867,12 +2902,14 @@ class Suite:
             elif isinstance(value, types.ListType):
                 for i in range(len(value)):
                     value[i] = expand(value[i], context + [str(i)])
-            else:
-                if not isinstance(value, types.StringTypes):
-                    abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
+            elif isinstance(value, types.StringTypes):
                 value = expandvars(value)
                 if '$' in value or '%' in value:
                     abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+            elif isinstance(value, types.BooleanType):
+                pass
+            else:
+                abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
 
             return value
 
@@ -2981,13 +3018,21 @@ class Suite:
                 abort('inconsistent JDK library redefinition of ' + l.name + ' in ' + existing.suite.dir + ' and ' + l.suite.dir, context=l)
             _jdkLibs[l.name] = l
         for d in self.dists:
-            existing = _dists.get(d.name)
+            self._register_distribution(d)
+        for d in self.distTemplates:
+            existing = _distTemplates.get(d.name)
             if existing is not None and _check_global_structures:
-                # allow redefinition, so use path from existing
-                # abort('cannot redefine distribution  ' + d.name)
-                warn('distribution ' + d.name + ' redefined', context=l)
-                d.path = existing.path
-            _dists[d.name] = d
+                abort('inconsistent distribution template redefinition of ' + d.name + ' in ' + existing.suite.dir + ' and ' + d.suite.dir, context=l)
+            _distTemplates[d.name] = d
+
+    def _register_distribution(self, d):
+        existing = _dists.get(d.name)
+        if existing is not None and _check_global_structures:
+            # allow redefinition, so use path from existing
+            # abort('cannot redefine distribution  ' + d.name)
+            warn('distribution ' + d.name + ' redefined', context=d)
+            d.path = existing.path
+        _dists[d.name] = d
 
     def _resolve_dependencies(self):
         for d in self.projects + self.libs + self.dists:
@@ -3131,18 +3176,52 @@ class Suite:
 
     def _load_distributions(self, distsMap):
         for name, attrs in sorted(distsMap.iteritems()):
-            context = 'distribution ' + name
+            if '<' in name:
+                parameters = re.findall(r'<(.+?)>', name)
+                self.distTemplates.append(DistributionTemplate(self, name, attrs, parameters))
+            else:
+                self._load_distibution(name, attrs)
+
+    def _load_distibution(self, name, attrs):
+        assert not '>' in name
+        context = 'distribution ' + name
+        deps = Suite._pop_list(attrs, 'dependencies', context)
+        native = attrs.pop('native', False)
+        os_arch = attrs.pop('os_arch', None)
+        rootAttrs = attrs
+        if os_arch:
+            arch = os_arch.pop(get_os(), None)
+            if not arch:
+                warn('{} is not defined for your os ({})'.format(name, get_os()))
+                return None
+            attrs = arch.pop(get_arch(), None)
+            if not attrs:
+                warn('{} is not defined for your architecture ({})'.format(name, get_arch()))
+                return None
+        os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
+        deps += os_arch_deps
+        if native:
+            path = attrs.pop('path')
+            dbgPath = attrs.pop('dbgPath', None)
+            d = NativeDistribution(self, name, deps, path, dbgPath)
+        else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
             sourcesPath = attrs.pop('sourcesPath', None)
-            deps = Suite._pop_list(attrs, 'dependencies', context)
             mainClass = attrs.pop('mainClass', None)
             exclLibs = Suite._pop_list(attrs, 'exclude', context)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = Distribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance)
-            d.__dict__.update(attrs)
-            self.dists.append(d)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance)
+        d.__dict__.update(attrs)
+        if rootAttrs != attrs:
+            d.__dict__.update(rootAttrs)
+        self.dists.append(d)
+        return d
+
+    def _unload_unregister_distribution(self, name):
+        self.dists = [d for d in self.dists if d.name != name]
+        del _dists[name]
 
     @staticmethod
     def _pop_list(attrs, name, context):
@@ -3156,8 +3235,10 @@ class Suite:
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
-            os_arch = attrs.pop('os_arch', None)
             deps = Suite._pop_list(attrs, 'dependencies', context)
+            native = attrs.pop('native', False)  # TODO use to make non-classpath libraries
+            os_arch = attrs.pop('os_arch', None)
+            rootAttrs = attrs
             if os_arch:
                 arch = os_arch.pop(get_os(), None)
                 if not arch:
@@ -3179,6 +3260,8 @@ class Suite:
             optional = False
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
             l.__dict__.update(attrs)
+            if rootAttrs != attrs:
+                l.__dict__.update(rootAttrs)
             self.libs.append(l)
 
     @staticmethod
@@ -3395,20 +3478,20 @@ class SourceSuite(Suite):
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
             className = attrs.pop('class', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
+            workingSets = attrs.pop('workingSets', None)
             if className:
                 if not self.extensions or not hasattr(self.extensions, className):
                     abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
-                p = getattr(self.extensions, className)(**attrs)
+                p = getattr(self.extensions, className)(self, name, deps, workingSets, **attrs)
             else:
                 srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
-                deps = Suite._pop_list(attrs, 'dependencies', context)
                 subDir = attrs.pop('subDir', None)
                 if subDir is None:
                     d = join(self.dir, name)
                 else:
                     d = join(self.dir, subDir, name)
-                workingSets = attrs.pop('workingSets', None)
-                native = attrs.pop('native', '') == 'true'
+                native = attrs.pop('native', False)
                 if native:
                     p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, d)
                 else:
@@ -3428,6 +3511,8 @@ class SourceSuite(Suite):
         # Create a distribution for each project that defines annotation processors
         apProjects = {}
         for p in self.projects:
+            if not p.isJavaProject():
+                continue
             annotationProcessors = None
             for srcDir in p.source_dirs():
                 configFile = join(srcDir, 'META-INF', 'services', 'javax.annotation.processing.Processor')
@@ -4093,6 +4178,53 @@ def splitqualname(name):
     else:
         return None, name
 
+def _patchTemplateString(str, args, context):
+    def _replaceVar(m):
+        groupName = m.group(1)
+        if not groupName in args:
+            abort("Unknown parameter {}".format(groupName), context=context)
+        return args[groupName]
+    return re.sub(r'<(.+?)>', _replaceVar, str)
+
+def reInstanciateDistribution(templateName, oldArgs, newArgs):
+    _, name = splitqualname(templateName)
+    context = "Template distribution " + name
+    t = _distTemplates.get(name)
+    if t is None:
+        abort('Distribution template named ' + name + ' not found', context=context)
+    oldName = _patchTemplateString(t.name, oldArgs, context).upper()
+    t.suite._unload_unregister_distribution(oldName)
+    instanciateDistribution(templateName, newArgs)
+
+def instanciateDistribution(templateName, args, fatalIfMissing=True, context=None):
+    _, name = splitqualname(templateName)
+    if not context:
+        context = "Template distribution " + name
+    t = _distTemplates.get(name)
+    if t is None and fatalIfMissing:
+        abort('Distribution template named ' + name + ' not found', context=context)
+    missingParams = [p for p in t.parameters if p not in args]
+    if missingParams:
+        abort('Missing parameters while instanciating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=context)
+
+    def _patchAttrs(attrs):
+        result = {}
+        for k, v in attrs.iteritems():
+            if isinstance(v, types.StringType):
+                result[k] = _patchTemplateString(v, args, context)
+            elif isinstance(v, types.DictType):
+                result[k] = _patchAttrs(v)
+            else:
+                result[k] = v
+        return result
+
+    d = t.suite._load_distibution(_patchTemplateString(t.name, args, context).upper(), _patchAttrs(t.attrs))
+    if d is None and fatalIfMissing:
+        abort('distribution template ' + t.name + ' could not be instanciated with ' + str(args), context=context)
+    t.suite._register_distribution(d)
+    d.resolveDeps()
+    return d
+
 def distribution(name, fatalIfMissing=True, context=None):
     """
     Get the distribution for a given name. This will abort if the named distribution does
@@ -4185,12 +4317,12 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
             return False
-        if edge and edge.src.isDistribution():
+        if edge and edge.src.isJARDistribution():
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
-            return dst.isDistribution() if preferDist else dst.isProject()
+            return dst.isJARDistribution() if preferDist else dst.isProject()
         return True
     def _visit(dep, edge):
-        if preferProjects and dep.isDistribution() and not isinstance(dep.suite, BinarySuite):
+        if preferProjects and dep.isJATDistribution() and not isinstance(dep.suite, BinarySuite):
             return
         if not includeSelf and dep in roots:
             return
@@ -6318,19 +6450,20 @@ def projectgraph(args, suite=None):
             print 'color=blue;'
             print '"' + d.name + ':DUMMY" [shape=point style=invis]'
 
-            for p in d.archived_deps():
-                if p.isProject():
-                    owner = projToDist.get(p)
-                    if owner:
-                        msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
-                        for path in [owner.contains_dep(p), d.contains_dep(p)]:
-                            indent = '\n'
-                            for e in path:
-                                msg += indent + e.name
-                                indent += ' '
-                        abort(msg)
-                    projToDist[p] = d
-                    print '"' + p.name + '";'
+            if d.isJARDistribution():
+                for p in d.archived_deps():
+                    if p.isProject():
+                        owner = projToDist.get(p)
+                        if owner:
+                            msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
+                            for path in [owner.contains_dep(p), d.contains_dep(p)]:
+                                indent = '\n'
+                                for e in path:
+                                    msg += indent + e.name
+                                    indent += ' '
+                            abort(msg)
+                        projToDist[p] = d
+                        print '"' + p.name + '";'
             print '}'
     for p in projects():
         for dep in p.canonical_deps():
@@ -6735,6 +6868,8 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
     # for the distribution whenever any (transitively) dependent project of the
     # distribution is updated.
     for dist in suite.dists:
+        if not dist.isJARDistribution():
+            continue
         projectDir = dist.get_ide_project_dir()
         if not projectDir:
             continue
@@ -7585,6 +7720,8 @@ def ideclean(args):
             log("Error removing {0}".format(p.name + '.jar'))
 
     for d in _dists.itervalues():
+        if not d.isJARDistribution():
+            continue
         if d.get_ide_project_dir():
             shutil.rmtree(d.get_ide_project_dir(), ignore_errors=True)
 
@@ -7608,7 +7745,7 @@ def fsckprojects(args):
         return
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
-        distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.get_ide_project_dir() is not None]
+        distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
                 # no point in traversing vc metadata dir, lib, .workspace
@@ -8556,7 +8693,7 @@ def assessannotationprocessors(args):
     args = parser.parse_args(args)
 
     allProjects = [p for p in dependencies() if p.isJavaProject()]
-    apDists = [d for d in dependencies() if d.isDistribution() and d.definedAnnotationProcessors]
+    apDists = [d for d in dependencies() if d.isJARDistribution() and d.definedAnnotationProcessors]
     packageToProject = {}
     for p in allProjects:
         for pkg in p.defined_java_packages():
