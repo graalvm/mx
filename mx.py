@@ -5042,7 +5042,7 @@ class JDKConfigException(Exception):
         Exception.__init__(self, value)
 
 """
-A JDKConfig object encapsulates info on how Java commands are run.
+A JDKConfig object encapsulates info about an installed or deployed JDK.
 """
 class JDKConfig:
     def __init__(self, java_home):
@@ -9013,7 +9013,7 @@ def _check_dependency_cycles():
         assert last is dep
     walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
 
-def _remove_bad_deps():
+def _remove_unsatisfied_deps():
     '''Remove projects and libraries that (recursively) depend on an optional library
     whose artifact does not exist or on a JRE library that is not present in the
     JDK for a project. Also remove projects whose Java compliance requirement
@@ -9127,11 +9127,11 @@ def main():
     if _opts.mx_tests:
         MXTestsSuite()
 
-    if primarySuiteMxDir and primarySuiteMxDir != _mx_suite.mxDir:
-        _primary_suite._depth_first_post_init()
-
-    _check_dependency_cycles()
-    _remove_bad_deps()
+    if primarySuiteMxDir:
+        if primarySuiteMxDir != _mx_suite.mxDir:
+            _primary_suite._depth_first_post_init()
+        _check_dependency_cycles()
+        _remove_unsatisfied_deps()
 
     if len(commandAndArgs) == 0:
         _argParser.print_help()
