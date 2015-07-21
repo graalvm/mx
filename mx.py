@@ -3389,7 +3389,7 @@ class SourceSuite(Suite):
 
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
-            className =  attrs.pop('class', None)
+            className = attrs.pop('class', None)
             if className:
                 if not self.extensions or not hasattr(self.extensions, className):
                     abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
