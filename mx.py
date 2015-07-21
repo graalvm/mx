@@ -1421,7 +1421,7 @@ class ECJCompiler(JavacLikeCompiler):
             with open(jdtProperties) as fp:
                 origContent = fp.read()
                 content = origContent
-                if project.uses_annotation_processor_library():
+                if [ap for ap in project.declaredAnnotationProcessors if ap.isLibrary()]:
                     # unfortunately, the command line compiler doesn't let us ignore warnings for generated files only
                     content = content.replace('=warning', '=ignore')
                 elif warningsAsErrors:
@@ -6508,6 +6508,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if not exists(genDir):
             os.mkdir(genDir)
         out.open('classpathentry', {'kind' : 'src', 'path' : 'src_gen'})
+        if [ap for ap in p.declaredAnnotationProcessors if ap.isLibrary()]:
+            # ignore warnings produced by third-party annotation processors
+            out.open('attributes')
+            out.element('attribute', {'name' : 'ignore_optional_problems', 'value' : 'true'})
+            out.close('attributes')
         out.close('classpathentry')
         if files:
             files.append(genDir)
