@@ -3156,11 +3156,15 @@ class Suite:
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
-            if "|" in name:
-                if name.count('|') != 2:
-                    abort("Format error in library name: " + name + "\nsyntax: libname|os-platform|architecture")
-                name, platform, architecture = name.split("|")
-                if platform != get_os() or architecture != get_arch():
+            os_arch = attrs.pop('os_arch', None)
+            if os_arch:
+                arch = os_arch.pop(get_os(), None)
+                if not arch:
+                    warn('{} is not available on your os ({})'.format(name, get_os()))
+                    continue
+                attrs = arch.pop(get_arch(), None)
+                if not attrs:
+                    warn('{} is not available on your architecture ({})'.format(name, get_arch()))
                     continue
             path = attrs.pop('path')
             urls = Suite._pop_list(attrs, 'urls', context)
