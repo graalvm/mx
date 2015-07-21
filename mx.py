@@ -5993,7 +5993,8 @@ def canonicalizeprojects(args):
             if len(canonicalDeps) != 0:
                 log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: [')
                 for d in canonicalDeps:
-                    log('        "' + d.name + '",')
+                    name = d.suite.name + ':' + d.name if d.suite is not p.suite else d.name
+                    log('        "' + name + '",')
                 log('      ],')
             else:
                 log(p.__abort_context__() + ':\nCanonical dependencies for project ' + p.name + ' are: []')
