@@ -1200,7 +1200,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance if self.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
-        jdk = java(requiredCompliance)
+        jdk = get_jdk(requiredCompliance)
         if hasattr(args, 'parallelize') and args.parallelize:
             # Best to initialize class paths on main process
             jdk.bootclasspath()
@@ -2377,7 +2377,7 @@ class BinaryVC(VC):
         self._log_clone("{}/{}/{}".format(url, self._groupId(suite_name), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
         self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
-        run([java().jar, 'xf', mx_jar_path], cwd=dest)
+        run([get_jdk().jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
 
@@ -2458,7 +2458,7 @@ class BinaryVC(VC):
 
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
-        run([java().jar, 'xf', mx_jar_path], cwd=vcdir)
+        run([get_jdk().jar, 'xf', mx_jar_path], cwd=vcdir)
 
         self._writeMetadata(vcdir, metadata)
         return True
@@ -4430,7 +4430,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     cp = []
     if includeBootClasspath:
-        cp.append(java().bootclasspath())
+        cp.append(get_jdk().bootclasspath())
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
     for dep in cpEntries:
@@ -4706,7 +4706,7 @@ def _format_commands():
 
 _canceled_java_requests = set()
 
-def java(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None):
     """
     Get a JDKConfig object containing Java commands launch details.
     """
@@ -4979,10 +4979,10 @@ def find_classpath_arg(vmArgs):
             return index + 1, vmArgs[index + 1]
 
 
-def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, javaConfig=None):
-    if not javaConfig:
-        javaConfig = java()
-    return run(javaConfig.format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
+def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, jdkConfig=None):
+    if not jdkConfig:
+        jdkConfig = get_jdk()
+    return run(jdkConfig.format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
 def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
@@ -5587,7 +5587,7 @@ def download(path, urls, verbose=False, abortOnError=True):
     assert not path.endswith(os.sep)
 
     _, binDir = _compile_mx_class('URLConnectionDownload')
-    command = [java().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
+    command = [get_jdk().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
     if _opts.no_download_progress or not sys.stderr.isatty():
         command.append('--no-progress')
     command.append(_cygpathU2W(path))
@@ -6320,7 +6320,7 @@ def checkstyle(args):
             continue
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
-        jdk = java(p.javaCompliance)
+        jdk = get_jdk(p.javaCompliance)
         assert jdk
 
         for sourceDir in sourceDirs:
@@ -6716,7 +6716,7 @@ def _check_ide_timestamp(suite, configZip, ide):
     return True
 
 def _eclipseinit_project(p, files=None, libFiles=None):
-    assert java(p.javaCompliance)
+    assert get_jdk(p.javaCompliance)
 
     if not exists(p.dir):
         os.makedirs(p.dir)
@@ -7012,7 +7012,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : java().jdk})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().jdk})
     launchOut.close('mapAttribute')
 
     if refresh:
@@ -7259,7 +7259,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     if not exists(join(p.dir, 'nbproject')):
         os.makedirs(join(p.dir, 'nbproject'))
 
-    jdk = java(p.javaCompliance)
+    jdk = get_jdk(p.javaCompliance)
     assert jdk
 
     if jdks:
@@ -7628,7 +7628,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if not p.isJavaProject():
             continue
 
-        assert java(p.javaCompliance)
+        assert get_jdk(p.javaCompliance)
 
         if not exists(p.dir):
             os.makedirs(p.dir)
@@ -7763,7 +7763,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Wite misc.xml for global JDK config
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version': '4'})
-    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(java().javaCompliance), 'project-jdk-name': str(java().javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(get_jdk().javaCompliance), 'project-jdk-name': str(get_jdk().javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
@@ -7963,11 +7963,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 windowTitle = ['-windowtitle', p.name + ' javadoc']
             try:
                 log('Generating {2} for {0} in {1}'.format(p.name, out, docDir))
-                projectJava = java(p.javaCompliance)
+                projectJava = get_jdk(p.javaCompliance)
 
                 # Once https://bugs.openjdk.java.net/browse/JDK-8041628 is fixed,
                 # this should be reverted to:
-                # javadocExe = java().javadoc
+                # javadocExe = get_jdk().javadoc
                 # we can then also respect _opts.relatex_compliance
                 javadocExe = projectJava.javadoc
 
@@ -8003,7 +8003,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             sp += p.source_dirs()
             names.append(p.name)
 
-        links = ['-link', 'http://docs.oracle.com/javase/' + str(java().javaCompliance.value) + '/docs/api/']
+        links = ['-link', 'http://docs.oracle.com/javase/' + str(get_jdk().javaCompliance.value) + '/docs/api/']
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
@@ -8013,12 +8013,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         if not args.warnAPI:
             nowarnAPI.append('-XDignore.symbol.file')
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
-        run([java().javadoc, memory,
+        run([get_jdk().javadoc, memory,
              '-classpath', cp,
              '-quiet',
              '-d', out,
              '-sourcepath', sp] +
-             ([] if java().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+             ([] if get_jdk().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              links +
              extraArgs +
              nowarnAPI +
@@ -8700,7 +8700,7 @@ def exportlibs(args):
 def javap(args):
     """disassemble classes matching given pattern with javap"""
 
-    javapExe = java().javap
+    javapExe = get_jdk().javap
     if not exists(javapExe):
         abort('The javap executable does not exists: ' + javapExe)
     else:
@@ -8742,7 +8742,7 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
         if not exists(binDir):
             os.mkdir(binDir)
-        javac = jdk.javac if jdk else java().javac
+        javac = jdk.javac if jdk else get_jdk().javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
         if classpath:
             cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
@@ -8865,7 +8865,7 @@ def checkcopyrights(args):
             return ArgumentParser.format_help(self) + self._get_program_help()
 
         def _get_program_help(self):
-            help_output = subprocess.check_output([java().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--help'])
+            help_output = subprocess.check_output([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--help'])
             return '\nother argumemnts preceded with --\n' +  help_output
 
     # ensure compiled form of code is up to date
@@ -8888,7 +8888,7 @@ def checkcopyrights(args):
         custom_args = []
         if exists(custom_copyrights):
             custom_args = ['--custom-copyright-dir', custom_copyrights]
-        rc = run([java().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        rc = run([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
 
@@ -8927,7 +8927,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
 
     candidates = []
     for p in projects_opt_limit_to_suites():
-        if not p.isJavaProject() or java().javaCompliance < p.javaCompliance:
+        if not p.isJavaProject() or get_jdk().javaCompliance < p.javaCompliance:
             continue
         candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
 
@@ -8945,7 +8945,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t)
 
-    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= java().javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= get_jdk().javaCompliance])
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
@@ -9270,14 +9270,14 @@ def _remove_unsatisfied_deps():
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     ommittedDeps.add(dep)
         elif dep.isJavaProject():
-            if java(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance)) is None:
+            if get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance)) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 ommittedDeps.add(dep)
             else:
                 for depDep in list(dep.deps):
                     if depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
-                        if not lib.is_present_in_jdk(java(dep.javaCompliance)):
+                        if not lib.is_present_in_jdk(get_jdk(dep.javaCompliance)):
                             if depDep.optional:
                                 logv('[omitting project {} as dependency {} is missing]'.format(dep, lib))
                                 ommittedDeps.add(dep)
