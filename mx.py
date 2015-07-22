@@ -1653,6 +1653,9 @@ class NativeBuildTask(ProjectBuildTask):
                     t = os.path.getmtime(r)
                     if t > self._newestOutput:
                         self._newestOutput = t
+                else:
+                    self._newestOutput = float(0)
+                    break
         return self._newestOutput
 
     def clean(self, forBuild=False):
