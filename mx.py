@@ -868,7 +868,7 @@ class NativeTARDistribution(Distribution):
         directory = dirname(self.path)
         if not exists(directory):
             os.makedirs(directory)
-        with tarfile.open(self.path, 'w') as tar:
+        with Archiver(self.path, kind='tar') as arc:
             files = set()
             for d in self.archived_deps():
                 if not d.isNativeProject():
@@ -878,7 +878,7 @@ class NativeTARDistribution(Distribution):
                     if filename in files:
                         abort('')
                     files.add(filename)
-                    tar.add(r, arcname=filename)
+                    arc.zf.add(r, arcname=filename)
         self.notify_updated()
 
     def getBuildTask(self, args):
@@ -6213,11 +6213,12 @@ def pylint(args):
         run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env)
 
 """
-Utility for creating and updating a zip file atomically.
+Utility for creating and updating a zip or tar file atomically.
 """
 class Archiver:
-    def __init__(self, path):
+    def __init__(self, path, kind='zip'):
         self.path = path
+        self.kind = kind
 
     def __enter__(self):
         if self.path:
@@ -6226,7 +6227,12 @@ class Archiver:
             fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=dirname(self.path))
             self.tmpFd = fd
             self.tmpPath = tmp
-            self.zf = zipfile.ZipFile(tmp, 'w')
+            if self.kind == 'zip':
+                self.zf = zipfile.ZipFile(tmp, 'w')
+            elif self.kind == 'tar':
+                self.zf = tarfile.open(tmp, 'w')
+            else:
+                abort('unsupported archive kind: ' + self.kind)
         else:
             self.tmpFd = None
             self.tmpPath = None
@@ -6237,10 +6243,15 @@ class Archiver:
         if self.zf:
             self.zf.close()
             os.close(self.tmpFd)
-            # Correct the permissions on the temporary file which is created with restrictive permissions
-            os.chmod(self.tmpPath, 0o666 & ~currentUmask)
-            # Atomic on Unix
-            shutil.move(self.tmpPath, self.path)
+            if exc_value:
+                # If an error occurred, delete the temp file
+                # instead of moving it into the destination
+                os.remove(self.tmpPath)
+            else:
+                # Correct the permissions on the temporary file which is created with restrictive permissions
+                os.chmod(self.tmpPath, 0o666 & ~currentUmask)
+                # Atomic on Unix
+                shutil.move(self.tmpPath, self.path)
 
 def _archive(args):
     archive(args)
