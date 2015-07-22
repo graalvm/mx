@@ -186,14 +186,50 @@ class DepEdge:
     def path_len(self):
         return 1 + self.prev.path_len() if self.prev else 0
 
+class SuiteConstituent(object):
+    def __init__(self, suite, name):
+        self.name = name
+        self.suite = suite
+
+    def origin(self):
+        """
+        Gets a 2-tuple (file, line) describing the source file where this constituent
+        is defined or None if the location cannot be determined.
+        """
+        suitepy = self.suite.suite_py()
+        if exists(suitepy):
+            import tokenize
+            with open(suitepy) as fp:
+                candidate = None
+                for t in tokenize.generate_tokens(fp.readline):
+                    _, tval, (srow, _), _, _ = t
+                    if candidate is None:
+                        if tval == '"' + self.name + '"' or tval == "'" + self.name + "'":
+                            candidate = srow
+                    else:
+                        if tval == ':':
+                            return (suitepy, srow)
+                        else:
+                            candidate = None
+
+    def __abort_context__(self):
+        '''
+        Gets a description of where this constituent was defined in terms of source file
+        and line number. If no such description can be generated, None is returned.
+        '''
+        loc = self.origin()
+        if loc:
+            path, lineNo = loc
+            return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
+        return None
+
 """
 A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all Dependency instances.
 """
-class Dependency(object):
+class Dependency(SuiteConstituent):
     def __init__(self, suite, name):
-        self.name = name
-        self.suite = suite
+        SuiteConstituent.__init__(self, suite, name)
 
     def __cmp__(self, other):
         return cmp(self.name, other.name)
@@ -267,27 +303,6 @@ class Dependency(object):
         assert self.isJdkLibrary()
         return self.suite.jdkLibs
 
-    def origin(self):
-        """
-        Gets a 2-tuple (file, line) describing the source file where this dependency
-        is defined or None if the location cannot be determined.
-        """
-        suitepy = self.suite.suite_py()
-        if exists(suitepy):
-            import tokenize
-            with open(suitepy) as fp:
-                candidate = None
-                for t in tokenize.generate_tokens(fp.readline):
-                    _, tval, (srow, _), _, _ = t
-                    if candidate is None:
-                        if tval == '"' + self.name + '"' or tval == "'" + self.name + "'":
-                            candidate = srow
-                    else:
-                        if tval == ':':
-                            return (suitepy, srow)
-                        else:
-                            candidate = None
-
     """
     Return a BuildTask that can be used to build this dependency.
     """
@@ -299,17 +314,6 @@ class Dependency(object):
         Aborts with given message prefixed by the origin of this dependency.
         '''
         abort(msg, context=self)
-
-    def __abort_context__(self):
-        '''
-        Gets a description of where this dependency was defined in terms of source file
-        and line number. If no such description can be generated, None is returned.
-        '''
-        loc = self.origin()
-        if loc:
-            path, lineNo = loc
-            return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
-        return None
 
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
@@ -527,10 +531,9 @@ def _maxTime(*args):
 def _needsUpdate(minTime, f):
     return not exists(f) or _getSymlinkMTime(f) < minTime
 
-class DistributionTemplate(object):
+class DistributionTemplate(SuiteConstituent):
     def __init__(self, suite, name, attrs, parameters):
-        self.suite = suite
-        self.name = name
+        SuiteConstituent.__init__(self, suite, name)
         self.attrs = attrs
         self.parameters = parameters
 
@@ -3379,7 +3382,7 @@ class Suite:
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
             deps = Suite._pop_list(attrs, 'dependencies', context)
-            native = attrs.pop('native', False)  # TODO use to make non-classpath libraries
+            attrs.pop('native', False)  # TODO use to make non-classpath libraries
             os_arch = attrs.pop('os_arch', None)
             rootAttrs = attrs
             if os_arch:
@@ -4353,7 +4356,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
         abort('Distribution template named ' + name + ' not found', context=context)
     missingParams = [p for p in t.parameters if p not in args]
     if missingParams:
-        abort('Missing parameters while instanciating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=context)
+        abort('Missing parameters while instantiating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=t)
 
     def _patchAttrs(attrs):
         result = {}
@@ -4368,7 +4371,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
 
     d = t.suite._load_distribution(instantiatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
     if d is None and fatalIfMissing:
-        abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=context)
+        abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=t)
     t.suite._register_distribution(d)
     d.resolveDeps()
     return d
@@ -6475,7 +6478,7 @@ def clean(args, parser=None):
     else:
         deps = dependencies(True)
 
-    # TODO should we clean all the instanciations of a template?, how to enumerate all instanciations?
+    # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
     for dep in deps:
         task = dep.getBuildTask(args)
         task.logClean()
