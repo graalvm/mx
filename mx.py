@@ -580,18 +580,26 @@ class Distribution(Dependency):
         '''
         Gets the projects and libraries whose artifacts are the contents of the archive
         created by self.make_archive().
+
+        Direct distribution depdenencies are considered as "distDependencies".
+        Anything contained in the distDependencies will not be included in the archived_deps.
+        libraries listed in "excludedLibs" will also not bed included.
+        Otherwise, archived_deps will contain everything this distribution depends on (including indirect distribution depdenencies and libraries).
         '''
         if not hasattr(self, '_archived_deps'):
-            excluded = set()
-            def _visit(dep, edge):
-                excluded.add(dep)
-                if dep.isDistribution():
+            excluded = set(self.excludedLibs)
+            def _visitDists(dep, edges):
+                if dep is not self:
+                    excluded.add(dep)
                     excluded.update(dep.archived_deps())
-            excludedRoots = self.excludedLibs + [d for d in self.deps if d.isDistribution()]
-            if excludedRoots:
-                walk_deps(roots=excludedRoots, visit=_visit)
+            self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
             deps = []
-            self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
+            def _visit(dep, edges):
+                if dep is not self:
+                    deps.append(dep)
+            def _preVisit(dst, edge):
+                return dst not in excluded and not dst.isJreLibrary()
+            self.walk_deps(visit=_visit, preVisit=_preVisit)
             self._archived_deps = deps
         return self._archived_deps
 
