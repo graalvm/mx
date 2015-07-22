@@ -439,6 +439,9 @@ class BuildTask(object):
     Execute the build task.
     """
     def execute(self):
+        if self.buildForbidden():
+            self.logSkip(None)
+            return
         buildNeeded = False
         if self.args.clean:
             self.logClean()
@@ -455,9 +458,9 @@ class BuildTask(object):
         if not buildNeeded:
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
             buildNeeded, reason = self.needsBuild(newestInput)
-        if buildNeeded and not self.buildForbidden():
+        if buildNeeded:
             if not self.args.clean:
-                self.clean()
+                self.clean(forBuild=True)
             self.logBuild(reason)
             self.build()
             self.built = True
@@ -508,7 +511,7 @@ class BuildTask(object):
     """
     Clean the build artifacts.
     """
-    def clean(self):
+    def clean(self, forBuild=False):
         nyi('clean', self)
 
 def _maxTime(*args):
@@ -555,6 +558,24 @@ class Distribution(Dependency):
 
     def make_archive(self):
         nyi('make_archive', self)
+
+    def archived_deps(self):
+        '''
+        Gets the projects and libraries whose artifacts are the contents of the archive
+        created by self.make_archive().
+        '''
+        if not hasattr(self, '_archived_deps'):
+            excluded = set()
+            # Exclude libraries specified in "exclude" attribute
+            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
+            # Exclude my direct distribution dependencies
+            for dep in self.deps:
+                if dep.isDistribution():
+                    excluded.update(dep.archived_deps())
+            deps = []
+            self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
+            self._archived_deps = deps
+        return self._archived_deps
 
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
@@ -643,25 +664,6 @@ class JARDistribution(Distribution, ClasspathDependency):
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
             return join(self.suite.dir, self.name + '.dist')
-
-    def archived_deps(self):
-        '''
-        Gets the projects and libraries whose artifacts are the contents of the archive
-        created by self.make_archive().
-        '''
-        if not hasattr(self, '_archived_deps'):
-            excluded = set()
-            # Exclude libraries specified in "exclude" attribute
-            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isJARDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
-            # Exclude my direct distribution dependencies
-            for dep in self.deps:
-                if dep.isJARDistribution():
-                    excluded.update(dep.archived_deps())
-            deps = []
-            self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
-            self._archived_deps = deps
-        return self._archived_deps
-
 
     def make_archive(self):
         # are sources combined into main archive?
@@ -768,6 +770,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
+        print('wtf', self.path, os.path.getmtime(self.path))
         self.notify_updated()
 
     def getBuildTask(self, args):
@@ -798,24 +801,57 @@ class JARArchiveTask(ArchiveTask):
     def newestOutput(self):
         return _maxTime(self.subject.path, self.subject.sourcesPath)
 
-    # TODO make sure we never clean distributions from BinarySuites
-    def clean(self):
+    def clean(self, forBuild=False):
+        if isinstance(self.subject.dist, BinarySuite):  # make sure we never clean distributions from BinarySuites
+            return
         if exists(self.subject.path):
             os.remove(self.subject.path)
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
 
-class NativeDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, dbgPath):
+class NativeTARDistribution(Distribution):
+    def __init__(self, suite, name, deps, path):
         Distribution.__init__(self, suite, name, deps)
         self.path = path
-        self.dbgPath = dbgPath
 
     def make_archive(self):
-        pass
+        directory = dirname(self.path)
+        if not exists(directory):
+            os.makedirs(directory)
+        with tarfile.open(self.path, 'w') as tar:
+            files = set()
+            for d in self.archived_deps():
+                if not d.isNativeProject():
+                    abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
+                for r in d.getResults():
+                    filename = basename(r)
+                    if filename in files:
+                        abort('')
+                    files.add(filename)
+                    tar.add(r, arcname=filename)
+        self.notify_updated()
 
     def getBuildTask(self, args):
-        return NoOpTask(self, args)
+        return TARArchiveTask(args, self)
+
+class TARArchiveTask(ArchiveTask):
+    def needsBuild(self, newestInput):
+        sup = ArchiveTask.needsBuild(self, newestInput)
+        if sup[0]:
+            return sup
+        if _needsUpdate(newestInput, self.subject.path):
+            return (True, 'archive does not exist or out of date')
+        return (False, None)
+
+    def newestOutput(self):
+        return _maxTime(self.subject.path)
+
+    def clean(self, forBuild=False):
+        if isinstance(self.subject.dist, BinarySuite):  # make sure we never clean distributions from BinarySuites
+            return
+        if exists(self.subject.path):
+            os.remove(self.subject.path)
+
 """
 A Project is a collection of source code that is built by mx. For historical reasons
 it typically corresponds to an IDE project and the IDE support in mx assumes this.
@@ -1348,7 +1384,7 @@ class JavaBuildTask(ProjectBuildTask):
         if self._nonJavaFileCount():
             logvv('Finished resource copy for {}'.format(self.subject.name))
 
-    def clean(self):
+    def clean(self, forBuild=False):
         genDir = self.subject.source_gen_dir()
         if exists(genDir):
             logv('Cleaning {0}...'.format(genDir))
@@ -1482,23 +1518,51 @@ class ECJCompiler(JavacLikeCompiler):
 
         run_java(jvmArgs + jdtArgs)
 
+def _replaceResultsVar(m):
+    var = m.group(1)
+    if var == 'os':
+        return get_os()
+    if var == 'arch':
+        return get_arch()
+    if var.startswith('lib:'):
+        libname = var[len('lib:'):]
+        return add_lib_suffix(add_lib_prefix(libname))
+    else:
+        abort('Unknown variable: ' + var)
 
 class NativeProject(Project):
-    def clean(self):
-        run([gmake_cmd(), '-C', self.dir, 'clean'])
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d)
+        self.results = results
+        self.output = output
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
 
+    def getOutput(self, replaceVar=_replaceResultsVar):
+        if not self.output:
+            return None
+        return re.sub(r'<(.+?)>', replaceVar, self.output)
+
+    def getResults(self, replaceVar=_replaceResultsVar):
+        results = []
+        output = self.getOutput(replaceVar=replaceVar)
+        for rt in self.results:
+            r = re.sub(r'<(.+?)>', replaceVar, rt)
+            results.append(join(self.suite.dir, output, r))
+        return results
+
 class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
+        self._newestOutput = None
 
     def __str__(self):
         return 'Building {} with GNU Make'.format(self.subject.name)
 
     def build(self):
         run([gmake_cmd()], cwd=self.subject.dir)
+        self._newestOutput = None
 
     def needsBuild(self, newestInput):
         return (True, None)  # let make decide
@@ -1510,10 +1574,20 @@ class NativeBuildTask(ProjectBuildTask):
             return True
 
     def newestOutput(self):
-        return 0 #  not supported, rely on built flag
+        if self._newestOutput is None:
+            results = self.subject.getResults()
+            self._newestOutput = 0
+            for r in results:
+                if exists(r):
+                    t = os.path.getmtime(r)
+                    if t > self._newestOutput:
+                        self._newestOutput = t
+        return self._newestOutput
 
-    def clean(self):
-        run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
+    def clean(self, forBuild=False):
+        if not forBuild:  # assume make can do incremental builds
+            run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
+            self._newestOutput = None
 
 def _make_absolute(path, prefix):
     """
@@ -1689,13 +1763,13 @@ class NoOpTask(BuildTask):
         return (False, None)
 
     def newestOutput(self):
-        # TODO Should still return something for jdk/jre library and NativeDistributions
+        # TODO Should still return something for jdk/jre library and NativeTARDistributions
         return 0
 
     def build(self):
         pass
 
-    def clean(self):
+    def clean(self, forBuild=False):
         pass
 
 """
@@ -1846,7 +1920,7 @@ class LibarayDownloadTask(BuildTask):
     def build(self):
         self.subject.get_path(resolve=True)
 
-    def clean(self):
+    def clean(self, forBuild=False):
         pass
 
 '''
@@ -3218,8 +3292,7 @@ class Suite:
         deps += os_arch_deps
         if native:
             path = attrs.pop('path')
-            dbgPath = attrs.pop('dbgPath', None)
-            d = NativeDistribution(self, name, deps, path, dbgPath)
+            d = NativeTARDistribution(self, name, deps, path)
         else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
@@ -3509,7 +3582,9 @@ class SourceSuite(Suite):
                     d = join(self.dir, subDir, name)
                 native = attrs.pop('native', False)
                 if native:
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, d)
+                    output = attrs.pop('output', None)
+                    results = Suite._pop_list(attrs, 'output', context)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
@@ -3520,7 +3595,7 @@ class SourceSuite(Suite):
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
                     if ap:
                         p.declaredAnnotationProcessors = ap
-                p.__dict__.update(attrs)
+            p.__dict__.update(attrs)
             self.projects.append(p)
 
 
@@ -4194,13 +4269,13 @@ def splitqualname(name):
     else:
         return None, name
 
-def _patchTemplateString(str, args, context):
+def _patchTemplateString(s, args, context):
     def _replaceVar(m):
         groupName = m.group(1)
         if not groupName in args:
             abort("Unknown parameter {}".format(groupName), context=context)
         return args[groupName]
-    return re.sub(r'<(.+?)>', _replaceVar, str)
+    return re.sub(r'<(.+?)>', _replaceVar, s)
 
 def reInstanciateDistribution(templateName, oldArgs, newArgs):
     _, name = splitqualname(templateName)
@@ -4432,13 +4507,16 @@ def read_annotation_processors(path):
                         return parse(fp)
     return None
 
-def dependencies():
+def dependencies(opt_limit_to_suite=False):
     '''
     Gets an iterable over all the registered dependencies. If changes are made to the registered
     dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
     None, only dependencies of a type in 'types
     '''
-    return itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
+    it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
+    if opt_limit_to_suite and _opts.specific_suites:
+        it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
+    return it
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     '''
@@ -6337,12 +6415,9 @@ def clean(args, parser=None):
     if args.dependencies is not None:
         deps = [dependency(name) for name in args.dependencies.split(',')]
     else:
-        deps = projects_opt_limit_to_suites()
+        deps = dependencies(True)
 
-    def _rmIfExists(name):
-        if name and os.path.isfile(name):
-            os.unlink(name)
-
+    # TODO should we clean all the instanciations of a template?, how to enumerate all instanciations?
     for dep in deps:
         task = dep.getBuildTask(args)
         task.logClean()
@@ -6352,15 +6427,6 @@ def clean(args, parser=None):
             config = TimeStampFile(join(dep.suite.mxDir, configName))
             if config.exists():
                 os.unlink(config.path)
-
-    if args.java:
-        if args.dist:
-            lsuites = suites(True, includeBinary=False)
-            for d in _dists.itervalues():
-                if d.suite in lsuites:
-                    log('Removing distribution {0}...'.format(d.name))
-                    _rmIfExists(d.path)
-                    _rmIfExists(d.sourcesPath)
 
     if suppliedParser:
         return args
