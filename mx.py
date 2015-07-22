@@ -8128,7 +8128,7 @@ def _supdate_import_visitor(s, suite_import, **extra_args):
 
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
-    vc_system(s.vc).update(s.dir)
+    s.vc.update(s.dir)
 
 def supdate(args):
     """update primary suite and all its imports"""
@@ -8185,7 +8185,6 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
     else:
         # unusual case, no version specified, so pull the head
-        vc_system(imported_suite.vc).pull(imported_suite.dir)
         imported_suite.vc.pull(imported_suite.dir)
 
     # now (may) need to force imports of this suite if the above changed its import revs
