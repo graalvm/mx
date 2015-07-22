@@ -889,6 +889,12 @@ class TARArchiveTask(ArchiveTask):
     def newestOutput(self):
         return _maxTime(self.subject.path)
 
+    def buildForbidden(self):
+        if ArchiveTask.buildForbidden(self):
+            return True
+        if not self.args.native:
+            return True
+
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             return
