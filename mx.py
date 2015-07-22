@@ -7118,6 +7118,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.element('arg', {'value' : 'javadoc'})
     out.element('arg', {'value' : '--projects'})
     out.element('arg', {'value' : p.name})
+    out.element('arg', {'value' : '--force'})
     out.close('exec')
     out.element('nbbrowse', {'file' : 'javadoc/index.html'})
     out.close('target')
