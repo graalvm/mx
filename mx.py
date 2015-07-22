@@ -536,10 +536,11 @@ class DistributionTemplate(object):
 
 # TODO doc!
 class Distribution(Dependency):
-    def __init__(self, suite, name, deps):
+    def __init__(self, suite, name, deps, excludedLibs):
         Dependency.__init__(self, suite, name)
         self.deps = deps
         self.update_listeners = set()
+        self.excludedLibs = excludedLibs
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
@@ -550,6 +551,10 @@ class Distribution(Dependency):
 
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        self._resolveDepsHelper(self.excludedLibs)
+        for l in self.excludedLibs:
+            if not l.isLibrary():
+                abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -558,6 +563,12 @@ class Distribution(Dependency):
                     visitEdge(self, DEP_STANDARD, d)
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+        if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
+            for d in self.excludedLibs:
+                if visitEdge:
+                    visitEdge(self, DEP_EXCLUDED, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
 
     def make_archive(self):
         nyi('make_archive', self)
@@ -618,7 +629,7 @@ Attributes:
 """
 class JARDistribution(Distribution, ClasspathDependency):
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance):
-        Distribution.__init__(self, suite, name, deps + distDependencies)
+        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = path.replace('/', os.sep)
@@ -626,20 +637,9 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
         self.archiveparticipant = None
         self.mainClass = mainClass
-        self.excludedLibs = excludedLibs
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
         assert path.endswith(self.localExtension())
-
-    def resolveDeps(self):
-        '''
-        Resolves symbolic dependency references to be Dependency objects.
-        '''
-        Distribution.resolveDeps(self)
-        self._resolveDepsHelper(self.excludedLibs)
-        for l in self.excludedLibs:
-            if not l.isLibrary():
-                abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -669,15 +669,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         if resolve and not exists(self.path):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
         return self.path
-
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        Distribution._walk_deps_visit_edges(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
-        if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
-            for d in self.excludedLibs:
-                if visitEdge:
-                    visitEdge(self, DEP_EXCLUDED, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
 
     """
     Gets the directory in which the IDE project configuration for this distribution is generated.
@@ -845,8 +836,8 @@ class JARArchiveTask(ArchiveTask):
             os.remove(self.subject.sourcesPath)
 
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path):
-        Distribution.__init__(self, suite, name, deps)
+    def __init__(self, suite, name, deps, path, excludedLibs):
+        Distribution.__init__(self, suite, name, deps, excludedLibs)
         self.path = path
 
     def make_archive(self):
@@ -3353,15 +3344,15 @@ class Suite:
                 return None
         os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
         deps += os_arch_deps
+        exclLibs = Suite._pop_list(attrs, 'exclude', context)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs)
         else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
             sourcesPath = attrs.pop('sourcesPath', None)
             mainClass = attrs.pop('mainClass', None)
-            exclLibs = Suite._pop_list(attrs, 'exclude', context)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance)
@@ -4479,7 +4470,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
             return dst.isJARDistribution() if preferDist else dst.isProject()
         return True
     def _visit(dep, edge):
-        if preferProjects and dep.isJATDistribution() and not isinstance(dep.suite, BinarySuite):
+        if preferProjects and dep.isJARDistribution() and not isinstance(dep.suite, BinarySuite):
             return
         if not includeSelf and dep in roots:
             return
