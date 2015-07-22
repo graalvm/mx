@@ -2429,6 +2429,7 @@ class BinaryVC(VC):
         metadata = self._readMetadata(vcdir)
         artifactId = _map_to_maven_dist_name(distribution.name)
         self._pull_artifact(metadata, artifactId, distribution.name, distribution.path, distribution.sourcesPath)
+        distribution.notify_updated()
 
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
         if not update:
