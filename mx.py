@@ -4277,20 +4277,20 @@ def _patchTemplateString(s, args, context):
         return args[groupName]
     return re.sub(r'<(.+?)>', _replaceVar, s)
 
-def instanciatedDistributionName(name, args, context):
+def instantiatedDistributionName(name, args, context):
     return _patchTemplateString(name, args, context).upper()
 
-def reInstanciateDistribution(templateName, oldArgs, newArgs):
+def reInstantiateDistribution(templateName, oldArgs, newArgs):
     _, name = splitqualname(templateName)
     context = "Template distribution " + name
     t = _distTemplates.get(name)
     if t is None:
         abort('Distribution template named ' + name + ' not found', context=context)
-    oldName = instanciatedDistributionName(t.name, oldArgs, context)
+    oldName = instantiatedDistributionName(t.name, oldArgs, context)
     t.suite._unload_unregister_distribution(oldName)
-    instanciateDistribution(templateName, newArgs)
+    instantiateDistribution(templateName, newArgs)
 
-def instanciateDistribution(templateName, args, fatalIfMissing=True, context=None):
+def instantiateDistribution(templateName, args, fatalIfMissing=True, context=None):
     _, name = splitqualname(templateName)
     if not context:
         context = "Template distribution " + name
@@ -4312,9 +4312,9 @@ def instanciateDistribution(templateName, args, fatalIfMissing=True, context=Non
                 result[k] = v
         return result
 
-    d = t.suite._load_distibution(instanciatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
+    d = t.suite._load_distibution(instantiatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
     if d is None and fatalIfMissing:
-        abort('distribution template ' + t.name + ' could not be instanciated with ' + str(args), context=context)
+        abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=context)
     t.suite._register_distribution(d)
     d.resolveDeps()
     return d
