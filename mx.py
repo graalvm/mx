@@ -556,7 +556,7 @@ class Distribution(Dependency):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         for l in self.excludedLibs:
-            if not l.isLibrary():
+            if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
