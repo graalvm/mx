@@ -842,6 +842,11 @@ class ArchiveTask(BuildTask):
         return isinstance(self.subject.suite, BinarySuite)
 
 class JARArchiveTask(ArchiveTask):
+    def buildForbidden(self):
+        if ArchiveTask.buildForbidden(self):
+            return True
+        if not self.args.java:
+            return True
 
     def newestOutput(self):
         return _maxTime(self.subject.path, self.subject.sourcesPath)
