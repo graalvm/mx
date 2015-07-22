@@ -44,7 +44,7 @@ except ImportError:
 import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
 import textwrap
 import socket
-import tarfile
+import tarfile, gzip
 import hashlib
 import itertools
 # TODO use defusedexpat?
@@ -236,6 +236,9 @@ class Dependency(object):
 
     def isJARDistribution(self):
         return isinstance(self, JARDistribution)
+
+    def isTARDistribution(self):
+        return isinstance(self, NativeTARDistribution)
 
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
@@ -522,7 +525,7 @@ def _maxTime(*args):
     return max((os.path.getmtime(f) for f in iterable if f))
 
 def _needsUpdate(minTime, f):
-    return not exists(f) or os.path.getmtime(f) < minTime
+    return not exists(f) or _getSymlinkMTime(f) < minTime
 
 class DistributionTemplate(object):
     def __init__(self, suite, name, attrs, parameters):
@@ -578,6 +581,24 @@ class Distribution(Dependency):
             self._archived_deps = deps
         return self._archived_deps
 
+    def exists(self):
+        nyi('exists', self)
+
+    def remoteExtension(self):
+        nyi('remoteExtension', self)
+
+    def localExtension(self):
+        nyi('localExtension', self)
+
+    def postPull(self, f):
+        pass
+
+    def prePush(self, f):
+        return f
+
+    def isUpToDate(self, minTime):
+        nyi('isUpToDate', self)
+
 """
 A distribution is a jar or zip file containing the output from one or more Java projects.
 In some sense it is the ultimate "result" of a build (there can be more than one).
@@ -608,6 +629,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.excludedLibs = excludedLibs
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
+        assert path.endswith(self.localExtension())
 
     def resolveDeps(self):
         '''
@@ -776,9 +798,29 @@ class JARDistribution(Distribution, ClasspathDependency):
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
 
+    def exists(self):
+        return exists(self.path) and not self.sourcesPath or exists(self.sourcesPath)
+
+    def remoteExtension(self):
+        return 'jar'
+
+    def localExtension(self):
+        return 'jar'
+
+    def isUpToDate(self, minTime):
+        return not (_needsUpdate(minTime, self.path) or (self.sourcesPath and _needsUpdate(minTime, self.sourcesPath)))
+
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
         BuildTask.__init__(self, dist, args, 1)
+
+    def needsBuild(self, newestInput):
+        sup = BuildTask.needsBuild(self, newestInput)
+        if sup[0]:
+            return sup
+        if not self.subject.isUpToDate(newestInput):
+            return (True, 'archive does not exist or out of date')
+        return (False, None)
 
     def build(self):
         self.subject.make_archive()
@@ -790,13 +832,6 @@ class ArchiveTask(BuildTask):
         return isinstance(self.subject.suite, BinarySuite)
 
 class JARArchiveTask(ArchiveTask):
-    def needsBuild(self, newestInput):
-        sup = ArchiveTask.needsBuild(self, newestInput)
-        if sup[0]:
-            return sup
-        if _needsUpdate(newestInput, self.subject.path) or (self.subject.sourcesPath and _needsUpdate(newestInput, self.subject.sourcesPath)):
-            return (True, 'archive does not exist or out of date')
-        return (False, None)
 
     def newestOutput(self):
         return _maxTime(self.subject.path, self.subject.sourcesPath)
@@ -834,15 +869,30 @@ class NativeTARDistribution(Distribution):
     def getBuildTask(self, args):
         return TARArchiveTask(args, self)
 
-class TARArchiveTask(ArchiveTask):
-    def needsBuild(self, newestInput):
-        sup = ArchiveTask.needsBuild(self, newestInput)
-        if sup[0]:
-            return sup
-        if _needsUpdate(newestInput, self.subject.path):
-            return (True, 'archive does not exist or out of date')
-        return (False, None)
+    def exists(self):
+        return exists(self.path)
 
+    def remoteExtension(self):
+        return 'tar.gz'
+
+    def localExtension(self):
+        return 'tar'
+
+    def postPull(self, f):
+        assert f.endswith('.gz')
+        with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
+            shutil.copyfileobj(gz, tar)
+
+    def prePush(self, f):
+        tgz = f + '.gz'
+        with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
+            shutil.copyfileobj(tar, gz)
+        return tgz
+
+    def isUpToDate(self, minTime):
+        return not _needsUpdate(minTime, self.path)
+
+class TARArchiveTask(ArchiveTask):
     def newestOutput(self):
         return _maxTime(self.subject.path)
 
@@ -2381,7 +2431,7 @@ class BinaryVC(VC):
         self._writeMetadata(dest, metadata)
         return True
 
-    def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True):
+    def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
         groupId = self._groupId(metadata.suiteName)
         repo = MavenRepo(metadata.repourl)
         snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
@@ -2391,9 +2441,9 @@ class BinaryVC(VC):
             return False
         build = snapshot.getCurrentSnapshotBuild()
         try:
-            (jar_url, jar_sha_url) = build.getSubArtifact('jar')
+            (jar_url, jar_sha_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-            abort('Multiple jars found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
+            abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
         download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
         if sourcePath:
             try:
@@ -2424,11 +2474,17 @@ class BinaryVC(VC):
         return _getSymlinkMTime(join(vcdir, _mx_binary_distribution_version(suiteName)))
 
     def getDistribution(self, vcdir, distribution):
-        if exists(distribution.path) and exists(distribution.sourcesPath) and self._metadataMTime(vcdir) < min(_getSymlinkMTime(distribution.path), _getSymlinkMTime(distribution.sourcesPath)):
+        if distribution.isUpToDate(self._metadataMTime(vcdir)):
             return
         metadata = self._readMetadata(vcdir)
         artifactId = _map_to_maven_dist_name(distribution.name)
-        self._pull_artifact(metadata, artifactId, distribution.name, distribution.path, distribution.sourcesPath)
+        path = distribution.path[:-len(distribution.localExtension())] + distribution.remoteExtension()
+        if distribution.isJARDistribution():
+            sourcesPath = distribution.sourcesPath
+        else:
+            sourcesPath = None
+        self._pull_artifact(metadata, artifactId, distribution.name, path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
+        distribution.postPull(path)
         distribution.notify_updated()
 
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
@@ -2657,7 +2713,7 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None):
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar'):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
@@ -2683,7 +2739,8 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
         '-Dversion=' + mavenVersion,
-        '-Dfile=' + jarPath
+        '-Dfile=' + jarPath,
+        '-Dpackaging=' + extension
     ]
 
     if srcPath:
@@ -2710,9 +2767,11 @@ def deploy_binary(args):
       -h, --help            show this help message and exit
       -s SETTINGS, --settings SETTINGS
                             Path to settings.mxl file used for Maven
+      --only                Limit deployment to these distributions
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
+    parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
     args = parser.parse_args(args)
@@ -2720,26 +2779,29 @@ def deploy_binary(args):
     _mvn.check()
     s = _primary_suite
     version = s.vc.parent(s.dir)
+    dists = s.dists
 
-    def _check_dist_exists(jarPath, srcPath=None):
-        if not exists(jarPath):
-            abort("'{0}' does not exist, run 'mx build' first".format(jarPath))
-        if srcPath and not exists(srcPath):
-            abort("'{0}' does not exist, run 'mx build' first".format(srcPath))
-
+    if args.only:
+        only = args.only.split(',')
+        dists = [d for d in dists if d.name in only]
 
     mxMetaName = _mx_binary_distribution_root(s.name)
     s.create_mx_binary_distribution_jar()
     mxMetaJar = s.mx_binary_distribution_jar_path()
-
-    _check_dist_exists(mxMetaJar)
-    for dist in s.dists:
-        _check_dist_exists(dist.path, dist.sourcesPath)
+    assert exists(mxMetaJar)
+    for dist in dists:
+        if not dist.exists():
+            abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
-    for dist in s.dists:
-        _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.path, version, args.repository_id, args.url, srcPath=dist.sourcesPath, settingsXml=args.settings)
+    for dist in dists:
+        if dist.isJARDistribution():
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.prePush(dist.path), version, args.repository_id, args.url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=args.settings, extension=dist.remoteExtension())
+        elif dist.isTARDistribution():
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.prePush(dist.path), version, args.repository_id, args.url, settingsXml=args.settings, extension=dist.remoteExtension())
+        else:
+            warn('Unsupported distribution: ' + dist.name)
 
 class MavenConfig:
     def __init__(self):
