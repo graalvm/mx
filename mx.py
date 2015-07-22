@@ -566,12 +566,13 @@ class Distribution(Dependency):
         '''
         if not hasattr(self, '_archived_deps'):
             excluded = set()
-            # Exclude libraries specified in "exclude" attribute
-            self.walk_deps(visit=lambda dep, edge: excluded.update(dep.archived_deps()) if dep is not self and dep.isDistribution() else None, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_STANDARD])
-            # Exclude my direct distribution dependencies
-            for dep in self.deps:
+            def _visit(dep, edge):
+                excluded.add(dep)
                 if dep.isDistribution():
                     excluded.update(dep.archived_deps())
+            excludedRoots = self.excludedLibs + [d for d in self.deps if d.isDistribution()]
+            if excludedRoots:
+                walk_deps(roots=excludedRoots, visit=_visit)
             deps = []
             self.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep is not self and dep not in excluded else None)
             self._archived_deps = deps
@@ -4533,6 +4534,7 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdg
     'visit' is not called if 'preVisit' returns a false condition.
     '''
     visited = set()
+    assert not roots or len(roots) != 0
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
 
