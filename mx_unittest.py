@@ -53,6 +53,8 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
 
     candidates = {}
     for p in mx.projects_opt_limit_to_suites():
+        if not p.isJavaProject():
+            continue
         if mx.get_jdk().javaCompliance < p.javaCompliance:
             continue
         for c in _find_classes_with_annotations(p, None, annotations):
@@ -61,7 +63,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     classes = []
     if len(tests) == 0:
         classes = candidates.keys()
-        projectsCp = mx.classpath([pcp.name for pcp in mx.projects_opt_limit_to_suites() if pcp.javaCompliance <= mx.get_jdk().javaCompliance])
+        projectsCp = mx.classpath([pcp.name for pcp in mx.projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= mx.get_jdk().javaCompliance])
     else:
         projs = set()
         found = False
