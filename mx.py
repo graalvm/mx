@@ -4857,9 +4857,9 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
     valueSeparator = os.pathsep if allowMultiple else None
-    ask_persist_env(varName, selected.jdk, valueSeparator)
+    ask_persist_env(varName, selected.home, valueSeparator)
 
-    os.environ[varName] = selected.jdk
+    os.environ[varName] = selected.home
 
     return selected
 
@@ -4936,7 +4936,7 @@ def _find_available_jdks(versionCheck):
 
 def _sorted_unique_jdk_configs(configs):
     path_seen = set()
-    unique_configs = [c for c in configs if c.jdk not in path_seen and not path_seen.add(c.jdk)]
+    unique_configs = [c for c in configs if c.home not in path_seen and not path_seen.add(c.home)]
 
     def _compare_configs(c1, c2):
         if c1 == _default_java_home:
@@ -5283,15 +5283,15 @@ class JDKConfigException(Exception):
 A JDKConfig object encapsulates info about an installed or deployed JDK.
 """
 class JDKConfig:
-    def __init__(self, java_home):
-        self.jdk = java_home
-        self.jar = exe_suffix(join(self.jdk, 'bin', 'jar'))
-        self.java = exe_suffix(join(self.jdk, 'bin', 'java'))
-        self.javac = exe_suffix(join(self.jdk, 'bin', 'javac'))
-        self.javap = exe_suffix(join(self.jdk, 'bin', 'javap'))
-        self.javadoc = exe_suffix(join(self.jdk, 'bin', 'javadoc'))
-        self.pack200 = exe_suffix(join(self.jdk, 'bin', 'pack200'))
-        self.toolsjar = join(self.jdk, 'lib', 'tools.jar')
+    def __init__(self, home):
+        self.home = home
+        self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
+        self.java = exe_suffix(join(self.home, 'bin', 'java'))
+        self.javac = exe_suffix(join(self.home, 'bin', 'javac'))
+        self.javap = exe_suffix(join(self.home, 'bin', 'javap'))
+        self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
+        self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
+        self.toolsjar = join(self.home, 'lib', 'tools.jar')
         self._classpaths_initialized = False
         self._bootclasspath = None
         self._extdirs = None
@@ -5357,13 +5357,13 @@ class JDKConfig:
             self._classpaths_initialized = True
 
     def __repr__(self):
-        return "JDKConfig(" + str(self.jdk) + ")"
+        return "JDKConfig(" + str(self.home) + ")"
 
     def __str__(self):
-        return "Java " + str(self.version) + " (" + str(self.javaCompliance) + ") from " + str(self.jdk)
+        return "Java " + str(self.version) + " (" + str(self.javaCompliance) + ") from " + str(self.home)
 
     def __hash__(self):
-        return hash(self.jdk)
+        return hash(self.home)
 
     def __cmp__(self, other):
         if other is None:
@@ -5375,7 +5375,7 @@ class JDKConfig:
             versionCmp = cmp(self.version, other.version)
             if versionCmp:
                 return versionCmp
-            return cmp(self.jdk, other.jdk)
+            return cmp(self.home, other.home)
         raise TypeError()
 
     def format_cmd(self, args, addDefaultArgs):
@@ -7012,7 +7012,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().jdk})
+    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().home})
     launchOut.close('mapAttribute')
 
     if refresh:
@@ -7296,7 +7296,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('target')
     out.open('target', {'name' : 'compile'})
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
-    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'build'})
     out.element('arg', {'value' : '--only'})
@@ -7309,7 +7309,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('target')
     out.open('target', {'name' : 'run', 'depends' : 'compile'})
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
-    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'unittest'})
     out.element('arg', {'value' : p.name})
@@ -7325,7 +7325,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('sourcepath')
     out.close('nbjpdastart')
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
-    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : '-d'})
     out.element('arg', {'value' : '--attach'})
@@ -7336,7 +7336,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('target')
     out.open('target', {'name' : 'javadoc'})
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
-    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.jdk})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'javadoc'})
     out.element('arg', {'value' : '--projects'})
@@ -7461,7 +7461,7 @@ javadoc.windowtitle=
 manifest.file=manifest.mf
 meta.inf.dir=${src.dir}/META-INF
 mkdist.disabled=false
-platforms.""" + jdkPlatform + """.home=""" + jdk.jdk + """
+platforms.""" + jdkPlatform + """.home=""" + jdk.home + """
 platform.active=""" + jdkPlatform + """
 run.classpath=\\
 ${javac.classpath}:\\
