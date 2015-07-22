@@ -3324,9 +3324,9 @@ class Suite:
                 parameters = re.findall(r'<(.+?)>', name)
                 self.distTemplates.append(DistributionTemplate(self, name, attrs, parameters))
             else:
-                self._load_distibution(name, attrs)
+                self._load_distribution(name, attrs)
 
-    def _load_distibution(self, name, attrs):
+    def _load_distribution(self, name, attrs):
         assert not '>' in name
         context = 'distribution ' + name
         deps = Suite._pop_list(attrs, 'dependencies', context)
@@ -4366,7 +4366,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
                 result[k] = v
         return result
 
-    d = t.suite._load_distibution(instantiatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
+    d = t.suite._load_distribution(instantiatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
     if d is None and fatalIfMissing:
         abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=context)
     t.suite._register_distribution(d)
