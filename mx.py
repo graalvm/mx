@@ -635,8 +635,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
-        self.path = path.replace('/', os.sep)
-        self.path = _make_absolute(self.path, suite.dir)
+        self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
         self.archiveparticipant = None
         self.mainClass = mainClass
@@ -841,7 +840,7 @@ class JARArchiveTask(ArchiveTask):
 class NativeTARDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs):
         Distribution.__init__(self, suite, name, deps, excludedLibs)
-        self.path = path
+        self.path = _make_absolute(path, suite.dir)
 
     def make_archive(self):
         directory = dirname(self.path)
@@ -6106,7 +6105,7 @@ def _processorjars_suite(s):
     Builds all distributions in this suite that define one or more annotation processors.
     Returns the jar files for the built distributions.
     """
-    apDists = [d for d in s.dists if d.definedAnnotationProcessors]
+    apDists = [d for d in s.dists if d.isJARDistribution() and d.definedAnnotationProcessors]
     if not apDists:
         return []
 
@@ -6769,7 +6768,7 @@ def _check_ide_timestamp(suite, configZip, ide):
         return False
 
     if ide == 'eclipse':
-        for p in suite.projects:
+        for p in [p for p in suite.projects if p.isJavaProject()]:
             for _, sources in p.eclipse_settings_sources().iteritems():
                 for source in sources:
                     if configZip.isOlderThan(source):
