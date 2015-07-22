@@ -770,7 +770,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
-        print('wtf', self.path, os.path.getmtime(self.path))
         self.notify_updated()
 
     def getBuildTask(self, args):
@@ -802,7 +801,7 @@ class JARArchiveTask(ArchiveTask):
         return _maxTime(self.subject.path, self.subject.sourcesPath)
 
     def clean(self, forBuild=False):
-        if isinstance(self.subject.dist, BinarySuite):  # make sure we never clean distributions from BinarySuites
+        if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             return
         if exists(self.subject.path):
             os.remove(self.subject.path)
@@ -847,7 +846,7 @@ class TARArchiveTask(ArchiveTask):
         return _maxTime(self.subject.path)
 
     def clean(self, forBuild=False):
-        if isinstance(self.subject.dist, BinarySuite):  # make sure we never clean distributions from BinarySuites
+        if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             return
         if exists(self.subject.path):
             os.remove(self.subject.path)
@@ -4277,13 +4276,16 @@ def _patchTemplateString(s, args, context):
         return args[groupName]
     return re.sub(r'<(.+?)>', _replaceVar, s)
 
+def instanciatedDistributionName(name, args, context):
+    return _patchTemplateString(name, args, context).upper()
+
 def reInstanciateDistribution(templateName, oldArgs, newArgs):
     _, name = splitqualname(templateName)
     context = "Template distribution " + name
     t = _distTemplates.get(name)
     if t is None:
         abort('Distribution template named ' + name + ' not found', context=context)
-    oldName = _patchTemplateString(t.name, oldArgs, context).upper()
+    oldName = instanciatedDistributionName(t.name, oldArgs, context)
     t.suite._unload_unregister_distribution(oldName)
     instanciateDistribution(templateName, newArgs)
 
@@ -4309,7 +4311,7 @@ def instanciateDistribution(templateName, args, fatalIfMissing=True, context=Non
                 result[k] = v
         return result
 
-    d = t.suite._load_distibution(_patchTemplateString(t.name, args, context).upper(), _patchAttrs(t.attrs))
+    d = t.suite._load_distibution(instanciatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
     if d is None and fatalIfMissing:
         abort('distribution template ' + t.name + ' could not be instanciated with ' + str(args), context=context)
     t.suite._register_distribution(d)
