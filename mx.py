@@ -2164,8 +2164,7 @@ class HgConfig(VC):
 
     def force_version(self, vcdir, rev, abortOnError=True):
         if run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
-            if run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
-                return run(['hg', '-R', vcdir, 'purge'], nonZeroIsFatal=abortOnError) == 0
+            return run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0
         return False
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
