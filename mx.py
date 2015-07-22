@@ -714,14 +714,21 @@ class JARDistribution(Distribution, ClasspathDependency):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
-                    if dep.isLibrary():
-                        l = dep
-                        # merge library jar into distribution jar
-                        logv('[' + self.path + ': adding library ' + l.name + ']')
-                        lpath = l.get_path(resolve=True)
-                        libSourcePath = l.get_source_path(resolve=True)
-                        if lpath:
-                            with zipfile.ZipFile(lpath, 'r') as lp:
+                    if dep.isLibrary() or dep.isJARDistribution():
+                        if dep.isLibrary():
+                            l = dep
+                            # merge library jar into distribution jar
+                            logv('[' + self.path + ': adding library ' + l.name + ']')
+                            jarPath = l.get_path(resolve=True)
+                            jarSourcePath = l.get_source_path(resolve=True)
+                        elif dep.isJARDistribution():
+                            logv('[' + self.path + ': adding distribution ' + dep.name + ']')
+                            jarPath = dep.path
+                            jarSourcePath = dep.sourcesPath
+                        else:
+                            abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+                        if jarPath:
+                            with zipfile.ZipFile(jarPath, 'r') as lp:
                                 entries = lp.namelist()
                                 for arcname in entries:
                                     if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
@@ -729,14 +736,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         assert '/' not in service
                                         services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                                     else:
-                                        if not overwriteCheck(arc.zf, arcname, lpath + '!' + arcname):
+                                        if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
                                             contents = lp.read(arcname)
                                             if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
                                                 arc.zf.writestr(arcname, contents)
-                        if srcArc.zf and libSourcePath:
-                            with zipfile.ZipFile(libSourcePath, 'r') as lp:
+                        if srcArc.zf and jarSourcePath:
+                            with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
-                                    if not overwriteCheck(srcArc.zf, arcname, lpath + '!' + arcname):
+                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname):
                                         contents = lp.read(arcname)
                                         if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
                                             srcArc.zf.writestr(arcname, contents)
@@ -777,6 +784,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                                     contents = fp.read()
                                                 if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
                                                     srcArc.zf.writestr(arcname, contents)
+                    else:
+                        abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
                 if self.archiveparticipant:
                     self.archiveparticipant.__closing__()
