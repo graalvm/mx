@@ -8462,6 +8462,12 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         # normal case, a specific version
         importedVersion = imported_suite.version()
         if importedVersion != suite_import.version:
+            if imported_suite.isDirty():
+                if is_interactive():
+                    if not ask_yes_no('WARNING: Uncommited changes in {} will be lost! Really continue'.format(imported_suite.name), default='n'):
+                        abort('aborting')
+                else:
+                    abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
     else:
         # unusual case, no version specified, so pull the head
