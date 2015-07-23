@@ -5,6 +5,18 @@ suite = {
 
     # ------------- Libraries -------------
 
+    "JACOCOAGENT" : {
+      "path" : "lib/jacocoagent.jar",
+      "urls" : ["http://lafo.ssw.uni-linz.ac.at/jacoco/jacocoagent-0.7.1-1.jar"],
+      "sha1" : "2f73a645b02e39290e577ce555f00b02004650b0",
+    },
+
+    "JACOCOREPORT" : {
+      "path" : "lib/jacocoreport.jar",
+      "urls" : ["http://lafo.ssw.uni-linz.ac.at/jacoco/jacocoreport-0.7.1-2.jar"],
+      "sha1" : "a630436391832d697a12c8f7daef8655d7a1efd2",
+    },
+
     "FINDBUGS_DIST" : {
       "path" : "lib/findbugs-dist-3.0.0.zip",
       "urls" : [

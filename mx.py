@@ -61,6 +61,7 @@ from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars
 
 import mx_unittest
 import mx_findbugs
+import mx_gate
 
 
 # This works because when mx loads this file, it makes sure __file__ gets an absolute path
@@ -4043,114 +4044,9 @@ class GateTask:
         abort(codeOrMessage)
         return self
 
-def _basic_gate_body(args, tasks):
-    return
-
-def _add_omit_clean_args(parser):
-    parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
-    parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
-    parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
-    parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
-    parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
-
-def gate_clean(args, tasks, name='Clean'):
-    with GateTask(name, tasks) as t:
-        if t:
-            cleanArgs = []
-            if not args.cleanNative:
-                cleanArgs.append('--no-native')
-            if not args.cleanJava:
-                cleanArgs.append('--no-java')
-            if not args.cleanDist:
-                cleanArgs.append('--no-dist')
-            command_function('clean')(cleanArgs)
-
-def gate(args, gate_body=_basic_gate_body, parser=None):
-    """run the tests used to validate a push
-    This provides a generic gate that does all the standard things.
-    Additional tests can be provided by passing a custom 'gate_body',
-    or completely override this command.
-
-    If this command exits with a 0 exit code, then the gate passed."""
-
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx gate')
-
-    _add_omit_clean_args(parser)
-    parser.add_argument('-p', '--omit-pylint', action='store_false', dest='pylint', help='omit pylint check')
-    parser.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
-    parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
-    if suppliedParser:
-        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
-    args = parser.parse_args(args)
-
-    if args.task_filter:
-        GateTask.filters = args.task_filter.split(',')
-        GateTask.filtersExclude = args.x
-    elif args.x:
-        abort('-x option cannot be used without --task-filter option')
-
-    if args.noClean:
-        args.cleanIDE = False
-        args.cleanJava = False
-        args.cleanNative = False
-        args.cleanDist = False
-
-    tasks = []
-    total = GateTask('Gate')
-
-    try:
-        if args.pylint:
-            with GateTask('Pylint', tasks) as t:
-                if t: pylint([])
-
-        gate_clean(args, tasks)
-
-        with GateTask('IDEConfigCheck', tasks) as t:
-            if t:
-                if args.cleanIDE:
-                    t = GateTask('IDEConfigCheck')
-                    command_function('ideclean')([])
-                    command_function('ideinit')([])
-
-        eclipse_exe = get_env('ECLIPSE_EXE')
-        if eclipse_exe is not None:
-            with GateTask('CodeFormatCheck', tasks) as t:
-                if t and eclipseformat(['-e', eclipse_exe]) != 0:
-                    t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-
-        with GateTask('Canonicalization Check', tasks) as t:
-            if t:
-                log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
-                if canonicalizeprojects([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite.py files.')
-
-        with GateTask('Checkstyle', tasks) as t:
-            if t and checkstyle([]) != 0:
-                t.abort('Checkstyle warnings were found')
-
-        # suite-specific gate
-        gate_body(args, tasks)
-
-    except KeyboardInterrupt:
-        total.abort(1)
-
-    except BaseException as e:
-        import traceback
-        traceback.print_exc()
-        total.abort(str(e))
-
-    total.stop()
-
-    log('Gate task times:')
-    for t in tasks:
-        log('  ' + str(t.duration) + '\t' + t.title)
-    log('  =======')
-    log('  ' + str(total.duration))
-
 def _bench_test_common(args, parser, suppliedParser):
     parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-    _add_omit_clean_args(parser)
+    mx_gate.add_omit_clean_args(parser)
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -4720,6 +4616,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--Ja', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
+        self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
         self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects with an explicit compliance will only be built if a JDK exactly matching the compliance is available', default=False)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
@@ -4795,6 +4692,8 @@ class ArgParser(ArgumentParser):
                 os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
 
             opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
+
+            mx_gate._jacoco = opts.jacoco
         else:
             parser = ArgParser(parents=[self])
             parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
@@ -9260,6 +9159,7 @@ _commands = {
     'bench': [bench, ''],
     'build': [build, '[options]'],
     'checkstyle': [checkstyle, ''],
+    'checkheaders': [mx_gate.checkheaders, ''],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'clean': [clean, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -9269,11 +9169,12 @@ _commands = {
     'findbugs': [mx_findbugs.findbugs, ''],
     'findclass': [findclass, ''],
     'fsckprojects': [fsckprojects, ''],
-    'gate': [gate, '[options]'],
+    'gate': [mx_gate.gate, '[options]'],
     'help': [help_, '[command]'],
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'intellijinit': [intellijinit, ''],
+    'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'archive': [_archive, '[options]'],
     'maven-install' : [maven_install, ''],
     'deploy-binary' : [deploy_binary, ''],
