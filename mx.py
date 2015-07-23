@@ -904,11 +904,13 @@ class NativeTARDistribution(Distribution):
 
     def postPull(self, f):
         assert f.endswith('.gz')
+        logv('Uncompressing {}...'.format(f))
         with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
             shutil.copyfileobj(gz, tar)
 
     def prePush(self, f):
         tgz = f + '.gz'
+        logv('Compressing {}...'.format(f))
         with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
             shutil.copyfileobj(tar, gz)
         return tgz
