@@ -3998,52 +3998,6 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
-'''
-Vehicle for use in the gate and _gate_body commands
-'''
-class GateTask:
-    # None or a list of strings. If not None, only tasks whose title
-    # matches at least one of the substrings in this list will return
-    # a non-None value from __enter__. The body of a 'with Task(...) as t'
-    # statement should check 't' and exit immediately if it is None.
-    filters = None
-    filtersExclude = False
-
-    def __init__(self, title, tasks=None):
-        self.tasks = tasks
-        self.title = title
-        if tasks is not None and GateTask.filters is not None:
-            if GateTask.filtersExclude:
-                self.skipped = any([f in title for f in GateTask.filters])
-            else:
-                self.skipped = not any([f in title for f in GateTask.filters])
-        else:
-            self.skipped = False
-        if not self.skipped:
-            self.start = time.time()
-            self.end = None
-            self.duration = None
-            log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
-    def __enter__(self):
-        assert self.tasks is not None, "using Task with 'with' statement requires to pass the tasks list in the constructor"
-        if self.skipped:
-            return None
-        return self
-    def __exit__(self, exc_type, exc_value, traceback):
-        if not self.skipped:
-            self.tasks.append(self.stop())
-    def stop(self):
-        self.end = time.time()
-        self.duration = datetime.timedelta(seconds=self.end - self.start)
-        log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']')
-        return self
-    def abort(self, codeOrMessage):
-        self.end = time.time()
-        self.duration = datetime.timedelta(seconds=self.end - self.start)
-        log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']')
-        abort(codeOrMessage)
-        return self
-
 def _bench_test_common(args, parser, suppliedParser):
     parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
     mx_gate.add_omit_clean_args(parser)
