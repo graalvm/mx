@@ -384,8 +384,10 @@ class Dependency(SuiteConstituent):
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
                     if not dep:
                         continue
-                    if not dep.isLibrary() and s is None and self.suite is not dep.suite:
-                        abort('inter-suite project or distribution reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                    if dep.isProject() and self.suite is not dep.suite:
+                        abort('cannot have an inter-suite reference to a project: ' + dep.name, context=self)
+                    if s is None and self.suite is not dep.suite:
+                        abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
@@ -4297,20 +4299,20 @@ def dependency(name, fatalIfMissing=True, context=None):
 
     suite_name, name = splitqualname(name)
     if suite_name:
-        # reference to a distribution from a suite
-        dep_suite = suite(suite_name, context=context)
-        if dep_suite:
-            d = _dists.get(name)
-            if d is not None:
-                if d.suite != dep_suite:
+        # reference to a distribution or library from a suite
+        referencedSuite = suite(suite_name, context=context)
+        if referencedSuite:
+            d = _dists.get(name) or _libs.get(name)
+            if d:
+                if d.suite != referencedSuite:
                     if fatalIfMissing:
-                        abort('Distribution {dist} exported by {asuite}, expected {dist} from {suite}'.format(dist=name, suite=dep_suite, asuite=d.suite), context=context)
+                        abort('{dep} exported by {depSuite}, expected {dep} from {referencedSuite}'.format(dep=d.name, referencedSuite=referencedSuite, depSuite=d.suite), context=context)
                     return None
                 else:
                     return d
             else:
                 if fatalIfMissing:
-                    abort('cannot resolve ' + name + ' as a distribution of ' + suite_name, context=context)
+                    abort('cannot resolve ' + name + ' as a distribution or library of ' + suite_name, context=context)
                 return None
     d = _projects.get(name)
     if d is None:
