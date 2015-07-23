@@ -3,3 +3,4 @@ lib
 .*\.orig$
 .*\.pyc$
 \.class$
+\javafilelist.*\.txt$
