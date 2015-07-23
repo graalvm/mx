@@ -41,7 +41,7 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
-import os, errno, time, datetime, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
+import os, errno, time, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
 import textwrap
 import socket
 import tarfile, gzip
