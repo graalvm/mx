@@ -62,7 +62,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
                 shutil.rmtree(tmp)
         findbugsJar = join(findbugsLib, 'findbugs.jar')
     assert exists(findbugsJar)
-    nonTestProjects = [p for p in mx.projects() if not p.name.endswith('.test') and not p.name.endswith('.jtt')]
+    nonTestProjects = [p for p in mx.projects() if not p.name.endswith('.test') and not p.name.endswith('.jtt') and p.isJavaProject()]
     outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in nonTestProjects])
     javaCompliance = max([p.javaCompliance for p in nonTestProjects])
     findbugsResults = join(suite.dir, 'findbugs.results')
