@@ -539,11 +539,12 @@ class DistributionTemplate(SuiteConstituent):
 
 # TODO doc!
 class Distribution(Dependency):
-    def __init__(self, suite, name, deps, excludedLibs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent):
         Dependency.__init__(self, suite, name)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
+        self.platformDependent = platformDependent
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
@@ -612,6 +613,11 @@ class Distribution(Dependency):
     def localExtension(self):
         nyi('localExtension', self)
 
+    def remoteName(self):
+        if self.platformDependent:
+            return '{name}_{os}_{arch}'.format(name=self.name, os=get_os(), arch=get_arch())
+        return self.name
+
     def postPull(self, f):
         pass
 
@@ -639,8 +645,8 @@ Attributes:
     excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance):
-        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs)
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent):
+        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
@@ -860,8 +866,8 @@ class JARArchiveTask(ArchiveTask):
             os.remove(self.subject.sourcesPath)
 
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs):
-        Distribution.__init__(self, suite, name, deps, excludedLibs)
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent):
+        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent)
         self.path = _make_absolute(path, suite.dir)
 
     def make_archive(self):
@@ -2507,7 +2513,7 @@ class BinaryVC(VC):
             sourcesPath = distribution.sourcesPath
         else:
             sourcesPath = None
-        self._pull_artifact(metadata, artifactId, distribution.name, path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
+        self._pull_artifact(metadata, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
         distribution.postPull(path)
         distribution.notify_updated()
 
@@ -2821,9 +2827,9 @@ def deploy_binary(args):
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
     for dist in dists:
         if dist.isJARDistribution():
-            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.prePush(dist.path), version, args.repository_id, args.url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=args.settings, extension=dist.remoteExtension())
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, args.repository_id, args.url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=args.settings, extension=dist.remoteExtension())
         elif dist.isTARDistribution():
-            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.name), dist.prePush(dist.path), version, args.repository_id, args.url, settingsXml=args.settings, extension=dist.remoteExtension())
+            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, args.repository_id, args.url, settingsXml=args.settings, extension=dist.remoteExtension())
         else:
             warn('Unsupported distribution: ' + dist.name)
 
@@ -3378,9 +3384,10 @@ class Suite:
         os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
         deps += os_arch_deps
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
+        platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path, exclLibs)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent)
         else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
@@ -3388,7 +3395,7 @@ class Suite:
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent)
         d.__dict__.update(attrs)
         if rootAttrs != attrs:
             d.__dict__.update(rootAttrs)
