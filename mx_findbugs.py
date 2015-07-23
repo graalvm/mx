@@ -71,7 +71,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
         fbArgs = defaultFindbugsArgs()
     cmd = ['-jar', mx._cygpathU2W(findbugsJar)] + fbArgs
     cmd = cmd + ['-auxclasspath', mx._separatedCygpathU2W(mx.classpath([p.name for p in nonTestProjects])), '-output', mx._cygpathU2W(findbugsResults), '-exitcode'] + args + outputDirs
-    exitcode = mx.run_java(cmd, nonZeroIsFatal=False, javaConfig=mx.get_jdk(javaCompliance))
+    exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdkConfig=mx.get_jdk(javaCompliance))
     if exitcode != 0:
         with open(findbugsResults) as fp:
             mx.log(fp.read())

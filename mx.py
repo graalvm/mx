@@ -4848,6 +4848,33 @@ def _convert_compliance_to_version_check(requiredCompliance):
     return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
+    '''
+    Selects a JDK and returns a JDKConfig object representing it.
+
+    First a selection is attempted from the --java-home option, the JAVA_HOME
+    environment variable, the --extra-java-homes option and the EXTRA_JAVA_HOMES
+    enviroment variable in that order.
+
+    If that produce no valid JDK, then a set of candidate JDKs is built by searching
+    the OS-specific locations in which JDKs are normally installed. These candidates
+    are filtered by the 'versionCheck' predicate function. The predicate is described
+    by the string in 'versionDescription' (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
+    If 'versionCheck' is None, no filtering is performed.
+
+    If running interactively, the user is prompted to select from one of the candidates
+    or "<other>". The selection prompt message includes the value of 'purpose' if it is not None.
+    If 'cancel' is not None, the user is also given a choice to make no selection,
+    the consequences of which are described by 'cancel'. If a JDK is selected, it is returned.
+    If the user cancels, then None is returned. If "<other>" is chosen, the user is repeatedly
+    prompted for a path to a JDK until a valid path is provided at which point a corresponding
+    JDKConfig object is returned. Before returning the user is given the option to persist
+    the selected JDK in file "env" in the primary suite's mx directory. The choice will be
+    saved as the value for JAVA_HOME if 'isDefaultJdk' is true, otherwise it is set or
+    appended to the value for EXTRA_JAVA_HOMES.
+
+    If not running interactively, the first candidate is returned or None if there are no
+    candidates.
+    '''
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
         versionCheck = lambda v: True
@@ -4913,10 +4940,11 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 choices.append('Cancel (' + cancel + ')')
 
             selected = select_items(choices, allowMultiple=False)
-            if isinstance(selected, types.StringTypes) and selected == '<other>':
-                selected = None
-            if isinstance(selected, types.StringTypes) and selected == 'Cancel (' + cancel + ')':
-                return None
+            if isinstance(selected, types.StringTypes):
+                if selected == '<other>':
+                    selected = None
+                if selected == 'Cancel (' + cancel + ')':
+                    return None
     elif len(configs) == 1:
         selected = configs[0]
         msg = 'Selected ' + str(selected) + ' as '
@@ -4939,6 +4967,8 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         selected = None
 
     while not selected:
+        if not is_interactive():
+            return None
         jdkLocation = raw_input('Enter path of JDK: ')
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
