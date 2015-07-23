@@ -1604,11 +1604,14 @@ def _replaceResultsVar(m):
     var = m.group(1)
     if var == 'os':
         return get_os()
-    if var == 'arch':
+    elif var == 'arch':
         return get_arch()
-    if var.startswith('lib:'):
+    elif var.startswith('lib:'):
         libname = var[len('lib:'):]
         return add_lib_suffix(add_lib_prefix(libname))
+    elif var.startswith('libdebug:'):
+        libname = var[len('libdebug:'):]
+        return add_debug_lib_suffix(add_lib_prefix(libname))
     else:
         abort('Unknown variable: ' + var)
 
@@ -5182,6 +5185,19 @@ def add_lib_suffix(name):
         return name + '.so'
     if os == 'darwin':
         return name + '.dylib'
+    return name
+
+def add_debug_lib_suffix(name):
+    """
+    Adds the platform specific library suffix to a name
+    """
+    os = get_os()
+    if os == 'windows':
+        return name + '.pdb'
+    if os == 'linux' or os == 'solaris':
+        return name + '.debuginfo'
+    if os == 'darwin':
+        return name + '.dylib.dSYM'
     return name
 
 """
