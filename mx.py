@@ -5582,7 +5582,7 @@ def download(path, urls, verbose=False, abortOnError=True):
 
     _, binDir = _compile_mx_class('URLConnectionDownload')
     command = [get_jdk().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
-    if _opts.no_download_progress or not sys.stderr.isatty():
+    if _opts.no_download_progress or not is_interactive():
         command.append('--no-progress')
     command.append(_cygpathU2W(path))
     command += urls
