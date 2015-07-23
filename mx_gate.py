@@ -110,14 +110,15 @@ def add_gate_argument(*args, **kwargs):
     """
     _extra_gate_arguments.append((args, kwargs))
 
-def add_gate_runner(runner):
+def add_gate_runner(suite, runner):
     """
-    Adds a gate runner function to be called by the gate once common gate tasks have been executed.
-    The 'runner' function is called with these arguments:
+    Adds a gate runner function for a given suite to be called by the gate once common gate tasks
+    have been executed. The 'runner' function is called with these arguments:
       args: the argparse.Namespace object containing result of parsing gate command line
       tasks: list of Task to which extra Tasks should be added
     """
-    _gate_runners.append(runner)
+    suiteRunner = (suite, runner)
+    _gate_runners.append(suiteRunner)
 
 def add_omit_clean_args(parser):
     parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
@@ -145,6 +146,7 @@ def gate(args):
 
     parser = ArgumentParser(prog='mx gate')
     add_omit_clean_args(parser)
+    parser.add_argument('--all-suites', action='store_true', help='run gate tasks for suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
     parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
@@ -226,8 +228,10 @@ def gate(args):
         else:
             _jacoco = 'off'
 
-        for runner in _gate_runners:
-            runner(args, tasks)
+        for suiteRunner in _gate_runners:
+            suite, runner = suiteRunner
+            if args.all_suites or suite is mx.primary_suite():
+                runner(args, tasks)
 
         if args.jacocout is not None:
             jacocoreport([args.jacocout])
