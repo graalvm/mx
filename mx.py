@@ -2182,7 +2182,7 @@ class VC:
 
     def isDirty(self, vcdir, abortOnError=True):
         '''
-        TBD, who uses this?
+        check whether the working directory is dirty
         '''
         abort(self.kind + " isDirty is not implemented")
 
@@ -3229,6 +3229,9 @@ class Suite:
     def version(self, abortOnError=True):
         abort('version not implemented')
 
+    def isDirty(self, abortOnError=True):
+        abort('isDirty not implemented')
+
     def _load_metadata(self):
         suitePyFile = join(self.mxDir, 'suite.py')
         if not exists(suitePyFile):
@@ -3639,6 +3642,12 @@ class SourceSuite(Suite):
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir, abortOnError=abortOnError)
 
+    def isDirty(self, abortOnError=True):
+        '''
+        Check whether there are pending changes in the source.
+        '''
+        return self.vc.isDirty(self.dir, abortOnError=abortOnError)
+
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
@@ -3845,6 +3854,10 @@ class BinarySuite(Suite):
         '''
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir)
+
+    def isDirty(self, abortOnError=True):
+        # a binary suite can not be dirty
+        return False
 
     def _load_binary_suite(self):
         '''
@@ -8508,10 +8521,9 @@ def _scheck_imports_visitor(s, suite_import):
     _scheck_imports(s, suite(suite_import.name), suite_import)
 
 def _scheck_imports(importing_suite, imported_suite, suite_import):
-    # check imports recursively
-    imported_suite.visit_imports(_scheck_imports_visitor)
-
     importedVersion = imported_suite.version()
+    if imported_suite.isDirty():
+        abort('uncommited changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name))
     if importedVersion != suite_import.version:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
@@ -8526,7 +8538,9 @@ def _scheck_imports(importing_suite, imported_suite, suite_import):
 
 def scheckimports(args):
     """check that suite import versions are up to date"""
-    _check_primary_suite().visit_imports(_scheck_imports_visitor)
+    # check imports of all suites in topological order
+    for s in suites():
+        s.visit_imports(_scheck_imports_visitor)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
     """sforceimports visitor for Suite.visit_imports"""
