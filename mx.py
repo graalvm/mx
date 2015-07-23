@@ -2415,7 +2415,7 @@ class HgConfig(VC):
 
     def isDirty(self, vcdir, abortOnError=True):
         try:
-            return len(subprocess.check_output(['hg', 'status', '-R', vcdir])) > 0
+            return len(subprocess.check_output(['hg', 'status', '-q', '-R', vcdir])) > 0
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('failed to get status')
