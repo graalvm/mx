@@ -8422,7 +8422,10 @@ def _scheck_imports_visitor(s, suite_import):
 def _scheck_imports(importing_suite, imported_suite, suite_import):
     importedVersion = imported_suite.version()
     if imported_suite.isDirty():
-        abort('uncommited changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name))
+        msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
+        if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
+            msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.dir)
+        abort(msg)
     if importedVersion != suite_import.version:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
