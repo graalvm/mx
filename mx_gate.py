@@ -146,7 +146,7 @@ def gate(args):
 
     parser = ArgumentParser(prog='mx gate')
     add_omit_clean_args(parser)
-    parser.add_argument('--all-suites', action='store_true', help='run gate tasks for suites, not just the primary suite')
+    parser.add_argument('--all-suites', action='store_true', help='run gate tasks for all suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
     parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
