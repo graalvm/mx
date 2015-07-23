@@ -5692,7 +5692,6 @@ def build(args, parser=None):
     parser.add_argument('-p', action='store_true', dest='parallelize', help='parallelizes Java compilation')
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
-    parser.add_argument('--check-distributions', action='store_true', dest='check_distributions', help='check built distributions for overlap')
     parser.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
     parser.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
@@ -6235,6 +6234,28 @@ def archive(args):
     if not args.parsable:
         logv("generated archives: " + str(archives))
     return archives
+
+def checkoverlap(args):
+    """check all distributions for overlap
+
+    The exit code of this command reflects how many projects are included in more than one distribution."""
+
+    projToDist = {}
+    for d in sorted_dists():
+        for p in d.archived_deps():
+            if p.isProject():
+                if p in projToDist:
+                    projToDist[p].append(d.name)
+                else:
+                    projToDist[p] = [d.name]
+
+    count = 0
+    for p in projToDist:
+        ds = projToDist[p]
+        if len(ds) > 1:
+            print '{} is in more than one distribution: {}'.format(p, ds)
+            count += 1
+    return count
 
 def canonicalizeprojects(args):
     """check all project specifications for canonical dependencies
@@ -9167,11 +9188,12 @@ _commands = {
     'assessaps': [assessannotationprocessors, '[options]'],
     'bench': [bench, ''],
     'build': [build, '[options]'],
-    'checkstyle': [checkstyle, ''],
-    'checkheaders': [mx_gate.checkheaders, ''],
     'canonicalizeprojects': [canonicalizeprojects, ''],
-    'clean': [clean, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
+    'checkheaders': [mx_gate.checkheaders, ''],
+    'checkoverlap': [checkoverlap, ''],
+    'checkstyle': [checkstyle, ''],
+    'clean': [clean, ''],
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
     'exportlibs': [exportlibs, ''],
