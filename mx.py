@@ -6555,7 +6555,6 @@ def projectgraph(args, suite=None):
     print 'rankdir=BT;'
     print 'node [shape=rect];'
     if args.dist:
-        projToDist = {}
         for d in sorted_dists():
             print 'subgraph "cluster_' + d.name + '" {'
             print 'label="' + d.name + '";'
@@ -6565,16 +6564,6 @@ def projectgraph(args, suite=None):
             if d.isJARDistribution():
                 for p in d.archived_deps():
                     if p.isProject():
-                        owner = projToDist.get(p)
-                        if owner:
-                            msg = 'Project ' + p.name + ' is in two dists: ' + owner.name + ' and ' + d.name
-                            for path in [owner.contains_dep(p), d.contains_dep(p)]:
-                                indent = '\n'
-                                for e in path:
-                                    msg += indent + e.name
-                                    indent += ' '
-                            abort(msg)
-                        projToDist[p] = d
                         print '"' + p.name + '";'
             print '}'
     for p in projects():
@@ -6583,8 +6572,9 @@ def projectgraph(args, suite=None):
                 print '"' + p.name + '"->"' + dep.name + ':DUMMY" [lhead=cluster_' + dep.name + ' color=blue];'
             else:
                 print '"' + p.name + '"->"' + dep.name + '";'
-        for apd in p.declaredAnnotationProcessors:
-            print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
+        if p is JavaProject:
+            for apd in p.declaredAnnotationProcessors:
+                print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 
 def _source_locator_memento(deps):
