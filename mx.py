@@ -9075,11 +9075,6 @@ def remove_doubledash(args):
 def ask_yes_no(question, default=None):
     """"""
     assert not default or default == 'y' or default == 'n'
-    if not is_interactive():
-        if default:
-            return default
-        else:
-            abort("Can not answer '" + question + "?' if stdout is not a tty")
     questionMark = '? [yn]: '
     if default:
         questionMark = questionMark.replace(default, default.upper())
@@ -9087,9 +9082,15 @@ def ask_yes_no(question, default=None):
         answer = str(_opts.answer)
         print question + questionMark + answer
     else:
-        answer = raw_input(question + questionMark) or default
-        while not answer:
-            answer = raw_input(question + questionMark)
+        if is_interactive():
+            answer = raw_input(question + questionMark) or default
+            while not answer:
+                answer = raw_input(question + questionMark)
+        else:
+            if default:
+                answer = default
+            else:
+                abort("Can not answer '" + question + "?' if stdin is not a tty")
     return answer.lower().startswith('y')
 
 def add_argument(*args, **kwargs):
