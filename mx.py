@@ -7860,9 +7860,6 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
-    if not is_interactive():
-        log('fsckprojects command must be run in an interactive shell')
-        return
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
