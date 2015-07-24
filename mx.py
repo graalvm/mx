@@ -540,7 +540,19 @@ class DistributionTemplate(SuiteConstituent):
         self.attrs = attrs
         self.parameters = parameters
 
-# TODO doc!
+"""
+A distribution is a file containing the output from one or more projects.
+In some sense it is the ultimate "result" of a build (there can be more than one).
+It is a Dependency because a Project or and other Distributionmay expressed a dependency on it.
+
+Attributes:
+    name: unique name
+    deps: "dependencies" that define the components that will comprise the distribution.
+        See Distribution.archived_deps for a precise description.
+        This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
+        as it defines the eventual content of the distribution
+    excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
+"""
 class Distribution(Dependency):
     def __init__(self, suite, name, deps, excludedLibs, platformDependent):
         Dependency.__init__(self, suite, name)
@@ -631,21 +643,13 @@ class Distribution(Dependency):
         nyi('isUpToDate', self)
 
 """
-A distribution is a jar or zip file containing the output from one or more Java projects.
-In some sense it is the ultimate "result" of a build (there can be more than one).
-It is a Dependency because a Project in another suite may expressed a dependency on it.
+A JARDistribution is a distribution for JavaProjects and Java libraries.
 A Distribution always generates a jar/zip file for the built components
 and may optionally specify a zip for the sources from which the built components were generated.
 
 Attributes:
-    name: unique name
     path: suite-local path to where jar file will be placed
     sourcesPath: as path but for source files (optional)
-    deps: Project and Library "dependencies" that define the components that will comprise the distribution.
-        This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
-        as it defines the eventual content of the distribution
-    distDependencies: Distributions that this depends on. These are "real" dependencies in the usual sense.
-    excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
 class JARDistribution(Distribution, ClasspathDependency):
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent):
