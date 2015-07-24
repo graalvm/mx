@@ -5690,7 +5690,9 @@ def build(args, parser=None):
         names = args.dependencies.split(',')
         roots = [dependency(name) for name in names]
     else:
-        roots = None
+        # Omit Libraries so that only the ones required to build other
+        # dependencies are downloaded
+        roots = [d for d in dependencies() if not d.isLibrary()]
 
     if roots:
         roots = _dependencies_opt_limit_to_suites(roots)
