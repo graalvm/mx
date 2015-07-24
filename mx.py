@@ -648,7 +648,7 @@ A Distribution always generates a jar/zip file for the built components
 and may optionally specify a zip for the sources from which the built components were generated.
 
 Attributes:
-    path: suite-local path to where jar file will be placed
+    path: suite-local path to where the jar file will be placed
     sourcesPath: as path but for source files (optional)
 """
 class JARDistribution(Distribution, ClasspathDependency):
@@ -872,6 +872,14 @@ class JARArchiveTask(ArchiveTask):
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
 
+
+"""
+A NativeTARDistribution is a distribution for NativeProjects.
+It packages all the 'results' of a NativeProject.
+
+Attributes:
+    path: suite-local path to where the tar file will be placed
+"""
 class NativeTARDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent)
