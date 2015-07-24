@@ -5584,7 +5584,7 @@ def download(path, urls, verbose=False, abortOnError=True):
 
     _, binDir = _compile_mx_class('URLConnectionDownload')
     command = [get_jdk().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
-    if _opts.no_download_progress or not is_interactive():
+    if _opts.no_download_progress or not sys.stderr.isatty():
         command.append('--no-progress')
     command.append(_cygpathU2W(path))
     command += urls
@@ -6839,7 +6839,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     if files:
         files.append(classpathFile)
 
-    csConfig = join(project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
+    csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
     if exists(csConfig):
         out = XMLDoc()
 
