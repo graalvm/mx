@@ -919,6 +919,7 @@ class NativeTARDistribution(Distribution):
         logv('Uncompressing {}...'.format(f))
         with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
             shutil.copyfileobj(gz, tar)
+        os.remove(f)
 
     def prePush(self, f):
         tgz = f + '.gz'
