@@ -43,8 +43,7 @@ def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=
     matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
     return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
 
-def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex):
-
+def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
 
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
@@ -54,6 +53,8 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     candidates = {}
     for p in mx.projects_opt_limit_to_suites():
         if not p.isJavaProject():
+            continue
+        if suite and not p.suite == suite:
             continue
         if mx.get_jdk().javaCompliance < p.javaCompliance:
             continue
@@ -130,7 +131,7 @@ def set_vm_launcher(name, launcher):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False):
+def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -181,7 +182,7 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         vmLauncher = ('default VM launcher', lambda vmArgs, mainClass, mainClassArgs: mx.run_java(vmArgs + [mainClass] + mainClassArgs))
 
     try:
-        _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex)
+        _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, mx.suite(suite) if suite else None)
     finally:
         if os.environ.get('MX_TESTFILE') is None:
             os.remove(testfile)
@@ -244,6 +245,7 @@ def unittest(args):
     parser.add_argument('--color', help='enable color output', action='store_true')
     parser.add_argument('--eager-stacktrace', help='print stacktrace eagerly', action='store_true')
     parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')
+    parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
 
     ut_args = []
     delimiter = False
