@@ -178,7 +178,7 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
 
     vmLauncher = _vm_launcher
     if vmLauncher is None:
-        vmLauncher = lambda vmArgs, mainClass, mainClassArgs: mx.run_java(vmArgs + [mainClass] + mainClassArgs)
+        vmLauncher = ('default VM launcher', lambda vmArgs, mainClass, mainClassArgs: mx.run_java(vmArgs + [mainClass] + mainClassArgs))
 
     try:
         _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex)
