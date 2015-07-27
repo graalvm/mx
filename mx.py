@@ -64,8 +64,8 @@ import mx_findbugs
 import mx_gate
 
 
-# This works because when mx loads this file, it makes sure __file__ gets an absolute path
-_mx_home = dirname(__file__)
+_mx_home = os.path.realpath(dirname(__file__))
+
 
 try:
     # needed to work around https://bugs.python.org/issue1927
