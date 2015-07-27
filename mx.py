@@ -453,7 +453,7 @@ class BuildTask(object):
             self.logSkip(None)
             return
         buildNeeded = False
-        if self.args.clean:
+        if self.args.clean and not self.cleanForbidden():
             self.logClean()
             self.clean()
             buildNeeded = True
@@ -469,7 +469,7 @@ class BuildTask(object):
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
-            if not self.args.clean:
+            if not self.args.clean and not self.cleanForbidden():
                 self.clean(forBuild=True)
             self.logBuild(reason)
             self.build()
@@ -511,6 +511,9 @@ class BuildTask(object):
             return False
         projectNames = self.args.only.split(',')
         return self.subject.name in projectNames
+
+    def cleanForbidden(self):
+        return False
 
     """
     Build the artifacts.
@@ -854,6 +857,11 @@ class ArchiveTask(BuildTask):
     def buildForbidden(self):
         return isinstance(self.subject.suite, BinarySuite)
 
+    def cleanForbidden(self):
+        if BuildTask.cleanForbidden(self):
+            return True
+        return isinstance(self.subject.suite, BinarySuite)
+
 class JARArchiveTask(ArchiveTask):
     def buildForbidden(self):
         if ArchiveTask.buildForbidden(self):
@@ -866,12 +874,18 @@ class JARArchiveTask(ArchiveTask):
 
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
-            return
+            abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
 
+    def cleanForbidden(self):
+        if ArchiveTask.cleanForbidden(self):
+            return True
+        if not self.args.java:
+            return True
+        return False
 
 """
 A NativeTARDistribution is a distribution for NativeProjects.
@@ -943,9 +957,16 @@ class TARArchiveTask(ArchiveTask):
 
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
-            return
+            abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
+
+    def cleanForbidden(self):
+        if ArchiveTask.cleanForbidden(self):
+            return True
+        if not self.args.native:
+            return True
+        return False
 
 """
 A Project is a collection of source code that is built by mx. For historical reasons
@@ -1336,6 +1357,13 @@ class JavaBuildTask(ProjectBuildTask):
             return True
         return False
 
+    def cleanForbidden(self):
+        if ProjectBuildTask.cleanForbidden(self):
+            return True
+        if not self.args.java:
+            return True
+        return False
+
     def needsBuild(self, newestInput):
         sup = ProjectBuildTask.needsBuild(self, newestInput)
         if sup[0]:
@@ -1671,6 +1699,13 @@ class NativeBuildTask(ProjectBuildTask):
         if not self.args.native:
             return True
 
+    def cleanForbidden(self):
+        if ProjectBuildTask.cleanForbidden(self):
+            return True
+        if not self.args.native:
+            return True
+        return False
+
     def newestOutput(self):
         if self._newestOutput is None:
             results = self.subject.getResults()
@@ -1873,6 +1908,9 @@ class NoOpTask(BuildTask):
     def clean(self, forBuild=False):
         pass
 
+    def cleanForbidden(self):
+        return True
+
 """
 A library that will be provided by the JDK but may be absent.
 Any project or normal library that depends on a missing library
@@ -2022,7 +2060,10 @@ class LibarayDownloadTask(BuildTask):
         self.subject.get_path(resolve=True)
 
     def clean(self, forBuild=False):
-        pass
+        abort('should not reach here')
+
+    def cleanForbidden(self):
+        return True
 
 '''
 Abstracts the operations of the version control systems
@@ -6481,6 +6522,8 @@ def clean(args, parser=None):
     # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
     for dep in deps:
         task = dep.getBuildTask(args)
+        if task.cleanForbidden():
+            continue
         task.logClean()
         task.clean()
 
