@@ -4877,7 +4877,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             if isinstance(selected, types.StringTypes):
                 if selected == '<other>':
                     selected = None
-                if selected == 'Cancel (' + cancel + ')':
+                if cancel and selected == 'Cancel (' + cancel + ')':
                     return None
     elif len(configs) == 1:
         selected = configs[0]
