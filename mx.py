@@ -3433,22 +3433,11 @@ class Suite:
     def _load_distribution(self, name, attrs):
         assert not '>' in name
         context = 'distribution ' + name
-        deps = Suite._pop_list(attrs, 'dependencies', context)
         native = attrs.pop('native', False)
-        os_arch = attrs.pop('os_arch', None)
-        rootAttrs = attrs
-        if os_arch:
-            arch = os_arch.pop(get_os(), None)
-            if not arch:
-                warn('{} is not defined for your os ({})'.format(name, get_os()))
-                return None
-            attrs = arch.pop(get_arch(), None)
-            if not attrs:
-                warn('{} is not defined for your architecture ({})'.format(name, get_arch()))
-                return None
-        os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
-        deps += os_arch_deps
+        os_arch = Suite._pop_os_arch(attrs, context)
+        Suite._merge_os_arch_attrs(attrs, os_arch, context)
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
+        deps = Suite._pop_list(attrs, 'dependencies', context)
         platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
@@ -3462,8 +3451,6 @@ class Suite:
             javaCompliance = attrs.pop('javaCompliance', None)
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent)
         d.__dict__.update(attrs)
-        if rootAttrs != attrs:
-            d.__dict__.update(rootAttrs)
         self.dists.append(d)
         return d
 
@@ -3480,22 +3467,45 @@ class Suite:
             abort('Attribute "' + name + '" for ' + context + ' must be a list')
         return v
 
+    @staticmethod
+    def _pop_os_arch(attrs, context):
+        os_arch = attrs.pop('os_arch', None)
+        if os_arch:
+            os_attrs = os_arch.pop(get_os(), None)
+            if not os_attrs:
+                os_attrs = os_arch.pop('<others>', None)
+            if os_attrs:
+                arch_attrs = os_attrs.pop(get_arch(), None)
+                if not arch_attrs:
+                    arch_attrs = os_attrs.pop('<others>', None)
+                if arch_attrs:
+                    return arch_attrs
+                else:
+                    warn('{} is not available on your architecture ({})'.format(context, get_arch()))
+            else:
+                warn('{} is not available on your os ({})'.format(context, get_os()))
+        return None
+
+    @staticmethod
+    def _merge_os_arch_attrs(attrs, os_arch_attrs, context):
+        if os_arch_attrs:
+            for k, v in os_arch_attrs.iteritems():
+                if k in attrs:
+                    other = attrs[k]
+                    if isinstance(v, types.ListType) and isinstance(other, types.ListType):
+                        attrs[k] = v + other
+                    else:
+                        abort("OS/Arch attribute must not override non-OS/Arch attribute '{}' in {}".format(k, context))
+                else:
+                    attrs[k] = v
+
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.iteritems()):
             context = 'library ' + name
-            deps = Suite._pop_list(attrs, 'dependencies', context)
             attrs.pop('native', False)  # TODO use to make non-classpath libraries
-            os_arch = attrs.pop('os_arch', None)
-            rootAttrs = attrs
-            if os_arch:
-                arch = os_arch.pop(get_os(), None)
-                if not arch:
-                    warn('{} is not available on your os ({})'.format(name, get_os()))
-                    continue
-                attrs = arch.pop(get_arch(), None)
-                if not attrs:
-                    warn('{} is not available on your architecture ({})'.format(name, get_arch()))
-                    continue
+            os_arch = Suite._pop_os_arch(attrs, context)
+            Suite._merge_os_arch_attrs(attrs, os_arch, context)
+            deps = Suite._pop_list(attrs, 'dependencies', context)
             path = attrs.pop('path')
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
@@ -3508,8 +3518,6 @@ class Suite:
             optional = False
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
             l.__dict__.update(attrs)
-            if rootAttrs != attrs:
-                l.__dict__.update(rootAttrs)
             self.libs.append(l)
 
     @staticmethod
@@ -3732,6 +3740,8 @@ class SourceSuite(Suite):
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
             className = attrs.pop('class', None)
+            os_arch = Suite._pop_os_arch(attrs, context)
+            Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
             workingSets = attrs.pop('workingSets', None)
             if className:
@@ -5599,7 +5609,7 @@ def abort(codeOrMessage, context=None):
     its return value is printed. Otherwise str(context) is printed.
     """
 
-    if _opts and _opts.killwithsigquit:
+    if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
         _send_sigquit()
 
     def is_alive(p):
@@ -5622,7 +5632,7 @@ def abort(codeOrMessage, context=None):
                 if is_alive(p):
                     log('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
-    if _opts and _opts.verbose:
+    if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
         import traceback
         traceback.print_stack()
     if context is not None:
