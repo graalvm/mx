@@ -3253,10 +3253,6 @@ class Suite:
         Registers the metadata loaded by _load_metadata into the relevant
         global dictionaries such as _projects, _libs, _jreLibs and _dists.
         '''
-        if self.requiredMxVersion is None:
-            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
-        elif self.requiredMxVersion > version:
-            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
         for l in self.libs:
             existing = _libs.get(l.name)
             # Check that suites that define same library are consistent
@@ -3324,6 +3320,11 @@ class Suite:
                 self.requiredMxVersion = VersionSpec(suiteDict['mxversion'])
             except AssertionError as ae:
                 abort('Exception while parsing "mxversion" in project file: ' + str(ae))
+
+        if self.requiredMxVersion is None:
+            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
+        elif self.requiredMxVersion > version:
+            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
