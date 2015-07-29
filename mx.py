@@ -9136,6 +9136,7 @@ def maven_install(args):
     s = _primary_suite
     if args.no_checks or s.vc.can_push(s.dir, strict=False):
         version = s.vc.tip(s.dir)
+        releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
         arcdists = []
         for dist in s.dists:
             # ignore non-exported dists
@@ -9147,8 +9148,10 @@ def maven_install(args):
         mxMetaJar = s.mx_binary_distribution_jar_path()
         if not args.test:
             mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
+            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion)
             for dist in arcdists:
                 mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
+                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion)
         else:
             print 'jars to deploy manually for version: ' + version
             print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
