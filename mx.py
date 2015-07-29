@@ -8845,14 +8845,36 @@ def show_projects(args):
 
 def show_suites(args):
     """show all suites"""
+    parser = ArgumentParser(prog='mx suites')
+    parser.add_argument('--locations', action='store_true', help='show element locations on disk')
+    args = parser.parse_args(args)
+    def _location(e):
+        if args.locations:
+            if isinstance(e, Suite):
+                return e.mxDir
+            if isinstance(e, Library):
+                return join(e.suite.dir, e.path)
+            if isinstance(e, Distribution):
+                return e.path
+            if isinstance(e, Project):
+                return e.dir
+        return None
     def _show_section(name, section):
-        if len(section) != 0:
+        if section:
             log('  ' + name + ':')
             for e in section:
-                log('    ' + e.name)
+                location = _location(e)
+                if location:
+                    log('    {} ({})'.format(e.name, location))
+                else:
+                    log('    ' + e.name)
 
     for s in suites(True):
-        log(s.name)
+        location = _location(s)
+        if location:
+            log('{} ({})'.format(s.name, location))
+        else:
+            log(s.name)
         _show_section('libraries', s.libs)
         _show_section('jrelibraries', s.jreLibs)
         _show_section('jdklibraries', s.jdkLibs)
