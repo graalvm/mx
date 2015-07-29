@@ -2096,8 +2096,7 @@ class VC:
         '''
         for vcs in _vc_systems:
             vcs.check()
-            parent = vcs.parent(vcdir, abortOnError=False)
-            if parent:
+            if vcs.is_this_vc(vcdir):
                 return vcs
         if abortOnError:
             abort('cannot determine VC for ' + vcdir)
@@ -2116,6 +2115,13 @@ class VC:
         Intialize 'vcdir' for vc control
         '''
         abort(self.kind + " init is not implemented")
+
+    def is_this_vc(self, vcdir):
+        '''
+        Check whether vcdir is managed by this vc.
+        Return None if not, True if so
+        '''
+        abort(self.kind + " is_this_vc is not implemented")
 
     def metadir(self):
         '''
@@ -2289,6 +2295,10 @@ class HgConfig(VC):
 
     def init(self, vcdir, abortOnError=True):
         return run(['hg', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
+    def is_this_vc(self, vcdir):
+        hgdir = join(vcdir, self.metadir())
+        return os.path.isdir(hgdir)
 
     def add(self, vcdir, path, abortOnError=True):
         return run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
@@ -2492,6 +2502,9 @@ class BinaryVC(VC):
 
     def check(self, abortOnError=True):
         return True
+
+    def is_this_vc(self, vcdir):
+        return self.parent(vcdir, abortOnError=False)
 
     def _groupId(self, suiteName):
         groupId = 'com.oracle.' + suiteName
@@ -9523,7 +9536,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.1.0")
+version = VersionSpec("5.1.1")
 
 currentUmask = None
 
