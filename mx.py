@@ -9134,31 +9134,33 @@ def maven_install(args):
 
     _mvn.check()
     s = _primary_suite
-    if args.no_checks or s.vc.can_push(s.dir, strict=False):
-        version = s.vc.tip(s.dir)
-        releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
-        arcdists = []
-        for dist in s.dists:
-            # ignore non-exported dists
-            if not dist.name.startswith('COM_ORACLE'):
-                arcdists.append(dist)
+    nolocalchanges = args.no_checks or s.vc.can_push(s.dir, strict=False)
+    version = s.vc.tip(s.dir)
+    releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
+    arcdists = []
+    for dist in s.dists:
+        # ignore non-exported dists
+        if not dist.name.startswith('COM_ORACLE'):
+            arcdists.append(dist)
 
-        mxMetaName = _mx_binary_distribution_root(s.name)
-        s.create_mx_binary_distribution_jar()
-        mxMetaJar = s.mx_binary_distribution_jar_path()
-        if not args.test:
+    mxMetaName = _mx_binary_distribution_root(s.name)
+    s.create_mx_binary_distribution_jar()
+    mxMetaJar = s.mx_binary_distribution_jar_path()
+    if not args.test:
+        if nolocalchanges:
             mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
-            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion)
-            for dist in arcdists:
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion)
         else:
-            print 'jars to deploy manually for version: ' + version
-            print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
-            for dist in arcdists:
-                print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
+            print 'Local changes found, skipping install of ' + version + ' version'
+        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion)
+        for dist in arcdists:
+            if nolocalchanges:
+                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
+            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion)
     else:
-        abort('suite ' + s.name + ' has uncommitted changes')
+        print 'jars to deploy manually for version: ' + version
+        print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
+        for dist in arcdists:
+            print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
 
 def show_envs(args):
     '''
