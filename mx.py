@@ -9117,6 +9117,8 @@ def junit(args, harness=_basic_junit_harness, parser=None):
         return 0
 
 def mvn_local_install(suite_name, dist_name, path, version):
+    if not exists(path):
+        abort('File ' + path + ' does not exists')
     run(['mvn', 'install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
 
@@ -9127,7 +9129,7 @@ def maven_install(args):
     '''
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
-    parser.add_argument('--local', action='store_true', help='install in local repository')
+    parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
     args = parser.parse_args(args)
 
     _mvn.check()
@@ -9143,7 +9145,7 @@ def maven_install(args):
         mxMetaName = _mx_binary_distribution_root(s.name)
         s.create_mx_binary_distribution_jar()
         mxMetaJar = s.mx_binary_distribution_jar_path()
-        if args.local:
+        if not args.test:
             mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
             for dist in arcdists:
                 mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
