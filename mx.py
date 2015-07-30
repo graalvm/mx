@@ -5763,12 +5763,14 @@ def build(args, parser=None):
     args = parser.parse_args(args)
 
     if get_os() == 'windows':
-        # currently parallel builds do not work on windows
-        args.parallelize = False
+        if args.parallelize:
+            warn('parallel builds are not supported on windows: can not use -p')
+            args.parallelize = False
 
     if is_jython():
         if args.parallelize:
-            abort('multiprocessing not available in jython: can not use -p')
+            warn('multiprocessing not available in jython: can not use -p')
+            args.parallelize = False
 
     if not args.javac and args.jdt is not None:
         if not args.jdt.endswith('.jar'):
