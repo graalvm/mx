@@ -5762,6 +5762,10 @@ def build(args, parser=None):
 
     args = parser.parse_args(args)
 
+    if get_os() == 'windows':
+        # currently parallel builds do not work on windows
+        args.parallelize = False
+
     if is_jython():
         if args.parallelize:
             abort('multiprocessing not available in jython: can not use -p')
