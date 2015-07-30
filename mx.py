@@ -2883,6 +2883,8 @@ def deploy_binary(args):
 
     _mvn.check()
     s = _primary_suite
+    if not s.vc:
+        abort('Current prinary suite has no version control')
     version = s.vc.parent(s.dir)
     dists = s.dists
 
