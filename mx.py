@@ -4322,7 +4322,7 @@ def projects(opt_limit_to_suite=False):
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True
     """
 
-    sortedProjects = sorted(_projects.itervalues())
+    sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
     if opt_limit_to_suite:
         return _dependencies_opt_limit_to_suites(sortedProjects)
     else:
@@ -4616,6 +4616,7 @@ def dependencies(opt_limit_to_suite=False):
     it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
     if opt_limit_to_suite and _opts.specific_suites:
         it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
+    itertools.ifilter(lambda d: not d.suite.internal, it)
     return it
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
