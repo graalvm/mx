@@ -2516,10 +2516,6 @@ class BinaryVC(VC):
     def is_this_vc(self, vcdir):
         return self.parent(vcdir, abortOnError=False)
 
-    def _groupId(self, suiteName):
-        groupId = 'com.oracle.' + suiteName
-        return groupId
-
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         '''
         clone is interpreted as downloading the mx-suitename.jar file
@@ -2539,7 +2535,7 @@ class BinaryVC(VC):
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
 
         mxname = _mx_binary_distribution_root(suite_name)
-        self._log_clone("{}/{}/{}".format(url, self._groupId(suite_name), mxname), dest, rev)
+        self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
         self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
         run([get_jdk().jar, 'xf', mx_jar_path], cwd=dest)
@@ -2547,7 +2543,7 @@ class BinaryVC(VC):
         return True
 
     def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
-        groupId = self._groupId(metadata.suiteName)
+        groupId = _mavenGroupId(metadata.suiteName)
         repo = MavenRepo(metadata.repourl)
         snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
         if not snapshot:
@@ -2640,7 +2636,7 @@ class BinaryVC(VC):
 
     def _tip(self, metadata):
         repo = MavenRepo(metadata.repourl)
-        latestSnapshotversion = repo.getArtifactVersions(self._groupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
+        latestSnapshotversion = repo.getArtifactVersions(_mavenGroupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
 
@@ -2828,11 +2824,65 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False):
+def _mavenGroupId(suite):
+    if isinstance(suite, Suite):
+        name = suite.name
+    else:
+        assert isinstance(suite, types.StringTypes)
+        name = suite
+    return 'com.oracle.' + _map_to_maven_dist_name(name)
+
+def _genPom(dist, versionGetter):
+    groupId = _mavenGroupId(dist.suite)
+    artifactId = _map_to_maven_dist_name(dist.remoteName())
+    version = versionGetter(dist.suite)
+    pom = XMLDoc()
+    pom.open('project', attributes={
+        'xmlns': "http://maven.apache.org/POM/4.0.0",
+        'xmlns:xsi': "http://www.w3.org/2001/XMLSchema-instance",
+        'xsi:schemaLocation': "http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+        })
+    pom.element('modelVersion', data="4.0.0")
+    pom.element('groupId', data=groupId)
+    pom.element('artifactId', data=artifactId)
+    pom.element('version', data=version)
+    pom.open('dependencies')
+    directDistDeps = (d for d in dist.deps if d.isDistribution())
+    directLibDeps = dist.excludedLibs
+    for dep in directDistDeps:
+        pom.open('dependency')
+        depGroupId = _mavenGroupId(dep.suite)
+        depArtifactId = _map_to_maven_dist_name(dep.remoteName())
+        depVersion = versionGetter(dep.suite)
+        pom.element('groupId', data=depGroupId)
+        pom.element('artifactId', data=depArtifactId)
+        pom.element('version', data=depVersion)
+        pom.close('dependency')
+    for l in directLibDeps:
+        if hasattr(l, 'maven'):
+            mavenMetaData = l.maven
+            pom.open('dependency')
+            pom.element('groupId', data=mavenMetaData['groupId'])
+            pom.element('artifactId', data=mavenMetaData['artifactId'])
+            pom.element('version', data=mavenMetaData['version'])
+            pom.close('dependency')
+        else:
+            warn('Libaray {} does not have maven metadata: skipping it in POM file for {}'.format(l.name, dist.name))
+    pom.close('dependencies')
+    pom.close('project')
+    return pom.xml(indent=' ', newl='\n')
+
+def _tmpPomFile(dist, versionGetter):
+    tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
+    tmp.write(_genPom(dist, versionGetter))
+    tmp.close()
+    return tmp.name
+
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
-    groupId = 'com.oracle.' + _map_to_maven_dist_name(suite.name)
+    groupId = _mavenGroupId(suite)
     artifactId = name
 
     cmd = ['mvn', '--batch-mode']
@@ -2848,7 +2898,6 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
 
     cmd += ['deploy:deploy-file',
         '-DrepositoryId=' + repositoryId,
-        '-DgeneratePom=true',
         '-Durl=' + repositoryUrl,
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
@@ -2856,6 +2905,10 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
         '-Dfile=' + jarPath,
         '-Dpackaging=' + extension
     ]
+    if pomFile:
+        cmd.append('-DpomFile=' + pomFile)
+    else:
+        cmd.append('-DgeneratePom=true')
 
     if srcPath:
         cmd.append('-Dsources=' + srcPath)
@@ -2901,7 +2954,8 @@ def deploy_binary(args):
     if not s.vc:
         abort('Current prinary suite has no version control')
     _mvn.check()
-    version = '{0}-SNAPSHOT'.format(s.vc.parent(s.dir))
+    def _versionGetter(suite):
+        return '{0}-SNAPSHOT'.format(suite.vc.parent(s.dir))
     dists = s.dists
     if args.only:
         only = args.only.split(',')
@@ -2915,16 +2969,21 @@ def deploy_binary(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
+    version = _versionGetter(s)
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings, dryRun=args.dry_run)
-    _maven_deploy_dists(dists, version, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
+    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
 
-def _maven_deploy_dists(dists, version, repository_id, url, settingsXml, dryRun=False):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False):
     for dist in dists:
         if dist.isJARDistribution():
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+            pomFile = _tmpPomFile(dist, versionGetter)
+            if _opts.very_verbose or (dryRun and _opts.verbose):
+                with open(pomFile) as f:
+                    log(f.read())
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, pomFile=pomFile)
         elif dist.isTARDistribution():
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
         else:
             warn('Unsupported distribution: ' + dist.name)
 
@@ -2960,7 +3019,8 @@ def maven_deploy(args):
     if not s.vc:
         abort('Current prinary suite has no version control')
     _mvn.check()
-    version = s.release_version(snapshotSuffix='SNAPSHOT')
+    def _versionGetter(suite):
+        return suite.release_version(snapshotSuffix='SNAPSHOT')
     dists = s.dists
     if args.only:
         only = args.only.split(',')
@@ -2970,8 +3030,8 @@ def maven_deploy(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
-    log('Deploying {0} distributions for version {1}'.format(s.name, version))
-    _maven_deploy_dists(dists, version, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
+    log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
+    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
 
 class MavenConfig:
     def __init__(self):
