@@ -2818,13 +2818,12 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar'):
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
     groupId = 'com.oracle.' + _map_to_maven_dist_name(suite.name)
     artifactId = name
-    mavenVersion = '{0}-SNAPSHOT'.format(version)
 
     cmd = ['mvn', '--batch-mode']
 
@@ -2843,7 +2842,7 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
         '-Durl=' + repositoryUrl,
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
-        '-Dversion=' + mavenVersion,
+        '-Dversion=' + version,
         '-Dfile=' + jarPath,
         '-Dpackaging=' + extension
     ]
@@ -2855,14 +2854,18 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
         cmd.append('-Ddescription=' + description)
 
     log('Deploying {0}:{1}...'.format(suite.name, name))
-    run(cmd)
+    if dryRun:
+        log(' '.join((pipes.quote(t) for t in cmd)))
+    else:
+        run(cmd)
 
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository.
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx deploy-binary [-h] [-s SETTINGS] repository-id repository-url
+    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY]
+                            repository-id repository-url
 
     positional arguments:
       repository-id         Repository ID used for Maven deploy
@@ -2872,22 +2875,24 @@ def deploy_binary(args):
       -h, --help            show this help message and exit
       -s SETTINGS, --settings SETTINGS
                             Path to settings.mxl file used for Maven
-      --only                Limit deployment to these distributions
+      -n, --dry-run         Dry run that only prints the action a normal run would
+                            perform without actually deploying anything
+      --only ONLY           Limit deployment to these distributions
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
     args = parser.parse_args(args)
 
-    _mvn.check()
     s = _primary_suite
     if not s.vc:
         abort('Current prinary suite has no version control')
-    version = s.vc.parent(s.dir)
+    _mvn.check()
+    version = '{0}-SNAPSHOT'.format(s.vc.parent(s.dir))
     dists = s.dists
-
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only]
@@ -2901,14 +2906,62 @@ def deploy_binary(args):
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
-    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings)
+    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings, dryRun=args.dry_run)
+    _maven_deploy_dists(dists, version, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
+
+def _maven_deploy_dists(dists, version, repository_id, url, settingsXml, dryRun=False):
     for dist in dists:
         if dist.isJARDistribution():
-            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, args.repository_id, args.url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=args.settings, extension=dist.remoteExtension())
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
         elif dist.isTARDistribution():
-            _deploy_binary_maven(s, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, args.repository_id, args.url, settingsXml=args.settings, extension=dist.remoteExtension())
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), version, repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
         else:
             warn('Unsupported distribution: ' + dist.name)
+
+def maven_deploy(args):
+    """deploy jars for the primary suite to remote maven repository.
+
+    All binaries must be built first using 'mx build'.
+
+    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
+                            repository-id repository-url
+
+    positional arguments:
+      repository-id         Repository ID used for Maven deploy
+      repository-url        Repository URL used for Maven deploy
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -s SETTINGS, --settings SETTINGS
+                            Path to settings.mxl file used for Maven
+      -n, --dry-run         Dry run that only prints the action a normal run would
+                            perform without actually deploying anything
+      --only ONLY           Limit deployment to these distributions
+    """
+    parser = ArgumentParser(prog='mx maven-deploy')
+    parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
+    parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
+    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
+    parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
+    args = parser.parse_args(args)
+
+    s = _primary_suite
+    if not s.vc:
+        abort('Current prinary suite has no version control')
+    _mvn.check()
+    version = s.release_version(snapshotSuffix='SNAPSHOT')
+    dists = s.dists
+    if args.only:
+        only = args.only.split(',')
+        dists = [d for d in dists if d.name in only]
+
+    for dist in dists:
+        if not dist.exists():
+            abort("'{0}' is not built, run 'mx build' first".format(dist.name))
+
+    log('Deploying {0} distributions for version {1}'.format(s.name, version))
+    _maven_deploy_dists(dists, version, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
 
 class MavenConfig:
     def __init__(self):
@@ -9289,6 +9342,7 @@ _commands = {
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'archive': [_archive, '[options]'],
     'maven-install' : [maven_install, ''],
+    'maven-deploy' : [maven_deploy, ''],
     'deploy-binary' : [deploy_binary, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
