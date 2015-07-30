@@ -182,6 +182,17 @@ def gate(args):
 
         gate_clean(args, tasks)
 
+        with Task('Distribution Overlap Check', tasks) as t:
+            if t:
+                if mx.checkoverlap([]) != 0:
+                    t.abort('Found overlapping distributions.')
+
+        with Task('Canonicalization Check', tasks) as t:
+            if t:
+                mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
+                if mx.canonicalizeprojects([]) != 0:
+                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
+
         with Task('IDEConfigCheck', tasks) as t:
             if t:
                 if args.cleanIDE:
@@ -193,12 +204,6 @@ def gate(args):
             with Task('CodeFormatCheck', tasks) as t:
                 if t and mx.eclipseformat(['-e', eclipse_exe]) != 0:
                     t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-
-        with Task('Canonicalization Check', tasks) as t:
-            if t:
-                mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
-                if mx.canonicalizeprojects([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
         if mx.get_env('JDT'):
             with Task('BuildJavaWithEcj', tasks):
