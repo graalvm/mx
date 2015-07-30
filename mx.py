@@ -6068,9 +6068,9 @@ def eclipseformat(args):
 
     # build list of projects to be processed
     if args.projects is not None:
-        projects = [project(name) for name in args.projects.split(',')]
+        projectsToProcess = [project(name) for name in args.projects.split(',')]
     else:
-        projects = [p for p in dependencies() if p.isProject()]
+        projectsToProcess = projects(True)
 
     class Batch:
         def __init__(self, settingsDir):
@@ -6132,7 +6132,7 @@ def eclipseformat(args):
 
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
-    for p in projects:
+    for p in projectsToProcess:
         if not p.isJavaProject():
             continue
         sourceDirs = p.source_dirs()
@@ -6159,7 +6159,7 @@ def eclipseformat(args):
 
     log("we have: " + str(len(batches)) + " batches")
     for batch, javafiles in batches.iteritems():
-        for chunk in _chunk_files_for_command_line(batch.javafiles, pathFunction=lambda f: f.path):
+        for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
             run([args.eclipse_exe,
                 '-nosplash',
                 '-application',
