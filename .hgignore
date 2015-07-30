@@ -4,3 +4,5 @@ lib
 .*\.pyc$
 \.class$
 \javafilelist.*\.txt$
+mx.mx/env
+workingsets.xml
