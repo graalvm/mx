@@ -8258,11 +8258,10 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         memory = args.memory
     memory = '-J-Xmx' + memory
 
+    # The project must be built to ensure javadoc can find class files for all referenced classes
+    build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            # The project must be built to ensure javadoc can find class files for all referenced classes
-            build(['--no-native', '--dependencies', p.name])
-
             pkgs = find_packages(p.source_dirs(), set(), args.implementation)
             links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
             out = outDir(p)
@@ -8319,9 +8318,6 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     os.remove(overviewFile)
 
     else:
-        # The projects must be built to ensure javadoc can find class files for all referenced classes
-        build(['--no-native'])
-
         pkgs = set()
         sproots = []
         names = []
