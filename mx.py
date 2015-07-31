@@ -445,6 +445,9 @@ class BuildTask(object):
     def pullSharedMemoryState(self):
         self.built = bool(self._builtBox.value)
 
+    def cleanSharedMemoryState(self):
+        self._builtBox = None
+
     """
     Execute the build task.
     """
@@ -1347,6 +1350,10 @@ class JavaBuildTask(ProjectBuildTask):
     def pullSharedMemoryState(self):
         ProjectBuildTask.pullSharedMemoryState(self)
         self._newestOutput = self._newestBox.value
+
+    def cleanSharedMemoryState(self):
+        ProjectBuildTask.cleanSharedMemoryState(self)
+        self._newestBox = None
 
     def buildForbidden(self):
         if ProjectBuildTask.buildForbidden(self):
@@ -5901,6 +5908,8 @@ def build(args, parser=None):
                     active.append(t)
                 else:
                     t.pullSharedMemoryState()
+                    t.cleanSharedMemoryState()
+                    t._finished = True
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
             return (active, [])
@@ -5950,14 +5959,12 @@ def build(args, parser=None):
             def executeTask(task):
                 # Clear sub-process list cloned from parent process
                 del _currentSubprocesses[:]
-                for d in task.deps:
-                    d.pullSharedMemoryState()
                 task.execute()
                 task.pushSharedMemoryState()
 
             def depsDone(task):
                 for d in task.deps:
-                    if d.proc is None or d.proc.exitcode is None:
+                    if d.proc is None or not d._finished:
                         return False
                 return True
 
@@ -5966,6 +5973,7 @@ def build(args, parser=None):
                     worklist.remove(task)
                     task.initSharedMemoryState()
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
+                    task._finished = False
                     task.proc.start()
                     active.append(task)
                     task.sub = _addSubprocess(task.proc, [str(task)])
