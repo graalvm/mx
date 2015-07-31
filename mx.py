@@ -53,7 +53,7 @@ import shutil, re
 import pipes
 import difflib
 import glob
-import urllib2
+import urllib2, urlparse
 from collections import Callable
 from collections import OrderedDict
 from threading import Thread
@@ -2216,6 +2216,12 @@ class VC:
         '''
         abort(self.kind + " default_push is not implemented")
 
+    def default_pull(self, vcdir, abortOnError=True):
+        '''
+        Return the default push target for this repo.
+        '''
+        abort(self.kind + " default_pull is not implemented")
+
     def force_version(self, vcdir, rev, abortOnError=True):
         '''
         force 'vcdir' to 'rev' and updating the working directory
@@ -2436,17 +2442,27 @@ class HgConfig(VC):
         else:
             return False
 
-    def default_push(self, vcdir, abortOnError=True):
-        hgrc = join(vcdir, '.hg', 'hgrc')
-        if exists(hgrc):
-            with open(hgrc) as f:
-                for line in f:
-                    line = line.rstrip()
-                    if line.startswith('default = '):
-                        return line[len('default = '):]
+    def _path(self, vcdir, name, abortOnError=True):
+        out = OutputCapture()
+        rc = run(['hg', '-R', vcdir, 'paths'], nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            output = out.data
+            prefix = name + ' = '
+            for line in output.split(os.linesep):
+                if line.startswith(prefix):
+                    return line[len(prefix):]
         if abortOnError:
-            abort('no default path in ' + join(vcdir, '.hg', 'hgrc'))
+            abort("no '{}' path for repository {}".format(name, vcdir))
         return None
+
+    def default_push(self, vcdir, abortOnError=True):
+        push = self._path(vcdir, 'default-push', abortOnError=False)
+        if push:
+            return push
+        return self.default_pull(vcdir, abortOnError=abortOnError)
+
+    def default_pull(self, vcdir, abortOnError=True):
+        return self._path(vcdir, 'default', abortOnError=abortOnError)
 
     def force_version(self, vcdir, rev, abortOnError=True):
         if run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
@@ -2832,7 +2848,7 @@ def _mavenGroupId(suite):
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
-def _genPom(dist, versionGetter):
+def _genPom(dist, versionGetter, validateMetadata=False):
     groupId = _mavenGroupId(dist.suite)
     artifactId = _map_to_maven_dist_name(dist.remoteName())
     version = versionGetter(dist.suite)
@@ -2846,35 +2862,74 @@ def _genPom(dist, versionGetter):
     pom.element('groupId', data=groupId)
     pom.element('artifactId', data=artifactId)
     pom.element('version', data=version)
-    pom.open('dependencies')
-    directDistDeps = (d for d in dist.deps if d.isDistribution())
+    if dist.suite.url:
+        pom.element('url', data=dist.suite.url)
+    elif validateMetadata:
+        abort("Suite {} is missing the 'url' attribute".format(dist.suite.name))
+    acronyms = ['API', 'DSL', 'SL', 'TCK']
+    name = ' '.join((t if t in acronyms else t.lower().capitalize() for t in dist.name.split('_')))
+    pom.element('name', data=name)
+    if hasattr(dist, 'description'):
+        pom.element('description', data=dist.description)
+    elif validateMetadata:
+        dist.abort("missing 'description' attribute")
+    if dist.suite.developer:
+        pom.open('developers')
+        pom.open('developer')
+        def _addDevAttr(name, default=None):
+            if name in dist.suite.developer:
+                value = dist.suite.developer[name]
+            else:
+                value = default
+            if value:
+                pom.element(name, data=value)
+            elif validateMetadata:
+                abort("Suite {}'s developer metadata is missing the '{}' attribute".format(dist.suite.name, name))
+        _addDevAttr('name')
+        _addDevAttr('email')
+        _addDevAttr('organization')
+        _addDevAttr('organizationUrl', dist.suite.url)
+        pom.close('developer')
+        pom.close('developers')
+    elif validateMetadata:
+        abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
+    directDistDeps = [d for d in dist.deps if d.isDistribution()]
     directLibDeps = dist.excludedLibs
-    for dep in directDistDeps:
-        pom.open('dependency')
-        depGroupId = _mavenGroupId(dep.suite)
-        depArtifactId = _map_to_maven_dist_name(dep.remoteName())
-        depVersion = versionGetter(dep.suite)
-        pom.element('groupId', data=depGroupId)
-        pom.element('artifactId', data=depArtifactId)
-        pom.element('version', data=depVersion)
-        pom.close('dependency')
-    for l in directLibDeps:
-        if hasattr(l, 'maven'):
-            mavenMetaData = l.maven
+    if directDistDeps or directLibDeps:
+        pom.open('dependencies')
+        for dep in directDistDeps:
             pom.open('dependency')
-            pom.element('groupId', data=mavenMetaData['groupId'])
-            pom.element('artifactId', data=mavenMetaData['artifactId'])
-            pom.element('version', data=mavenMetaData['version'])
+            depGroupId = _mavenGroupId(dep.suite)
+            depArtifactId = _map_to_maven_dist_name(dep.remoteName())
+            depVersion = versionGetter(dep.suite)
+            pom.element('groupId', data=depGroupId)
+            pom.element('artifactId', data=depArtifactId)
+            pom.element('version', data=depVersion)
             pom.close('dependency')
-        else:
-            warn('Libaray {} does not have maven metadata: skipping it in POM file for {}'.format(l.name, dist.name))
-    pom.close('dependencies')
+        for l in directLibDeps:
+            if hasattr(l, 'maven'):
+                mavenMetaData = l.maven
+                pom.open('dependency')
+                pom.element('groupId', data=mavenMetaData['groupId'])
+                pom.element('artifactId', data=mavenMetaData['artifactId'])
+                pom.element('version', data=mavenMetaData['version'])
+                pom.close('dependency')
+            else:
+                warn('Libaray {} does not have maven metadata: skipping it in POM file for {}'.format(l.name, dist.name))
+        pom.close('dependencies')
+    pom.open('scm')
+    pull = dist.suite.vc.default_pull(dist.suite.dir, abortOnError=validateMetadata)
+    push = dist.suite.vc.default_push(dist.suite.dir, abortOnError=validateMetadata)
+    pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, pull))
+    pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, push))
+    pom.element('url', data=pull)
+    pom.close('scm')
     pom.close('project')
-    return pom.xml(indent=' ', newl='\n')
+    return pom.xml(indent='  ', newl='\n')
 
-def _tmpPomFile(dist, versionGetter):
+def _tmpPomFile(dist, versionGetter, validateMetadata=False):
     tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
-    tmp.write(_genPom(dist, versionGetter))
+    tmp.write(_genPom(dist, versionGetter, validateMetadata))
     tmp.close()
     return tmp.name
 
@@ -2974,10 +3029,10 @@ def deploy_binary(args):
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata=False):
     for dist in dists:
         if dist.isJARDistribution():
-            pomFile = _tmpPomFile(dist, versionGetter)
+            pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
             if _opts.very_verbose or (dryRun and _opts.verbose):
                 with open(pomFile) as f:
                     log(f.read())
@@ -2992,8 +3047,8 @@ def maven_deploy(args):
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
-                            repository-id repository-url
+    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY] [--validate]
+                           repository-id repository-url
 
     positional arguments:
       repository-id         Repository ID used for Maven deploy
@@ -3006,11 +3061,14 @@ def maven_deploy(args):
       -n, --dry-run         Dry run that only prints the action a normal run would
                             perform without actually deploying anything
       --only ONLY           Limit deployment to these distributions
+      --validate            Validate that maven metadata is complete enough for
+                            publication
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
+    parser.add_argument('--validate', action='store_true', help='Validate that maven metadata is complete enough for publication')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
     args = parser.parse_args(args)
@@ -3031,7 +3089,7 @@ def maven_deploy(args):
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
+    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate)
 
 class MavenConfig:
     def __init__(self):
@@ -3329,7 +3387,7 @@ class Suite:
             if not hasattr(module, dictName):
                 abort(modulePath + ' must define a variable named "' + dictName + '"')
             d = expand(getattr(module, dictName), [dictName])
-            sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion'] + (['distribution_extensions'] if suite_dict else [])
+            sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url'] + (['distribution_extensions'] if suite_dict else [])
             unknown = frozenset(d.keys()) - frozenset(sections)
             if unknown:
                 abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -3456,6 +3514,12 @@ class Suite:
         jdkLibsMap = self._check_suiteDict('jdklibraries')
         distsMap = self._check_suiteDict('distributions')
         importsMap = self._check_suiteDict('imports')
+        self.developer = self._check_suiteDict('developer')
+        self.url = suiteDict.get('url')
+        if self.url:
+            url = urlparse.urlsplit(self.url)
+            if not url.scheme or not url.netloc:
+                abort('Invalid url in {}'.format(suitePyFile))
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
             jar = attrs.pop('jar')
