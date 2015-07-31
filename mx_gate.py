@@ -139,6 +139,11 @@ def gate_clean(args, tasks, name='Clean'):
                 cleanArgs.append('--no-dist')
             mx.command_function('clean')(cleanArgs)
 
+
+def _warn_or_abort(msg, strict_mode):
+    reporter = mx.abort if strict_mode else mx.warn
+    reporter(msg)
+
 def gate(args):
     """run the tests used to validate a push
 
@@ -150,6 +155,7 @@ def gate(args):
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
     parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
+    parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
@@ -204,11 +210,15 @@ def gate(args):
             with Task('CodeFormatCheck', tasks) as t:
                 if t and mx.eclipseformat(['-e', eclipse_exe]) != 0:
                     t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
+        else:
+            _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
         if mx.get_env('JDT'):
             with Task('BuildJavaWithEcj', tasks):
                 if t: mx.build(['-p', '--no-native', '--jdt-warning-as-error'])
             gate_clean(args, tasks, name='CleanAfterEcjBuild')
+        else:
+            _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
         with Task('BuildJavaWithJavac', tasks):
             if t: mx.build(['-p', '--no-native', '--force-javac'])
