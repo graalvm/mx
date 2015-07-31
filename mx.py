@@ -3330,8 +3330,6 @@ class Suite:
         _loadedSuites.append(self)
 
     def _load_suite_dict(self):
-
-        suite_dict = None
         dictName = 'suite'
 
         def expand(value, context):
@@ -3354,80 +3352,43 @@ class Suite:
 
         moduleName = 'suite'
         modulePath = join(self.mxDir, moduleName + '.py')
-        suffix = 1
-        while exists(modulePath):
+        if not exists(modulePath):
+            abort('{} is missing'.format(modulePath))
 
-            savedModule = sys.modules.get(moduleName)
-            if savedModule:
-                warn(modulePath + ' conflicts with ' + savedModule.__file__)
-            # temporarily extend the Python path
-            sys.path.insert(0, self.mxDir)
+        savedModule = sys.modules.get(moduleName)
+        if savedModule:
+            warn(modulePath + ' conflicts with ' + savedModule.__file__)
+        # temporarily extend the Python path
+        sys.path.insert(0, self.mxDir)
 
-            snapshot = frozenset(sys.modules.keys())
-            module = __import__(moduleName)
+        snapshot = frozenset(sys.modules.keys())
+        module = __import__(moduleName)
 
-            if savedModule:
-                # restore the old module into the module name space
-                sys.modules[moduleName] = savedModule
-            else:
-                # remove moduleName from the module name space
-                sys.modules.pop(moduleName)
+        if savedModule:
+            # restore the old module into the module name space
+            sys.modules[moduleName] = savedModule
+        else:
+            # remove moduleName from the module name space
+            sys.modules.pop(moduleName)
 
-            # For now fail fast if extra modules were loaded.
-            # This can later be relaxed to simply remove the extra modules
-            # from the sys.modules name space if necessary.
-            extraModules = frozenset(sys.modules.keys()) - snapshot
-            assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
+        # For now fail fast if extra modules were loaded.
+        # This can later be relaxed to simply remove the extra modules
+        # from the sys.modules name space if necessary.
+        extraModules = frozenset(sys.modules.keys()) - snapshot
+        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
 
-            # revert the Python path
-            del sys.path[0]
+        # revert the Python path
+        del sys.path[0]
 
-            if not hasattr(module, dictName):
-                abort(modulePath + ' must define a variable named "' + dictName + '"')
-            d = expand(getattr(module, dictName), [dictName])
-            sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url'] + (['distribution_extensions'] if suite_dict else [])
-            unknown = frozenset(d.keys()) - frozenset(sections)
-            if unknown:
-                abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
+        if not hasattr(module, dictName):
+            abort(modulePath + ' must define a variable named "' + dictName + '"')
+        d = expand(getattr(module, dictName), [dictName])
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url']
+        unknown = frozenset(d.keys()) - frozenset(sections)
+        if unknown:
+            abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
 
-            if suite_dict is None:
-                suite_dict = d
-            else:
-                # Retire this code once all suites are converted as there should be exactly one suite.py file per suite.
-                # This is currently needed by the repo split tool
-                for s in sections:
-                    existing = suite_dict.get(s)
-                    additional = d.get(s)
-                    if additional:
-                        if not existing:
-                            suite_dict[s] = additional
-                        else:
-                            conflicting = frozenset(additional.keys()) & frozenset(existing.keys())
-                            if conflicting:
-                                abort(modulePath + ' redefines: ' + ', '.join(conflicting))
-                            existing.update(additional)
-                distExtensions = d.get('distribution_extensions')
-                if distExtensions:
-                    existing = suite_dict['distributions']
-                    for n, attrs in distExtensions.iteritems():
-                        original = existing.get(n)
-                        if not original:
-                            abort('cannot extend non-existing distribution ' + n)
-                        for k, v in attrs.iteritems():
-                            if k != 'dependencies':
-                                abort('Only the dependencies of distribution ' + n + ' can be extended')
-                            if not isinstance(v, types.ListType):
-                                abort('distribution_extensions.' + n + '.dependencies must be a list')
-                            original['dependencies'] += v
-
-            dictName = 'extra'
-            moduleName = 'suite' + str(suffix)
-            modulePath = join(self.mxDir, moduleName + '.py')
-            suffix = suffix + 1
-
-        self.suiteDict = suite_dict
-
-        return suite_dict, modulePath
+        self.suiteDict = d
 
     def _register_metadata(self):
         '''
@@ -3486,9 +3447,6 @@ class Suite:
 
     def _load_metadata(self):
         suitePyFile = join(self.mxDir, 'suite.py')
-        if not exists(suitePyFile):
-            return
-
         suiteDict = self.suiteDict
         if suiteDict.get('name') is None:
             abort('Missing "suite=<name>" in ' + suitePyFile)
@@ -3546,7 +3504,7 @@ class Suite:
 
 
     def _check_suiteDict(self, key):
-        return dict() if self.suiteDict is None or self.suiteDict.get(key) is None else self.suiteDict[key]
+        return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
 
     def imports_dir(self, kind):
         return join(join(self.dir, 'mx.imports'), kind)
