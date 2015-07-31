@@ -1468,20 +1468,21 @@ class JavaBuildTask(ProjectBuildTask):
         outputDir = self.subject.output_dir()
         os.mkdir(outputDir)
         # Java build
-        compiler.build(
-            sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
-            project=self.subject,
-            jdk=self.jdk,
-            compliance=self.jdk.javaCompliance,
-            outputDir=_cygpathU2W(outputDir),
-            classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
-            sourceGenDir=self.subject.source_gen_dir(),
-            processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
-            disableApiRestrictions=not self.args.warnAPI,
-            warningsAsErrors=self.args.jdt_warning_as_error,
-            showTasks=self.args.jdt_show_task_tags
-        )
-        logvv('Finished Java compilation for {}'.format(self.subject.name))
+        if self._javaFileList():
+            compiler.build(
+                sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
+                project=self.subject,
+                jdk=self.jdk,
+                compliance=self.jdk.javaCompliance,
+                outputDir=_cygpathU2W(outputDir),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
+                sourceGenDir=self.subject.source_gen_dir(),
+                processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
+                disableApiRestrictions=not self.args.warnAPI,
+                warningsAsErrors=self.args.jdt_warning_as_error,
+                showTasks=self.args.jdt_show_task_tags
+            )
+            logvv('Finished Java compilation for {}'.format(self.subject.name))
         # Jasmin build
         for src in self._jasmFileList():
             className = None
@@ -1501,6 +1502,7 @@ class JavaBuildTask(ProjectBuildTask):
         self.subject.update_current_annotation_processors_file()
         if self._jasmFileList():
             logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
+        # Copy other files
         for nonjavafiletuple in self._nonJavaFileTuples():
             sourceDir = nonjavafiletuple[0]
             nonjavafilelist = nonjavafiletuple[1]
@@ -9637,7 +9639,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.1.1")
+version = VersionSpec("5.1.2")
 
 currentUmask = None
 
