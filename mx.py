@@ -4641,7 +4641,6 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdg
     'visit' is not called if 'preVisit' returns a false condition.
     '''
     visited = set()
-    assert not roots or len(roots) != 0
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
 
@@ -8057,6 +8056,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     parser = ArgumentParser(prog='mx javadoc') if parser is None else parser
     parser.add_argument('-d', '--base', action='store', help='base directory for output')
     parser.add_argument('--unified', action='store_true', help='put javadoc in a single directory instead of one per project')
+    parser.add_argument('--implementation', action='store_true', help='include also implementation packages')
     parser.add_argument('--force', action='store_true', help='(re)generate javadoc even if package-list file exists')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
@@ -8108,12 +8108,17 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 logv('[package-list file exists - skipping {0}]'.format(p.name))
 
 
-    def find_packages(sourceDirs, pkgs=None):
+    def find_packages(sourceDirs, pkgs=None, impl=False):
+        def is_visible(name):
+            if impl:
+                return name.endswith('.java');
+            else:
+                return name == 'package-info.java';
         if pkgs is None:
             pkgs = set()
         for sourceDir in sourceDirs:
             for root, _, files in os.walk(sourceDir):
-                if len([name for name in files if name.endswith('.java')]) != 0:
+                if len([name for name in files if is_visible(name)]) != 0:
                     pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
                     if len(packages) == 0 or pkg in packages:
                         if len(exclude_packages) == 0 or not pkg in exclude_packages:
@@ -8133,7 +8138,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             # The project must be built to ensure javadoc can find class files for all referenced classes
             build(['--no-native', '--dependencies', p.name])
 
-            pkgs = find_packages(p.source_dirs(), set())
+            pkgs = find_packages(p.source_dirs(), set(), args.implementation)
             links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
             out = outDir(p)
             def visit(dep, edge):
@@ -8196,7 +8201,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         sp = []
         names = []
         for p in projects:
-            find_packages(p.source_dirs(), pkgs)
+            find_packages(p.source_dirs(), pkgs, args.implementation)
             sp += p.source_dirs()
             names.append(p.name)
 
