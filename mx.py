@@ -479,6 +479,7 @@ class BuildTask(object):
                     reason += ': ' + ', '.join([u.subject.name for u in updated])
         if not buildNeeded:
             newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
+            newestInput = max(newestInput, self.subject.suite.suite_py_mtime())
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
             if not self.args.clean and not self.cleanForbidden():
@@ -3489,10 +3490,9 @@ class Suite:
         abort('isDirty not implemented')
 
     def _load_metadata(self):
-        suitePyFile = join(self.mxDir, 'suite.py')
         suiteDict = self.suiteDict
         if suiteDict.get('name') is None:
-            abort('Missing "suite=<name>" in ' + suitePyFile)
+            abort('Missing "suite=<name>" in ' + self.suite_py())
 
         if suiteDict.get('name') != self.name:
             abort('suite name in project file does not match ' + self.name)
@@ -3518,7 +3518,7 @@ class Suite:
         if self.url:
             url = urlparse.urlsplit(self.url)
             if not url.scheme or not url.netloc:
-                abort('Invalid url in {}'.format(suitePyFile))
+                abort('Invalid url in {}'.format(self.suite_py()))
         self.defaultLicence = suiteDict.get('defaultLicence')
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
@@ -3900,6 +3900,11 @@ class Suite:
 
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
+
+    def suite_py_mtime(self):
+        if not hasattr(self, '_suite_py_mtime'):
+            self._suite_py_mtime = os.path.getmtime(self.suite_py())
+        return self._suite_py_mtime
 
     def __abort_context__(self):
         '''
