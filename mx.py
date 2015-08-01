@@ -70,9 +70,7 @@ _mx_home = os.path.realpath(dirname(__file__))
 
 try:
     # needed to work around https://bugs.python.org/issue1927
-    import readline
-    #then make pylint happy..
-    readline.get_line_buffer()
+    import readline #pylint: disable=unused-import
 except ImportError:
     pass
 
