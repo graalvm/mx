@@ -5477,7 +5477,7 @@ class JDKConfig:
                 raise JDKConfigException(e.returncode + " :" + e.output)
 
         def _checkOutput(out):
-            return 'version' in out
+            return 'java version' in out
 
         # hotspot can print a warning, e.g. if there's a .hotspot_compiler file in the cwd
         output = output.split('\n')
@@ -5486,6 +5486,16 @@ class JDKConfig:
             if _checkOutput(o):
                 assert version is None
                 version = o
+
+        def _checkOutput0(out):
+            return 'version' in out
+
+        # fall back: check for 'version' if there is no 'java version' string
+        if not version:
+            for o in output:
+                if _checkOutput0(o):
+                    assert version is None
+                    version = o
 
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
