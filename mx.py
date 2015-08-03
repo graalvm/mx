@@ -523,7 +523,7 @@ class BuildTask(object):
         if not self.args.only:
             return False
         projectNames = self.args.only.split(',')
-        return self.subject.name in projectNames
+        return self.subject.name not in projectNames
 
     def cleanForbidden(self):
         return False
