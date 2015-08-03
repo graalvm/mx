@@ -8112,9 +8112,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     def find_packages(sourceDirs, pkgs=None, impl=False):
         def is_visible(name):
             if impl:
-                return name.endswith('.java');
+                return name.endswith('.java')
             else:
-                return name == 'package-info.java';
+                return name == 'package-info.java'
         if pkgs is None:
             pkgs = set()
         for sourceDir in sourceDirs:
@@ -8219,10 +8219,10 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
         def find_group(pkg):
             for p in sproots:
-                info = p + os.path.sep + pkg.replace('.', os.path.sep) + os.path.sep + 'package-info.java';
+                info = p + os.path.sep + pkg.replace('.', os.path.sep) + os.path.sep + 'package-info.java'
                 if exists(info):
-                    file = open(info, "r")
-                    for line in file:
+                    f = open(info, "r")
+                    for line in f:
                         m = re.search('group="(.*)"', line)
                         if m:
                             return m.group(1)
