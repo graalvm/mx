@@ -1009,7 +1009,7 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence):
         Dependency.__init__(self, suite, name, licence)
         self.subDir = subDir
         self.srcDirs = srcDirs
@@ -1095,8 +1095,8 @@ class ProjectBuildTask(BuildTask):
         BuildTask.__init__(self, project, args, parallelism)
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, licence, d):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, licence=None):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence)
         ClasspathDependency.__init__(self)
         self.checkstyleProj = name
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
@@ -1697,8 +1697,8 @@ def _replaceResultsVar(m):
         abort('Unknown variable: ' + var)
 
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, licence, d):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, licence=None):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence)
         self.results = results
         self.output = output
 
@@ -4012,12 +4012,12 @@ class SourceSuite(Suite):
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'output', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, licence, d)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, licence=licence)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, licence, d)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, licence=licence)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
