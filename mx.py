@@ -117,6 +117,7 @@ _jreLibs = dict()
 _jdkLibs = dict()
 _dists = dict()
 _distTemplates = dict()
+_licences = dict()
 
 _suites = dict()
 _loadedSuites = []
@@ -186,6 +187,14 @@ class DepEdge:
     def path_len(self):
         return 1 + self.prev.path_len() if self.prev else 0
 
+
+class Licence(object):
+    def __init__(self, identifier, name, url):
+        self.identifier = identifier
+        self.name = name
+        self.url = url
+
+
 class SuiteConstituent(object):
     def __init__(self, suite, name):
         self.name = name
@@ -228,8 +237,9 @@ A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all Dependency instances.
 """
 class Dependency(SuiteConstituent):
-    def __init__(self, suite, name):
+    def __init__(self, suite, name, licence):
         SuiteConstituent.__init__(self, suite, name)
+        self.licence = licence
 
     def __cmp__(self, other):
         return cmp(self.name, other.name)
@@ -559,8 +569,8 @@ Attributes:
     excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
 class Distribution(Dependency):
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent):
-        Dependency.__init__(self, suite, name)
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, licence):
+        Dependency.__init__(self, suite, name, licence)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
@@ -579,6 +589,9 @@ class Distribution(Dependency):
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
+        licenceId = self.licence if self.licence else self.suite.defaultLicence
+        if licenceId:
+            self.licence = licence(licenceId, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -657,8 +670,8 @@ Attributes:
     sourcesPath: as path but for source files (optional)
 """
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent):
-        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent)
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, licence):
+        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, licence)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
@@ -740,6 +753,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
+                    if dep.licence != self.licence:
+                        depLicence = dep.licence.identifier if dep.licence else '??'
+                        selfLicence = self.licence.identifier if self.licence else '??'
+                        abort('Incompatible licences: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicence, dep.name, depLicence))
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
                             l = dep
@@ -897,8 +914,8 @@ Attributes:
     path: suite-local path to where the tar file will be placed
 """
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent):
-        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent)
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, licence):
+        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, licence)
         self.path = _make_absolute(path, suite.dir)
 
     def make_archive(self):
@@ -980,8 +997,8 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d):
-        Dependency.__init__(self, suite, name)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d):
+        Dependency.__init__(self, suite, name, licence)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
@@ -1000,6 +1017,9 @@ class Project(Dependency):
         Resolves symbolic dependency references to be Dependency objects.
         '''
         self._resolveDepsHelper(self.deps)
+        licenceId = self.licence if self.licence else self.suite.defaultLicence
+        if licenceId:
+            self.licence = licence(licenceId, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -1063,8 +1083,8 @@ class ProjectBuildTask(BuildTask):
         BuildTask.__init__(self, project, args, parallelism)
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, licence, d):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d)
         ClasspathDependency.__init__(self)
         self.checkstyleProj = name
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
@@ -1665,8 +1685,8 @@ def _replaceResultsVar(m):
         abort('Unknown variable: ' + var)
 
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, licence, d):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, licence, d)
         self.results = results
         self.output = output
 
@@ -1842,8 +1862,8 @@ A BaseLibrary is an entity that is an object that has no structure understood by
 typically a jar file. It is used "as is".
 """
 class BaseLibrary(Dependency):
-    def __init__(self, suite, name, optional):
-        Dependency.__init__(self, suite, name)
+    def __init__(self, suite, name, optional, licence):
+        Dependency.__init__(self, suite, name, licence)
         self.optional = optional
 
     def __ne__(self, other):
@@ -1854,6 +1874,12 @@ class BaseLibrary(Dependency):
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         pass
+
+    def resolveDeps(self):
+        licenceId = self.licence
+        # do not use suite's default licence
+        if licenceId:
+            self.licence = licence(licenceId, context=self)
 
 """
 A library that will be provided by the JRE but may be absent.
@@ -1870,8 +1896,8 @@ motivating example is the Java Flight Recorder library
 found in the Oracle JRE.
 """
 class JreLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, jar, optional):
-        BaseLibrary.__init__(self, suite, name, optional)
+    def __init__(self, suite, name, jar, optional, licence):
+        BaseLibrary.__init__(self, suite, name, optional, licence)
         ClasspathDependency.__init__(self)
         self.jar = jar
 
@@ -1926,8 +1952,8 @@ will be removed from the global project and library dictionaries
 (i.e., _projects and _libs).
 """
 class JdkLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional):
-        BaseLibrary.__init__(self, suite, name, optional)
+    def __init__(self, suite, name, path, optional, licence):
+        BaseLibrary.__init__(self, suite, name, optional, licence)
         ClasspathDependency.__init__(self)
         self.path = path
 
@@ -1956,8 +1982,8 @@ it is not built by the Suite.
 N.B. Not obvious but a Library can be an annotationProcessor
 """
 class Library(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps):
-        BaseLibrary.__init__(self, suite, name, optional)
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, licence):
+        BaseLibrary.__init__(self, suite, name, optional, licence)
         ClasspathDependency.__init__(self)
         self.path = path.replace('/', os.sep)
         self.urls = urls
@@ -1992,6 +2018,7 @@ class Library(BaseLibrary, ClasspathDependency):
         '''
         Resolves symbolic dependency references to be Dependency objects.
         '''
+        BaseLibrary.resolveDeps(self)
         self._resolveDepsHelper(self.deps)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
@@ -2891,6 +2918,15 @@ def _genPom(dist, versionGetter, validateMetadata=False):
         pom.close('developers')
     elif validateMetadata:
         abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
+    if dist.licence:
+        pom.open('licences')
+        pom.open('licence')
+        pom.element('name', data=dist.licence.name)
+        pom.element('url', data=dist.licence.url)
+        pom.close('licence')
+        pom.close('licences')
+    elif validateMetadata:
+        dist.abort("Missing 'licence' attribute")
     directDistDeps = [d for d in dist.deps if d.isDistribution()]
     directLibDeps = dist.excludedLibs
     if directDistDeps or directLibDeps:
@@ -2913,7 +2949,8 @@ def _genPom(dist, versionGetter, validateMetadata=False):
                 pom.element('version', data=mavenMetaData['version'])
                 pom.close('dependency')
             else:
-                warn('Libaray {} does not have maven metadata: skipping it in POM file for {}'.format(l.name, dist.name))
+                report = abort if validateMetadata else warn
+                report('Missing maven metadata: skipping it in POM file for {}'.format(dist.name), context=l)
         pom.close('dependencies')
     pom.open('scm')
     pull = dist.suite.vc.default_pull(dist.suite.dir, abortOnError=validateMetadata)
@@ -3312,6 +3349,7 @@ class Suite:
         self._metadata_initialized = False
         self.post_init = False
         self.distTemplates = []
+        self.licenceDefs = []
         _suites[self.name] = self
 
     def __str__(self):
@@ -3383,7 +3421,7 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url']
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licences', 'defaultLicence']
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -3418,8 +3456,13 @@ class Suite:
         for d in self.distTemplates:
             existing = _distTemplates.get(d.name)
             if existing is not None and _check_global_structures:
-                abort('inconsistent distribution template redefinition of ' + d.name + ' in ' + existing.suite.dir + ' and ' + d.suite.dir, context=l)
+                abort('inconsistent distribution template redefinition of ' + d.name + ' in ' + existing.suite.dir + ' and ' + d.suite.dir, context=d)
             _distTemplates[d.name] = d
+        for l in self.licenceDefs:
+            existing = _licences.get(l.identifier)
+            if existing is not None and _check_global_structures:
+                abort("Licence {} initialy defined in {} is redefined by {}".format(l.identifier, existing.suite.name, self.name), context=l)
+            _licences[l.identifier] = l
 
     def _register_distribution(self, d):
         existing = _dists.get(d.name)
@@ -3476,19 +3519,22 @@ class Suite:
             url = urlparse.urlsplit(self.url)
             if not url.scheme or not url.netloc:
                 abort('Invalid url in {}'.format(suitePyFile))
+        self.defaultLicence = suiteDict.get('defaultLicence')
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
             jar = attrs.pop('jar')
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
-            l = JreLibrary(self, name, jar, optional)
+            licence = attrs.pop('licence', None)
+            l = JreLibrary(self, name, jar, optional, licence)
             self.jreLibs.append(l)
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
             jar = attrs.pop('path')
             # JRE libraries are optional by default
+            licence = attrs.pop('licence', None)
             optional = attrs.pop('optional', 'true') != 'false'
-            l = JdkLibrary(self, name, jar, optional)
+            l = JdkLibrary(self, name, jar, optional, licence)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -3499,8 +3545,11 @@ class Suite:
             else:
                 abort('illegal import kind: ' + name)
 
+        licenceDefs = self._check_suiteDict('licences')
+
         self._load_libraries(libsMap)
         self._load_distributions(distsMap)
+        self._load_licences(licenceDefs)
 
 
     def _check_suiteDict(self, key):
@@ -3593,6 +3642,7 @@ class Suite:
         assert not '>' in name
         context = 'distribution ' + name
         native = attrs.pop('native', False)
+        licence = attrs.pop('licence', None)
         os_arch = Suite._pop_os_arch(attrs, context)
         Suite._merge_os_arch_attrs(attrs, os_arch, context)
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
@@ -3600,7 +3650,7 @@ class Suite:
         platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, licence)
         else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
@@ -3608,7 +3658,7 @@ class Suite:
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, licence)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
@@ -3672,12 +3722,21 @@ class Suite:
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
             os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
+            licence = attrs.pop('licence', None)
             deps += os_arch_deps
             # Add support for optional external libraries if we have a good use case
             optional = False
-            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps)
+            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, licence)
             l.__dict__.update(attrs)
             self.libs.append(l)
+
+    def _load_licences(self, licenceDefs):
+        for name, attrs in sorted(licenceDefs.items()):
+            fullname = attrs.pop('name')
+            url = attrs.pop('url')  # TODO validate non-relative url
+            l = Licence(name, fullname, url)
+            l.__dict__.update(attrs)
+            self.licenceDefs.append(l)
 
     @staticmethod
     def _init_metadata_visitor(importing_suite, suite_import, **extra_args):
@@ -3899,6 +3958,7 @@ class SourceSuite(Suite):
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
             className = attrs.pop('class', None)
+            licence = attrs.pop('licence', None)
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
@@ -3906,7 +3966,7 @@ class SourceSuite(Suite):
             if className:
                 if not self.extensions or not hasattr(self.extensions, className):
                     abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
-                p = getattr(self.extensions, className)(self, name, deps, workingSets, **attrs)
+                p = getattr(self.extensions, className)(self, name, deps, workingSets, licence=licence, **attrs)
             else:
                 srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
                 subDir = attrs.pop('subDir', None)
@@ -3918,12 +3978,12 @@ class SourceSuite(Suite):
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'output', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, licence, d)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, licence, d)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -4448,6 +4508,12 @@ def annotation_processors():
                     aps.add(ap)
         _annotationProcessors = list(aps)
     return _annotationProcessors
+
+def licence(identifier, fatalIfMissing=True, context=None):
+    l = _licences.get(identifier)
+    if l is None and fatalIfMissing:
+        abort('licence named ' + identifier + ' not found', context=context)
+    return l
 
 def splitqualname(name):
     pname = name.partition(":")
@@ -9037,9 +9103,18 @@ def show_projects(args):
                 log('\t' + p.name)
 
 def show_suites(args):
-    """show all suites"""
+    """show all suites
+
+    usage: mx suites [-h] [--locations] [--licences]
+
+    optional arguments:
+      -h, --help   show this help message and exit
+      --locations  show element locations on disk
+      --licences   show element licences
+    """
     parser = ArgumentParser(prog='mx suites')
     parser.add_argument('--locations', action='store_true', help='show element locations on disk')
+    parser.add_argument('--licences', action='store_true', help='show element licences')
     args = parser.parse_args(args)
     def _location(e):
         if args.locations:
@@ -9057,10 +9132,19 @@ def show_suites(args):
             log('  ' + name + ':')
             for e in section:
                 location = _location(e)
+                out = '    ' + e.name
+                data = []
                 if location:
-                    log('    {} ({})'.format(e.name, location))
-                else:
-                    log('    ' + e.name)
+                    data.append(location)
+                if args.licences:
+                    if e.licence:
+                        l = e.licence.identifier
+                    else:
+                        l = '??'
+                    data.append(l)
+                if data:
+                    out += ' (' + ', '.join(data) + ')'
+                log(out)
 
     for s in suites(True):
         location = _location(s)

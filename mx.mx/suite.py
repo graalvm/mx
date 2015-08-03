@@ -41,6 +41,12 @@ suite = {
       ],
       "sourceSha1" : "28e0ad201304e4a4abf999ca0570b7cffc352c3c",
       "dependencies" : ["HAMCREST"],
+      "licence" : "CPL",
+      "maven" : {
+      	"groupId" : "junit",
+    	"artifactId" : "junit",
+    	"version" : "4.11",
+      }
     },
 
     "CHECKSTYLE" : {
@@ -50,6 +56,12 @@ suite = {
         "jar:http://sourceforge.net/projects/checkstyle/files/checkstyle/6.0/checkstyle-6.0-bin.zip/download!/checkstyle-6.0/checkstyle-6.0-all.jar",
       ],
       "sha1" : "2bedc7feded58b5fd65595323bfaf7b9bb6a3c7a",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "6.0",
+      }
     },
 
     "HAMCREST" : {
@@ -65,6 +77,31 @@ suite = {
         "https://search.maven.org/remotecontent?filepath=org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-sources.jar",
       ],
       "sourceSha1" : "1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b",
+      "licence" : "BSD-new",
+      "maven" : {
+        "groupId" : "org.hamcrest",
+        "artifactId" : "hamcrest-core",
+        "version" : "1.3",
+      }
+    },
+  },
+
+  "licences" : {
+    "GPLv2-CPE" : {
+      "name" : "GNU General Public License, version 2, with the Classpath Exception",
+      "url" : "http://openjdk.java.net/legal/gplv2+ce.html"
+    },
+    "BSD-new" : {
+      "name" : "New BSD License (3-clause BSD license)",
+      "url" : "http://opensource.org/licenses/BSD-3-Clause"
+    },
+    "CPL" : {
+      "name" : "Common Public License Version 1.0",
+      "url" : "http://opensource.org/licenses/cpl1.0.txt"
+    },
+    "LGPLv21" : {
+      "name" : "GNU Lesser General Public License, version 2.1",
+      "url" : "http://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"
     },
   },
 
