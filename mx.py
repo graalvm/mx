@@ -55,6 +55,7 @@ import difflib
 import glob
 import urllib2
 from collections import Callable
+from collections import OrderedDict
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
@@ -8198,22 +8199,49 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native'])
 
         pkgs = set()
-        sp = []
+        sproots = []
         names = []
         for p in projects:
             find_packages(p.source_dirs(), pkgs, args.implementation)
-            sp += p.source_dirs()
+            sproots += p.source_dirs()
             names.append(p.name)
 
         links = ['-link', 'http://docs.oracle.com/javase/' + str(get_jdk().javaCompliance.value) + '/docs/api/']
+        overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
         cp = classpath()
-        sp = os.pathsep.join(sp)
+        sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
             nowarnAPI.append('-XDignore.symbol.file')
+
+        def find_group(pkg):
+            for p in sproots:
+                info = p + os.path.sep + pkg.replace('.', os.path.sep) + os.path.sep + 'package-info.java';
+                if exists(info):
+                    file = open(info, "r")
+                    for line in file:
+                        m = re.search('group="(.*)"', line)
+                        if m:
+                            return m.group(1)
+            return None
+        groups = OrderedDict()
+        for p in pkgs:
+            g = find_group(p)
+            if g is None:
+                continue
+            if not groups.has_key(g):
+                groups[g] = set()
+            groups[g].add(p)
+        groupargs = list()
+        for k, v in groups.iteritems():
+            if len(v) == 0:
+                continue
+            groupargs.append('-group')
+            groupargs.append(k)
+            groupargs.append(':'.join(v))
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
         run([get_jdk().javadoc, memory,
              '-classpath', cp,
@@ -8221,6 +8249,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-d', out,
              '-sourcepath', sp] +
              ([] if get_jdk().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+             (['-overview', overviewFile] if exists(overviewFile) else []) +
+             groupargs +
              links +
              extraArgs +
              nowarnAPI +
