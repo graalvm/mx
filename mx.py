@@ -63,6 +63,7 @@ from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars
 import mx_unittest
 import mx_findbugs
 import mx_gate
+import mx_compat
 
 
 _mx_home = os.path.realpath(dirname(__file__))
@@ -324,6 +325,12 @@ class Dependency(SuiteConstituent):
         Aborts with given message prefixed by the origin of this dependency.
         '''
         abort(msg, context=self)
+
+    def warn(self, msg):
+        '''
+        Warns with given message prefixed by the origin of this dependency.
+        '''
+        warn(msg, context=self)
 
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
@@ -755,9 +762,13 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 for dep in self.archived_deps():
                     if dep.licence != self.licence:
+                        if dep.suite.getMxCompatibility().supportsLicences() and self.suite.getMxCompatibility().supportsLicences():
+                            report = abort
+                        else:
+                            report = warn
                         depLicence = dep.licence.identifier if dep.licence else '??'
                         selfLicence = self.licence.identifier if self.licence else '??'
-                        abort('Incompatible licences: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicence, dep.name, depLicence))
+                        report('Incompatible licences: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicence, dep.name, depLicence))
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
                             l = dep
@@ -2874,7 +2885,7 @@ def _mavenGroupId(suite):
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
-def _genPom(dist, versionGetter, validateMetadata=False):
+def _genPom(dist, versionGetter, validateMetadata='none'):
     groupId = _mavenGroupId(dist.suite)
     artifactId = _map_to_maven_dist_name(dist.remoteName())
     version = versionGetter(dist.suite)
@@ -2890,15 +2901,19 @@ def _genPom(dist, versionGetter, validateMetadata=False):
     pom.element('version', data=version)
     if dist.suite.url:
         pom.element('url', data=dist.suite.url)
-    elif validateMetadata:
-        abort("Suite {} is missing the 'url' attribute".format(dist.suite.name))
+    elif validateMetadata != 'none':
+        if 'suite-url' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
+            abort("Suite {} is missing the 'url' attribute".format(dist.suite.name))
+        warn("Suite {}'s  version is too old to contain the 'url' attribute".format(dist.suite.name))
     acronyms = ['API', 'DSL', 'SL', 'TCK']
     name = ' '.join((t if t in acronyms else t.lower().capitalize() for t in dist.name.split('_')))
     pom.element('name', data=name)
     if hasattr(dist, 'description'):
         pom.element('description', data=dist.description)
-    elif validateMetadata:
-        dist.abort("missing 'description' attribute")
+    elif validateMetadata != 'none':
+        if 'dist-description' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
+            dist.abort("Distribution is missing the 'description' attribute")
+        dist.warn("Distribution's suite version is too old to have the 'description' attribute")
     if dist.suite.developer:
         pom.open('developers')
         pom.open('developer')
@@ -2909,7 +2924,7 @@ def _genPom(dist, versionGetter, validateMetadata=False):
                 value = default
             if value:
                 pom.element(name, data=value)
-            elif validateMetadata:
+            elif validateMetadata != 'none':
                 abort("Suite {}'s developer metadata is missing the '{}' attribute".format(dist.suite.name, name))
         _addDevAttr('name')
         _addDevAttr('email')
@@ -2917,8 +2932,10 @@ def _genPom(dist, versionGetter, validateMetadata=False):
         _addDevAttr('organizationUrl', dist.suite.url)
         pom.close('developer')
         pom.close('developers')
-    elif validateMetadata:
-        abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
+    elif validateMetadata != 'none':
+        if 'suite-developer' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
+            abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
+        warn("Suite {}'s version is too old to contain the 'developer' attribute".format(dist.suite.name))
     if dist.licence:
         pom.open('licences')
         pom.open('licence')
@@ -2926,8 +2943,10 @@ def _genPom(dist, versionGetter, validateMetadata=False):
         pom.element('url', data=dist.licence.url)
         pom.close('licence')
         pom.close('licences')
-    elif validateMetadata:
-        dist.abort("Missing 'licence' attribute")
+    elif validateMetadata != 'none':
+        if dist.suite.getMxCompatibility().supportsLicences() or validateMetadata == 'full':
+            dist.abort("Distribution is missing 'licence' attribute")
+        dist.warn("Distribution's suite version is too old to have the 'licence' attribute")
     directDistDeps = [d for d in dist.deps if d.isDistribution()]
     directLibDeps = dist.excludedLibs
     if directDistDeps or directLibDeps:
@@ -2949,13 +2968,14 @@ def _genPom(dist, versionGetter, validateMetadata=False):
                 pom.element('artifactId', data=mavenMetaData['artifactId'])
                 pom.element('version', data=mavenMetaData['version'])
                 pom.close('dependency')
-            else:
-                report = abort if validateMetadata else warn
-                report('Missing maven metadata: skipping it in POM file for {}'.format(dist.name), context=l)
+            elif validateMetadata != 'none':
+                if 'library-coordinates' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
+                    l.abort("Library is missing maven metadata")
+                l.warn("Library's suite version is too old to have maven metadata")
         pom.close('dependencies')
     pom.open('scm')
-    pull = dist.suite.vc.default_pull(dist.suite.dir, abortOnError=validateMetadata)
-    push = dist.suite.vc.default_push(dist.suite.dir, abortOnError=validateMetadata)
+    pull = dist.suite.vc.default_pull(dist.suite.dir, abortOnError=validateMetadata != 'none')
+    push = dist.suite.vc.default_push(dist.suite.dir, abortOnError=validateMetadata != 'none')
     pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, pull))
     pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, push))
     pom.element('url', data=pull)
@@ -2963,7 +2983,7 @@ def _genPom(dist, versionGetter, validateMetadata=False):
     pom.close('project')
     return pom.xml(indent='  ', newl='\n')
 
-def _tmpPomFile(dist, versionGetter, validateMetadata=False):
+def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
     tmp.write(_genPom(dist, versionGetter, validateMetadata))
     tmp.close()
@@ -3065,7 +3085,7 @@ def deploy_binary(args):
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata=False):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none'):
     for dist in dists:
         if dist.isJARDistribution():
             pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
@@ -3083,7 +3103,8 @@ def maven_deploy(args):
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY] [--validate]
+    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
+                           [--validate {none,compat,full}]
                            repository-id repository-url
 
     positional arguments:
@@ -3097,14 +3118,16 @@ def maven_deploy(args):
       -n, --dry-run         Dry run that only prints the action a normal run would
                             perform without actually deploying anything
       --only ONLY           Limit deployment to these distributions
-      --validate            Validate that maven metadata is complete enough for
+      --validate {none,compat,full}
+                            Validate that maven metadata is complete enough for
                             publication
+
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
-    parser.add_argument('--validate', action='store_true', help='Validate that maven metadata is complete enough for publication')
+    parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
     args = parser.parse_args(args)
@@ -3368,6 +3391,9 @@ class Suite:
         self._load_extensions()
         _loadedSuites.append(self)
 
+    def getMxCompatibility(self):
+        return mx_compat.getMxCompatibility(self.requiredMxVersion)
+
     def _load_suite_dict(self):
         dictName = 'suite'
 
@@ -3504,9 +3530,12 @@ class Suite:
                 abort('Exception while parsing "mxversion" in project file: ' + str(ae))
 
         if self.requiredMxVersion is None:
-            warn("This suite does not express any required mx version. Consider adding 'mxversion=<version>' to your projects file.")
+            self.requiredMxVersion = mx_compat.minVersion()
+            warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
         elif self.requiredMxVersion > version:
-            abort("This suite requires mx version " + str(self.requiredMxVersion) + " while your current mx version is " + str(version) + ". Please update mx.")
+            abort("The {} suite requires mx version {}  while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
+        if not self.getMxCompatibility():
+            abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
@@ -5570,13 +5599,23 @@ class VersionSpec:
         m = re.match("^" + validChar + '+(' + separator + validChar + '+)*$', versionString)
         assert m is not None, 'not a recognized version string: ' + versionString
         self.versionString = versionString
-        self.parts = [int(f) if f.isdigit() else f for f in re.split(separator, versionString)]
+        self.parts = tuple((int(f) if f.isdigit() else f for f in re.split(separator, versionString)))
+        i = len(self.parts)
+        while i > 0 and self.parts[i - 1] == 0:
+            i -= 1
+        self.strippedParts = tuple(list(self.parts)[:i])
 
     def __str__(self):
         return self.versionString
 
     def __cmp__(self, other):
-        return cmp(self.parts, other.parts)
+        return cmp(self.strippedParts, other.strippedParts)
+
+    def __hash__(self):
+        return self.parts.__hash__()
+
+    def __eq__(self, other):
+        return isinstance(other, VersionSpec) and self.strippedParts == other.strippedParts
 
 def _filter_non_existant_paths(paths):
     if paths:
