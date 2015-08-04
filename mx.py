@@ -190,13 +190,6 @@ class DepEdge:
         return 1 + self.prev.path_len() if self.prev else 0
 
 
-class Licence(object):
-    def __init__(self, identifier, name, url):
-        self.identifier = identifier
-        self.name = name
-        self.url = url
-
-
 class SuiteConstituent(object):
     def __init__(self, suite, name):
         self.name = name
@@ -233,6 +226,19 @@ class SuiteConstituent(object):
             path, lineNo = loc
             return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
         return None
+
+
+class Licence(SuiteConstituent):
+    def __init__(self, suite, name, fullname, url):
+        SuiteConstituent.__init__(self, suite, name)
+        self.fullname = fullname
+        self.url = url
+
+    def __eq__(self, other):
+        if not isinstance(other, Licence):
+            return False
+        return self.name == other.name and self.url == other.url and self.fullname == other.fullname
+
 
 """
 A dependency is a library, distribution or project specified in a suite.
@@ -775,8 +781,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                             report = abort
                         else:
                             report = warn
-                        depLicence = dep.licence.identifier if dep.licence else '??'
-                        selfLicence = self.licence.identifier if self.licence else '??'
+                        depLicence = dep.licence.name if dep.licence else '??'
+                        selfLicence = self.licence.name if self.licence else '??'
                         report('Incompatible licences: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicence, dep.name, depLicence))
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
@@ -2886,13 +2892,17 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-# TODO add context (__abort_context__) to Repository and Licence
-class Repository(object):
+class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
-    def __init__(self, name, url, licences):
-        self.name = name
+    def __init__(self, suite, name, url, licences):
+        SuiteConstituent.__init__(self, suite, name)
         self.url = url
         self.licences = licences
+
+    def __eq__(self, other):
+        if not isinstance(other, Repository):
+            return False
+        return self.name == other.name and self.url == other.url and self.licences == other.licences
 
     def resolveLicences(self):
         self.licences = [licence(l) for l in self.licences]
@@ -2959,7 +2969,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     if dist.licence:
         pom.open('licences')
         pom.open('licence')
-        pom.element('name', data=dist.licence.name)
+        pom.element('name', data=dist.licence.fullname)
         pom.element('url', data=dist.licence.url)
         pom.close('licence')
         pom.close('licences')
@@ -3110,7 +3120,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
         licences = []
     for dist in dists:
         if dist.licence not in licences:
-            distLicence = dist.licence.identifier if dist.licence else '??'
+            distLicence = dist.licence.name if dist.licence else '??'
             abort('Distribution with {} licence are not cleared for upload to {}: can not upload {}'.format(distLicence, repository_id, dist.name))
     for dist in dists:
         if dist.isJARDistribution():
@@ -3177,7 +3187,7 @@ def maven_deploy(args):
 
     if args.url:
         licences = [licence(l) for l in args.licences.split(',') if l]
-        repo = Repository(args.repository_id, args.url, licences)
+        repo = Repository(None, args.repository_id, args.url, licences)
     else:
         repo = repository(args.repository_id)
 
@@ -3526,14 +3536,14 @@ class Suite:
                 abort('inconsistent distribution template redefinition of ' + d.name + ' in ' + existing.suite.dir + ' and ' + d.suite.dir, context=d)
             _distTemplates[d.name] = d
         for l in self.licenceDefs:
-            existing = _licences.get(l.identifier)
-            if existing is not None and _check_global_structures:
-                abort("Licence {} initialy defined in {} is redefined by {}".format(l.identifier, existing.suite.name, self.name), context=l)
-            _licences[l.identifier] = l
+            existing = _licences.get(l.name)
+            if existing is not None and _check_global_structures and l != existing:
+                abort("inconsistent licence redefinition of {} in {} (initialy defined in {})".format(l.name, self.name, existing.suite.name), context=l)
+            _licences[l.name] = l
         for r in self.repositoryDefs:
             existing = _repositories.get(r.name)
-            if existing is not None and _check_global_structures:
-                abort("Repository {} initialy defined in {} is redefined by {}".format(r.name, existing.suite.name, self.name), context=r)
+            if existing is not None and _check_global_structures and r != existing:
+                abort("inconsistent repository redefinition of {} in {} (initialy defined in {})".format(r.name, self.name, existing.suite.name), context=r)
             _repositories[r.name] = r
 
     def _register_distribution(self, d):
@@ -3812,7 +3822,7 @@ class Suite:
             url = attrs.pop('url')
             if not _validate_abolute_url(url):
                 abort('Invalid url in licence {} in {}'.format(name, self.suite_py()))
-            l = Licence(name, fullname, url)
+            l = Licence(self, name, fullname, url)
             l.__dict__.update(attrs)
             self.licenceDefs.append(l)
 
@@ -3823,7 +3833,7 @@ class Suite:
             if not _validate_abolute_url(url):
                 abort('Invalid url in repository {}'.format(self.suite_py()), context=context)
             licences = Suite._pop_list(attrs, 'licences', context=context)
-            r = Repository(name, url, licences)
+            r = Repository(self, name, url, licences)
             r.__dict__.update(attrs)
             self.repositoryDefs.append(r)
 
@@ -4603,11 +4613,11 @@ def annotation_processors():
         _annotationProcessors = list(aps)
     return _annotationProcessors
 
-def licence(identifier, fatalIfMissing=True, context=None):
-    _, identifier = splitqualname(identifier)
-    l = _licences.get(identifier)
+def licence(name, fatalIfMissing=True, context=None):
+    _, name = splitqualname(name)
+    l = _licences.get(name)
     if l is None and fatalIfMissing:
-        abort('licence named ' + identifier + ' not found', context=context)
+        abort('licence named ' + name + ' not found', context=context)
     return l
 
 def repository(name, fatalIfMissing=True, context=None):
@@ -9250,7 +9260,7 @@ def show_suites(args):
                     data.append(location)
                 if args.licences:
                     if e.licence:
-                        l = e.licence.identifier
+                        l = e.licence.name
                     else:
                         l = '??'
                     data.append(l)
