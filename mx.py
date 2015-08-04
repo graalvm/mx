@@ -119,6 +119,7 @@ _jdkLibs = dict()
 _dists = dict()
 _distTemplates = dict()
 _licences = dict()
+_repositories = dict()
 
 _suites = dict()
 _loadedSuites = []
@@ -2885,6 +2886,17 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
+# TODO add context (__abort_context__) to Repository and Licence
+class Repository(object):
+    """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
+    def __init__(self, name, url, licences):
+        self.name = name
+        self.url = url
+        self.licences = licences
+
+    def resolveLicences(self):
+        self.licences = [licence(l) for l in self.licences]
+
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
         name = suite.name
@@ -3046,12 +3058,11 @@ def deploy_binary(args):
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY]
-                            repository-id repository-url
+    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY] repository
 
     positional arguments:
-      repository-id         Repository ID used for Maven deploy
-      repository-url        Repository URL used for Maven deploy
+      repository            Repository name used for Maven deploy (must be defined
+                            in a suite.py file)
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -3065,8 +3076,7 @@ def deploy_binary(args):
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
-    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
-    parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
+    parser.add_argument('repository', action='store', help='Repository name used for Maven deploy (must be defined in a suite.py file)')
     args = parser.parse_args(args)
 
     s = _primary_suite
@@ -3088,12 +3098,20 @@ def deploy_binary(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
+    repo = repository(args.repository)
+
     version = _versionGetter(s)
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
-    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repository_id, args.url, settingsXml=args.settings, dryRun=args.dry_run)
-    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run)
+    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licences=repo.licences)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none'):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licences=None):
+    if licences is None:
+        licences = []
+    for dist in dists:
+        if dist.licence not in licences:
+            distLicence = dist.licence.identifier if dist.licence else '??'
+            abort('Distribution with {} licence are not cleared for upload to {}: can not upload {}'.format(distLicence, repository_id, dist.name))
     for dist in dists:
         if dist.isJARDistribution():
             pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
@@ -3112,12 +3130,13 @@ def maven_deploy(args):
     All binaries must be built first using 'mx build'.
 
     usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
-                           [--validate {none,compat,full}]
-                           repository-id repository-url
+                           [--validate {none,compat,full}] [--licences LICENCES]
+                           repository-id [repository-url]
 
     positional arguments:
       repository-id         Repository ID used for Maven deploy
-      repository-url        Repository URL used for Maven deploy
+      repository-url        Repository URL used for Maven deploy, if no url is
+                            given, the repository-id is looked up in suite.py
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -3129,20 +3148,21 @@ def maven_deploy(args):
       --validate {none,compat,full}
                             Validate that maven metadata is complete enough for
                             publication
-
+      --licences LICENCES   Comma-separated list of licences that are cleared for
+                            upload. Only used if no url is given. Otherwise
+                        licences are looked up in suite.py
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
+    parser.add_argument('--licences', help='Comma-separated list of licences that are cleared for upload. Only used if no url is given. Otherwise licences are looked up in suite.py', default='')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
-    parser.add_argument('url', metavar='repository-url', action='store', help='Repository URL used for Maven deploy')
+    parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
 
     s = _primary_suite
-    if not s.vc:
-        abort('Current prinary suite has no version control')
     _mvn.check()
     def _versionGetter(suite):
         return suite.release_version(snapshotSuffix='SNAPSHOT')
@@ -3155,8 +3175,14 @@ def maven_deploy(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
+    if args.url:
+        licences = [licence(l) for l in args.licences.split(',') if l]
+        repo = Repository(args.repository_id, args.url, licences)
+    else:
+        repo = repository(args.repository_id)
+
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, args.repository_id, args.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licences=repo.licences)
 
 class MavenConfig:
     def __init__(self):
@@ -3358,6 +3384,11 @@ class SuiteImport:
         else:
             abort('unexpected type in SuiteImport.get_source_urls')
 
+def _validate_abolute_url(urlstr, acceptNone=False):
+    if urlstr is None:
+        return acceptNone
+    url = urlparse.urlsplit(urlstr)
+    return url.scheme and url.netloc
 
 '''
 Command state and methods for all suite subclasses
@@ -3382,6 +3413,7 @@ class Suite:
         self.post_init = False
         self.distTemplates = []
         self.licenceDefs = []
+        self.repositoryDefs = []
         _suites[self.name] = self
 
     def __str__(self):
@@ -3456,7 +3488,7 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licences', 'defaultLicence']
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licences', 'defaultLicence', 'repositories']
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -3498,6 +3530,11 @@ class Suite:
             if existing is not None and _check_global_structures:
                 abort("Licence {} initialy defined in {} is redefined by {}".format(l.identifier, existing.suite.name, self.name), context=l)
             _licences[l.identifier] = l
+        for r in self.repositoryDefs:
+            existing = _repositories.get(r.name)
+            if existing is not None and _check_global_structures:
+                abort("Repository {} initialy defined in {} is redefined by {}".format(r.name, existing.suite.name, self.name), context=r)
+            _repositories[r.name] = r
 
     def _register_distribution(self, d):
         existing = _dists.get(d.name)
@@ -3511,6 +3548,8 @@ class Suite:
     def _resolve_dependencies(self):
         for d in self.projects + self.libs + self.dists:
             d.resolveDeps()
+        for r in self.repositoryDefs:
+            r.resolveLicences()
 
     def _post_init_finish(self):
         if hasattr(self, 'mx_post_parse_cmd_line'):
@@ -3552,10 +3591,8 @@ class Suite:
         importsMap = self._check_suiteDict('imports')
         self.developer = self._check_suiteDict('developer')
         self.url = suiteDict.get('url')
-        if self.url:
-            url = urlparse.urlsplit(self.url)
-            if not url.scheme or not url.netloc:
-                abort('Invalid url in {}'.format(self.suite_py()))
+        if not _validate_abolute_url(self.url, acceptNone=True):
+            abort('Invalid url in {}'.format(self.suite_py()))
         self.defaultLicence = suiteDict.get('defaultLicence')
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
@@ -3583,10 +3620,12 @@ class Suite:
                 abort('illegal import kind: ' + name)
 
         licenceDefs = self._check_suiteDict('licences')
+        repositoryDefs = self._check_suiteDict('repositories')
 
         self._load_libraries(libsMap)
         self._load_distributions(distsMap)
         self._load_licences(licenceDefs)
+        self._load_repositories(repositoryDefs)
 
 
     def _check_suiteDict(self, key):
@@ -3770,10 +3809,23 @@ class Suite:
     def _load_licences(self, licenceDefs):
         for name, attrs in sorted(licenceDefs.items()):
             fullname = attrs.pop('name')
-            url = attrs.pop('url')  # TODO validate non-relative url
+            url = attrs.pop('url')
+            if not _validate_abolute_url(url):
+                abort('Invalid url in licence {} in {}'.format(name, self.suite_py()))
             l = Licence(name, fullname, url)
             l.__dict__.update(attrs)
             self.licenceDefs.append(l)
+
+    def _load_repositories(self, repositoryDefs):
+        for name, attrs in sorted(repositoryDefs.items()):
+            context = 'repository ' + name
+            url = attrs.pop('url')
+            if not _validate_abolute_url(url):
+                abort('Invalid url in repository {}'.format(self.suite_py()), context=context)
+            licences = Suite._pop_list(attrs, 'licences', context=context)
+            r = Repository(name, url, licences)
+            r.__dict__.update(attrs)
+            self.repositoryDefs.append(r)
 
     @staticmethod
     def _init_metadata_visitor(importing_suite, suite_import, **extra_args):
@@ -4552,10 +4604,18 @@ def annotation_processors():
     return _annotationProcessors
 
 def licence(identifier, fatalIfMissing=True, context=None):
+    _, identifier = splitqualname(identifier)
     l = _licences.get(identifier)
     if l is None and fatalIfMissing:
         abort('licence named ' + identifier + ' not found', context=context)
     return l
+
+def repository(name, fatalIfMissing=True, context=None):
+    _, name = splitqualname(name)
+    r = _repositories.get(name)
+    if r is None and fatalIfMissing:
+        abort('repository named ' + name + ' not found', context=context)
+    return r
 
 def splitqualname(name):
     pname = name.partition(":")
@@ -9896,7 +9956,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.2.0")
+version = VersionSpec("5.2.1")
 
 currentUmask = None
 
