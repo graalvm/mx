@@ -485,7 +485,15 @@ class BuildTask(object):
                 if _opts.verbose:
                     reason += ': ' + ', '.join([u.subject.name for u in updated])
         if not buildNeeded:
-            newestInput = max((dep.newestOutput() for dep in self.deps)) if self.deps else 0
+            newestInput = 0
+            newestInputDep = None
+            for dep in self.deps:
+                depNewestOutput = dep.newestOutput()
+                if depNewestOutput > newestInput:
+                    newestInput = depNewestOutput
+                    newestInputDep = dep
+            if newestInputDep:
+                logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name, newestInput))
             newestInput = max(newestInput, self.subject.suite.suite_py_mtime())
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
