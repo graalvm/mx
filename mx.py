@@ -2979,12 +2979,12 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
             abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
         warn("Suite {}'s version is too old to contain the 'developer' attribute".format(dist.suite.name))
     if dist.licence:
-        pom.open('licences')
-        pom.open('licence')
+        pom.open('licenses')
+        pom.open('license')
         pom.element('name', data=dist.licence.fullname)
         pom.element('url', data=dist.licence.url)
-        pom.close('licence')
-        pom.close('licences')
+        pom.close('license')
+        pom.close('licenses')
     elif validateMetadata != 'none':
         if dist.suite.getMxCompatibility().supportsLicences() or validateMetadata == 'full':
             dist.abort("Distribution is missing 'licence' attribute")
