@@ -2345,6 +2345,10 @@ class HgConfig(VC):
         self.has_hg = None
 
     def check(self, abortOnError=True):
+        # Mercurial does lazy checking before use of the hg command itself
+        return self
+
+    def check_for_hg(self, abortOnError=True):
         if self.has_hg is None:
             try:
                 subprocess.check_output(['hg'])
@@ -2361,20 +2365,26 @@ class HgConfig(VC):
 
         return self if self.has_hg else None
 
+    def run(self, *args, **kwargs):
+        # Ensure hg exists before executing the command
+        self.check_for_hg()
+        return run(*args, **kwargs)
+
     def init(self, vcdir, abortOnError=True):
-        return run(['hg', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+        return self.run(['hg', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def is_this_vc(self, vcdir):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
     def add(self, vcdir, path, abortOnError=True):
-        return run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
+        return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
 
     def commit(self, vcdir, msg, abortOnError=True):
-        return run(['hg', '-R', vcdir, 'commit', '-m', msg]) == 0
+        return self.run(['hg', '-R', vcdir, 'commit', '-m', msg]) == 0
 
     def tip(self, vcdir, abortOnError=True):
+        self.check_for_hg()
         # We don't use run because this can be called very early before _opts is set
         try:
             return subprocess.check_output(['hg', 'tip', '-R', vcdir, '--template', '{node}'])
@@ -2385,6 +2395,7 @@ class HgConfig(VC):
                 return None
 
     def parent(self, vcdir, abortOnError=True):
+        self.check_for_hg()
         # We don't use run because this can be called very early before _opts is set
         try:
             out = subprocess.check_output(['hg', '-R', vcdir, 'parents', '--template', '{node}\n'])
@@ -2438,13 +2449,13 @@ class HgConfig(VC):
             cmd.append(dest)
         self._log_clone(url, dest, rev)
         out = OutputCapture()
-        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
         logvv(out.data)
         return rc == 0
 
     def incoming(self, vcdir, abortOnError=True):
         out = OutputCapture()
-        rc = run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out)
+        rc = self.run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -2457,7 +2468,7 @@ class HgConfig(VC):
         cmd = ['hg', '-R', vcdir, 'outgoing']
         if dest:
             cmd.append(dest)
-        rc = run(cmd, nonZeroIsFatal=False, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -2474,13 +2485,13 @@ class HgConfig(VC):
             cmd.append('-u')
         self._log_pull(vcdir, rev)
         out = OutputCapture()
-        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
         logvv(out.data)
         return rc == 0
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         out = OutputCapture()
-        rc = run(['hg', '-R', vcdir, 'status'], nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['hg', '-R', vcdir, 'status'], nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             if strict:
@@ -2496,7 +2507,7 @@ class HgConfig(VC):
 
     def _path(self, vcdir, name, abortOnError=True):
         out = OutputCapture()
-        rc = run(['hg', '-R', vcdir, 'paths'], nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['hg', '-R', vcdir, 'paths'], nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             prefix = name + ' = '
@@ -2517,8 +2528,8 @@ class HgConfig(VC):
         return self._path(vcdir, 'default', abortOnError=abortOnError)
 
     def force_version(self, vcdir, rev, abortOnError=True):
-        if run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
-            return run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0
+        if self.run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
+            return self.run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0
         return False
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
@@ -2530,13 +2541,13 @@ class HgConfig(VC):
             cmd.append(dest)
         self._log_push(vcdir, dest, rev)
         out = OutputCapture()
-        rc = run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
         logvv(out.data)
         return rc == 0
 
     def update(self, vcdir, abortOnError=False):
         cmd = ['hg', '-R', vcdir, 'update']
-        return run(cmd, nonZeroIsFatal=abortOnError) == 0
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         class LinesOutputCapture:
@@ -2550,7 +2561,7 @@ class HgConfig(VC):
         elif not isinstance(patterns, list):
             patterns = [patterns]
         out = LinesOutputCapture()
-        rc = run(['hg', 'locate', '-R', vcdir] + patterns, out=out, nonZeroIsFatal=False)
+        rc = self.run(['hg', 'locate', '-R', vcdir] + patterns, out=out, nonZeroIsFatal=False)
         if rc == 1:
             # hg locate returns 1 if no matches were found
             return []
@@ -2563,6 +2574,7 @@ class HgConfig(VC):
                 return None
 
     def isDirty(self, vcdir, abortOnError=True):
+        self.check_for_hg()
         try:
             return len(subprocess.check_output(['hg', 'status', '-q', '-R', vcdir])) > 0
         except subprocess.CalledProcessError:
@@ -8983,7 +8995,7 @@ def _sincoming(s, suite_import):
         print output
 
 def sincoming(args):
-    '''check outgoing for primary suite and all imports'''
+    '''check incoming for primary suite and all imports'''
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
     s = _check_primary_suite()
