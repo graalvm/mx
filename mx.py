@@ -7303,6 +7303,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.close('local-check-config')
         out.open('fileset', {'name' : 'all', 'enabled' : 'true', 'check-config-name' : 'Checks', 'local' : 'true'})
         out.element('file-match-pattern', {'match-pattern' : '.', 'include-pattern' : 'true'})
+        out.element('file-match-pattern', {'match-pattern' : p.source_gen_dir(), 'include-pattern' : 'false'})
         out.close('fileset')
         out.open('filter', {'name' : 'all', 'enabled' : 'true', 'check-config-name' : 'Checks', 'local' : 'true'})
         out.element('filter-data', {'value' : 'java'})
