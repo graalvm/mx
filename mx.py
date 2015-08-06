@@ -124,6 +124,8 @@ _repositories = dict()
 _suites = dict()
 _loadedSuites = []
 
+_jdkFactories = {}
+
 _annotationProcessors = None
 _mx_suite = None
 _mx_tests_suite = None
@@ -5030,6 +5032,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
+        self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -5116,15 +5119,75 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
+
+class JDKFactory(object):
+    def getJDKConfig(self):
+        nyi('getJDKConfig', self)
+
+    def description(self):
+        nyi('description', self)
+
+
+def addJDKFactory(tag, compliance, factory):
+    complianceMap = _jdkFactories.setdefault(tag, {})
+    assert compliance not in complianceMap
+    complianceMap[compliance] = factory
+
+
+def _getJDKFactory(tag, compliance):
+    if tag not in _jdkFactories:
+        return None
+    complianceMap = _jdkFactories[tag]
+    if compliance not in complianceMap:
+        return None
+    return complianceMap[compliance]
+
+def _get_jdk_tag_compliance():
+    option = _opts.jdk
+    if not option:
+        jdktag = None
+        jdkCompliance = None
+    else:
+        tag_compliance = option.split(':')
+        if len(tag_compliance) == 1:
+            if len(tag_compliance[0]) > 0:
+                if tag_compliance[0][0].isdigit():
+                    jdktag = None
+                    jdkCompliance = JavaCompliance(tag_compliance[0])
+                else:
+                    jdktag = tag_compliance[0]
+                    jdkCompliance = None
+            else:
+                jdktag = None
+                jdkCompliance = None
+        else:
+            if len(tag_compliance) != 2:
+                abort('Could not parse --jdk argument (should be of the form "[tag:]compliance")')
+            jdktag = tag_compliance[0]
+            jdkCompliance = JavaCompliance(tag_compliance[1])
+    return (jdktag, jdkCompliance)
+
+
 _canceled_java_requests = set()
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None, tag=None):
     """
     Get a JDKConfig object containing Java commands launch details.
     """
+    opts_tag, opts_compliance = _get_jdk_tag_compliance()
+    if versionCheck is None and opts_compliance:
+        versionCheck, versionDescription = _convert_compliance_to_version_check(opts_compliance)
+    if tag is None and opts_tag:
+        tag = opts_tag
 
     if defaultJdk is None:
-        defaultJdk = versionCheck is None and not purpose
+        defaultJdk = versionCheck is None and not purpose and tag is None
+
+    if tag and not defaultJdk:
+        factory = _getJDKFactory(tag, opts_compliance)
+        if not factory:
+            abort("No provider for '{}' JDK".format(tag))
+        return factory.getJDKConfig()
 
     # interpret string and compliance as compliance check
     if isinstance(versionCheck, types.StringTypes):
@@ -5420,7 +5483,6 @@ def find_classpath_arg(vmArgs):
         if vmArgs[index] in ['-cp', '-classpath']:
             return index + 1, vmArgs[index + 1]
 
-
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, jdkConfig=None):
     if not jdkConfig:
         jdkConfig = get_jdk()
@@ -5687,7 +5749,7 @@ A JavaCompliance simplifies comparing Java compliance values extracted from a JD
 """
 class JavaCompliance:
     def __init__(self, ver):
-        m = re.match(r'1\.(\d+).*', ver)
+        m = re.match(r'(?:1\.)?(\d+).*', ver)
         assert m is not None, 'not a recognized version string: ' + ver
         self.value = int(m.group(1))
 
@@ -9741,6 +9803,7 @@ _commands = {
     'stip': [stip, ''],
     'supdate': [supdate, ''],
     'pylint': [pylint, ''],
+    'java': [run_java, ''],
     'javap': [javap, '<class name patterns>'],
     'javadoc': [javadoc, '[options]'],
     'junit': [junit, '[options]'],
@@ -9875,7 +9938,7 @@ def _remove_unsatisfied_deps():
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     ommittedDeps.add(dep)
         elif dep.isJavaProject():
-            if get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance)) is None:
+            if get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), defaultJdk=True) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 ommittedDeps.add(dep)
             else:
