@@ -2094,9 +2094,9 @@ class Library(BaseLibrary, ClasspathDependency):
         return None
 
     def getBuildTask(self, args):
-        return LibarayDownloadTask(args, self)
+        return LibraryDownloadTask(args, self)
 
-class LibarayDownloadTask(BuildTask):
+class LibraryDownloadTask(BuildTask):
     def __init__(self, args, lib):
         BuildTask.__init__(self, lib, args, 1)  # TODO use all CPUs to avoid output problems?
 
