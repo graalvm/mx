@@ -118,7 +118,7 @@ _jreLibs = dict()
 _jdkLibs = dict()
 _dists = dict()
 _distTemplates = dict()
-_licences = dict()
+_licenses = dict()
 _repositories = dict()
 
 _suites = dict()
@@ -228,14 +228,14 @@ class SuiteConstituent(object):
         return None
 
 
-class Licence(SuiteConstituent):
+class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
         SuiteConstituent.__init__(self, suite, name)
         self.fullname = fullname
         self.url = url
 
     def __eq__(self, other):
-        if not isinstance(other, Licence):
+        if not isinstance(other, License):
             return False
         return self.name == other.name and self.url == other.url and self.fullname == other.fullname
 
@@ -245,9 +245,9 @@ A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all Dependency instances.
 """
 class Dependency(SuiteConstituent):
-    def __init__(self, suite, name, licence):
+    def __init__(self, suite, name, theLicense):
         SuiteConstituent.__init__(self, suite, name)
-        self.licence = licence
+        self.theLicense = theLicense
 
     def __cmp__(self, other):
         return cmp(self.name, other.name)
@@ -592,8 +592,8 @@ Attributes:
     excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
 """
 class Distribution(Dependency):
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, licence):
-        Dependency.__init__(self, suite, name, licence)
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense):
+        Dependency.__init__(self, suite, name, theLicense)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
@@ -612,9 +612,9 @@ class Distribution(Dependency):
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
-        licenceId = self.licence if self.licence else self.suite.defaultLicence
-        if licenceId:
-            self.licence = licence(licenceId, context=self)
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        if licenseId:
+            self.theLicense = get_license(licenseId, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -693,8 +693,8 @@ Attributes:
     sourcesPath: as path but for source files (optional)
 """
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, licence):
-        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, licence)
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense):
+        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
@@ -776,14 +776,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
-                    if dep.licence != self.licence:
-                        if dep.suite.getMxCompatibility().supportsLicences() and self.suite.getMxCompatibility().supportsLicences():
+                    if dep.theLicense != self.theLicense:
+                        if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
                             report = abort
                         else:
                             report = warn
-                        depLicence = dep.licence.name if dep.licence else '??'
-                        selfLicence = self.licence.name if self.licence else '??'
-                        report('Incompatible licences: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicence, dep.name, depLicence))
+                        depLicense = dep.theLicense.name if dep.theLicense else '??'
+                        selfLicense = self.theLicense.name if self.theLicense else '??'
+                        report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicense, dep.name, depLicense))
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
                             l = dep
@@ -941,8 +941,8 @@ Attributes:
     path: suite-local path to where the tar file will be placed
 """
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, licence):
-        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, licence)
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense):
+        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
 
     def make_archive(self):
@@ -1024,8 +1024,8 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence):
-        Dependency.__init__(self, suite, name, licence)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense):
+        Dependency.__init__(self, suite, name, theLicense)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
@@ -1044,9 +1044,9 @@ class Project(Dependency):
         Resolves symbolic dependency references to be Dependency objects.
         '''
         self._resolveDepsHelper(self.deps)
-        licenceId = self.licence if self.licence else self.suite.defaultLicence
-        if licenceId:
-            self.licence = licence(licenceId, context=self)
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        if licenseId:
+            self.theLicense = get_license(licenseId, context=self)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -1110,8 +1110,8 @@ class ProjectBuildTask(BuildTask):
         BuildTask.__init__(self, project, args, parallelism)
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, licence=None):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         ClasspathDependency.__init__(self)
         self.checkstyleProj = name
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
@@ -1718,8 +1718,8 @@ def _replaceResultsVar(m):
         abort('Unknown variable: ' + var)
 
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, licence=None):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, licence)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         self.results = results
         self.output = output
 
@@ -1895,8 +1895,8 @@ A BaseLibrary is an entity that is an object that has no structure understood by
 typically a jar file. It is used "as is".
 """
 class BaseLibrary(Dependency):
-    def __init__(self, suite, name, optional, licence):
-        Dependency.__init__(self, suite, name, licence)
+    def __init__(self, suite, name, optional, theLicense):
+        Dependency.__init__(self, suite, name, theLicense)
         self.optional = optional
 
     def __ne__(self, other):
@@ -1909,10 +1909,10 @@ class BaseLibrary(Dependency):
         pass
 
     def resolveDeps(self):
-        licenceId = self.licence
-        # do not use suite's default licence
-        if licenceId:
-            self.licence = licence(licenceId, context=self)
+        licenseId = self.theLicense
+        # do not use suite's default license
+        if licenseId:
+            self.theLicense = get_license(licenseId, context=self)
 
 """
 A library that will be provided by the JRE but may be absent.
@@ -1929,8 +1929,8 @@ motivating example is the Java Flight Recorder library
 found in the Oracle JRE.
 """
 class JreLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, jar, optional, licence):
-        BaseLibrary.__init__(self, suite, name, optional, licence)
+    def __init__(self, suite, name, jar, optional, theLicense):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
         self.jar = jar
 
@@ -1985,8 +1985,8 @@ will be removed from the global project and library dictionaries
 (i.e., _projects and _libs).
 """
 class JdkLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional, licence):
-        BaseLibrary.__init__(self, suite, name, optional, licence)
+    def __init__(self, suite, name, path, optional, theLicense):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
         self.path = path
 
@@ -2015,8 +2015,8 @@ it is not built by the Suite.
 N.B. Not obvious but a Library can be an annotationProcessor
 """
 class Library(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, licence):
-        BaseLibrary.__init__(self, suite, name, optional, licence)
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
         self.path = path.replace('/', os.sep)
         self.urls = urls
@@ -2912,18 +2912,18 @@ class MavenRepo:
 
 class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
-    def __init__(self, suite, name, url, licences):
+    def __init__(self, suite, name, url, licenses):
         SuiteConstituent.__init__(self, suite, name)
         self.url = url
-        self.licences = licences
+        self.licenses = licenses
 
     def __eq__(self, other):
         if not isinstance(other, Repository):
             return False
-        return self.name == other.name and self.url == other.url and self.licences == other.licences
+        return self.name == other.name and self.url == other.url and self.licenses == other.licenses
 
-    def resolveLicences(self):
-        self.licences = [licence(l) for l in self.licences]
+    def resolveLicenses(self):
+        self.licenses = [get_license(l) for l in self.licenses]
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -2984,17 +2984,17 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         if 'suite-developer' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
             abort("Suite {} is missing the 'developer' attribute".format(dist.suite.name))
         warn("Suite {}'s version is too old to contain the 'developer' attribute".format(dist.suite.name))
-    if dist.licence:
+    if dist.theLicense:
         pom.open('licenses')
         pom.open('license')
-        pom.element('name', data=dist.licence.fullname)
-        pom.element('url', data=dist.licence.url)
+        pom.element('name', data=dist.theLicense.fullname)
+        pom.element('url', data=dist.theLicense.url)
         pom.close('license')
         pom.close('licenses')
     elif validateMetadata != 'none':
-        if dist.suite.getMxCompatibility().supportsLicences() or validateMetadata == 'full':
-            dist.abort("Distribution is missing 'licence' attribute")
-        dist.warn("Distribution's suite version is too old to have the 'licence' attribute")
+        if dist.suite.getMxCompatibility().supportsLicenses() or validateMetadata == 'full':
+            dist.abort("Distribution is missing 'license' attribute")
+        dist.warn("Distribution's suite version is too old to have the 'license' attribute")
     directDistDeps = [d for d in dist.deps if d.isDistribution()]
     directLibDeps = dist.excludedLibs
     if directDistDeps or directLibDeps:
@@ -3131,15 +3131,15 @@ def deploy_binary(args):
     version = _versionGetter(s)
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licences=repo.licences)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licences=None):
-    if licences is None:
-        licences = []
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None):
+    if licenses is None:
+        licenses = []
     for dist in dists:
-        if dist.licence not in licences:
-            distLicence = dist.licence.name if dist.licence else '??'
-            abort('Distribution with {} licence are not cleared for upload to {}: can not upload {}'.format(distLicence, repository_id, dist.name))
+        if dist.theLicense not in licenses:
+            distLicense = dist.theLicense.name if dist.theLicense else '??'
+            abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense, repository_id, dist.name))
     for dist in dists:
         if dist.isJARDistribution():
             pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
@@ -3158,7 +3158,7 @@ def maven_deploy(args):
     All binaries must be built first using 'mx build'.
 
     usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
-                           [--validate {none,compat,full}] [--licences LICENCES]
+                           [--validate {none,compat,full}] [--licenses LICENSES]
                            repository-id [repository-url]
 
     positional arguments:
@@ -3176,16 +3176,16 @@ def maven_deploy(args):
       --validate {none,compat,full}
                             Validate that maven metadata is complete enough for
                             publication
-      --licences LICENCES   Comma-separated list of licences that are cleared for
+      --licenses LICENSES   Comma-separated list of licenses that are cleared for
                             upload. Only used if no url is given. Otherwise
-                        licences are looked up in suite.py
+                        licenses are looked up in suite.py
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
-    parser.add_argument('--licences', help='Comma-separated list of licences that are cleared for upload. Only used if no url is given. Otherwise licences are looked up in suite.py', default='')
+    parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
@@ -3204,13 +3204,13 @@ def maven_deploy(args):
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
     if args.url:
-        licences = [licence(l) for l in args.licences.split(',') if l]
-        repo = Repository(None, args.repository_id, args.url, licences)
+        licenses = [get_license(l) for l in args.licenses.split(',') if l]
+        repo = Repository(None, args.repository_id, args.url, licenses)
     else:
         repo = repository(args.repository_id)
 
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licences=repo.licences)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses)
 
 class MavenConfig:
     def __init__(self):
@@ -3440,7 +3440,7 @@ class Suite:
         self._metadata_initialized = False
         self.post_init = False
         self.distTemplates = []
-        self.licenceDefs = []
+        self.licenseDefs = []
         self.repositoryDefs = []
         _suites[self.name] = self
 
@@ -3516,7 +3516,7 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licences', 'defaultLicence', 'repositories']
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories']
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -3553,11 +3553,11 @@ class Suite:
             if existing is not None and _check_global_structures:
                 abort('inconsistent distribution template redefinition of ' + d.name + ' in ' + existing.suite.dir + ' and ' + d.suite.dir, context=d)
             _distTemplates[d.name] = d
-        for l in self.licenceDefs:
-            existing = _licences.get(l.name)
+        for l in self.licenseDefs:
+            existing = _licenses.get(l.name)
             if existing is not None and _check_global_structures and l != existing:
-                abort("inconsistent licence redefinition of {} in {} (initialy defined in {})".format(l.name, self.name, existing.suite.name), context=l)
-            _licences[l.name] = l
+                abort("inconsistent license redefinition of {} in {} (initialy defined in {})".format(l.name, self.name, existing.suite.name), context=l)
+            _licenses[l.name] = l
         for r in self.repositoryDefs:
             existing = _repositories.get(r.name)
             if existing is not None and _check_global_structures and r != existing:
@@ -3577,7 +3577,7 @@ class Suite:
         for d in self.projects + self.libs + self.dists:
             d.resolveDeps()
         for r in self.repositoryDefs:
-            r.resolveLicences()
+            r.resolveLicenses()
 
     def _post_init_finish(self):
         if hasattr(self, 'mx_post_parse_cmd_line'):
@@ -3621,22 +3621,22 @@ class Suite:
         self.url = suiteDict.get('url')
         if not _validate_abolute_url(self.url, acceptNone=True):
             abort('Invalid url in {}'.format(self.suite_py()))
-        self.defaultLicence = suiteDict.get('defaultLicence')
+        self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
             jar = attrs.pop('jar')
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
-            licence = attrs.pop('licence', None)
-            l = JreLibrary(self, name, jar, optional, licence)
+            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
+            l = JreLibrary(self, name, jar, optional, theLicense)
             self.jreLibs.append(l)
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
             jar = attrs.pop('path')
             # JRE libraries are optional by default
-            licence = attrs.pop('licence', None)
+            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', 'true') != 'false'
-            l = JdkLibrary(self, name, jar, optional, licence)
+            l = JdkLibrary(self, name, jar, optional, theLicense)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -3647,12 +3647,12 @@ class Suite:
             else:
                 abort('illegal import kind: ' + name)
 
-        licenceDefs = self._check_suiteDict('licences')
+        licenseDefs = self._check_suiteDict(self.getMxCompatibility().licensesAttribute())
         repositoryDefs = self._check_suiteDict('repositories')
 
         self._load_libraries(libsMap)
         self._load_distributions(distsMap)
-        self._load_licences(licenceDefs)
+        self._load_licenses(licenseDefs)
         self._load_repositories(repositoryDefs)
 
 
@@ -3746,7 +3746,7 @@ class Suite:
         assert not '>' in name
         context = 'distribution ' + name
         native = attrs.pop('native', False)
-        licence = attrs.pop('licence', None)
+        theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
         os_arch = Suite._pop_os_arch(attrs, context)
         Suite._merge_os_arch_attrs(attrs, os_arch, context)
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
@@ -3754,7 +3754,7 @@ class Suite:
         platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, licence)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense)
         else:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
@@ -3762,7 +3762,7 @@ class Suite:
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, licence)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
@@ -3826,23 +3826,23 @@ class Suite:
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
             os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
-            licence = attrs.pop('licence', None)
+            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             deps += os_arch_deps
             # Add support for optional external libraries if we have a good use case
             optional = False
-            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, licence)
+            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
             l.__dict__.update(attrs)
             self.libs.append(l)
 
-    def _load_licences(self, licenceDefs):
-        for name, attrs in sorted(licenceDefs.items()):
+    def _load_licenses(self, licenseDefs):
+        for name, attrs in sorted(licenseDefs.items()):
             fullname = attrs.pop('name')
             url = attrs.pop('url')
             if not _validate_abolute_url(url):
-                abort('Invalid url in licence {} in {}'.format(name, self.suite_py()))
-            l = Licence(self, name, fullname, url)
+                abort('Invalid url in license {} in {}'.format(name, self.suite_py()))
+            l = License(self, name, fullname, url)
             l.__dict__.update(attrs)
-            self.licenceDefs.append(l)
+            self.licenseDefs.append(l)
 
     def _load_repositories(self, repositoryDefs):
         for name, attrs in sorted(repositoryDefs.items()):
@@ -3850,8 +3850,8 @@ class Suite:
             url = attrs.pop('url')
             if not _validate_abolute_url(url):
                 abort('Invalid url in repository {}'.format(self.suite_py()), context=context)
-            licences = Suite._pop_list(attrs, 'licences', context=context)
-            r = Repository(self, name, url, licences)
+            licenses = Suite._pop_list(attrs, self.getMxCompatibility().licensesAttribute(), context=context)
+            r = Repository(self, name, url, licenses)
             r.__dict__.update(attrs)
             self.repositoryDefs.append(r)
 
@@ -4080,7 +4080,7 @@ class SourceSuite(Suite):
         for name, attrs in sorted(projsMap.iteritems()):
             context = 'project ' + name
             className = attrs.pop('class', None)
-            licence = attrs.pop('licence', None)
+            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
@@ -4088,7 +4088,7 @@ class SourceSuite(Suite):
             if className:
                 if not self.extensions or not hasattr(self.extensions, className):
                     abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
-                p = getattr(self.extensions, className)(self, name, deps, workingSets, licence=licence, **attrs)
+                p = getattr(self.extensions, className)(self, name, deps, workingSets, theLicense=theLicense, **attrs)
             else:
                 srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
                 subDir = attrs.pop('subDir', None)
@@ -4100,12 +4100,12 @@ class SourceSuite(Suite):
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'output', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, licence=licence)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, licence=licence)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -4631,11 +4631,11 @@ def annotation_processors():
         _annotationProcessors = list(aps)
     return _annotationProcessors
 
-def licence(name, fatalIfMissing=True, context=None):
+def get_license(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
-    l = _licences.get(name)
+    l = _licenses.get(name)
     if l is None and fatalIfMissing:
-        abort('licence named ' + name + ' not found', context=context)
+        abort('license named ' + name + ' not found', context=context)
     return l
 
 def repository(name, fatalIfMissing=True, context=None):
@@ -9244,16 +9244,16 @@ def show_projects(args):
 def show_suites(args):
     """show all suites
 
-    usage: mx suites [-h] [--locations] [--licences]
+    usage: mx suites [-h] [--locations] [--licenses]
 
     optional arguments:
       -h, --help   show this help message and exit
       --locations  show element locations on disk
-      --licences   show element licences
+      --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
     parser.add_argument('--locations', action='store_true', help='show element locations on disk')
-    parser.add_argument('--licences', action='store_true', help='show element licences')
+    parser.add_argument('--licenses', action='store_true', help='show element licenses')
     args = parser.parse_args(args)
     def _location(e):
         if args.locations:
@@ -9275,9 +9275,9 @@ def show_suites(args):
                 data = []
                 if location:
                     data.append(location)
-                if args.licences:
-                    if e.licence:
-                        l = e.licence.name
+                if args.licenses:
+                    if e.theLicense:
+                        l = e.theLicense.name
                     else:
                         l = '??'
                     data.append(l)
@@ -9983,7 +9983,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.2.1")
+version = VersionSpec("5.2.2")
 
 currentUmask = None
 

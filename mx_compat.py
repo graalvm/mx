@@ -7,8 +7,17 @@ class MxCompatibility500(object):
     def version():
         return mx.VersionSpec("5.0.0")
 
-    def supportsLicences(self):
+    def supportsLicenses(self):
         return False
+
+    def licenseAttribute(self):
+        sys.abort("Licenses aren't supported")
+
+    def licensesAttribute(self):
+        sys.abort("Licenses aren't supported")
+
+    def defaultLicenseAttribute(self):
+        sys.abort("Licenses aren't supported")
 
     def supportedMavenMetadata(self):
         return []
@@ -24,11 +33,35 @@ class MxCompatibility520(MxCompatibility500):
     def version():
         return mx.VersionSpec("5.2.0")
 
-    def supportsLicences(self):
+    def supportsLicenses(self):
         return True
+
+    def licenseAttribute(self):
+        return 'licence'
+
+    def licensesAttribute(self):
+        return 'licences'
+
+    def defaultLicenseAttribute(self):
+        return 'defaultLicence'
 
     def supportedMavenMetadata(self):
         return ['library-coordinates', 'suite-url', 'suite-developer', 'dist-description']
+
+class MxCompatibility522(MxCompatibility520):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.2.2")
+
+    def licenseAttribute(self):
+        return 'license'
+
+    def licensesAttribute(self):
+        return 'licenses'
+
+    def defaultLicenseAttribute(self):
+        return 'defaultLicense'
+
 
 def minVersion():
     _ensureCompatLoaded()
