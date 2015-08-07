@@ -3144,6 +3144,10 @@ def deploy_binary(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
+    if not s.getMxCompatibility().supportsLicenses():
+        log('Not deploying \'{0}\' because licenses aren\'t defined'.format(s.name))
+        return
+
     repo = repository(args.repository)
 
     version = _versionGetter(s)
