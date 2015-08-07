@@ -11,13 +11,13 @@ class MxCompatibility500(object):
         return False
 
     def licenseAttribute(self):
-        sys.abort("Licenses aren't supported")
+        return 'licence'
 
     def licensesAttribute(self):
-        sys.abort("Licenses aren't supported")
+        return 'licences'
 
     def defaultLicenseAttribute(self):
-        sys.abort("Licenses aren't supported")
+        return 'defaultLicence'
 
     def supportedMavenMetadata(self):
         return []
@@ -35,15 +35,6 @@ class MxCompatibility520(MxCompatibility500):
 
     def supportsLicenses(self):
         return True
-
-    def licenseAttribute(self):
-        return 'licence'
-
-    def licensesAttribute(self):
-        return 'licences'
-
-    def defaultLicenseAttribute(self):
-        return 'defaultLicence'
 
     def supportedMavenMetadata(self):
         return ['library-coordinates', 'suite-url', 'suite-developer', 'dist-description']
