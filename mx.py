@@ -239,6 +239,9 @@ class License(SuiteConstituent):
             return False
         return self.name == other.name and self.url == other.url and self.fullname == other.fullname
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 """
 A dependency is a library, distribution or project specified in a suite.
@@ -2920,7 +2923,22 @@ class Repository(SuiteConstituent):
     def __eq__(self, other):
         if not isinstance(other, Repository):
             return False
-        return self.name == other.name and self.url == other.url and self.licenses == other.licenses
+        if self.name != other.name or self.url != other.url:
+            return False
+        if len(self.licenses) != len(other.licenses):
+            return False
+        # accept revolved and unresolved licenses
+        for a, b in zip(self.licenses, other.licenses):
+            if isinstance(a, License):
+                a = a.name
+            if isinstance(b, License):
+                b = b.name
+            if a != b:
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def resolveLicenses(self):
         self.licenses = [get_license(l) for l in self.licenses]
