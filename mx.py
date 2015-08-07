@@ -1439,7 +1439,7 @@ class JavaBuildTask(ProjectBuildTask):
         return (False, 'all files are up to date')
 
     def newestOutput(self):
-        assert self._newestOutput > 0, "{}, {}".format(self, self._newestOutput)
+#        assert self._newestOutput > 0, "{}, {}".format(self, self._newestOutput)
         return self._newestOutput
 
     def _javaFileList(self):
@@ -7792,7 +7792,10 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
+    out.element('target', {'name' : 'test', 'depends' : 'run'})
+    out.element('target', {'name' : 'test-single', 'depends' : 'run'})
     out.open('target', {'name' : 'run', 'depends' : 'compile'})
+    out.element('property', {'name' : 'test.class', 'value' : p.name})
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
@@ -7800,10 +7803,14 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.element('arg', {'value' : p.name})
     out.close('exec')
     out.close('target')
+    out.element('target', {'name' : 'debug-test', 'depends' : 'debug'})
     out.open('target', {'name' : 'debug', 'depends' : 'init,compile'})
-    out.open('nbjpdastart', {'addressproperty' : 'jpda.address', 'name' : p.name, })
+    out.element('property', {'name' : 'test.class', 'value' : p.name})
+    out.open('nbjpdastart', {'addressproperty' : 'jpda.address', 'name' : p.name})
     out.open('classpath')
-    out.element('path', {'path' : '${javac.classpath}'})
+    out.open('fileset', {'dir' : '..'})
+    out.element('include', {'name' : '*/bin/'})
+    out.close('fileset')
     out.close('classpath')
     out.open('sourcepath')
     out.element('pathelement', {'location' : 'src'})
@@ -7816,7 +7823,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.element('arg', {'value' : '--attach'})
     out.element('arg', {'value' : '${jpda.address}'})
     out.element('arg', {'value' : 'unittest'})
-    out.element('arg', {'value' : p.name})
+    out.element('arg', {'value' : '${test.class}'})
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'javadoc'})
@@ -7924,6 +7931,7 @@ endorsed.classpath=
 excludes=
 includes=**
 jar.compress=false
+java.main.action=test
 # Space-separated list of extra javac options
 javac.compilerargs=-XDignore.symbol.file
 javac.deprecation=false
