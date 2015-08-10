@@ -53,7 +53,6 @@ import shutil, re
 import pipes
 import difflib
 import glob
-import ctypes
 import urllib2, urlparse
 from collections import Callable
 from collections import OrderedDict
@@ -1391,7 +1390,6 @@ class JavaProject(Project, ClasspathDependency):
             jdk.bootclasspath()
         return JavaBuildTask(args, self, jdk)
 
-
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk):
         ProjectBuildTask.__init__(self, args, 1, project)
@@ -1407,11 +1405,11 @@ class JavaBuildTask(ProjectBuildTask):
 
     def initSharedMemoryState(self):
         ProjectBuildTask.initSharedMemoryState(self)
-        self._newestBox = multiprocessing.Value(ctypes.c_char_p, self._newestOutput.path if self._newestOutput else None)
+        self._newestBox = multiprocessing.Array('c', 2048)
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
-        self._newestBox.value = self._newestOutput.path if self._newestOutput else None
+        self._newestBox.value = self._newestOutput.path if self._newestOutput else ''
 
     def pullSharedMemoryState(self):
         ProjectBuildTask.pullSharedMemoryState(self)
