@@ -1869,16 +1869,16 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             logvv('Copying {} to {}'.format(path, cachePath))
             shutil.copy(cachePath, path)
 
-        if not _check_file_with_sha1(path, sha1, sha1path):
+        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
             abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
 
     return path
 
 """
 Checks if a file exists and is up to date according to the sha1.
-Returns Flse if the file is not there or does not have the right checksum.
+Returns False if the file is not there or does not have the right checksum.
 """
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True):
+def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
     def _sha1Cached():
@@ -1890,11 +1890,11 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True):
             f.write(sha1OfFile(path))
 
     if exists(path):
-        if sha1Check:
-            if sha1 and not exists(sha1path):
+        if sha1Check and sha1:
+            if not exists(sha1path) or (newFile and sha1 != _sha1Cached()):
                 _writeSha1Cached()
 
-            if sha1 and sha1 != _sha1Cached():
+            if sha1 != _sha1Cached():
                 return False
     elif mustExist:
         return False
