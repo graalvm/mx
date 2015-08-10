@@ -53,6 +53,7 @@ import shutil, re
 import pipes
 import difflib
 import glob
+import ctypes
 import urllib2, urlparse
 from collections import Callable
 from collections import OrderedDict
@@ -497,16 +498,23 @@ class BuildTask(object):
                 if _opts.verbose:
                     reason += ': ' + ', '.join([u.subject.name for u in updated])
         if not buildNeeded:
-            newestInput = 0
+            newestInput = None
             newestInputDep = None
             for dep in self.deps:
                 depNewestOutput = dep.newestOutput()
-                if depNewestOutput > newestInput:
+                if depNewestOutput and (not newestInput or depNewestOutput.isNewerThan(newestInput)):
                     newestInput = depNewestOutput
                     newestInputDep = dep
             if newestInputDep:
                 logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name, newestInput))
-            newestInput = max(newestInput, self.subject.suite.suite_py_mtime())
+            suitePyTS = TimeStampFile(self.subject.suite.suite_py())
+            if not newestInput or suitePyTS.isNewerThan(newestInput):
+                newestInput = suitePyTS
+            # suite.py should always be taken into account, even if only doing shallow dep checking
+            if newestInput and self.args.shallow_dependency_checks and not self.subject.isNativeProject() and newestInput is not suitePyTS:
+                newestInput = None
+            if __name__ != self.__module__ and self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
+                newestInput = newestInput.timestamp if newestInput else float(0)
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
             if not self.args.clean and not self.cleanForbidden():
@@ -533,18 +541,23 @@ class BuildTask(object):
         else:
             logv('[skipping {}]'.format(self.subject.name))
 
-    """
-    Returns True if the current artifacts are outdated.
-    Note: this method does not need to inspect the dependencies of the task:
-    if any dependency has been built, this task will be built.
-    """
     def needsBuild(self, newestInput):
+        """
+        Returns True if the current artifacts of this task are out dated.
+        The 'newestInput' argument is either None or a TimeStampFile
+        denoting the artifact of a dependency with the most recent modification time.
+        Apart from 'newestInput', this method does not inspect this task's dependencies.
+        """
         if self.args.force:
             return (True, 'forced build')
         return (False, 'unimplemented')
 
     def newestOutput(self):
-        nyi('needsBuild', self)
+        """
+        Gets a TimeStampFile representing the build output file for this task
+        with the newest modification time or None if no build output file exists.
+        """
+        nyi('newestOutput', self)
 
     def buildForbidden(self):
         if not self.args.only:
@@ -566,13 +579,6 @@ class BuildTask(object):
     """
     def clean(self, forBuild=False):
         nyi('clean', self)
-
-def _maxTime(*args):
-    iterable = args
-    if len(args) == 1:
-        if hasattr(args, '__iter__'):
-            iterable = args[0]
-    return max((os.path.getmtime(f) for f in iterable if f))
 
 def _needsUpdate(minTime, f):
     return not exists(f) or _getSymlinkMTime(f) < minTime
@@ -921,7 +927,7 @@ class JARArchiveTask(ArchiveTask):
             return True
 
     def newestOutput(self):
-        return _maxTime(self.subject.path, self.subject.sourcesPath)
+        return TimeStampFile.newest([self.subject.path, self.subject.sourcesPath])
 
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
@@ -998,7 +1004,7 @@ class NativeTARDistribution(Distribution):
 
 class TARArchiveTask(ArchiveTask):
     def newestOutput(self):
-        return _maxTime(self.subject.path)
+        return TimeStampFile(self.subject.path)
 
     def buildForbidden(self):
         if ArchiveTask.buildForbidden(self):
@@ -1152,11 +1158,14 @@ class JavaProject(Project, ClasspathDependency):
         """
         return join(self.dir, self.source_gen_dir_name())
 
-    def output_dir(self):
+    def output_dir(self, relative=False):
         """
         Get the directory in which the class files of this project are found/placed.
         """
-        return join(self.dir, 'bin')
+        res = join(self.dir, 'bin')
+        if relative:
+            res = os.path.relpath(res, self.dir)
+        return res
 
     def jasmin_output_dir(self):
         """
@@ -1391,22 +1400,22 @@ class JavaBuildTask(ProjectBuildTask):
         self.jasmfilelist = None
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
-        self._newestOutput = 0
+        self._newestOutput = None
 
     def __str__(self):
         return "Compiling {} with {}".format(self.subject.name, self._getCompiler().name())
 
     def initSharedMemoryState(self):
         ProjectBuildTask.initSharedMemoryState(self)
-        self._newestBox = multiprocessing.Value('d', float(self._newestOutput))
+        self._newestBox = multiprocessing.Value(ctypes.c_char_p, self._newestOutput.path if self._newestOutput else None)
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
-        self._newestBox.value = float(self._newestOutput)
+        self._newestBox.value = self._newestOutput.path if self._newestOutput else None
 
     def pullSharedMemoryState(self):
         ProjectBuildTask.pullSharedMemoryState(self)
-        self._newestOutput = self._newestBox.value
+        self._newestOutput = TimeStampFile(self._newestBox.value) if self._newestBox.value else None
 
     def cleanSharedMemoryState(self):
         ProjectBuildTask.cleanSharedMemoryState(self)
@@ -1444,7 +1453,6 @@ class JavaBuildTask(ProjectBuildTask):
         return (False, 'all files are up to date')
 
     def newestOutput(self):
-#        assert self._newestOutput > 0, "{}, {}".format(self, self._newestOutput)
         return self._newestOutput
 
     def _javaFileList(self):
@@ -1467,7 +1475,7 @@ class JavaBuildTask(ProjectBuildTask):
             self._collectFiles()
         return self.nonjavafiletuples
 
-    def _collectFiles(self, checkBuildReason=False, newestInput=0):
+    def _collectFiles(self, checkBuildReason=False, newestInput=None):
         self.javafilelist = []
         self.jasmfilelist = []
         self.nonjavafiletuples = []
@@ -1484,32 +1492,27 @@ class JavaBuildTask(ProjectBuildTask):
                 self.nonjavafiletuples += [(sourceDir, nonjavafiles)]
                 self.nonjavafilecount += len(nonjavafiles)
 
-                if checkBuildReason and not buildReason:
-                    for javafile in javafiles:
-                        if basename(javafile) == 'package-info.java':
-                            continue
-                        classfile = TimeStampFile(outputDir + javafile[len(sourceDir):-len('java')] + 'class')
-                        if classfile.isNewerThan(self._newestOutput):
-                            self._newestOutput = classfile.timestamp
-                        if not classfile.exists() or classfile.isOlderThan(javafile) or classfile.isOlderThan(newestInput):
-                            buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
-                            break
-                if checkBuildReason and not buildReason:
-                    for jasmfile in jasmfiles:
-                        classfile = TimeStampFile(outputDir + jasmfile[len(sourceDir):-len('jasm')] + 'class')
-                        if classfile.isNewerThan(self._newestOutput):
-                            self._newestOutput = classfile.timestamp
-                        if not classfile.exists() or classfile.isOlderThan(jasmfile) or classfile.isOlderThan(newestInput):
-                            buildReason = 'class file(s) out of date (witness: ' + classfile.path + ')'
-                            break
-                if checkBuildReason and not buildReason:
-                    for nonjavafile in nonjavafiles:
-                        copied = TimeStampFile(outputDir + nonjavafile[len(sourceDir):])
-                        if copied.isNewerThan(self._newestOutput):
-                            self._newestOutput = copied.timestamp
-                        if not copied.exists() or copied.isOlderThan(nonjavafile) or copied.isOlderThan(newestInput):
-                            buildReason = 'resource file(s) out of date (witness: ' + copied.path + ')'
-                            break
+                def findBuildReason():
+                    for inputs, inputSuffix, outputSuffix in [(javafiles, 'java', 'class'), (jasmfiles, 'jasm', 'class'), (nonjavafiles, None, None)]:
+                        for inputFile in inputs:
+                            if basename(inputFile) == 'package-info.java':
+                                continue
+                            if inputSuffix:
+                                witness = TimeStampFile(outputDir + inputFile[len(sourceDir):-len(inputSuffix)] + outputSuffix)
+                            else:
+                                witness = TimeStampFile(outputDir + inputFile[len(sourceDir):])
+                            if not witness.exists():
+                                return witness.path + ' does not exist'
+                            if not self._newestOutput or witness.isNewerThan(self._newestOutput):
+                                self._newestOutput = witness
+                            if witness.isOlderThan(inputFile):
+                                return '{} is older than {}'.format(witness, TimeStampFile(inputFile))
+                            if newestInput and witness.isOlderThan(newestInput):
+                                return '{} is older than {}'.format(witness, newestInput)
+                        return None
+
+                if not buildReason and checkBuildReason:
+                    buildReason = findBuildReason()
 
         self.javafilelist = sorted(self.javafilelist)  # for reproducibility
         return buildReason
@@ -1540,6 +1543,11 @@ class JavaBuildTask(ProjectBuildTask):
                 showTasks=self.args.jdt_show_task_tags
             )
             logvv('Finished Java compilation for {}'.format(self.subject.name))
+            def allOutputFiles():
+                for root, _, filenames in os.walk(outputDir):
+                    for fname in filenames:
+                        yield os.path.join(root, fname)
+            self._newestOutput = TimeStampFile(max(allOutputFiles(), key=os.path.getmtime))
         # Jasmin build
         for src in self._jasmFileList():
             className = None
@@ -1556,6 +1564,7 @@ class JavaBuildTask(ProjectBuildTask):
                 if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
                     logv('Assembling Jasmin file ' + src)
                     run(['jasmin', '-d', jasminOutputDir, src])
+                    self._newestOutput = TimeStampFile(classFile)
         self.subject.update_current_annotation_processors_file()
         if self._jasmFileList():
             logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
@@ -1569,7 +1578,7 @@ class JavaBuildTask(ProjectBuildTask):
                     os.makedirs(dirname(dst))
                 if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
                     shutil.copyfile(src, dst)
-        self._newestOutput = time.time()
+                    self._newestOutput = TimeStampFile(dst)
         if self._nonJavaFileCount():
             logvv('Finished resource copy for {}'.format(self.subject.name))
 
@@ -1775,14 +1784,14 @@ class NativeBuildTask(ProjectBuildTask):
     def newestOutput(self):
         if self._newestOutput is None:
             results = self.subject.getResults()
-            self._newestOutput = 0
+            self._newestOutput = None
             for r in results:
-                if exists(r):
-                    t = os.path.getmtime(r)
-                    if t > self._newestOutput:
-                        self._newestOutput = t
+                ts = TimeStampFile(r)
+                if ts.exists():
+                    if not self._newestOutput or ts.isNewerThan(self._newestOutput):
+                        self._newestOutput = ts
                 else:
-                    self._newestOutput = float(0)
+                    self._newestOutput = ts
                     break
         return self._newestOutput
 
@@ -1972,7 +1981,7 @@ class NoOpTask(BuildTask):
 
     def newestOutput(self):
         # TODO Should still return something for jdk/jre library and NativeTARDistributions
-        return 0
+        return None
 
     def build(self):
         pass
@@ -2127,7 +2136,7 @@ class LibraryDownloadTask(BuildTask):
         return (self.subject._check_download_needed(), None)
 
     def newestOutput(self):
-        return os.path.getmtime(_make_absolute(self.subject.path, self.subject.suite.dir))
+        return TimeStampFile(_make_absolute(self.subject.path, self.subject.suite.dir))
 
     def build(self):
         self.subject.get_path(resolve=True)
@@ -3637,7 +3646,7 @@ class Suite:
             self.requiredMxVersion = mx_compat.minVersion()
             warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
         elif self.requiredMxVersion > version:
-            abort("The {} suite requires mx version {}  while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
+            abort("The {} suite requires mx version {} while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
@@ -6192,6 +6201,12 @@ def build(args, parser=None):
     parser.add_argument('-f', action='store_true', dest='force', help='force build (disables timestamp checking)')
     parser.add_argument('-c', action='store_true', dest='clean', help='removes existing build output')
     parser.add_argument('-p', action='store_true', dest='parallelize', help='parallelizes Java compilation')
+    parser.add_argument('-s', '--shallow-dependency-checks', action='store_true', help="ignore modification times "\
+                        "of output files for each of P's dependencies when determining if P should be built. That "\
+                        "is, only P's sources, suite.py of its suite and whether any of P's dependencies have "\
+                        "been built are considered. This is useful when an external tool (such as an Eclipse) performs incremental "\
+                        "compilation that produces finer grained modification times than mx's build system. Shallow "\
+                        "dependency checking only applies to non-native projects.")
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     parser.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
@@ -6827,6 +6842,21 @@ class TimeStampFile:
         self.path = path
         self.timestamp = os.path.getmtime(path) if exists(path) else None
 
+    @staticmethod
+    def newest(paths):
+        """
+        Creates a TimeStampFile for the file in 'paths' with the most recent modification time.
+        Entries in 'paths' that do not correspond to an existing file are ignored.
+        """
+        ts = None
+        for path in paths:
+            if exists(path):
+                if not ts:
+                    ts = TimeStampFile(path)
+                elif ts.isNewerThan(path):
+                    ts = TimeStampFile(path)
+        return ts
+
     def isOlderThan(self, arg):
         if not self.timestamp:
             return True
@@ -6867,6 +6897,13 @@ class TimeStampFile:
 
     def exists(self):
         return exists(self.path)
+
+    def __str__(self):
+        if self.timestamp:
+            ts = time.strftime('[%Y-%m-%d %H:%M:%S]', time.localtime(self.timestamp))
+        else:
+            ts = '[does not exist]'
+        return self.path + ts
 
     def touch(self):
         if exists(self.path):
@@ -7379,7 +7416,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     for dep in sorted(projectDeps):
         out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
-    out.element('classpathentry', {'kind' : 'output', 'path' : getattr(p, 'eclipse.output', 'bin')})
+    out.element('classpathentry', {'kind' : 'output', 'path' : getattr(p, 'eclipse.output', p.output_dir(relative=True))})
     out.close('classpath')
     classpathFile = join(p.dir, '.classpath')
     update_file(classpathFile, out.xml(indent='\t', newl='\n'))
@@ -10081,7 +10118,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.3.2")
+version = VersionSpec("5.3.3")
 
 currentUmask = None
 
