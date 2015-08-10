@@ -3131,6 +3131,9 @@ def deploy_binary(args):
     if not s.getMxCompatibility().supportsLicenses():
         log("Not deploying '{0}' because licenses aren't defined".format(s.name))
         return
+    if not s.getMxCompatibility().supportsRepositories():
+        log("Not deploying '{0}' because repositories aren't defined".format(s.name))
+        return
     if not s.vc:
         abort('Current prinary suite has no version control')
     _mvn.check()
@@ -3231,6 +3234,8 @@ def maven_deploy(args):
         licenses = [get_license(l) for l in args.licenses.split(',') if l]
         repo = Repository(None, args.repository_id, args.url, licenses)
     else:
+        if not s.getMxCompatibility().supportsRepositories():
+            abort("Repositories are not supported in {}'s suite version".format(s.name))
         repo = repository(args.repository_id)
 
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))

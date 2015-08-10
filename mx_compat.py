@@ -22,6 +22,9 @@ class MxCompatibility500(object):
     def supportedMavenMetadata(self):
         return []
 
+    def supportsRepositories(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -39,7 +42,15 @@ class MxCompatibility520(MxCompatibility500):
     def supportedMavenMetadata(self):
         return ['library-coordinates', 'suite-url', 'suite-developer', 'dist-description']
 
-class MxCompatibility522(MxCompatibility520):
+class MxCompatibility521(MxCompatibility520):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.2.1")
+
+    def supportsRepositories(self):
+        return True
+
+class MxCompatibility522(MxCompatibility521):
     @staticmethod
     def version():
         return mx.VersionSpec("5.2.2")
