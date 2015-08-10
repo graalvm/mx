@@ -3128,6 +3128,9 @@ def deploy_binary(args):
     args = parser.parse_args(args)
 
     s = _primary_suite
+    if not s.getMxCompatibility().supportsLicenses():
+        log("Not deploying '{0}' because licenses aren't defined".format(s.name))
+        return
     if not s.vc:
         abort('Current prinary suite has no version control')
     _mvn.check()
@@ -3146,9 +3149,6 @@ def deploy_binary(args):
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
-    if not s.getMxCompatibility().supportsLicenses():
-        log('Not deploying \'{0}\' because licenses aren\'t defined'.format(s.name))
-        return
 
     repo = repository(args.repository)
 
