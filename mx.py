@@ -2395,6 +2395,18 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
+    def hg_command(self, vcdir, args, abortOnError=False):
+        args = ['hg', '-R', vcdir] + args
+        print '{0}'.format(" ".join(args))
+        out = OutputCapture()
+        rc = self.run(args, nonZeroIsFatal=False, out=out)
+        if rc == 0 or rc == 1:
+            return out.data
+        else:
+            if abortOnError:
+                abort(" ".join(args) + ' returned ' + str(rc))
+            return None
+
     def add(self, vcdir, path, abortOnError=True):
         return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
 
@@ -9139,6 +9151,21 @@ def sincoming(args):
 
     _sincoming(s, None)
 
+def _hg_command_import_visitor(s, suite_import, **extra_args):
+    _hg_command(suite(suite_import.name), suite_import, **extra_args)
+
+def _hg_command(s, suite_import, **extra_args):
+    s.visit_imports(_hg_command_import_visitor, **extra_args)
+
+    if isinstance(s.vc, HgConfig):
+        out = s.vc.hg_command(s.dir, extra_args['args'])
+        print out
+
+def hg_command(args):
+    '''Run a Mercurial command in every suite'''
+    s = _check_primary_suite()
+    _hg_command(s, None, args=args)
+
 def _soutgoing_import_visitor(s, suite_import, dest, **extra_args):
     if dest is not None:
         dest = _dst_suitemodel.importee_dir(dest, suite_import)
@@ -9841,6 +9868,7 @@ _commands = {
     'spull': [spull, '[options]'],
     'spush': [spush, '[options]'],
     'stip': [stip, ''],
+    'hg': [hg_command, '[options]'],
     'supdate': [supdate, ''],
     'pylint': [pylint, ''],
     'java': [run_java, ''],
