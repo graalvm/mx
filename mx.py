@@ -1864,7 +1864,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                 # if another thread wins the race to create the symlink
                 if not exists(path):
                     # It was some other error
-                    raise e
+                    raise Exception(path, e)
         else:
             logvv('Copying {} to {}'.format(path, cachePath))
             shutil.copy(cachePath, path)
