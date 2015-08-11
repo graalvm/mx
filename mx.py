@@ -2346,6 +2346,12 @@ class VC:
         '''
         abort(self.kind + " locate is not implemented")
 
+    def bookmark(self, vcdir, name, rev, abortOnError=True):
+        '''
+        Place a bookmark at a given revision
+        '''
+        abort(self.kind + " bookmark is not implemented")
+
 
 class OutputCapture:
     def __init__(self):
@@ -2612,6 +2618,10 @@ class HgConfig(VC):
                 abort('failed to get status')
             else:
                 return None
+
+    def bookmark(self, vcdir, name, rev, abortOnError=True):
+        return run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=abortOnError) == 0
+
 
 class BinaryVC(VC):
     """
@@ -9021,11 +9031,28 @@ def supdate(args):
 
     _supdate(s, None)
 
-def _scheck_imports_visitor(s, suite_import):
-    """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import)
+def _sbookmark_visitor(s, suite_import):
+    imported_suite = suite(suite_import.name)
+    if isinstance(imported_suite, SourceSuite):
+        imported_suite.vc.bookmark(imported_suite.dir, s.name + '-import', suite_import.version)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import):
+def sbookmarkimports(args):
+    """place bookmarks on the imported versions of suites in version control"""
+    parser = ArgumentParser(prog='mx sbookmarkimports')
+    parser.add_argument('--all', action='store_true', help='operate on all suites (default: primary suite only)')
+    args = parser.parse_args(args)
+    if args.all:
+        for s in suites():
+            s.visit_imports(_sbookmark_visitor)
+    else:
+        _check_primary_suite().visit_imports(_sbookmark_visitor)
+
+
+def _scheck_imports_visitor(s, suite_import, bookmark_imports):
+    """scheckimports visitor for Suite.visit_imports"""
+    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports)
+
+def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports):
     importedVersion = imported_suite.version()
     if imported_suite.isDirty():
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
@@ -9041,14 +9068,19 @@ def _scheck_imports(importing_suite, imported_suite, suite_import):
                 newContents = contents.replace(suite_import.version, str(importedVersion))
                 update_file(importing_suite.suite_py(), newContents, showDiff=True)
                 suite_import.version = importedVersion
+                if bookmark_imports:
+                    _sbookmark_visitor(importing_suite, suite_import)
             else:
                 print 'Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py())
 
 def scheckimports(args):
     """check that suite import versions are up to date"""
+    parser = ArgumentParser(prog='mx scheckimports')
+    parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
+    args = parser.parse_args(args)
     # check imports of all suites in topological order
     for s in suites():
-        s.visit_imports(_scheck_imports_visitor)
+        s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
     """sforceimports visitor for Suite.visit_imports"""
@@ -9860,6 +9892,7 @@ _commands = {
     'deploy-binary' : [deploy_binary, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
+    'sbookmarkimports': [sbookmarkimports, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
     'scloneimports': [scloneimports, '[options]'],
     'sforceimports': [sforceimports, ''],
