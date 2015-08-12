@@ -3918,6 +3918,8 @@ class Suite:
     def _init_metadata_visitor(importing_suite, suite_import, **extra_args):
         imported_suite = suite(suite_import.name)
         if not imported_suite._metadata_initialized:
+            # avoid recursive initialization
+            imported_suite._metadata_initialized = True
             imported_suite.visit_imports(imported_suite._init_metadata_visitor)
             imported_suite._init_metadata()
 
