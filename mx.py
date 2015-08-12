@@ -4483,7 +4483,7 @@ class XMLDoc(xml.dom.minidom.Document):
         return result
 
 def _bench_test_common(args, parser, suppliedParser):
-    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
     mx_gate.add_omit_clean_args(parser)
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
@@ -4520,7 +4520,7 @@ def bench(args, harness=_basic_bench_harness, parser=None):
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
     args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, args.vm_args)
+    return harness(args, split_j_args(args.vm_args))
 
 def _basic_test_harness(args, vmArgs):
     return 0
@@ -4530,7 +4530,7 @@ def test(args, harness=_basic_test_harness, parser=None):
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx test')
     args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, args.vm_args)
+    return harness(args, split_j_args(args.vm_args))
 
 def get_jython_os():
     from java.lang import System as System
@@ -9677,12 +9677,19 @@ def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=
 def _basic_junit_harness(args, vmArgs, junitArgs):
     return run_java(junitArgs)
 
+def split_j_args(extraVmArgsList):
+    extraVmArgs = []
+    if extraVmArgsList:
+        for e in extraVmArgsList:
+            extraVmArgs += [x for x in shlex.split(e.lstrip('@'))]
+    return extraVmArgs
+
 def junit(args, harness=_basic_junit_harness, parser=None):
     '''run Junit tests'''
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
     parser.add_argument('--tests', action='store', help='pattern to match test classes')
-    parser.add_argument('--J', dest='vm_args', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -9690,7 +9697,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     vmArgs = ['-ea', '-esa']
 
     if args.vm_args:
-        vmArgs = vmArgs + shlex.split(args.vm_args.lstrip('@'))
+        vmArgs = vmArgs + split_j_args(args.vm_args)
 
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
@@ -9715,7 +9722,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
                     found = True
                     classes.append(c)
             if not found:
-                warn('no tests matched by substring "' + t)
+                warn('no tests matched by substring "' + t + '"')
 
     projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= get_jdk().javaCompliance])
 
