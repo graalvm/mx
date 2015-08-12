@@ -3787,7 +3787,7 @@ class Suite:
     def re_init_imports(self):
         '''
         If a suite is updated, e.g. by sforceimports, we must re-initialize the potentially
-        stale import data from the update suite.py file
+        stale import data from the updated suite.py file
         '''
         self.suite_imports = []
         self._load_suite_dict()
@@ -4047,7 +4047,7 @@ class Suite:
         if searchMode == 'binary':
             return BinarySuite(importMxDir, importing_suite=importing_suite)
         else:
-            return SourceSuite(importMxDir, importing_suite=importing_suite)
+            return SourceSuite(importMxDir, importing_suite=importing_suite, load=not extra_args.has_key('noLoad'))
 
     def visit_imports(self, visitor, **extra_args):
         """
@@ -4381,8 +4381,8 @@ class MXTestsSuite(InternalSuite):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
 
 class PrimarySuite(SourceSuite):
-    def __init__(self, mxDir):
-        SourceSuite.__init__(self, mxDir, True, True, None)
+    def __init__(self, mxDir, load):
+        SourceSuite.__init__(self, mxDir, primary=True, load=load, importing_suite=None)
 
     def _depth_first_post_init(self):
         '''depth first _post_init driven by imports graph'''
@@ -4394,6 +4394,17 @@ class PrimarySuite(SourceSuite):
     @staticmethod
     def load_env(mxDir):
         SourceSuite._load_env_in_mxDir(mxDir)
+
+    @staticmethod
+    def _find_suite(importing_suite, suite_import, **extra_args):
+        imported_suite = Suite._find_and_loadsuite(importing_suite, suite_import, **extra_args)
+        _suites[imported_suite.name] = imported_suite
+        imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
+
+    def vc_command_init(self):
+        # so far we have just loaded the primary suite imports info
+        # Now visit the imports just loading import info
+        self.visit_imports(self._find_suite, noLoad=True)
 
 
 class XMLElement(xml.dom.minidom.Element):
@@ -9116,8 +9127,6 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
 
     # now (may) need to force imports of this suite if the above changed its import revs
     # N.B. the suite_imports from the old version may now be invalid
-    # TODO it may be better to only load the primary suite on startup to
-    # avoid having to update stale information
     imported_suite.re_init_imports()
     imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
 
@@ -9128,20 +9137,23 @@ def sforceimports(args):
     args = parser.parse_args(args)
     _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
-def _spull_import_visitor(s, suite_import, update_versions, only_imports):
+def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all):
     """pull visitor for Suite.visit_imports"""
-    _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports)
+    _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports, update_all)
 
-def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports):
+def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports, update_all):
     # suite_import is None if importing_suite is primary suite
+    primary = suite_import is None
     # proceed top down to get any updated version ids first
 
-    if suite_import or not only_imports:
+    if not primary or not only_imports:
+        # skip pull of primary if only_imports = True
         vcs = imported_suite.vc
-        # by default we pull to the revision id in the import
+        # by default we pull to the revision id in the import, but pull head if update_versions = True
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
         vcs.pull(imported_suite.dir, rev)
-    if update_versions and suite_import:
+
+    if not primary and update_versions:
         importedVersion = vcs.parent(imported_suite.dir)
         if importedVersion != suite_import.version:
             if exists(importing_suite.suite_py()):
@@ -9157,16 +9169,19 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
             suite_import.version = importedVersion
 
     imported_suite.re_init_imports()
-    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports)
+    if not primary and not update_all:
+        update_versions = False
+    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports, update_all=update_all)
 
 def spull(args):
     """pull primary suite and all its imports"""
     parser = ArgumentParser(prog='mx spull')
-    parser.add_argument('--update-versions', action='store_true', help='update version ids of imported suites')
+    parser.add_argument('--update-versions', action='store_true', help='pull tip of directly imported suites and update suite.py')
+    parser.add_argument('--update-all', action='store_true', help='pull tip of all imported suites (transitively)')
     parser.add_argument('--only-imports', action='store_true', help='only pull imported suites')
     args = parser.parse_args(args)
 
-    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports)
+    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports, args.update_all)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
     _sincoming(suite(suite_import.name), suite_import)
@@ -9904,8 +9919,8 @@ _commands = {
     'spull': [spull, '[options]'],
     'spush': [spush, '[options]'],
     'stip': [stip, ''],
-    'hg': [hg_command, '[options]'],
     'supdate': [supdate, ''],
+    'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
     'java': [run_java, ''],
     'javap': [javap, '<class name patterns>'],
@@ -9964,17 +9979,31 @@ def _check_primary_suite():
 
 _primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1', 'pylint']
 
+# vc (suite) commands only perform a partial load of the suite metadata, to avoid
+# problems with suite invariant checks aborting the operation
+_vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
+                'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'supdate']
+
 def _needs_primary_suite(command):
     return not command in _primary_suite_exemptions
 
-def _needs_primary_suite_cl():
-    args = sys.argv[1:]
+def _needs_primary_suite_check():
+    args = _argParser.initialCommandAndArgs
     if len(args) == 0:
         return False
     for s in args:
         if s in _primary_suite_exemptions:
             return False
     return True
+
+def _check_vc_command():
+    '''check for a vc command after the initial parse'''
+    for command in _argParser.initialCommandAndArgs:
+        if not command.startswith('-'):
+            hits = [c for c in _vc_commands if c.startswith(command)]
+            if len(hits) > 0:
+                return True
+    return False
 
 def _findPrimarySuiteMxDirFrom(d):
     """ search for a suite directory upwards from 'd' """
@@ -10074,6 +10103,7 @@ def main():
     os.environ['MX_HOME'] = _mx_home
 
     _argParser._parse_cmd_line(_opts, firstParse=True)
+    vc_command = _check_vc_command()
 
     global _vc_systems
     _vc_systems = [HgConfig(), BinaryVC()]
@@ -10084,7 +10114,6 @@ def main():
     primary_suite_error = 'no primary suite found'
     primarySuiteMxDir = _findPrimarySuiteMxDir()
     if primarySuiteMxDir == _mx_suite.mxDir:
-        # This will load all explicitly imported suites
         _primary_suite = _mx_suite
     elif primarySuiteMxDir:
         _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
@@ -10110,15 +10139,15 @@ def main():
             else:
                 _suites_ignore_versions = []
 
-        # This will load all explicitly imported suites
-        _primary_suite = PrimarySuite(primarySuiteMxDir)
+        # This will load all explicitly imported suites, unless it's a vc command
+        _primary_suite = PrimarySuite(primarySuiteMxDir, load=not vc_command)
     else:
         # in general this is an error, except for the _primary_suite_exemptions commands,
         # and an extensions command will likely not parse in this case, as any extra arguments
         # will not have been added to _argParser.
         # If the command line does not contain a string matching one of the exemptions, we can safely abort,
         # but not otherwise, as we can't be sure the string isn't in a value for some other option.
-        if _needs_primary_suite_cl():
+        if _needs_primary_suite_check():
             abort(primary_suite_error)
 
     commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
@@ -10135,10 +10164,13 @@ def main():
         MXTestsSuite()
 
     if primarySuiteMxDir:
-        if primarySuiteMxDir != _mx_suite.mxDir:
-            _primary_suite._depth_first_post_init()
-        _check_dependency_cycles()
-        _remove_unsatisfied_deps()
+        if vc_command:
+            _primary_suite.vc_command_init()
+        else:
+            if primarySuiteMxDir != _mx_suite.mxDir:
+                _primary_suite._depth_first_post_init()
+            _check_dependency_cycles()
+            _remove_unsatisfied_deps()
 
     if len(commandAndArgs) == 0:
         _argParser.print_help()
@@ -10180,7 +10212,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.3.3")
+version = VersionSpec("5.4.1")
 
 currentUmask = None
 
