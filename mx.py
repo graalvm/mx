@@ -3575,6 +3575,21 @@ class Suite:
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
         sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories']
+
+        if d.has_key('mxversion'):
+            try:
+                self.requiredMxVersion = VersionSpec(d['mxversion'])
+            except AssertionError as ae:
+                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
+
+        if self.requiredMxVersion is None:
+            self.requiredMxVersion = mx_compat.minVersion()
+            warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
+        elif self.requiredMxVersion > version:
+            abort("The {} suite requires mx version {} while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
+        if not self.getMxCompatibility():
+            abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
+
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
             abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
@@ -3655,20 +3670,6 @@ class Suite:
 
         if suiteDict.get('name') != self.name:
             abort('suite name in project file does not match ' + self.name)
-
-        if suiteDict.has_key('mxversion'):
-            try:
-                self.requiredMxVersion = VersionSpec(suiteDict['mxversion'])
-            except AssertionError as ae:
-                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
-
-        if self.requiredMxVersion is None:
-            self.requiredMxVersion = mx_compat.minVersion()
-            warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
-        elif self.requiredMxVersion > version:
-            abort("The {} suite requires mx version {} while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
-        if not self.getMxCompatibility():
-            abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
