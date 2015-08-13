@@ -3496,6 +3496,7 @@ class Suite:
         self.requiredMxVersion = None
         self.dists = []
         self._metadata_initialized = False
+        self.loading_imports = False
         self.post_init = False
         self.distTemplates = []
         self.licenseDefs = []
@@ -3961,12 +3962,13 @@ class Suite:
             if s.name == suite_import.name:
                 if s.loading_imports:
                     abort("import cycle on suite '{0}' detected in suite '{1}'".format(s.name, importing_suite.name))
-                # check that all other importers use the same version
-                for imps in s.imported_by:
-                    for imp in imps.suite_imports:
-                        if imp.name == s.name:
-                            if imp.version != suite_import.version:
-                                abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
+                if not extra_args.has_key('noLoad'):
+                    # check that all other importers use the same version
+                    for imps in s.imported_by:
+                        for imp in imps.suite_imports:
+                            if imp.name == s.name:
+                                if imp.version != suite_import.version:
+                                    abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
