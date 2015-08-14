@@ -9990,7 +9990,7 @@ _primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1', 'pylint']
 
 # vc (suite) commands only perform a partial load of the suite metadata, to avoid
 # problems with suite invariant checks aborting the operation
-_vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
+_vc_commands = ['sclone', 'scloneimports', 'sbookmarkimports', 'sforceimports', 'spull',
                 'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'supdate']
 
 def _needs_primary_suite(command):
