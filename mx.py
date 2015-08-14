@@ -2314,12 +2314,6 @@ class VC:
         '''
         abort(self.kind + " default_pull is not implemented")
 
-    def force_version(self, vcdir, rev, abortOnError=True):
-        '''
-        force 'vcdir' to 'rev' and updating the working directory
-        '''
-        abort(self.kind + ": force_version is not implemented")
-
     def incoming(self, vcdir, abortOnError=True):
         '''
         list incoming changesets
@@ -2350,9 +2344,14 @@ class VC:
         msg += ' with ' + self.proper_name
         log(msg)
 
-    def update(self, vcdir, abortOnError=True):
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=True):
         '''
-        update 'vcdir' working directory
+        update 'vcdir' working directory.
+
+        If 'rev' is not specified, update to the tip of the current branch.
+        If 'rev' is specified, mayPull controls whether a pull will be attempted if
+        'rev' can not be found locally.
+        If 'clean' is true, uncommitted changes will be discarded (no backup!).
         '''
         abort(self.kind + " update is not implemented")
 
@@ -2585,11 +2584,6 @@ class HgConfig(VC):
     def default_pull(self, vcdir, abortOnError=True):
         return self._path(vcdir, 'default', abortOnError=abortOnError)
 
-    def force_version(self, vcdir, rev, abortOnError=True):
-        if self.run(['hg', '-R', vcdir, 'pull', '-r', rev], nonZeroIsFatal=abortOnError) == 0:
-            return self.run(['hg', '-R', vcdir, 'update', '-C', '-r', rev], nonZeroIsFatal=abortOnError) == 0
-        return False
-
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         cmd = ['hg', '-R', vcdir, 'push']
         if rev:
@@ -2603,9 +2597,17 @@ class HgConfig(VC):
         logvv(out.data)
         return rc == 0
 
-    def update(self, vcdir, abortOnError=False):
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         cmd = ['hg', '-R', vcdir, 'update']
-        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+        if rev:
+            cmd += ['-r', rev]
+        if clean:
+            cmd += ['-C']
+        result = self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+        if not result and mayPull and rev:
+            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
+            result = self.update(vcdir, rev=rev, clean=clean, abortOnError=abortOnError)
+        return result
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         class LinesOutputCapture:
@@ -4086,7 +4088,7 @@ class Suite:
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
-                imported_suite.vc.pull(imported_suite.dir, rev=version, update=True)
+                imported_suite.vc.update(imported_suite.dir, rev=version, mayPull=True)
             # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
                 imported_suite._init_metadata()
@@ -9146,7 +9148,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                         abort('aborting')
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
-            imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
+            imported_suite.vc.update(imported_suite.dir, suite_import.version, mayPull=True, clean=True)
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.dir, update=True)
