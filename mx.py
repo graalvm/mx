@@ -4014,9 +4014,9 @@ class Suite:
                         for imp in imps.suite_imports:
                             if imp.name == s.name:
                                 if imp.version != suite_import.version:
-                                    if _opts.version_conflit_resolution == 'none':
+                                    if _opts.version_conflict_resolution == 'none':
                                         abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
-                                    elif _opts.version_conflit_resolution == 'latest':
+                                    elif _opts.version_conflict_resolution == 'latest':
                                         if not isinstance(s, SourceSuite):
                                             abort("mismatched import versions on '{0}' in '{1}' and '{2}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, imps.name))
                                         s.vc.pull(s.dir, rev=suite_import.version, update=False)
@@ -4024,7 +4024,7 @@ class Suite:
                                         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
                                         s.vc.update(s.dir, rev=resolved)
                                     else:
-                                        abort('Should not reach here: unimplemented version-conflit-resolution: ' + _opts.version_conflit_resolution)
+                                        abort('Should not reach here: unimplemented version-conflict-resolution: ' + _opts.version_conflict_resolution)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -5143,7 +5143,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
-        self.add_argument('--version-conflit-resolution', dest='version_conflit_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest'])
+        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest'])
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
