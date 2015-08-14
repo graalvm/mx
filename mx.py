@@ -4457,16 +4457,23 @@ class PrimarySuite(SourceSuite):
     def _find_suite(importing_suite, suite_import, **extra_args):
         imported_suite = Suite._find_and_loadsuite(importing_suite, suite_import, **extra_args)
         _suites[imported_suite.name] = imported_suite
+        PrimarySuite._fake_load(imported_suite)
         imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
 
     def vc_command_init(self):
         '''A short-circuit startup for vc (s*) commands that only loads the
-        import metadata from the suite.py file. N.B. _loadedSuites is not
-        updated (because the suites are not actually loaded)
+        import metadata from the suite.py file.
         '''
         # so far we have just loaded the primary suite imports info
+        PrimarySuite._fake_load(self)
         # Now visit the imports just loading import info
         self.visit_imports(self._find_suite, noLoad=True)
+
+    @staticmethod
+    def _fake_load(s):
+        # logically this is wrong as Suite._load has not been executed but it keeps suites() happy
+        _loadedSuites.append(s)
+
 
 
 class XMLElement(xml.dom.minidom.Element):
@@ -9165,7 +9172,7 @@ def scheckimports(args):
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
     args = parser.parse_args(args)
     # check imports of all suites
-    for s in _suites.itervalues():
+    for s in suites():
         s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
