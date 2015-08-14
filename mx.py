@@ -4460,6 +4460,10 @@ class PrimarySuite(SourceSuite):
         imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
 
     def vc_command_init(self):
+        '''A short-circuit startup for vc (s*) commands that only loads the
+        import metadata from the suite.py file. N.B. _loadedSuites is not
+        updated (because the suites are not actually loaded)
+        '''
         # so far we have just loaded the primary suite imports info
         # Now visit the imports just loading import info
         self.visit_imports(self._find_suite, noLoad=True)
@@ -9160,8 +9164,8 @@ def scheckimports(args):
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
     args = parser.parse_args(args)
-    # check imports of all suites in topological order
-    for s in suites():
+    # check imports of all suites
+    for s in _suites.itervalues():
         s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
@@ -10056,7 +10060,7 @@ _primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1', 'pylint']
 
 # vc (suite) commands only perform a partial load of the suite metadata, to avoid
 # problems with suite invariant checks aborting the operation
-_vc_commands = ['sclone', 'scloneimports', 'sbookmarkimports', 'sforceimports', 'spull',
+_vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
                 'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'supdate']
 
 def _needs_primary_suite(command):
@@ -10287,7 +10291,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.4.1")
+version = VersionSpec("5.4.2")
 
 currentUmask = None
 
