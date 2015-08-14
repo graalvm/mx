@@ -2283,7 +2283,9 @@ class VC:
 
     def pull(self, vcdir, rev=None, update=False, abortOnError=True):
         '''
-        Pull a given changeset (the head if 'rev='None'), optionally updating the working directory
+        Pull a given changeset (the head if 'rev='None'), optionally updating the working directory.
+        Updating is only done if something was pulled. If there were no new changesets or rev was already
+        known locally, no update is performed.
         '''
         abort(self.kind + " pull is not implemented")
 
@@ -2372,6 +2374,13 @@ class VC:
         Place a bookmark at a given revision
         '''
         abort(self.kind + " bookmark is not implemented")
+
+    def latest(self, vcdir, rev1, rev2, abortOnError=True):
+        '''
+        Returns the latest of 2 revisions.
+        The revisions should be related in the DAG.
+        '''
+        abort(self.kind + " latest is not implemented")
 
 
 class OutputCapture:
@@ -2645,6 +2654,26 @@ class HgConfig(VC):
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         return run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=abortOnError) == 0
+
+    def latest(self, vcdir, rev1, rev2, abortOnError=True):
+        #hg log -r 'heads(ancestors(26030a079b91) and ancestors(6245feb71195))' --template '{node}\n'
+        self.check_for_hg()
+        try:
+            revs = [rev1, rev2]
+            revsetIntersectAncestors = ' and '.join(('ancestors({})'.format(rev) for rev in revs))
+            revset = 'heads({})'.format(revsetIntersectAncestors)
+            out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
+            parents = out.rstrip('\n').split('\n')
+            if len(parents) != 1:
+                if abortOnError:
+                    abort('hg log returned {} possible latest (expected 1)'.format(len(parents)))
+                return None
+            return parents[0]
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('latest failed')
+            else:
+                return None
 
 
 class BinaryVC(VC):
@@ -3985,7 +4014,17 @@ class Suite:
                         for imp in imps.suite_imports:
                             if imp.name == s.name:
                                 if imp.version != suite_import.version:
-                                    abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
+                                    if _opts.version_conflit_resolution == 'none':
+                                        abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
+                                    elif _opts.version_conflit_resolution == 'latest':
+                                        if not isinstance(s, SourceSuite):
+                                            abort("mismatched import versions on '{0}' in '{1}' and '{2}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, imps.name))
+                                        s.vc.pull(s.dir, rev=suite_import.version, update=False)
+                                        resolved = s.vc.latest(s.dir, suite_import.version, s.vc.parent(s.dir))
+                                        # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
+                                        s.vc.update(s.dir, rev=resolved)
+                                    else:
+                                        abort('Should not reach here: unimplemented version-conflit-resolution: ' + _opts.version_conflit_resolution)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -5100,6 +5139,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
+        self.add_argument('--version-conflit-resolution', dest='version_conflit_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest'])
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
