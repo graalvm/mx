@@ -2281,7 +2281,7 @@ class VC:
         msg += ' with ' + self.proper_name
         log(msg)
 
-    def pull(self, vcdir, rev=None, update=True, abortOnError=True):
+    def pull(self, vcdir, rev=None, update=False, abortOnError=True):
         '''
         Pull a given changeset (the head if 'rev='None'), optionally updating the working directory
         '''
@@ -2534,7 +2534,7 @@ class HgConfig(VC):
                 abort('outgoing returned ' + str(rc))
             return None
 
-    def pull(self, vcdir, rev=None, update=True, abortOnError=True):
+    def pull(self, vcdir, rev=None, update=False, abortOnError=True):
         cmd = ['hg', 'pull', '-R', vcdir]
         if rev:
             cmd.append('-r')
@@ -9149,7 +9149,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
             imported_suite.vc.force_version(imported_suite.dir, suite_import.version)
     else:
         # unusual case, no version specified, so pull the head
-        imported_suite.vc.pull(imported_suite.dir)
+        imported_suite.vc.pull(imported_suite.dir, update=True)
 
     # now (may) need to force imports of this suite if the above changed its import revs
     # N.B. the suite_imports from the old version may now be invalid
@@ -9177,7 +9177,7 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         vcs = imported_suite.vc
         # by default we pull to the revision id in the import, but pull head if update_versions = True
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
-        vcs.pull(imported_suite.dir, rev)
+        vcs.pull(imported_suite.dir, rev, update=True)
 
     if not primary and update_versions:
         importedVersion = vcs.parent(imported_suite.dir)
