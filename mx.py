@@ -579,8 +579,19 @@ class BuildTask(object):
     def clean(self, forBuild=False):
         nyi('clean', self)
 
-def _needsUpdate(minTime, f):
-    return not exists(f) or _getSymlinkMTime(f) < minTime
+def _needsUpdate(newestInput, path):
+    """
+    Determines if the file denoted by 'path' does not exist or 'newestInput' is not None
+    and 'path's latest modification time is older than the 'newestInput' TimeStampFile.
+    Returns a string describing why 'path' needs updating or None if it does not need updating.
+    """
+    if not exists(path):
+        return path + ' does not exist'
+    if newestInput:
+        ts = TimeStampFile(path, followSymlinks=False)
+        if ts.isOlderThan(newestInput):
+            return '{} is older than {}'.format(ts, newestInput)
+    return None
 
 class DistributionTemplate(SuiteConstituent):
     def __init__(self, suite, name, attrs, parameters):
@@ -690,8 +701,13 @@ class Distribution(Dependency):
     def prePush(self, f):
         return f
 
-    def isUpToDate(self, minTime):
-        nyi('isUpToDate', self)
+    def needsUpdate(self, newestInput):
+        '''
+        Determines if this distribution needs updating taking into account the
+        'newestInput' TimeStampFile if 'newestInput' is not None. Returns the
+        reason this distribution needs updating or None if it doesn't need updating.
+        '''
+        nyi('needsUpdate', self)
 
 """
 A JARDistribution is a distribution for JavaProjects and Java libraries.
@@ -889,8 +905,13 @@ class JARDistribution(Distribution, ClasspathDependency):
     def localExtension(self):
         return 'jar'
 
-    def isUpToDate(self, minTime):
-        return not (_needsUpdate(minTime, self.path) or (self.sourcesPath and _needsUpdate(minTime, self.sourcesPath)))
+    def needsUpdate(self, newestInput):
+        res = _needsUpdate(newestInput, self.path)
+        if res:
+            return res
+        if self.sourcesPath:
+            return _needsUpdate(newestInput, self.sourcesPath)
+        return None
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -900,8 +921,9 @@ class ArchiveTask(BuildTask):
         sup = BuildTask.needsBuild(self, newestInput)
         if sup[0]:
             return sup
-        if not self.subject.isUpToDate(newestInput):
-            return (True, 'archive does not exist or out of date')
+        reason = self.subject.needsUpdate(newestInput)
+        if reason:
+            return (True, reason)
         return (False, None)
 
     def build(self):
@@ -998,8 +1020,8 @@ class NativeTARDistribution(Distribution):
             shutil.copyfileobj(tar, gz)
         return tgz
 
-    def isUpToDate(self, minTime):
-        return not _needsUpdate(minTime, self.path)
+    def needsUpdate(self, newestInput):
+        return _needsUpdate(newestInput, self.path)
 
 class TARArchiveTask(ArchiveTask):
     def newestOutput(self):
@@ -2700,12 +2722,9 @@ class BinaryVC(VC):
             repourl, snapshotVersion = f.read().split(',')
         return self.Metadata(suiteName, repourl, snapshotVersion)
 
-    def _metadataMTime(self, vcdir):
-        suiteName = basename(vcdir)
-        return _getSymlinkMTime(join(vcdir, _mx_binary_distribution_version(suiteName)))
-
     def getDistribution(self, vcdir, distribution):
-        if distribution.isUpToDate(self._metadataMTime(vcdir)):
+        suiteName = basename(vcdir)
+        if not distribution.needsUpdate(TimeStampFile(join(vcdir, _mx_binary_distribution_version(suiteName)), followSymlinks=False)):
             return
         metadata = self._readMetadata(vcdir)
         artifactId = _map_to_maven_dist_name(distribution.name)
@@ -2766,10 +2785,6 @@ class BinaryVC(VC):
     def _id(self, metadata):
         assert metadata.snapshotVersion.endswith('-SNAPSHOT')
         return metadata.snapshotVersion[:-len('-SNAPSHOT')]
-
-def _getSymlinkMTime(path):
-    """ Returns the modification time of a file without following symlinks. """
-    return os.lstat(path).st_mtime
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -6873,10 +6888,19 @@ def canonicalizeprojects(args):
     return len(nonCanonical)
 
 
+"""
+Represents a file and its modification time stamp at the time the TimeStampFile is created.
+"""
 class TimeStampFile:
-    def __init__(self, path):
+    def __init__(self, path, followSymlinks=True):
         self.path = path
-        self.timestamp = os.path.getmtime(path) if exists(path) else None
+        if exists(path):
+            if followSymlinks:
+                self.timestamp = os.path.getmtime(path)
+            else:
+                self.timestamp = os.lstat(path).st_mtime
+        else:
+            self.timestamp = None
 
     @staticmethod
     def newest(paths):
