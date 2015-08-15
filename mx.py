@@ -5080,7 +5080,7 @@ def sorted_dists():
         add_dist(d)
     return dists
 
-def extract_VM_args(args, useDoubleDash=False, allowClasspath=False):
+def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
     Partitions 'args' into a leading sequence of HotSpot VM options and the rest. If
     'useDoubleDash' then 'args' is partititioned by the first instance of "--". If
@@ -5103,7 +5103,11 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False):
                 vmArgs = args[:i]
                 remainder = args[i:]
                 return vmArgs, remainder
-    return args, []
+
+    if defaultAllVMArgs:
+        return args, []
+    else:
+        return [], args
 
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
