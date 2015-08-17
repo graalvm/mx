@@ -1981,7 +1981,7 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         return NoOpTask(self, args)
 
     def classpath_repr(self, resolve=True):
-        return None  # TODO should have a jdk arg and should fail if not available
+        return self.jar  # TODO should have a jdk arg and should fail if not available
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
@@ -10146,7 +10146,7 @@ def _remove_unsatisfied_deps():
     cannot be satisfied by the configured JDKs.
     Removed projects and libraries are also removed from
     distributions in they are listed as dependencies.'''
-    ommittedDeps = set()
+    omittedDeps = set()
     def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
@@ -10159,11 +10159,11 @@ def _remove_unsatisfied_deps():
                     dep.optional = True
                 if not path:
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
-                    ommittedDeps.add(dep)
+                    omittedDeps.add(dep)
         elif dep.isJavaProject():
             if get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), defaultJdk=True) is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
-                ommittedDeps.add(dep)
+                omittedDeps.add(dep)
             else:
                 for depDep in list(dep.deps):
                     if depDep.isJreLibrary() or depDep.isJdkLibrary():
@@ -10171,19 +10171,19 @@ def _remove_unsatisfied_deps():
                         if not lib.is_present_in_jdk(get_jdk(dep.javaCompliance)):
                             if depDep.optional:
                                 logv('[omitting project {} as dependency {} is missing]'.format(dep, lib))
-                                ommittedDeps.add(dep)
+                                omittedDeps.add(dep)
                             else:
                                 abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
         elif dep.isDistribution():
             dist = dep
             for distDep in list(dist.deps):
-                if distDep in ommittedDeps:
+                if distDep in omittedDeps:
                     logv('[omitting {0} from distribution {1}]'.format(distDep, dist))
                     dist.deps.remove(distDep)
 
     walk_deps(visit=visit)
 
-    for dep in ommittedDeps:
+    for dep in omittedDeps:
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
 
