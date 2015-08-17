@@ -1981,7 +1981,7 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         return NoOpTask(self, args)
 
     def classpath_repr(self, resolve=True):
-        return self.jar  # TODO should have a jdk arg and should fail if not available
+        return None # TODO should have a jdk arg and should fail if not available
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
