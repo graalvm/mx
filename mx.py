@@ -6010,6 +6010,7 @@ class JDKConfig:
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
                     warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
+            self._bootclasspath_unfiltered = self._bootclasspath
             self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
             self._extdirs = _filter_non_existant_paths(self._extdirs)
             self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
@@ -6046,9 +6047,9 @@ class JDKConfig:
     def processArgs(self, args):
         return self.java_args_pfx + self.java_args + self.java_args_sfx + args
 
-    def bootclasspath(self):
+    def bootclasspath(self, filtered=True):
         self._init_classpaths()
-        return _separatedCygpathU2W(self._bootclasspath)
+        return _separatedCygpathU2W(self._bootclasspath if filtered else self._bootclasspath_unfiltered)
 
     """
     Add javadoc style options for the library paths of this JDK.
@@ -10187,6 +10188,14 @@ def _remove_unsatisfied_deps():
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
 
+def _get_command_property(command, propertyName):
+    c = _commands[command]
+    if c and len(c) >= 4:
+        props = c[3]
+        if props and propertyName in props:
+            return props[propertyName]
+    return None
+
 def main():
     global _mx_suite
     _mx_suite = MXSuite()
@@ -10260,7 +10269,6 @@ def main():
             if primarySuiteMxDir != _mx_suite.mxDir:
                 _primary_suite._depth_first_post_init()
             _check_dependency_cycles()
-            _remove_unsatisfied_deps()
 
     if len(commandAndArgs) == 0:
         _argParser.print_help()
@@ -10279,6 +10287,11 @@ def main():
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
     c, _ = _commands[command][:2]
+
+    if primarySuiteMxDir and not vc_command:
+        if not _get_command_property(command, "keepUnsatisfiedDependencies"):
+            _remove_unsatisfied_deps()
+
     def term_handler(signum, frame):
         abort(1)
     if not is_jython():
