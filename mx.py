@@ -9355,10 +9355,10 @@ def stip(args):
 
     _stip(s, None)
 
-def findclass(args, logToConsole=True, matcher=lambda string, classname: string in classname):
+def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
     matches = []
-    for entry, filename in classpath_walk(includeBootClasspath=True):
+    for entry, filename in classpath_walk(includeBootClasspath=True, resolve=resolve):
         if filename.endswith('.class'):
             if isinstance(entry, zipfile.ZipFile):
                 classname = filename.replace('/', '.')
@@ -9526,15 +9526,21 @@ def exportlibs(args):
 def javap(args):
     """disassemble classes matching given pattern with javap"""
 
+    parser = ArgumentParser(prog='mx javap')
+    parser.add_argument('-r', '--resolve', action='store_true', help='perform eager resolution (e.g., download missing jars) of class search space')
+    parser.add_argument('classes', nargs=REMAINDER, metavar='<class name patterns...>')
+
+    args = parser.parse_args(args)
+
     javapExe = get_jdk().javap
     if not exists(javapExe):
-        abort('The javap executable does not exists: ' + javapExe)
+        abort('The javap executable does not exist: ' + javapExe)
     else:
-        candidates = findclass(args, logToConsole=False)
+        candidates = findclass(args.classes, resolve=args.resolve, logToConsole=False)
         if len(candidates) == 0:
             log('no matches')
         selection = select_items(candidates)
-        run([javapExe, '-private', '-verbose', '-classpath', classpath()] + selection)
+        run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve)] + selection)
 
 def show_projects(args):
     """show all projects"""
@@ -10024,7 +10030,7 @@ _commands = {
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
     'java': [run_java, ''],
-    'javap': [javap, '<class name patterns>'],
+    'javap': [javap, '[options] <class name patterns>'],
     'javadoc': [javadoc, '[options]'],
     'junit': [junit, '[options]'],
     'site': [site, '[options]'],
