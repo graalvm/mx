@@ -5136,9 +5136,15 @@ class ArgParser(ArgumentParser):
         self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
         self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
-        self.add_argument('--J', dest='java_args', help='Java VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-        self.add_argument('--Jp', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
-        self.add_argument('--Ja', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
+        jargs = self.add_mutually_exclusive_group()
+        jargs.add_argument('-J', dest='java_args', help='Java VM arguments (e.g. "-J-dsa")', metavar='<arg>')
+        jargs.add_argument('--J', dest='java_args_legacy', help='Java VM arguments (e.g. "--J @-dsa")', metavar='@<args>')
+        jpargs = self.add_mutually_exclusive_group()
+        jpargs.add_argument('-P', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. "-P-dsa")', metavar='<arg>', default=[])
+        jpargs.add_argument('--Jp', action='append', dest='java_args_pfx_legacy', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
+        jaargs = self.add_mutually_exclusive_group()
+        jaargs.add_argument('-A', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. "-A-dsa")', metavar='<arg>', default=[])
+        jaargs.add_argument('--Ja', action='append', dest='java_args_sfx_legacy', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
@@ -5188,6 +5194,13 @@ class ArgParser(ArgumentParser):
             # Give the timeout options a default value to avoid the need for hasattr() tests
             opts.__dict__.setdefault('timeout', 0)
             opts.__dict__.setdefault('ptimeout', 0)
+
+            if opts.java_args_legacy:
+                opts.java_args = opts.java_args_legacy.lstrip('@')
+            if opts.java_args_pfx_legacy:
+                opts.java_args_pfx = [s.lstrip('@') for s in opts.java_args_pfx_legacy]
+            if opts.java_args_sfx_legacy:
+                opts.java_args_sfx = [s.lstrip('@') for s in opts.java_args_sfx_legacy]
 
             if opts.very_verbose:
                 opts.verbose = True
@@ -5951,12 +5964,9 @@ class JDKConfig:
         if not exists(self.javac):
             raise JDKConfigException('Javac launcher does not exist: ' + self.java)
 
-        def delAtAndSplit(s):
-            return shlex.split(s.lstrip('@'))
-
-        self.java_args = delAtAndSplit(_opts.java_args) if _opts.java_args else []
-        self.java_args_pfx = sum(map(delAtAndSplit, _opts.java_args_pfx), [])
-        self.java_args_sfx = sum(map(delAtAndSplit, _opts.java_args_sfx), [])
+        self.java_args = shlex.split(_opts.java_args) if _opts.java_args else []
+        self.java_args_pfx = sum(map(shlex.split, _opts.java_args_pfx), [])
+        self.java_args_sfx = sum(map(shlex.split, _opts.java_args_sfx), [])
 
         # Prepend the -d64 VM option only if the java command supports it
         try:
