@@ -5374,7 +5374,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     environment variable, the --extra-java-homes option and the EXTRA_JAVA_HOMES
     enviroment variable in that order.
 
-    If that produce no valid JDK, then a set of candidate JDKs is built by searching
+    If that produces no valid JDK, then a set of candidate JDKs is built by searching
     the OS-specific locations in which JDKs are normally installed. These candidates
     are filtered by the 'versionCheck' predicate function. The predicate is described
     by the string in 'versionDescription' (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
@@ -5976,7 +5976,7 @@ class JDKConfig:
             try:
                 output = subprocess.check_output([self.java, '-version'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
-                raise JDKConfigException(e.returncode + " :" + e.output)
+                raise JDKConfigException('{}: {}'.format(e.returncode, e.output))
 
         def _checkOutput(out):
             return 'java version' in out
@@ -9933,7 +9933,7 @@ def ask_yes_no(question, default=None):
 
 def add_argument(*args, **kwargs):
     """
-    Define how a single command-line argument.
+    Defines a single command-line argument.
     """
     assert _argParser is not None
     _argParser.add_argument(*args, **kwargs)
