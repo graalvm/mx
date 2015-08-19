@@ -373,10 +373,11 @@ def jacocoreport(args):
     includes = list(_jacoco_includes)
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
-        if projsetting == 'include':
+        if projsetting == 'include' or projsetting == '':
             includes.append(p.name)
 
     includedirs = set()
+
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
         if projsetting == 'exclude':
