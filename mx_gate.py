@@ -343,8 +343,9 @@ def get_jacoco_agent_args():
             return [clazz for clazz in l if not any([clazz.startswith(package) for package in baseExcludes])]
         excludes = []
         for p in mx.projects():
-            excludes += _filter(p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True).keys())
-            excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeInnerClasses=True).keys())
+            if p.isJavaProject():
+                excludes += _filter(p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True).keys())
+                excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeInnerClasses=True).keys())
 
         excludes += [package + '.*' for package in baseExcludes]
         agentOptions = {
