@@ -5273,6 +5273,9 @@ def _getJDKFactory(tag, compliance):
     if tag not in _jdkFactories:
         return None
     complianceMap = _jdkFactories[tag]
+    if not compliance:
+        highestCompliance = sorted(complianceMap.iterkeys())[-1]
+        return complianceMap[highestCompliance]
     if compliance not in complianceMap:
         return None
     return complianceMap[compliance]
