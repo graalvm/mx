@@ -9918,11 +9918,12 @@ def maven_install(args):
             print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
 
 def show_envs(args):
-    '''
-    Show the (MX) environment variables, or all if '-all' is provide.
-    '''
+    '''print environment variables and their values
+
+    By default only variables starting with "MX" are shown.
+    The --all option forces all variables to be printed'''
     parser = ArgumentParser(prog='mx showenvs')
-    parser.add_argument('--all', action='store_true', help='show all')
+    parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
 
     for key, value in os.environ.iteritems():
