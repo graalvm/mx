@@ -6945,7 +6945,7 @@ def canonicalizeprojects(args):
                 candidates = set()
                 # Compute dependencies based on projects required by p
                 for d in dependencies():
-                    if d.isProject() and not d.defined_java_packages().isdisjoint(p.imported_java_packages()):
+                    if d.isJavaProject() and not d.defined_java_packages().isdisjoint(p.imported_java_packages()):
                         candidates.add(d)
                 # Remove non-canonical candidates
                 for c in list(candidates):
@@ -6953,7 +6953,7 @@ def canonicalizeprojects(args):
                 candidates = [d.name for d in candidates]
 
                 p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
-                    p, ', '.join(ignoredDeps), ','.join(candidates)))
+                    p, ', '.join([d.name for d in ignoredDeps]), ','.join(candidates)))
 
             excess = frozenset(p.deps) - set(p.canonical_deps())
             if len(excess) != 0:
