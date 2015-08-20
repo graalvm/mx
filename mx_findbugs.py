@@ -39,6 +39,15 @@ def defaultFindbugsArgs():
         args.append('-progress')
     return args
 
+def _should_test_project(p):
+    if not p.isJavaProject():
+        return False
+    if hasattr(p, 'findbugs'):
+        return p.findbugs.lower() == 'true'
+    if p.name.endswith('.test'):
+       return False
+    return True
+
 def findbugs(args, fbArgs=None, suite=None, projects=None):
     """run FindBugs against non-test Java projects"""
     findBugsHome = mx.get_env('FINDBUGS_HOME', None)
@@ -62,7 +71,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
                 shutil.rmtree(tmp)
         findbugsJar = join(findbugsLib, 'findbugs.jar')
     assert exists(findbugsJar)
-    nonTestProjects = [p for p in mx.projects() if not p.name.endswith('.test') and not p.name.endswith('.jtt') and p.isJavaProject()]
+    nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
     outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in nonTestProjects])
