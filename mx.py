@@ -5254,7 +5254,9 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
-
+'''
+A factory for creating JDKConfig objects.
+'''
 class JDKFactory(object):
     def getJDKConfig(self):
         nyi('getJDKConfig', self)
@@ -5324,8 +5326,19 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if tag and not defaultJdk:
         factory = _getJDKFactory(tag, opts_compliance)
         if not factory:
-            abort("No provider for '{}' JDK".format(tag))
-        return factory.getJDKConfig()
+            if len(_jdkFactories) == 0:
+                abort("No JDK providers available")
+            available = []
+            for t, m in _jdkFactories.iteritems():
+                for c in m:
+                    available.append('{}:{}'.format(t, c))
+            abort("No provider for '{}' JDK (available: {})".format(tag, ', '.join(available)))
+        jdk = factory.getJDKConfig()
+        if jdk.tag is not None:
+            assert jdk.tag == tag
+        else:
+            jdk.tag = tag
+        return jdk
 
     # interpret string and compliance as compliance check
     if isinstance(versionCheck, types.StringTypes):
@@ -5948,8 +5961,9 @@ class JDKConfigException(Exception):
 A JDKConfig object encapsulates info about an installed or deployed JDK.
 """
 class JDKConfig:
-    def __init__(self, home):
+    def __init__(self, home, tag=None):
         self.home = home
+        self.tag = tag
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
         self.java = exe_suffix(join(self.home, 'bin', 'java'))
         self.javac = exe_suffix(join(self.home, 'bin', 'javac'))
@@ -10032,7 +10046,7 @@ _commands = {
     'supdate': [supdate, ''],
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
-    'java': [run_java, ''],
+    'java': [run_java, '[-options] class [args...]'],
     'javap': [javap, '[options] <class name patterns>'],
     'javadoc': [javadoc, '[options]'],
     'junit': [junit, '[options]'],
