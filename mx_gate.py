@@ -388,7 +388,6 @@ def jacocoreport(args):
 
     for i in includedirs:
         bindir = i + '/bin'
-        if not os.path.exists(bindir):
-            os.makedirs(bindir)
+        mx.ensure_dir_exists(bindir)
 
     mx.run_java(['-jar', jacocoreport.get_path(True), '--in', 'jacoco.exec', '--out', out] + sorted(includedirs))

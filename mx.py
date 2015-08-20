@@ -979,8 +979,7 @@ class NativeTARDistribution(Distribution):
 
     def make_archive(self):
         directory = dirname(self.path)
-        if not exists(directory):
-            os.makedirs(directory)
+        ensure_dir_exists(directory)
         with Archiver(self.path, kind='tar') as arc:
             files = set()
             for d in self.archived_deps():
@@ -1594,8 +1593,7 @@ class JavaBuildTask(ProjectBuildTask):
             nonjavafilelist = nonjavafiletuple[1]
             for src in nonjavafilelist:
                 dst = join(outputDir, src[len(sourceDir) + 1:])
-                if not exists(dirname(dst)):
-                    os.makedirs(dirname(dst))
+                ensure_dir_exists(dirname(dst))
                 if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
                     shutil.copyfile(src, dst)
                     self._newestOutput = TimeStampFile(dst)
@@ -1861,8 +1859,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
     if not _check_file_with_sha1(path, sha1, sha1path, resolve and mustExist):
         cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
-        if not exists(cacheDir):
-            os.makedirs(cacheDir)
+        ensure_dir_exists(cacheDir)
         base = basename(path)
         cachePath = join(cacheDir, base + '_' + sha1)
 
@@ -1873,8 +1870,8 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             download(cachePath, urls)
 
         d = dirname(path)
-        if d != '' and not exists(d):
-            os.makedirs(d)
+        if d != '':
+            ensure_dir_exists(d)
         if canSymlink and 'symlink' in dir(os):
             logvv('Symlinking {} to {}'.format(path, cachePath))
             if exists(path):
@@ -3441,8 +3438,7 @@ class NestedImportsSuiteModel(SuiteModel):
         if basename(importer_dir) == basename(self._primaryDir):
             # primary is importer
             this_imported_suites_dirname = join(importer_dir, self._imported_suites_dirname())
-            if not exists(this_imported_suites_dirname):
-                os.makedirs(this_imported_suites_dirname)
+            ensure_dir_exists(this_imported_suites_dirname)
             path = join(this_imported_suites_dirname, suitename)
         else:
             path = join(dirname(importer_dir), suitename)
@@ -3779,8 +3775,7 @@ class Suite:
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
         '''
         dotMxDir = self.binary_imports_dir()
-        if not exists(dotMxDir):
-            os.makedirs(dotMxDir)
+        ensure_dir_exists(dotMxDir)
         return join(dotMxDir, name)
 
     def _find_binary_suite_dir(self, name):
@@ -6268,8 +6263,8 @@ def download(path, urls, verbose=False, abortOnError=True):
     The downloaded content is written to the file indicated by 'path'.
     """
     d = dirname(path)
-    if d != '' and not exists(d):
-        os.makedirs(d)
+    if d != '':
+        ensure_dir_exists(d)
 
     assert not path.endswith(os.sep)
 
@@ -6835,14 +6830,7 @@ class Archiver:
 
     def __enter__(self):
         if self.path:
-            if not isdir(dirname(self.path)):
-                try:
-                    os.makedirs(dirname(self.path))
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        # Ignore loosing the race
-                        pass
-                    raise e
+            ensure_dir_exists(dirname(self.path))
             fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=dirname(self.path))
             self.tmpFd = fd
             self.tmpPath = tmp
@@ -7060,8 +7048,7 @@ class TimeStampFile:
         if exists(self.path):
             os.utime(self.path, None)
         else:
-            if not isdir(dirname(self.path)):
-                os.makedirs(dirname(self.path))
+            ensure_dir_exists(dirname(self.path))
             file(self.path, 'a')
         self.timestamp = os.path.getmtime(self.path)
 
@@ -7382,8 +7369,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None):
             suitePrefix = suite.name + '-'
         name = suitePrefix + 'attach-' + hostname + '-' + port
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    if not exists(eclipseLaunches):
-        os.makedirs(eclipseLaunches)
+    ensure_dir_exists(eclipseLaunches)
     launchFile = join(eclipseLaunches, name + '.launch')
     return update_file(launchFile, launch), launchFile
 
@@ -7450,8 +7436,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    if not exists(eclipseLaunches):
-        os.makedirs(eclipseLaunches)
+    ensure_dir_exists(eclipseLaunches)
     return update_file(join(eclipseLaunches, name + '.launch'), launch)
 
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
@@ -7481,8 +7466,7 @@ def _check_ide_timestamp(suite, configZip, ide):
 def _eclipseinit_project(p, files=None, libFiles=None):
     assert get_jdk(p.javaCompliance)
 
-    if not exists(p.dir):
-        os.makedirs(p.dir)
+    ensure_dir_exists(p.dir)
 
     out = XMLDoc()
     out.open('classpath')
@@ -7717,8 +7701,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         projectDir = dist.get_ide_project_dir()
         if not projectDir:
             continue
-        if not exists(projectDir):
-            os.makedirs(projectDir)
+        ensure_dir_exists(projectDir)
         relevantResources = []
         for d in dist.archived_deps():
             if d.isProject():
@@ -7824,8 +7807,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
 
     launchOut.close('launchConfiguration')
 
-    if not exists(externalToolDir):
-        os.makedirs(externalToolDir)
+    ensure_dir_exists(externalToolDir)
     update_file(join(externalToolDir, name + '.launch'), launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
 
     dotProjectDoc.open('buildCommand')
@@ -8018,8 +8000,7 @@ def netbeansinit(args, refreshOnly=False, buildProcessorJars=True):
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
 def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
-    if not exists(join(p.dir, 'nbproject')):
-        os.makedirs(join(p.dir, 'nbproject'))
+    ensure_dir_exists(join(p.dir, 'nbproject'))
 
     jdk = get_jdk(p.javaCompliance)
     assert jdk
@@ -8174,8 +8155,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
         genSrcDir = p.source_gen_dir()
-        if not exists(genSrcDir):
-            os.makedirs(genSrcDir)
+        ensure_dir_exists(genSrcDir)
         annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
 
     content = """
@@ -8400,8 +8380,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         assert get_jdk(p.javaCompliance)
 
-        if not exists(p.dir):
-            os.makedirs(p.dir)
+        ensure_dir_exists(p.dir)
 
         annotationProcessorProfileKey = tuple(p.annotation_processors())
 
@@ -9916,6 +9895,22 @@ def maven_install(args):
         print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
         for dist in arcdists:
             print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
+
+def ensure_dir_exists(path, mode=None):
+    """
+    Ensures all directories on 'path' exists, creating them first if necessary with os.makedirs().
+    """
+    if not isdir(path):
+        try:
+            if mode:
+                os.makedirs(path, mode=mode)
+            else:
+                os.makedirs(path)
+        except OSError as e:
+            if e.errno == errno.EEXIST and isdir(path):
+                # be happy if another thread already created the path
+                pass
+            raise e
 
 def show_envs(args):
     '''print environment variables and their values
