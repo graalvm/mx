@@ -45,7 +45,7 @@ def _should_test_project(p):
     if hasattr(p, 'findbugs'):
         return p.findbugs.lower() == 'true'
     if p.name.endswith('.test'):
-       return False
+        return False
     return True
 
 def findbugs(args, fbArgs=None, suite=None, projects=None):
