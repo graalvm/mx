@@ -6836,7 +6836,13 @@ class Archiver:
     def __enter__(self):
         if self.path:
             if not isdir(dirname(self.path)):
-                os.makedirs(dirname(self.path))
+                try:
+                    os.makedirs(dirname(self.path))
+                except OSError as e:
+                    if e.errno == errno.EEXIST:
+                        # Ignore loosing the race
+                        pass
+                    raise e
             fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=dirname(self.path))
             self.tmpFd = fd
             self.tmpPath = tmp
