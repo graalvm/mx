@@ -3825,6 +3825,9 @@ class Suite:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
                 self.suite_imports.append(SuiteImport.parse_specification(entry, context=self))
+        if self.primary and _opts.dynamic_imports:
+            for name in _opts.dynamic_imports:
+                self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None))
 
     def re_init_imports(self):
         '''
@@ -4005,21 +4008,22 @@ class Suite:
                     abort("import cycle on suite '{0}' detected in suite '{1}'".format(s.name, importing_suite.name))
                 if not extra_args.has_key('noLoad'):
                     # check that all other importers use the same version
-                    for imps in s.imported_by:
-                        for imp in imps.suite_imports:
-                            if imp.name == s.name:
-                                if imp.version != suite_import.version:
+                    for otherImporter in s.imported_by:
+                        for imported in otherImporter.suite_imports:
+                            if imported.name == s.name:
+                                if imported.version != suite_import.version:
                                     if _opts.version_conflict_resolution == 'none':
-                                        abort("mismatched import versions on '{0}' in '{1}' and '{2}'".format(s.name, importing_suite.name, imps.name))
-                                    elif _opts.version_conflict_resolution == 'latest':
+                                        abort("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
+                                    elif _opts.version_conflict_resolution == 'ignore':
+                                        warn("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
+                                    else:
+                                        assert _opts.version_conflict_resolution == 'latest'
                                         if not isinstance(s, SourceSuite):
-                                            abort("mismatched import versions on '{0}' in '{1}' and '{2}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, imps.name))
+                                            abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, otherImporter.name))
                                         s.vc.pull(s.dir, rev=suite_import.version, update=False)
                                         resolved = s.vc.latest(s.dir, suite_import.version, s.vc.parent(s.dir))
                                         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
                                         s.vc.update(s.dir, rev=resolved)
-                                    else:
-                                        abort('Should not reach here: unimplemented version-conflict-resolution: ' + _opts.version_conflict_resolution)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -5147,15 +5151,16 @@ class ArgParser(ArgumentParser):
         self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects with an explicit compliance will only be built if a JDK exactly matching the compliance is available', default=False)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
-        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', default=[])
+        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', metavar='<name>', default=[])
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
+        self.add_argument('--dynamicimport', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
-        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest'])
+        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest', 'ignore'])
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
