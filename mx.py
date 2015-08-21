@@ -6926,6 +6926,8 @@ def canonicalizeprojects(args):
     nonCanonical = []
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
+            if p.name.endswith('.test'):
+                continue
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
                     if not pkg.startswith(p.name):
@@ -8063,7 +8065,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'unittest'})
-    out.element('arg', {'value' : p.name})
+    out.element('arg', {'value' : '${test.class}'})
     out.close('exec')
     out.close('target')
     out.element('target', {'name' : 'debug-test', 'depends' : 'debug'})
