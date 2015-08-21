@@ -2657,7 +2657,7 @@ class HgConfig(VC):
         self.check_for_hg()
         try:
             revs = [rev1, rev2]
-            revsetIntersectAncestors = ' and '.join(('ancestors({})'.format(rev) for rev in revs))
+            revsetIntersectAncestors = ' or '.join(('ancestors({})'.format(rev) for rev in revs))
             revset = 'heads({})'.format(revsetIntersectAncestors)
             out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
             parents = out.rstrip('\n').split('\n')
