@@ -5148,7 +5148,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
-        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='Projects with an explicit compliance will only be built if a JDK exactly matching the compliance is available', default=False)
+        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='observe Java compliance for projects that set it explicitly', default=False)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', metavar='<name>', default=[])
@@ -7500,7 +7500,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             files.append(genDir)
 
     # Every Java program depends on a JRE
-    out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(p.javaCompliance)})
+    jdk = get_jdk(p.javaCompliance)
+    out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(jdk.javaCompliance)})
 
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
@@ -8208,8 +8209,8 @@ java.main.action=test
 # Space-separated list of extra javac options
 javac.compilerargs=-XDignore.symbol.file
 javac.deprecation=false
-javac.source=""" + str(p.javaCompliance) + """
-javac.target=""" + str(p.javaCompliance) + """
+javac.source=""" + str(jdk.javaCompliance) + """
+javac.target=""" + str(jdk.javaCompliance) + """
 javac.test.classpath=\\
 ${javac.classpath}:\\
 ${build.classes.dir}
@@ -8394,7 +8395,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if not p.isJavaProject():
             continue
 
-        assert get_jdk(p.javaCompliance)
+        jdk = get_jdk(p.javaCompliance)
+        assert jdk
 
         ensure_dir_exists(p.dir)
 
@@ -8405,7 +8407,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         else:
             annotationProcessorProfiles[annotationProcessorProfileKey].append(p)
 
-        intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
+        intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
 
         moduleXml = XMLDoc()
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
@@ -8431,7 +8433,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             _intellij_exclude_if_exists(moduleXml, p, name)
         moduleXml.close('content')
 
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(p.javaCompliance)})
+        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
         def processDep(dep, edge):
@@ -8528,7 +8530,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Wite misc.xml for global JDK config
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version': '4'})
-    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(get_jdk().javaCompliance), 'project-jdk-name': str(get_jdk().javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
@@ -8704,7 +8706,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     if not args.unified:
         for p in projects:
             pkgs = find_packages(p.source_dirs(), set(), args.implementation)
-            links = ['-link', 'http://docs.oracle.com/javase/' + str(p.javaCompliance.value) + '/docs/api/']
+            jdk = get_jdk(p.javaCompliance)
+            links = ['-link', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/']
             out = outDir(p)
             def visit(dep, edge):
                 if dep.isProject():
@@ -8730,13 +8733,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 windowTitle = ['-windowtitle', p.name + ' javadoc']
             try:
                 log('Generating {2} for {0} in {1}'.format(p.name, out, docDir))
-                projectJava = get_jdk(p.javaCompliance)
 
                 # Once https://bugs.openjdk.java.net/browse/JDK-8041628 is fixed,
                 # this should be reverted to:
                 # javadocExe = get_jdk().javadoc
                 # we can then also respect _opts.relatex_compliance
-                javadocExe = projectJava.javadoc
+                javadocExe = jdk.javadoc
 
                 run([javadocExe, memory,
                      '-XDignore.symbol.file',
@@ -8745,9 +8747,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-d', out,
                      '-overview', overviewFile,
                      '-sourcepath', sp,
-                     '-source', str(projectJava.javaCompliance)] +
-                     projectJava.javadocLibOptions([]) +
-                     ([] if projectJava.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+                     '-source', str(jdk.javaCompliance)] +
+                     jdk.javadocLibOptions([]) +
+                     ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
                      links +
                      extraArgs +
                      nowarnAPI +
@@ -8759,6 +8761,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     os.remove(overviewFile)
 
     else:
+        jdk = get_jdk()
         pkgs = set()
         sproots = []
         names = []
@@ -8767,7 +8770,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             sproots += p.source_dirs()
             names.append(p.name)
 
-        links = ['-link', 'http://docs.oracle.com/javase/' + str(get_jdk().javaCompliance.value) + '/docs/api/']
+        links = ['-link', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/']
         overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
@@ -8809,7 +8812,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-quiet',
              '-d', out,
              '-sourcepath', sp] +
-             ([] if get_jdk().javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+             ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
              links +
@@ -9823,8 +9826,9 @@ def junit(args, harness=_basic_junit_harness, parser=None):
         os.close(_)
 
     candidates = []
+    jdk = get_jdk()
     for p in projects_opt_limit_to_suites():
-        if not p.isJavaProject() or get_jdk().javaCompliance < p.javaCompliance:
+        if not p.isJavaProject() or jdk.javaCompliance < p.javaCompliance:
             continue
         candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
 
@@ -9842,7 +9846,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t + '"')
 
-    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= get_jdk().javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
@@ -10213,14 +10217,15 @@ def _remove_unsatisfied_deps():
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     omittedDeps.add(dep)
         elif dep.isJavaProject():
-            if get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), defaultJdk=True) is None:
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), defaultJdk=True)
+            if depJdk is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 omittedDeps.add(dep)
             else:
                 for depDep in list(dep.deps):
                     if depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
-                        if not lib.is_present_in_jdk(get_jdk(dep.javaCompliance)):
+                        if not lib.is_present_in_jdk(depJdk):
                             if depDep.optional:
                                 logv('[omitting project {} as dependency {} is missing]'.format(dep, lib))
                                 omittedDeps.add(dep)
