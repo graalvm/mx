@@ -802,7 +802,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
-                    if dep.theLicense != self.theLicense:
+                    if self.theLicense is not None and dep.theLicense != self.theLicense:
                         if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
                             report = abort
                         else:
