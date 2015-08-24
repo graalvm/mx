@@ -2065,7 +2065,7 @@ class Library(BaseLibrary, ClasspathDependency):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
         def _checkSha1PropertyCondition(propName, cond, inputPath):
-            if not cond:
+            if not cond and not optional:
                 absInputPath = _make_absolute(inputPath, self.suite.dir)
                 if exists(absInputPath):
                     abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
@@ -3932,8 +3932,7 @@ class Suite:
             os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             deps += os_arch_deps
-            # Add support for optional external libraries if we have a good use case
-            optional = False
+            optional = attrs.pop('optional', False)
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
             l.__dict__.update(attrs)
             self.libs.append(l)
