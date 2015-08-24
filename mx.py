@@ -1857,6 +1857,9 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     '''
     sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
+    if len(urls) is 0:
+        return path
+
     if not _check_file_with_sha1(path, sha1, sha1path, resolve and mustExist):
         cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
         ensure_dir_exists(cacheDir)
