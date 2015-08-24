@@ -3543,6 +3543,7 @@ class Suite:
         self.distTemplates = []
         self.licenseDefs = []
         self.repositoryDefs = []
+        self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         _suites[self.name] = self
 
     def __str__(self):
@@ -3617,7 +3618,7 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories']
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'versionConflictResolution', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories']
 
         if d.has_key('mxversion'):
             try:
@@ -3632,6 +3633,10 @@ class Suite:
             abort("The {} suite requires mx version {} while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
+
+        conflictResolution = d.get('versionConflictResolution')
+        if conflictResolution:
+            self.versionConflictResolution = conflictResolution
 
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
@@ -4011,12 +4016,16 @@ class Suite:
                         for imported in otherImporter.suite_imports:
                             if imported.name == s.name:
                                 if imported.version != suite_import.version:
-                                    if _opts.version_conflict_resolution == 'none':
+                                    conflict_resolution = _opts.version_conflict_resolution
+                                    if conflict_resolution == 'suite':
+                                        conflict_resolution = importing_suite.versionConflictResolution
+
+                                    if conflict_resolution == 'none':
                                         abort("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
-                                    elif _opts.version_conflict_resolution == 'ignore':
+                                    elif conflict_resolution == 'ignore':
                                         warn("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
                                     else:
-                                        assert _opts.version_conflict_resolution == 'latest'
+                                        assert conflict_resolution == 'latest'
                                         if not isinstance(s, SourceSuite):
                                             abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, otherImporter.name))
                                         s.vc.pull(s.dir, rev=suite_import.version, update=False)
@@ -5159,7 +5168,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
-        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='none', choices=['none', 'latest', 'ignore'])
+        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
