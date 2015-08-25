@@ -2432,9 +2432,10 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
-    def hg_command(self, vcdir, args, abortOnError=False):
+    def hg_command(self, vcdir, args, abortOnError=False, quiet=False):
         args = ['hg', '-R', vcdir] + args
-        print '{0}'.format(" ".join(args))
+        if not quiet:
+            print '{0}'.format(" ".join(args))
         out = OutputCapture()
         rc = self.run(args, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
@@ -9964,13 +9965,30 @@ def show_envs(args):
 
     By default only variables starting with "MX" are shown.
     The --all option forces all variables to be printed'''
-    parser = ArgumentParser(prog='mx showenvs')
+    parser = ArgumentParser(prog='mx envs')
     parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
 
     for key, value in os.environ.iteritems():
         if args.all or key.startswith('MX'):
             print '{0}: {1}'.format(key, value)
+
+def show_version(args):
+    '''print mx version'''
+    print version
+    vc = VC.get_vc(_mx_home, abortOnError=False)
+    if isinstance(vc, HgConfig):
+        out = vc.hg_command(_mx_home, ['id', '-i'], quiet=True, abortOnError=False)
+        if out:
+            print 'hg:', out
+
+def update(args):
+    '''update mx to the latest version'''
+    vc = VC.get_vc(_mx_home, abortOnError=False)
+    if isinstance(vc, HgConfig):
+        print vc.hg_command(_mx_home, ['pull', '-u'])
+    else:
+        print 'Cannot update mx as hg is unavailable'
 
 def remove_doubledash(args):
     if '--' in args:
@@ -10103,6 +10121,8 @@ _commands = {
     'netbeansinit': [netbeansinit, ''],
     'suites': [show_suites, ''],
     'envs': [show_envs, '[options]'],
+    'version': [show_version, ''],
+    'update': [update, ''],
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
     'test': [test, '[options]'],
