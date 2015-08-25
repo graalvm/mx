@@ -9917,7 +9917,7 @@ def maven_install(args):
     _mvn.check()
     s = _primary_suite
     nolocalchanges = args.no_checks or s.vc.can_push(s.dir, strict=False)
-    version = s.vc.tip(s.dir)
+    version = s.vc.parent(s.dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
     for dist in s.dists:
