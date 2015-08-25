@@ -25,6 +25,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+from os import getenv
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
@@ -3139,7 +3140,7 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
     groupId = _mavenGroupId(suite)
     artifactId = name
 
-    cmd = ['mvn', '--batch-mode']
+    cmd = ['--batch-mode']
 
     if not _opts.verbose:
         cmd.append('--quiet')
@@ -3174,7 +3175,7 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
     if dryRun:
         log(' '.join((pipes.quote(t) for t in cmd)))
     else:
-        run(cmd)
+        run_maven(cmd)
 
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository.
@@ -3325,7 +3326,7 @@ class MavenConfig:
     def check(self, abortOnError=True):
         if self.has_maven is None:
             try:
-                subprocess.check_output(['mvn', '--version'])
+                run_maven(['--version'])
                 self.has_maven = True
             except OSError:
                 self.has_maven = False
@@ -5717,6 +5718,21 @@ def waitOn(p):
     else:
         retcode = p.wait()
     return retcode
+
+def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
+    mavenCommand = 'mvn'
+    mavenHome = getenv('MAVEN_HOME')
+    if mavenHome:
+        mavenCommand = join(mavenHome, 'bin', mavenCommand)
+    return run([mavenCommand] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
+
+def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
+    commands = ['python', join(_mx_home, 'mx.py')]
+    cwd = None
+    if suite:
+        commands += ['-p', suite.dir]
+        cwd = suite.dir
+    return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
     """
@@ -9884,7 +9900,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
 def mvn_local_install(suite_name, dist_name, path, version):
     if not exists(path):
         abort('File ' + path + ' does not exists')
-    run(['mvn', 'install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
+    run_maven(['install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
 
 def maven_install(args):
