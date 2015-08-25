@@ -5728,7 +5728,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     return run([mavenCommand] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
-    commands = ['python', join(_mx_home, 'mx.py')]
+    commands = [sys.executable, join(_mx_home, 'mx.py')]
     cwd = None
     if suite:
         commands += ['-p', suite.dir]
@@ -6870,7 +6870,7 @@ class Archiver:
             if self.kind == 'zip':
                 self.zf = zipfile.ZipFile(tmp, 'w')
             elif self.kind == 'tar':
-                self.zf = tarfile.open(tmp, 'w')
+                self.zf = tarfile.open(tmp, 'w:gz')
             else:
                 abort('unsupported archive kind: ' + self.kind)
         else:
