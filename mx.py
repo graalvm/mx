@@ -10192,7 +10192,7 @@ def _needs_primary_suite_check():
 def _check_vc_command():
     '''check for a vc command after the initial parse'''
     for command in _argParser.initialCommandAndArgs:
-        if not command.startswith('-'):
+        if command and not command.startswith('-'):
             hits = [c for c in _vc_commands if c.startswith(command)]
             if len(hits) > 0:
                 return True
