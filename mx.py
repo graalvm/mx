@@ -56,7 +56,7 @@ import difflib
 import glob
 import urllib2, urlparse
 from collections import Callable
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
@@ -5186,7 +5186,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
-        self.add_argument('--jdk', action='store', help='JDK to use to run java', metavar='<tag:compliance>')
+        self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
@@ -5293,6 +5293,7 @@ class JDKFactory(object):
 
 
 def addJDKFactory(tag, compliance, factory):
+    assert tag != 'default'
     complianceMap = _jdkFactories.setdefault(tag, {})
     assert compliance not in complianceMap
     complianceMap[compliance] = factory
@@ -5309,7 +5310,16 @@ def _getJDKFactory(tag, compliance):
         return None
     return complianceMap[compliance]
 
-def _get_jdk_tag_compliance():
+'''
+A namedtuple for the result of get_jdk_option().
+'''
+TagCompliance = namedtuple('TagCompliance', ['tag', 'compliance'])
+
+def get_jdk_option():
+    '''
+    Gets the tag and compliance (as a TagCompliance object) derived from the --jdk option.
+    If the --jdk option was not specified, both fields of the returned tuple are None.
+    '''
     option = _opts.jdk
     if not option:
         jdktag = None
@@ -5328,27 +5338,34 @@ def _get_jdk_tag_compliance():
                 jdktag = None
                 jdkCompliance = None
         else:
-            if len(tag_compliance) != 2:
-                abort('Could not parse --jdk argument (should be of the form "[tag:]compliance")')
+            if len(tag_compliance) != 2 or not tag_compliance[0] or not tag_compliance[1]:
+                abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")'.format(option))
             jdktag = tag_compliance[0]
-            jdkCompliance = JavaCompliance(tag_compliance[1])
-    return (jdktag, jdkCompliance)
-
+            try:
+                jdkCompliance = JavaCompliance(tag_compliance[1])
+            except AssertionError as e:
+                abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
+    return TagCompliance(jdktag, jdkCompliance)
 
 _canceled_java_requests = set()
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, defaultJdk=None, tag=None):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag='default', **kwargs):
     """
-    Get a JDKConfig object containing Java commands launch details.
+    Get a JDKConfig object matching the provided criteria.
     """
-    opts_tag, opts_compliance = _get_jdk_tag_compliance()
+    opts_tag, opts_compliance = get_jdk_option()
     if versionCheck is None and opts_compliance:
         versionCheck, versionDescription = _convert_compliance_to_version_check(opts_compliance)
+
     if tag is None and opts_tag:
         tag = opts_tag
 
-    if defaultJdk is None:
-        defaultJdk = versionCheck is None and not purpose and tag is None
+    defaultJdk = tag == 'default' or (not tag and versionCheck is None and not purpose)
+
+    # Backwards compatibility support
+    if kwargs:
+        assert len(kwargs) == 1 and 'defaultJdk' in kwargs, 'unsupported arguments: ' + str(kwargs)
+        defaultJdk = kwargs['defaultJdk']
 
     if tag and not defaultJdk:
         factory = _getJDKFactory(tag, opts_compliance)
@@ -5661,10 +5678,38 @@ def find_classpath_arg(vmArgs):
         if vmArgs[index] in ['-cp', '-classpath']:
             return index + 1, vmArgs[index + 1]
 
-def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, addDefaultArgs=True, jdkConfig=None):
-    if not jdkConfig:
-        jdkConfig = get_jdk()
-    return run(jdkConfig.format_cmd(args, addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
+_java_command_default_jdk_tag = None
+
+def set_java_command_default_jdk_tag(tag):
+    global _java_command_default_jdk_tag
+    assert _java_command_default_jdk_tag is None, 'TODO: need policy for multiple attempts to set the default JDK for the "java" command'
+    _java_command_default_jdk_tag = tag
+
+def java_command(args):
+    """run the java executable in the selected JDK
+
+    The JDK is selected by consulting the --jdk option, the --java-home option,
+    the JAVA_HOME environment variable, the --extra-java-homes option and the
+    EXTRA_JAVA_HOMES enviroment variable in that order.
+    """
+
+    # Precedence for JDK to use:
+    # 1. --jdk option value
+    # 2. JDK specified by set_java_command_default_jdk_tag
+    # 3. JDK selected by 'default' tag
+    jdk = get_jdk(tag=get_jdk_option().tag or _java_command_default_jdk_tag or 'default')
+    run_java(args, jdk=jdk)
+
+def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+    """
+    Runs a Java program by executing the java executable in a JDK.
+
+    If 'jdk' is None, the default JDK is used (i.e., the JDK corresponding to
+    the 'default' tag).
+    """
+    if jdk is None:
+        jdk = get_jdk()
+    return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
 
 def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
@@ -6107,14 +6152,18 @@ class JDKConfig:
             return cmp(self.home, other.home)
         raise TypeError()
 
-    def format_cmd(self, args, addDefaultArgs):
+    def processArgs(self, args, addDefaultArgs=True):
+        '''
+        Return a list composed of the arguments specified by the -P, -J and -A options (in that order)
+        prepended to 'args' if 'addDefaultArgs' is true otherwise just return 'args'.
+        '''
         if addDefaultArgs:
-            return [self.java] + self.processArgs(args)
-        else:
-            return [self.java] + args
+            return self.java_args_pfx + self.java_args + self.java_args_sfx + args
+        return args
 
-    def processArgs(self, args):
-        return self.java_args_pfx + self.java_args + self.java_args_sfx + args
+    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
+        cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
 
     def bootclasspath(self, filtered=True):
         self._init_classpaths()
@@ -6199,6 +6248,12 @@ def log(msg=None):
         print msg
 
 def expand_project_in_class_path_arg(cpArg):
+    '''
+    Replaces each "@" prefixed element in the class path 'cpArg' with
+    the class path for the dependency named by the element without the "@" prefix.
+    '''
+    if '@' not in cpArg:
+        return cpArg
     cp = []
     for part in cpArg.split(os.pathsep):
         if part.startswith('@'):
@@ -6207,13 +6262,21 @@ def expand_project_in_class_path_arg(cpArg):
             cp.append(part)
     return os.pathsep.join(cp)
 
-def expand_project_in_args(args):
+def expand_project_in_args(args, insitu=True):
+    '''
+    Looks for the first -cp or -classpath argument in 'args' and
+    calls expand_project_in_class_path_arg on it. If 'insitu' is true,
+    then 'args' is updated in place otherwise a copy of 'args' is modified.
+    The updated object is returned.
+    '''
     for i in range(len(args)):
         if args[i] == '-cp' or args[i] == '-classpath':
             if i + 1 < len(args):
+                if not insitu:
+                    args = list(args) # clone args
                 args[i + 1] = expand_project_in_class_path_arg(args[i + 1])
-            return
-
+            break
+    return args
 
 def gmake_cmd():
     for a in ['make', 'gmake', 'gnumake']:
@@ -10285,7 +10348,7 @@ def _remove_unsatisfied_deps():
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     omittedDeps.add(dep)
         elif dep.isJavaProject():
-            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), defaultJdk=True)
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag='default')
             if depJdk is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 omittedDeps.add(dep)
