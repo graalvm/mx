@@ -4563,6 +4563,20 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
+'''
+A simple timing facility.
+'''
+class Timer():
+    def __init__(self, name):
+        self.name = name
+    def __enter__(self):
+        self.start = time.time()
+        return self
+    def __exit__(self, t, value, traceback):
+        elapsed = time.time() - self.start
+        print '{} took {} seconds'.format(self.name, elapsed)
+        return None
+
 def _bench_test_common(args, parser, suppliedParser):
     parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
     mx_gate.add_omit_clean_args(parser)
@@ -9984,9 +9998,16 @@ def show_version(args):
 
 def update(args):
     '''update mx to the latest version'''
+    parser = ArgumentParser(prog='mx update')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='show incoming changes without applying them')
+    args = parser.parse_args(args)
+
     vc = VC.get_vc(_mx_home, abortOnError=False)
     if isinstance(vc, HgConfig):
-        print vc.hg_command(_mx_home, ['pull', '-u'])
+        if args.dry_run:
+            print vc.hg_command(_mx_home, ['incoming'])
+        else:
+            print vc.hg_command(_mx_home, ['pull', '-u'])
     else:
         print 'Cannot update mx as hg is unavailable'
 
