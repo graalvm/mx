@@ -8278,6 +8278,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
         annotationProcessorEnabled = "true"
         genSrcDir = p.source_gen_dir()
         ensure_dir_exists(genSrcDir)
+        genSrcDir = genSrcDir.replace('\\', '\\\\')
         annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
 
     content = """
