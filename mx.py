@@ -988,8 +988,7 @@ class NativeTARDistribution(Distribution):
                     abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
                 for r in d.getResults():
                     filename = basename(r)
-                    if filename in files:
-                        abort('')
+                    assert filename not in files, filename
                     files.add(filename)
                     arc.zf.add(r, arcname=filename)
         self.notify_updated()
@@ -6947,6 +6946,8 @@ class Archiver:
             if self.kind == 'zip':
                 self.zf = zipfile.ZipFile(tmp, 'w')
             elif self.kind == 'tar':
+                self.zf = tarfile.open(tmp, 'w')
+            elif self.kind == 'tgz':
                 self.zf = tarfile.open(tmp, 'w:gz')
             else:
                 abort('unsupported archive kind: ' + self.kind)
