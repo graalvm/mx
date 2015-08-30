@@ -1064,11 +1064,8 @@ class Project(Dependency):
         self.dir = d
 
         # Create directories for projects that don't yet exist
-        if not exists(d):
-            os.makedirs(d)
-        for s in self.source_dirs():
-            if not exists(s):
-                os.makedirs(s)
+        ensure_dir_exists(d)
+        map(ensure_dir_exists, self.source_dirs())
 
     def resolveDeps(self):
         '''
