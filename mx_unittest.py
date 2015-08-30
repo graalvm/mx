@@ -64,7 +64,8 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     classes = []
     if len(tests) == 0:
         classes = candidates.keys()
-        projectsCp = mx.classpath([pcp.name for pcp in mx.projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= mx.get_jdk().javaCompliance])
+        jdk = mx.get_jdk()
+        projectsCp = mx.classpath([pcp.name for pcp in mx.projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
     else:
         projs = set()
         found = False
