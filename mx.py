@@ -1049,7 +1049,7 @@ class TARArchiveTask(ArchiveTask):
 A Project is a collection of source code that is built by mx. For historical reasons
 it typically corresponds to an IDE project and the IDE support in mx assumes this.
 Additional attributes:
-  suite: definiing Suite
+  suite: defining Suite
   name:  unique name (assumed as directory name)
   srcDirs: subdirectories of name containing sources to build
   deps: list of dependencies, Project, Library or Distribution
@@ -1065,10 +1065,10 @@ class Project(Dependency):
 
         # Create directories for projects that don't yet exist
         if not exists(d):
-            os.mkdir(d)
+            os.makedirs(d)
         for s in self.source_dirs():
             if not exists(s):
-                os.mkdir(s)
+                os.makedirs(s)
 
     def resolveDeps(self):
         '''
@@ -8279,6 +8279,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None):
         annotationProcessorEnabled = "true"
         genSrcDir = p.source_gen_dir()
         ensure_dir_exists(genSrcDir)
+        genSrcDir = genSrcDir.replace('\\', '\\\\')
         annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
 
     content = """
