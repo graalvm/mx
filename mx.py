@@ -5314,37 +5314,53 @@ A namedtuple for the result of get_jdk_option().
 '''
 TagCompliance = namedtuple('TagCompliance', ['tag', 'compliance'])
 
+_jdk_option = None
 def get_jdk_option():
     '''
     Gets the tag and compliance (as a TagCompliance object) derived from the --jdk option.
     If the --jdk option was not specified, both fields of the returned tuple are None.
     '''
-    option = _opts.jdk
-    if not option:
-        jdktag = None
-        jdkCompliance = None
-    else:
-        tag_compliance = option.split(':')
-        if len(tag_compliance) == 1:
-            if len(tag_compliance[0]) > 0:
-                if tag_compliance[0][0].isdigit():
-                    jdktag = None
-                    jdkCompliance = JavaCompliance(tag_compliance[0])
+    global _jdk_option
+    if _jdk_option is None:
+        option = _opts.jdk
+        if not option:
+            jdktag = None
+            jdkCompliance = None
+        else:
+            tag_compliance = option.split(':')
+            if len(tag_compliance) == 1:
+                if len(tag_compliance[0]) > 0:
+                    if tag_compliance[0][0].isdigit():
+                        jdktag = None
+                        jdkCompliance = JavaCompliance(tag_compliance[0])
+                    else:
+                        jdktag = tag_compliance[0]
+                        jdkCompliance = None
                 else:
-                    jdktag = tag_compliance[0]
+                    jdktag = None
                     jdkCompliance = None
             else:
-                jdktag = None
-                jdkCompliance = None
-        else:
-            if len(tag_compliance) != 2 or not tag_compliance[0] or not tag_compliance[1]:
-                abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")'.format(option))
-            jdktag = tag_compliance[0]
-            try:
-                jdkCompliance = JavaCompliance(tag_compliance[1])
-            except AssertionError as e:
-                abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
-    return TagCompliance(jdktag, jdkCompliance)
+                if len(tag_compliance) != 2 or not tag_compliance[0] or not tag_compliance[1]:
+                    abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")'.format(option))
+                jdktag = tag_compliance[0]
+                try:
+                    jdkCompliance = JavaCompliance(tag_compliance[1])
+                except AssertionError as e:
+                    abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
+
+        if jdktag and jdktag != 'default':
+            factory = _getJDKFactory(jdktag, jdkCompliance)
+            if not factory:
+                if len(_jdkFactories) == 0:
+                    abort("No JDK providers available")
+                available = []
+                for t, m in _jdkFactories.iteritems():
+                    for c in m:
+                        available.append('{}:{}'.format(t, c))
+                abort("No provider for '{}' JDK (available: {})".format(jdktag, ', '.join(available)))
+
+        _jdk_option = TagCompliance(jdktag, jdkCompliance)
+    return _jdk_option
 
 _canceled_java_requests = set()
 
@@ -5352,12 +5368,12 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     """
     Get a JDKConfig object matching the provided criteria.
     """
-    opts_tag, opts_compliance = get_jdk_option()
-    if versionCheck is None and opts_compliance:
-        versionCheck, versionDescription = _convert_compliance_to_version_check(opts_compliance)
+    jdkOpt = get_jdk_option()
+    if versionCheck is None and jdkOpt.compliance:
+        versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
 
-    if tag is None and opts_tag:
-        tag = opts_tag
+    if tag is None and jdkOpt.tag:
+        tag = jdkOpt.tag
 
     defaultJdk = tag == 'default' or (not tag and versionCheck is None and not purpose)
 
@@ -5367,15 +5383,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         defaultJdk = kwargs['defaultJdk']
 
     if tag and not defaultJdk:
-        factory = _getJDKFactory(tag, opts_compliance)
-        if not factory:
-            if len(_jdkFactories) == 0:
-                abort("No JDK providers available")
-            available = []
-            for t, m in _jdkFactories.iteritems():
-                for c in m:
-                    available.append('{}:{}'.format(t, c))
-            abort("No provider for '{}' JDK (available: {})".format(tag, ', '.join(available)))
+        factory = _getJDKFactory(tag, jdkOpt.compliance)
         jdk = factory.getJDKConfig()
         if jdk.tag is not None:
             assert jdk.tag == tag
@@ -10199,7 +10207,7 @@ _commands = {
     'supdate': [supdate, ''],
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
-    'java': [run_java, '[-options] class [args...]'],
+    'java': [java_command, '[-options] class [args...]'],
     'javap': [javap, '[options] <class name patterns>'],
     'javadoc': [javadoc, '[options]'],
     'junit': [junit, '[options]'],
