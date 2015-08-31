@@ -1534,7 +1534,7 @@ class JavaBuildTask(ProjectBuildTask):
         return buildReason
 
     def _getCompiler(self):
-        if self.args.jdt:
+        if self.args.jdt and not self.args.javac:
             return ECJCompiler(self.args.jdt)
         else:
             return JavacCompiler(self.args.alt_javac)
