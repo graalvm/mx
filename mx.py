@@ -3879,7 +3879,9 @@ class Suite:
 
     def _unload_unregister_distribution(self, name):
         self.dists = [d for d in self.dists if d.name != name]
+        d = _dists[name]
         del _dists[name]
+        return d
 
     @staticmethod
     def _pop_list(attrs, name, context):
@@ -4833,8 +4835,9 @@ def reInstantiateDistribution(templateName, oldArgs, newArgs):
     if t is None:
         abort('Distribution template named ' + name + ' not found', context=context)
     oldName = instantiatedDistributionName(t.name, oldArgs, context)
-    t.suite._unload_unregister_distribution(oldName)
-    instantiateDistribution(templateName, newArgs)
+    oldDist = t.suite._unload_unregister_distribution(oldName)
+    newDist = instantiateDistribution(templateName, newArgs)
+    newDist.update_listeners.update(oldDist.update_listeners)
 
 def instantiateDistribution(templateName, args, fatalIfMissing=True, context=None):
     _, name = splitqualname(templateName)
