@@ -10386,7 +10386,7 @@ def _remove_unsatisfied_deps():
         dep.getGlobalRegistry().pop(dep.name)
 
 def _get_command_property(command, propertyName):
-    c = _commands[command]
+    c = _commands.get(command)
     if c and len(c) >= 4:
         props = c[3]
         if props and propertyName in props:
