@@ -1534,7 +1534,7 @@ class JavaBuildTask(ProjectBuildTask):
         return buildReason
 
     def _getCompiler(self):
-        if self.args.jdt and not self.args.javac:
+        if self.args.jdt and not self.args.force_javac:
             return ECJCompiler(self.args.jdt)
         else:
             return JavacCompiler(self.args.alt_javac)
@@ -6468,7 +6468,7 @@ def build(args, parser=None):
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
     compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
                                 'This can also be specified with the JDT environment variable.', default=_defaultEcjPath(), metavar='<path>')
-    compilerSelect.add_argument('--force-javac', action='store_true', dest='javac', help='use javac even if an Eclipse batch compiler jar is specified')
+    compilerSelect.add_argument('--force-javac', action='store_true', dest='force_javac', help='use javac even if an Eclipse batch compiler jar is specified')
 
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
@@ -6485,7 +6485,7 @@ def build(args, parser=None):
             warn('multiprocessing not available in jython: can not use -p')
             args.parallelize = False
 
-    if not args.javac and args.jdt is not None:
+    if not args.force_javac and args.jdt is not None:
         if not args.jdt.endswith('.jar'):
             abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
         if not exists(args.jdt):
