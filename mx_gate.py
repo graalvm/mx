@@ -215,13 +215,13 @@ def gate(args):
 
         if mx.get_env('JDT'):
             with Task('BuildJavaWithEcj', tasks):
-                if t: mx.build(['-p', '--no-native', '--jdt-warning-as-error'])
+                if t: mx.build(['-p', '--no-native', '--warning-as-error'])
             gate_clean(args, tasks, name='CleanAfterEcjBuild')
         else:
             _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
         with Task('BuildJavaWithJavac', tasks):
-            if t: mx.build(['-p', '--no-native', '--force-javac'])
+            if t: mx.build(['-p', '--no-native', '--force-javac', '--warning-as-error'])
 
         with Task('Checkstyle', tasks) as t:
             if t and mx.checkstyle([]) != 0:

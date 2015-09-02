@@ -6865,7 +6865,7 @@ def _processorjars_suite(s):
         return []
 
     names = [ap.name for ap in apDists]
-    build(['--jdt-warning-as-error', '--dependencies', ",".join(names)])
+    build(['--dependencies', ",".join(names)])
     return [ap.path for ap in apDists]
 
 def pylint(args):
