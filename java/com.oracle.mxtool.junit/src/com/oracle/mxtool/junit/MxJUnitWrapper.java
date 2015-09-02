@@ -139,7 +139,7 @@ public class MxJUnitWrapper {
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
         Request request;
         if (methodName == null) {
-            request = Request.classes(classes.toArray(new Class[0]));
+            request = Request.classes(classes.toArray(new Class<?>[0]));
             if (failFast) {
                 Runner runner = request.getRunner();
                 if (runner instanceof ParentRunner) {
