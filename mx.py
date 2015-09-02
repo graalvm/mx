@@ -1556,7 +1556,7 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceGenDir=self.subject.source_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
                 disableApiRestrictions=not self.args.warnAPI,
-                warningsAsErrors=self.args.jdt_warning_as_error,
+                warningsAsErrors=self.args.warning_as_error,
                 showTasks=self.args.jdt_show_task_tags
             )
             logvv('Finished Java compilation for {}'.format(self.subject.name))
@@ -6462,7 +6462,7 @@ def build(args, parser=None):
     parser.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
-    parser.add_argument('--jdt-warning-as-error', action='store_true', help='convert all Eclipse batch compiler warnings to errors')
+    parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     compilerSelect = parser.add_mutually_exclusive_group()
