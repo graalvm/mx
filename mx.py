@@ -1677,6 +1677,7 @@ class JavacCompiler(JavacLikeCompiler):
         return 'javac'
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+        javacArgs.append('-Xlint:all')
         if disableApiRestrictions:
             javacArgs.append('-XDignore.symbol.file')
         if warningsAsErrors:
