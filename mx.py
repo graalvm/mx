@@ -1703,7 +1703,7 @@ class ECJCompiler(JavacLikeCompiler):
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
         jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
-        if not exists(jdtProperties) or os.path.getmtime(jdtProperties) < min(map(os.path.getmtime, jdtPropertiesSources)):
+        if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources):
             # Try to fix a missing or out of date properties file by running eclipseinit
             _eclipseinit_project(project)
         if not exists(jdtProperties):
