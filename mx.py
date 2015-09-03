@@ -1906,6 +1906,13 @@ Returns False if the file is not there or does not have the right checksum.
 def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
+    def _sha1CachedValid():
+        if not exists(sha1path):
+            return False
+        if os.stat(path).st_mtime > os.stat(sha1path).st_mtime:
+            return False
+        return True
+
     def _sha1Cached():
         with open(sha1path, 'r') as f:
             return f.read()[0:40]
@@ -1916,7 +1923,7 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
 
     if exists(path):
         if sha1Check and sha1:
-            if not exists(sha1path) or (newFile and sha1 != _sha1Cached()):
+            if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
                 _writeSha1Cached()
 
             if sha1 != _sha1Cached():
