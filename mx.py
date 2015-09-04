@@ -1880,14 +1880,14 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             ensure_dir_exists(d)
         if canSymlink and 'symlink' in dir(os):
             logvv('Symlinking {} to {}'.format(path, cachePath))
-            if exists(path):
+            if os.path.lexists(path):
                 os.unlink(path)
             try:
                 os.symlink(cachePath, path)
             except OSError as e:
                 # When doing parallel building, the symlink can fail
                 # if another thread wins the race to create the symlink
-                if not exists(path):
+                if not os.path.lexists(path):
                     # It was some other error
                     raise Exception(path, e)
         else:
