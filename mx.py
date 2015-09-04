@@ -6436,6 +6436,8 @@ def update_file(path, content, showDiff=False):
 
         if existed:
             log('modified ' + path)
+            if _opts.backup_modified:
+                log('backup ' + path + '.orig')
             if showDiff:
                 log('diff: ' + path)
                 log(''.join(difflib.unified_diff(old.splitlines(1), content.splitlines(1))))
