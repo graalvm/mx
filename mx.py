@@ -3985,9 +3985,7 @@ class Suite:
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
-            os_arch_deps = Suite._pop_list(attrs, 'dependencies', context)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            deps += os_arch_deps
             optional = attrs.pop('optional', False)
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
             l.__dict__.update(attrs)
