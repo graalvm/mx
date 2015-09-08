@@ -2754,7 +2754,7 @@ class BinaryVC(VC):
         self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
         self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
-        run([get_jdk().jar, 'xf', mx_jar_path], cwd=dest)
+        run([get_jdk(tag=DEFAULT_JDK_TAG).jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
 
@@ -2839,7 +2839,7 @@ class BinaryVC(VC):
 
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
-        run([get_jdk().jar, 'xf', mx_jar_path], cwd=vcdir)
+        run([get_jdk(tag=DEFAULT_JDK_TAG).jar, 'xf', mx_jar_path], cwd=vcdir)
 
         self._writeMetadata(vcdir, metadata)
         return True
@@ -5338,7 +5338,7 @@ class JDKFactory(object):
 
 
 def addJDKFactory(tag, compliance, factory):
-    assert tag != 'default'
+    assert tag != DEFAULT_JDK_TAG
     complianceMap = _jdkFactories.setdefault(tag, {})
     assert compliance not in complianceMap
     complianceMap[compliance] = factory
@@ -5394,7 +5394,7 @@ def get_jdk_option():
                 except AssertionError as e:
                     abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
 
-        if jdktag and jdktag != 'default':
+        if jdktag and jdktag != DEFAULT_JDK_TAG:
             factory = _getJDKFactory(jdktag, jdkCompliance)
             if not factory:
                 if len(_jdkFactories) == 0:
@@ -5403,25 +5403,36 @@ def get_jdk_option():
                 for t, m in _jdkFactories.iteritems():
                     for c in m:
                         available.append('{}:{}'.format(t, c))
-                abort("No provider for '{}' JDK (available: {})".format(jdktag, ', '.join(available)))
+                abort("No provider for '{}:{}' JDK (available: {})".format(jdktag, jdkCompliance if jdkCompliance else '*',', '.join(available)))
 
         _jdk_option = TagCompliance(jdktag, jdkCompliance)
     return _jdk_option
 
 _canceled_java_requests = set()
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag='default', **kwargs):
+DEFAULT_JDK_TAG = 'default'
+
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
+    
+    The JDK is selected by consulting the --jdk option, the --java-home option,
+    the JAVA_HOME environment variable, the --extra-java-homes option and the
+    EXTRA_JAVA_HOMES enviroment variable in that order.
     """
+    # Precedence for JDK to use:
+    # 1. --jdk option value
+    # 2. JDK specified by set_java_command_default_jdk_tag
+    # 3. JDK selected by DEFAULT_JDK_TAG tag
+
     jdkOpt = get_jdk_option()
     if versionCheck is None and jdkOpt.compliance:
         versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
 
-    if tag is None and jdkOpt.tag:
-        tag = jdkOpt.tag
+    if tag is None:
+        tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
 
-    defaultJdk = tag == 'default' or (not tag and versionCheck is None and not purpose)
+    defaultJdk = tag == DEFAULT_JDK_TAG or (not tag and versionCheck is None and not purpose)
 
     # Backwards compatibility support
     if kwargs:
@@ -5739,26 +5750,15 @@ def set_java_command_default_jdk_tag(tag):
     _java_command_default_jdk_tag = tag
 
 def java_command(args):
-    """run the java executable in the selected JDK
-
-    The JDK is selected by consulting the --jdk option, the --java-home option,
-    the JAVA_HOME environment variable, the --extra-java-homes option and the
-    EXTRA_JAVA_HOMES enviroment variable in that order.
     """
-
-    # Precedence for JDK to use:
-    # 1. --jdk option value
-    # 2. JDK specified by set_java_command_default_jdk_tag
-    # 3. JDK selected by 'default' tag
-    jdk = get_jdk(tag=get_jdk_option().tag or _java_command_default_jdk_tag or 'default')
-    run_java(args, jdk=jdk)
+    run the java executable in the selected JDK.
+    See get_jdk for details on JDK selection.
+    """
+    run_java(args)
 
 def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
     """
     Runs a Java program by executing the java executable in a JDK.
-
-    If 'jdk' is None, the default JDK is used (i.e., the JDK corresponding to
-    the 'default' tag).
     """
     if jdk is None:
         jdk = get_jdk()
@@ -6432,7 +6432,7 @@ def download(path, urls, verbose=False, abortOnError=True):
     assert not path.endswith(os.sep)
 
     _, binDir = _compile_mx_class('URLConnectionDownload')
-    command = [get_jdk().java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
+    command = [get_jdk(tag=DEFAULT_JDK_TAG).java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
     if _opts.no_download_progress or not sys.stderr.isatty():
         command.append('--no-progress')
     command.append(_cygpathU2W(path))
@@ -9803,7 +9803,7 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
         if not exists(binDir):
             os.mkdir(binDir)
-        javac = jdk.javac if jdk else get_jdk().javac
+        javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
         if classpath:
             cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
@@ -10411,7 +10411,8 @@ def _remove_unsatisfied_deps():
                     logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
                     omittedDeps.add(dep)
         elif dep.isJavaProject():
-            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag='default')
+            # TODO this lookup should be the same as the one used in build
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 omittedDeps.add(dep)
