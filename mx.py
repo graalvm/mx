@@ -2097,7 +2097,7 @@ class Library(BaseLibrary, ClasspathDependency):
         self.path = path.replace('/', os.sep)
         self.urls = urls
         self.sha1 = sha1
-        self.sourcePath = sourcePath
+        self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.sourceUrls = sourceUrls
         if sourcePath == path:
             assert sourceSha1 is None or sourceSha1 == sha1
