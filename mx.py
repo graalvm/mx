@@ -7309,7 +7309,10 @@ def rmtree(dirPath):
     path = dirPath
     if get_os() == 'windows':
         path = unicode("\\\\?\\" + dirPath)
-    shutil.rmtree(path)
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
 
 def clean(args, parser=None):
     """remove all class files, images, and executables
