@@ -1133,6 +1133,11 @@ class Project(Dependency):
         """
         nyi('eclipse_settings_sources', self)
 
+    def get_javac_lint_overrides(self):
+        """
+        Gets a string to be added to the -Xlint javac option.
+        """
+        nyi('get_javac_lint_overrides', self)
 
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
@@ -1193,6 +1198,16 @@ class JavaProject(Project, ClasspathDependency):
 
     def classpath_repr(self, resolve=True):
         return self.output_dir()
+
+    def get_javac_lint_overrides(self):
+        if not hasattr(self, '_javac_lint_overrides'):
+            overrides = []
+            if self.suite.javacLintOverrides:
+                overrides.append(self.suite.javacLintOverrides)
+            if hasattr(self, 'javac.lint.overrides'):
+                overrides.append(getattr(self, 'javac.lint.overrides'))
+            self._javac_lint_overrides = ','.join(overrides)
+        return self._javac_lint_overrides
 
     def eclipse_settings_sources(self):
         """
@@ -1677,7 +1692,11 @@ class JavacCompiler(JavacLikeCompiler):
         return 'javac'
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
-        javacArgs.append('-Xlint:all,-auxiliaryclass,-processing')
+        xlint = '-Xlint:all,-auxiliaryclass,-processing'
+        overrides = project.get_javac_lint_overrides()
+        if overrides:
+            xlint += ',' + overrides
+        javacArgs.append(xlint)
         if disableApiRestrictions:
             javacArgs.append('-XDignore.symbol.file')
         if warningsAsErrors:
@@ -3557,6 +3576,7 @@ class Suite:
         self.distTemplates = []
         self.licenseDefs = []
         self.repositoryDefs = []
+        self.javacLintOverrides = ''
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         _suites[self.name] = self
 
@@ -3632,7 +3652,7 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'versionConflictResolution', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories']
+        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'versionConflictResolution', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories', 'javac.lint.overrides']
 
         if d.has_key('mxversion'):
             try:
@@ -3651,6 +3671,8 @@ class Suite:
         conflictResolution = d.get('versionConflictResolution')
         if conflictResolution:
             self.versionConflictResolution = conflictResolution
+
+        self.javacLintOverrides = d.get('javac.lint.overrides', '')
 
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
