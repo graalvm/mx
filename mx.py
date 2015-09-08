@@ -1741,9 +1741,6 @@ class ECJCompiler(JavacLikeCompiler):
                 if disableApiRestrictions:
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore'
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.discouragedReference=ignore'
-            for line in content.split('\n'):
-                if 'invalidJavadocTagsNotVisibleRef' in line:
-                    print line
             if origContent != content:
                 jdtPropertiesTmp = jdtProperties + '.tmp'
                 with open(jdtPropertiesTmp, 'w') as fp:

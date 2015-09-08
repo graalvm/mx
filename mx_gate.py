@@ -215,10 +215,7 @@ def gate(args):
 
         if mx.get_env('JDT'):
             with Task('BuildJavaWithEcj', tasks):
-                old = mx._opts.verbose
-                mx._opts.verbose = True
                 if t: mx.build(['-p', '--no-native', '--warning-as-error'])
-                mx._opts.verbose = old
             gate_clean(args, tasks, name='CleanAfterEcjBuild')
         else:
             _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
