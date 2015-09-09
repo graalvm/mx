@@ -3509,13 +3509,14 @@ class SuiteImportURLInfo:
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
-    def __init__(self, name, version, urlinfos, kind=None):
+    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False):
         self.name = name
         self.version = version
         self.urlinfos = [] if urlinfos is None else urlinfos
+        self.dynamicImport = dynamicImport
 
     @staticmethod
-    def parse_specification(import_dict, context):
+    def parse_specification(import_dict, context, dynamicImport=False):
         name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute', context=context)
@@ -3536,7 +3537,7 @@ class SuiteImport:
                 abort('suite import url must be a dict with {"url", kind", attributes', context=context)
             vc = vc_system(kind)
             urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
-        return SuiteImport(name, version, urlinfos, kind)
+        return SuiteImport(name, version, urlinfos, kind, dynamicImport=dynamicImport)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -3568,7 +3569,7 @@ def _validate_abolute_url(urlstr, acceptNone=False):
 Command state and methods for all suite subclasses
 '''
 class Suite:
-    def __init__(self, mxDir, primary, internal, importing_suite):
+    def __init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=False):
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
@@ -3591,6 +3592,7 @@ class Suite:
         self.repositoryDefs = []
         self.javacLintOverrides = ''
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
+        self.dynamicallyImported = dynamicallyImported
         _suites[self.name] = self
 
     def __str__(self):
@@ -3878,10 +3880,11 @@ class Suite:
             for entry in suiteImports:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
-                self.suite_imports.append(SuiteImport.parse_specification(entry, context=self))
+                suite_import = SuiteImport.parse_specification(entry, context=self, dynamicImport=self.dynamicallyImported)
+                self.suite_imports.append(suite_import)
         if self.primary and _opts.dynamic_imports:
             for name in _opts.dynamic_imports:
-                self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None))
+                self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
 
     def re_init_imports(self):
         '''
@@ -4065,14 +4068,16 @@ class Suite:
                         for imported in otherImporter.suite_imports:
                             if imported.name == s.name:
                                 if imported.version != suite_import.version:
+                                    if suite_import.dynamicImport and not s.dynamicallyImported:
+                                        continue
                                     conflict_resolution = _opts.version_conflict_resolution
                                     if conflict_resolution == 'suite':
                                         conflict_resolution = importing_suite.versionConflictResolution
 
                                     if conflict_resolution == 'none':
-                                        abort("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
+                                        abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(s.name, importing_suite.name, suite_import.version, otherImporter.name, imported.version))
                                     elif conflict_resolution == 'ignore':
-                                        warn("mismatched import versions on '{}' in '{}' and '{}'".format(s.name, importing_suite.name, otherImporter.name))
+                                        warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(s.name, importing_suite.name, suite_import.version, otherImporter.name, imported.version))
                                     else:
                                         assert conflict_resolution == 'latest'
                                         if not isinstance(s, SourceSuite):
@@ -4151,17 +4156,13 @@ class Suite:
 
             # end of search
             if fail:
-                # check for optional dynamic suite load, which is not a failure
-                if extra_args.has_key("dynamicImport") and extra_args["dynamicImport"]:
-                    return None
-                else:
-                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
+                abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
 
         # Factory method?
         if searchMode == 'binary':
-            return BinarySuite(importMxDir, importing_suite=importing_suite)
+            return BinarySuite(importMxDir, importing_suite=importing_suite, dynamicallyImported=suite_import.dynamicImport)
         else:
-            return SourceSuite(importMxDir, importing_suite=importing_suite, load=not extra_args.has_key('noLoad'))
+            return SourceSuite(importMxDir, importing_suite=importing_suite, load=not extra_args.has_key('noLoad'), dynamicallyImported=suite_import.dynamicImport)
 
     def visit_imports(self, visitor, **extra_args):
         """
@@ -4174,21 +4175,6 @@ class Suite:
         """
         for suite_import in self.suite_imports:
             visitor(self, suite_import, **extra_args)
-
-
-    def import_suite(self, name, version=None, urlinfos=None, kind=None):
-        """Dynamic import of a suite. Returns None if the suite cannot be found"""
-        suite_import = SuiteImport(name, version, urlinfos, kind)
-        imported_suite = Suite._find_and_loadsuite(self, suite_import, dynamicImport=True)
-        if imported_suite:
-            # if urlinfos is set, force the import to version in case it already existed
-            if urlinfos:
-                imported_suite.vc.update(imported_suite.dir, rev=version, mayPull=True)
-            # TODO Add support for imports in dynamically loaded suites (no current use case)
-            if not imported_suite.post_init:
-                imported_suite._init_metadata()
-                imported_suite._post_init()
-        return imported_suite
 
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
@@ -4210,8 +4196,8 @@ class Suite:
 
 '''A source suite'''
 class SourceSuite(Suite):
-    def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None):
-        Suite.__init__(self, mxDir, primary, internal, importing_suite)
+    def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
+        Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
         self.vc = None if internal else VC.get_vc(self.dir)
         self.projects = []
         self._load_suite_dict()
@@ -4426,8 +4412,8 @@ class SourceSuite(Suite):
 A pre-built suite downloaded from a Maven repository.
 '''
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite):
-        Suite.__init__(self, mxDir, False, False, importing_suite)
+    def __init__(self, mxDir, importing_suite, dynamicallyImported=False):
+        Suite.__init__(self, mxDir, False, False, importing_suite, dynamicallyImported=dynamicallyImported)
         # At this stage the suite directory is guaranteed to exist as is the mx.suitname
         # directory. For a freshly downloaded suite, the actual distribution jars
         # have not been downloaded as we need info from the suite.py for that
@@ -5403,7 +5389,7 @@ def get_jdk_option():
                 for t, m in _jdkFactories.iteritems():
                     for c in m:
                         available.append('{}:{}'.format(t, c))
-                abort("No provider for '{}:{}' JDK (available: {})".format(jdktag, jdkCompliance if jdkCompliance else '*',', '.join(available)))
+                abort("No provider for '{}:{}' JDK (available: {})".format(jdktag, jdkCompliance if jdkCompliance else '*', ', '.join(available)))
 
         _jdk_option = TagCompliance(jdktag, jdkCompliance)
     return _jdk_option
@@ -5415,7 +5401,7 @@ DEFAULT_JDK_TAG = 'default'
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
-    
+
     The JDK is selected by consulting the --jdk option, the --java-home option,
     the JAVA_HOME environment variable, the --extra-java-homes option and the
     EXTRA_JAVA_HOMES enviroment variable in that order.
