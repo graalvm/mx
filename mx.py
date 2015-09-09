@@ -1697,7 +1697,10 @@ class JavacCompiler(JavacLikeCompiler):
         xlint = '-Xlint:all,-auxiliaryclass,-processing'
         overrides = project.get_javac_lint_overrides()
         if overrides:
-            xlint += ',' + overrides
+            if 'none' in overrides:
+                xlint = '-Xlint:none'
+            else:
+                xlint += ',' + overrides
         javacArgs.append(xlint)
         if disableApiRestrictions:
             javacArgs.append('-XDignore.symbol.file')
