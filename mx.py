@@ -1202,6 +1202,8 @@ class JavaProject(Project, ClasspathDependency):
     def get_javac_lint_overrides(self):
         if not hasattr(self, '_javac_lint_overrides'):
             overrides = []
+            if get_env('JAVAC_LINT_OVERRIDES'):
+                overrides.append(get_env('JAVAC_LINT_OVERRIDES'))
             if self.suite.javacLintOverrides:
                 overrides.append(self.suite.javacLintOverrides)
             if hasattr(self, 'javac.lint.overrides'):
