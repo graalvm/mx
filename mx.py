@@ -7885,7 +7885,9 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        dist.javaCompliance = max([p.javaCompliance for p in dist.archived_deps() if p.isProject()])
+        javaCompliances = [p.javaCompliance for p in dist.archived_deps() if p.isProject()]
+        if len(javaCompliances) > 0:
+            dist.javaCompliance = max(javaCompliances)
         _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=False, appendToLogFile=False)
         out.close('buildSpec')
         out.open('natures')
