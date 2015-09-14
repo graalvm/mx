@@ -826,18 +826,19 @@ class JARDistribution(Distribution, ClasspathDependency):
                         else:
                             abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
-                            with zipfile.ZipFile(jarPath, 'r') as lp:
-                                entries = lp.namelist()
-                                for arcname in entries:
-                                    if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                                        service = arcname[len('META-INF/services/'):]
-                                        assert '/' not in service
-                                        services.setdefault(service, []).extend(lp.read(arcname).splitlines())
-                                    else:
-                                        if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
-                                            contents = lp.read(arcname)
-                                            if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
-                                                arc.zf.writestr(arcname, contents)
+                            if not dep.optional or exists(jarPath):
+                                with zipfile.ZipFile(jarPath, 'r') as lp:
+                                    entries = lp.namelist()
+                                    for arcname in entries:
+                                        if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                                            service = arcname[len('META-INF/services/'):]
+                                            assert '/' not in service
+                                            services.setdefault(service, []).extend(lp.read(arcname).splitlines())
+                                        else:
+                                            if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
+                                                contents = lp.read(arcname)
+                                                if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                                    arc.zf.writestr(arcname, contents)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
