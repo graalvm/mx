@@ -990,8 +990,12 @@ class NativeTARDistribution(Distribution):
                 for r in d.getResults():
                     filename = basename(r)
                     assert filename not in files, filename
-                    files.add(filename)
-                    arc.zf.add(r, arcname=filename)
+                    # Make debug-info files optional for distribution
+                    if is_debug_lib_file(r) and not os.path.exists(r):
+                        warn("File {} for archive {} does not exist.".format(filename, d.name))
+                    else:
+                        files.add(filename)
+                        arc.zf.add(r, arcname=filename)
         self.notify_updated()
 
     def getBuildTask(self, args):
@@ -1756,6 +1760,9 @@ class ECJCompiler(JavacLikeCompiler):
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
         run_java(jvmArgs + jdtArgs)
+
+def is_debug_lib_file(fn):
+    return fn.endswith(add_debug_lib_suffix(""))
 
 def _replaceResultsVar(m):
     var = m.group(1)
