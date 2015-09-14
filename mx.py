@@ -826,7 +826,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         else:
                             abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
-                            if not dep.optional or exists(jarPath):
+                            if dep.isJARDistribution() or not dep.optional or exists(jarPath):
                                 with zipfile.ZipFile(jarPath, 'r') as lp:
                                     entries = lp.namelist()
                                     for arcname in entries:
