@@ -4040,7 +4040,7 @@ class Suite:
         self._post_init_finish()
 
     @staticmethod
-    def _find_and_loadsuite(importing_suite, suite_import, **extra_args):
+    def _find_and_loadsuite(importing_suite, suite_import, fatalIfMissing=True, **extra_args):
         """
         Attempts to locate a suite using the information in suite_import and _binary_suites
 
@@ -4156,7 +4156,10 @@ class Suite:
 
             # end of search
             if fail:
-                abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
+                if fatalIfMissing:
+                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
+                else:
+                    return None
 
         # Factory method?
         if searchMode == 'binary':
@@ -4175,6 +4178,21 @@ class Suite:
         """
         for suite_import in self.suite_imports:
             visitor(self, suite_import, **extra_args)
+
+    def import_suite(self, name, version=None, urlinfos=None, kind=None):
+        """Dynamic import of a suite. Returns None if the suite cannot be found"""
+        suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True)
+        imported_suite = Suite._find_and_loadsuite(self, suite_import, fatalIfMissing=False)
+        if imported_suite:
+            # if urlinfos is set, force the import to version in case it already existed
+            if urlinfos:
+                imported_suite.vc.update(imported_suite.dir, rev=version, mayPull=True)
+            # TODO Add support for imports in dynamically loaded suites (no current use case)
+            if not imported_suite.post_init:
+                imported_suite._init_metadata()
+                imported_suite._post_init()
+        return imported_suite
+
 
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
