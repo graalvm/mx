@@ -9239,7 +9239,7 @@ def scloneimports(args):
 
     default_path = vcs.default_push(args.source)
 
-    # We can now set the primary dir for the dst suitemodel
+    # We can now set the primary directory for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
     _dst_suitemodel.set_primary_dir(args.source)
 
