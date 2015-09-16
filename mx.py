@@ -9432,11 +9432,11 @@ def sforceimports(args):
     args = parser.parse_args(args)
     _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
 
-def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all):
+def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all, no_update):
     """pull visitor for Suite.visit_imports"""
-    _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports, update_all)
+    _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports, update_all, no_update)
 
-def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports, update_all):
+def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports, update_all, no_update):
     # suite_import is None if importing_suite is primary suite
     primary = suite_import is None
     # proceed top down to get any updated version ids first
@@ -9446,7 +9446,7 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         vcs = imported_suite.vc
         # by default we pull to the revision id in the import, but pull head if update_versions = True
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
-        vcs.pull(imported_suite.dir, rev, update=True)
+        vcs.pull(imported_suite.dir, rev, update=not no_update)
 
     if not primary and update_versions:
         importedVersion = vcs.parent(imported_suite.dir)
@@ -9466,17 +9466,21 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
     imported_suite.re_init_imports()
     if not primary and not update_all:
         update_versions = False
-    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports, update_all=update_all)
+    imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports, update_all=update_all, no_update=no_update)
 
 def spull(args):
     """pull primary suite and all its imports"""
     parser = ArgumentParser(prog='mx spull')
     parser.add_argument('--update-versions', action='store_true', help='pull tip of directly imported suites and update suite.py')
     parser.add_argument('--update-all', action='store_true', help='pull tip of all imported suites (transitively)')
-    parser.add_argument('--only-imports', action='store_true', help='only pull imported suites')
+    parser.add_argument('--only-imports', action='store_true', help='only pull imported suites, not the primary suite')
+    parser.add_argument('--no-update', action='store_true', help='only pull, without updating')
     args = parser.parse_args(args)
 
-    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports, args.update_all)
+    if args.update_all and not args.update_versions:
+        abort('--update-all can only be used in conjuction with --update-versions')
+
+    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports, args.update_all, args.no_update)
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
     _sincoming(suite(suite_import.name), suite_import)
