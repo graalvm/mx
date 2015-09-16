@@ -199,12 +199,6 @@ def gate(args):
                 if mx.canonicalizeprojects([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        with Task('IDEConfigCheck', tasks) as t:
-            if t:
-                if args.cleanIDE:
-                    mx.ideclean([])
-                    mx.ideinit([])
-
         eclipse_exe = mx.get_env('ECLIPSE_EXE')
         if eclipse_exe is not None:
             with Task('CodeFormatCheck', tasks) as t:
@@ -222,6 +216,12 @@ def gate(args):
 
         with Task('BuildJavaWithJavac', tasks):
             if t: mx.build(['-p', '--warning-as-error', '--no-native', '--force-javac'])
+
+        with Task('IDEConfigCheck', tasks) as t:
+            if t:
+                if args.cleanIDE:
+                    mx.ideclean([])
+                    mx.ideinit([])
 
         with Task('Checkstyle', tasks) as t:
             if t and mx.checkstyle([]) != 0:
