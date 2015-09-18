@@ -5018,7 +5018,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
             return False
-        if edge and edge.src.isJARDistribution():
+        if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
             return dst.isJARDistribution() if preferDist else dst.isProject()
         return True
@@ -5028,7 +5028,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
         if not includeSelf and dep in roots:
             return
         cpEntries.append(dep)
-    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit)
+    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
 def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False):
