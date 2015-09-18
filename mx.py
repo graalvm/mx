@@ -508,11 +508,19 @@ class BuildTask(object):
                     newestInputDep = dep
             if newestInputDep:
                 logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name, newestInput))
+            # suite.py should always be taken into account, even if only doing shallow dep checking
             suitePyTS = TimeStampFile(self.subject.suite.suite_py())
             if not newestInput or suitePyTS.isNewerThan(newestInput):
                 newestInput = suitePyTS
-            # suite.py should always be taken into account, even if only doing shallow dep checking
-            if newestInput and self.args.shallow_dependency_checks and not self.subject.isNativeProject() and newestInput is not suitePyTS:
+
+            if get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') is None:
+                shallow_dependency_checks = self.args.shallow_dependency_checks is True
+            else:
+                shallow_dependency_checks = get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') == 'true'
+                if self.args.shallow_dependency_checks is not None and shallow_dependency_checks is True:
+                    warn('Explicit -s argument to build command is overridden by MX_BUILD_SHALLOW_DEPENDENCY_CHECKS')
+
+            if newestInput and shallow_dependency_checks and not self.subject.isNativeProject() and newestInput is not suitePyTS:
                 newestInput = None
             if __name__ != self.__module__ and self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
                 newestInput = newestInput.timestamp if newestInput else float(0)
@@ -6501,7 +6509,7 @@ def build(args, parser=None):
     parser.add_argument('-f', action='store_true', dest='force', help='force build (disables timestamp checking)')
     parser.add_argument('-c', action='store_true', dest='clean', help='removes existing build output')
     parser.add_argument('-p', action='store_true', dest='parallelize', help='parallelizes Java compilation')
-    parser.add_argument('-s', '--shallow-dependency-checks', action='store_true', help="ignore modification times "\
+    parser.add_argument('-s', '--shallow-dependency-checks', action='store_const', const=True, help="ignore modification times "\
                         "of output files for each of P's dependencies when determining if P should be built. That "\
                         "is, only P's sources, suite.py of its suite and whether any of P's dependencies have "\
                         "been built are considered. This is useful when an external tool (such as an Eclipse) performs incremental "\
