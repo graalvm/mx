@@ -6514,7 +6514,8 @@ def build(args, parser=None):
                         "is, only P's sources, suite.py of its suite and whether any of P's dependencies have "\
                         "been built are considered. This is useful when an external tool (such as an Eclipse) performs incremental "\
                         "compilation that produces finer grained modification times than mx's build system. Shallow "\
-                        "dependency checking only applies to non-native projects.")
+                        "dependency checking only applies to non-native projects. This option can be also set by defining" \
+                        "the environment variable MX_BUILD_SHALLOW_DEPENDENCY_CHECKS to true.")
     parser.add_argument('--source', dest='compliance', help='Java compliance level for projects without an explicit one')
     parser.add_argument('--Wapi', action='store_true', dest='warnAPI', help='show warnings about using internal APIs')
     parser.add_argument('--dependencies', '--projects', action='store', help='comma separated dependencies to build (omit to build all dependencies)', metavar='<names>')
