@@ -3892,9 +3892,15 @@ class Suite:
                     abort('suite import entry must be a dict')
                 suite_import = SuiteImport.parse_specification(entry, context=self, dynamicImport=self.dynamicallyImported)
                 self.suite_imports.append(suite_import)
-        if self.primary and _opts.dynamic_imports:
-            for name in _opts.dynamic_imports:
-                self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
+        if self.primary:
+            dynamicImports = _opts.dynamic_imports
+            if not dynamicImports:
+                envDynamicImports = os.environ.get('DEFAULT_DYNAMIC_IMPORTS')
+                if envDynamicImports:
+                    dynamicImports = envDynamicImports.split(',')
+            if dynamicImports:
+                for name in dynamicImports:
+                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
 
     def re_init_imports(self):
         '''
@@ -5383,6 +5389,8 @@ def get_jdk_option():
     global _jdk_option
     if _jdk_option is None:
         option = _opts.jdk
+        if not option:
+            option = os.environ.get('DEFAULT_JDK')
         if not option:
             jdktag = None
             jdkCompliance = None
