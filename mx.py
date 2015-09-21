@@ -1566,9 +1566,9 @@ class JavaBuildTask(ProjectBuildTask):
 
     def _getCompiler(self):
         if self.args.jdt and not self.args.force_javac:
-            return ECJCompiler(self.args.jdt)
+            return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
         else:
-            return JavacCompiler(self.args.alt_javac)
+            return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
 
     def build(self):
         compiler = self._getCompiler()
@@ -1650,8 +1650,9 @@ class JavaCompiler:
         nyi('build', self)
 
 class JavacLikeCompiler(JavaCompiler):
-    def __init__(self):
+    def __init__(self, extraJavacArgs):
         self.tmpFiles = []
+        self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
     def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, showTasks):
@@ -1670,6 +1671,7 @@ class JavacLikeCompiler(JavaCompiler):
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
+        javacArgs.extend(self.extraJavacArgs)
         fileListFile = self.createFileListFile(sourceFiles, project.dir)
         javacArgs.append('@' + _cygpathU2W(fileListFile))
         try:
@@ -1699,8 +1701,8 @@ class JavacLikeCompiler(JavaCompiler):
         return name
 
 class JavacCompiler(JavacLikeCompiler):
-    def __init__(self, altJavac=None):
-        JavacLikeCompiler.__init__(self)
+    def __init__(self, altJavac=None, extraJavacArgs=None):
+        JavacLikeCompiler.__init__(self, extraJavacArgs)
         self.altJavac = altJavac
 
     def name(self):
@@ -1727,8 +1729,8 @@ class JavacCompiler(JavacLikeCompiler):
         run(cmd)
 
 class ECJCompiler(JavacLikeCompiler):
-    def __init__(self, jdtJar):
-        JavacLikeCompiler.__init__(self)
+    def __init__(self, jdtJar, extraJavacArgs=None):
+        JavacLikeCompiler.__init__(self, extraJavacArgs)
         self.jdtJar = jdtJar
 
     def name(self):
@@ -6525,6 +6527,7 @@ def build(args, parser=None):
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
+    parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
     compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
