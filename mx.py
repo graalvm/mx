@@ -6518,7 +6518,9 @@ def build(args, parser=None):
     parser = parser if parser is not None else ArgumentParser(prog='mx build')
     parser.add_argument('-f', action='store_true', dest='force', help='force build (disables timestamp checking)')
     parser.add_argument('-c', action='store_true', dest='clean', help='removes existing build output')
-    parser.add_argument('-p', action='store_true', dest='parallelize', help='parallelizes Java compilation')
+    parallelize = parser.add_mutually_exclusive_group()
+    parallelize.add_argument('-n', '--serial', action='store_const', const=False, dest='parallelize', help='serialize Java compilation')
+    parallelize.add_argument('-p', action='store_const', const=True, dest='parallelize', help='parallelize Java compilation')
     parser.add_argument('-s', '--shallow-dependency-checks', action='store_const', const=True, help="ignore modification times "\
                         "of output files for each of P's dependencies when determining if P should be built. That "\
                         "is, only P's sources, suite.py of its suite and whether any of P's dependencies have "\
@@ -6551,6 +6553,10 @@ def build(args, parser=None):
         if args.parallelize:
             warn('parallel builds are not supported on windows: can not use -p')
             args.parallelize = False
+    else:
+        if args.parallelize is None:
+            # Enable parallel compilation by default
+            args.parallelize = True
 
     if is_jython():
         if args.parallelize:
