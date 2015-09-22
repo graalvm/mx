@@ -8407,8 +8407,8 @@ java.main.action=test
 # Space-separated list of extra javac options
 javac.compilerargs=-XDignore.symbol.file
 javac.deprecation=false
-javac.source=""" + str(jdk.javaCompliance) + """
-javac.target=""" + str(jdk.javaCompliance) + """
+javac.source=""" + str(p.javaCompliance) + """
+javac.target=""" + str(p.javaCompliance) + """
 javac.test.classpath=\\
 ${javac.classpath}:\\
 ${build.classes.dir}
