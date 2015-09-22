@@ -10132,7 +10132,8 @@ def ensure_dir_exists(path, mode=None):
             if e.errno == errno.EEXIST and isdir(path):
                 # be happy if another thread already created the path
                 pass
-            raise e
+            else:
+                raise e
 
 def show_envs(args):
     '''print environment variables and their values
