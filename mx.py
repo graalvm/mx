@@ -1216,12 +1216,12 @@ class JavaProject(Project, ClasspathDependency):
         if not hasattr(self, '_javac_lint_overrides'):
             overrides = []
             if get_env('JAVAC_LINT_OVERRIDES'):
-                overrides.append(get_env('JAVAC_LINT_OVERRIDES'))
+                overrides.append(get_env('JAVAC_LINT_OVERRIDES').split(','))
             if self.suite.javacLintOverrides:
-                overrides.append(self.suite.javacLintOverrides)
+                overrides += self.suite.javacLintOverrides
             if hasattr(self, 'javac.lint.overrides'):
-                overrides.append(getattr(self, 'javac.lint.overrides'))
-            self._javac_lint_overrides = ','.join(overrides)
+                overrides.append(getattr(self, 'javac.lint.overrides').split(','))
+            self._javac_lint_overrides = overrides
         return self._javac_lint_overrides
 
     def eclipse_settings_sources(self):
@@ -1709,14 +1709,17 @@ class JavacCompiler(JavacLikeCompiler):
         return 'javac'
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
-        xlint = '-Xlint:all,-auxiliaryclass,-processing'
+        lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
             if 'none' in overrides:
-                xlint = '-Xlint:none'
+                lint = ['none']
             else:
-                xlint += ',' + overrides
-        javacArgs.append(xlint)
+                lint += overrides
+        knownLints = jdk.getKnownJavacLints()
+        lint = [l for l in lint if l in knownLints]
+        if lint:
+            javacArgs.append('-Xlint:' + ','.join(lint))
         if disableApiRestrictions:
             javacArgs.append('-XDignore.symbol.file')
         if warningsAsErrors:
@@ -3600,7 +3603,7 @@ class Suite:
         self.distTemplates = []
         self.licenseDefs = []
         self.repositoryDefs = []
-        self.javacLintOverrides = ''
+        self.javacLintOverrides = []
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         _suites[self.name] = self
@@ -3697,7 +3700,9 @@ class Suite:
         if conflictResolution:
             self.versionConflictResolution = conflictResolution
 
-        self.javacLintOverrides = d.get('javac.lint.overrides', '')
+        javacLintOverrides = d.get('javac.lint.overrides', None)
+        if javacLintOverrides:
+            self.javacLintOverrides = javacLintOverrides.split(',')
 
         unknown = frozenset(d.keys()) - frozenset(sections)
         if unknown:
@@ -6141,6 +6146,7 @@ class JDKConfig:
         self._bootclasspath = None
         self._extdirs = None
         self._endorseddirs = None
+        self._knownJavacLints = None
 
         if not exists(self.java):
             raise JDKConfigException('Java launcher does not exist: ' + self.java)
@@ -6289,6 +6295,17 @@ class JDKConfig:
                 if len(d) and jar in os.listdir(d):
                     return True
         return False
+
+    def getKnownJavacLints(self):
+        if self._knownJavacLints is None:
+            out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
+            lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
+            m = lintre.search(out)
+            if not m:
+                self._knownJavacLints = []
+            else:
+                self._knownJavacLints = m.group(1).split(',')
+        return self._knownJavacLints
 
 def check_get_env(key):
     """
