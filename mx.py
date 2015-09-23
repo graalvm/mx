@@ -1580,7 +1580,7 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
-                compliance=self.jdk.javaCompliance,
+                compliance=self.subject.javaCompliance,
                 outputDir=_cygpathU2W(outputDir),
                 classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
                 sourceGenDir=self.subject.source_gen_dir(),
