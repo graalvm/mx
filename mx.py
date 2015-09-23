@@ -5454,14 +5454,15 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if tag is None:
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
 
-    defaultJdk = tag == DEFAULT_JDK_TAG or (not tag and versionCheck is None and not purpose)
+    defaultTag = tag == DEFAULT_JDK_TAG
+    defaultJdk = defaultTag and versionCheck is None and not purpose
 
     # Backwards compatibility support
     if kwargs:
         assert len(kwargs) == 1 and 'defaultJdk' in kwargs, 'unsupported arguments: ' + str(kwargs)
         defaultJdk = kwargs['defaultJdk']
 
-    if tag and not defaultJdk:
+    if tag and not defaultTag:
         factory = _getJDKFactory(tag, jdkOpt.compliance)
         jdk = factory.getJDKConfig()
         if jdk.tag is not None:
@@ -6068,6 +6069,9 @@ class JavaCompliance:
 
     def __str__(self):
         return '1.' + str(self.value)
+
+    def __repr__(self):
+        return str(self)
 
     def __cmp__(self, other):
         if isinstance(other, types.StringType):
