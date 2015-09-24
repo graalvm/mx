@@ -2445,6 +2445,12 @@ class VC:
         '''
         abort(self.kind + " latest is not implemented")
 
+    def exists(self, vcdir, rev):
+        '''
+        Returns true if a given revision exists in the repository.
+        '''
+        abort(self.kind + " exists is not implemented")
+
 
 class OutputCapture:
     def __init__(self):
@@ -2738,6 +2744,14 @@ class HgConfig(VC):
                 abort('latest failed')
             else:
                 return None
+
+    def exists(self, vcdir, rev):
+        self.check_for_hg()
+        try:
+            subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', rev])
+            return True
+        except subprocess.CalledProcessError:
+            return False
 
 
 class BinaryVC(VC):
@@ -4111,7 +4125,8 @@ class Suite:
                                         assert conflict_resolution == 'latest'
                                         if not isinstance(s, SourceSuite):
                                             abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, otherImporter.name))
-                                        s.vc.pull(s.dir, rev=suite_import.version, update=False)
+                                        if not s.vc.exists(s.dir, rev=suite_import.version):
+                                            s.vc.pull(s.dir, rev=suite_import.version, update=False)
                                         resolved = s.vc.latest(s.dir, suite_import.version, s.vc.parent(s.dir))
                                         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
                                         s.vc.update(s.dir, rev=resolved)
