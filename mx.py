@@ -8926,7 +8926,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         for p in projects:
             pkgs = find_packages(p.source_dirs(), set(), args.implementation)
             jdk = get_jdk(p.javaCompliance)
-            links = ['-link', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/']
+            links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
             def visit(dep, edge):
                 if dep.isProject():
@@ -8989,7 +8989,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             sproots += p.source_dirs()
             names.append(p.name)
 
-        links = ['-link', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/']
+        links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
         overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
@@ -9026,6 +9026,18 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             groupargs.append(k)
             groupargs.append(':'.join(v))
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
+        class Capture:
+            def __init__(self, prefix):
+                self.prefix = prefix
+                self.last = ''
+
+            def __call__(self, msg):
+                self.last = msg
+                print(self.prefix + msg),
+
+        captureOut = Capture('stdout: ')
+        captureErr = Capture('stderr: ')
+
         run([get_jdk().javadoc, memory,
              '-classpath', cp,
              '-quiet',
@@ -9037,7 +9049,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              links +
              extraArgs +
              nowarnAPI +
-             list(pkgs))
+             list(pkgs), True, captureOut, captureErr)
+
+        if 'warning' in captureOut.last:
+            abort('Error: Warnings in the javadoc are not allowed!')
+
         log('Generated {2} for {0} in {1}'.format(', '.join(names), out, docDir))
 
 def site(args):
