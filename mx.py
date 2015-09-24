@@ -1948,6 +1948,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             shutil.copy(cachePath, path)
 
         if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
+            log('SHA1 of ' + sha1OfFile(cachePath) + ' does not match expected value (' + sha1 + ')')
             abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
 
     return path
