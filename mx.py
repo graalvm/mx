@@ -1433,16 +1433,20 @@ class JavaProject(Project, ClasspathDependency):
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance if self.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
-        jdk = get_jdk(requiredCompliance)
-        if hasattr(args, 'parallelize') and args.parallelize:
-            # Best to initialize class paths on main process
-            jdk.bootclasspath()
-        return JavaBuildTask(args, self, jdk)
+        if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
+            jdk = get_jdk() # build using default JDK
+            if hasattr(args, 'parallelize') and args.parallelize:
+                # Best to initialize class paths on main process
+                get_jdk(requiredCompliance).bootclasspath()
+        else:
+            jdk = get_jdk(requiredCompliance)
+        return JavaBuildTask(args, self, jdk, requiredCompliance)
 
 class JavaBuildTask(ProjectBuildTask):
-    def __init__(self, args, project, jdk):
+    def __init__(self, args, project, jdk, requiredCompliance):
         ProjectBuildTask.__init__(self, args, 1, project)
         self.jdk = jdk
+        self.requiredCompliance = requiredCompliance
         self.javafilelist = None
         self.jasmfilelist = None
         self.nonjavafiletuples = None
@@ -1580,7 +1584,7 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
-                compliance=self.subject.javaCompliance,
+                compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
                 classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
                 sourceGenDir=self.subject.source_gen_dir(),
@@ -1667,7 +1671,11 @@ class JavacLikeCompiler(JavaCompiler):
         if jdk.javaCompliance != compliance:
             # cross-compilation
             assert jdk.javaCompliance > compliance
-            javacArgs = jdk.javacLibOptions(javacArgs)
+            complianceJdk = get_jdk(compliance)
+            # complianceJdk.javaCompliance could be different from compliance
+            # because of non-strict compliance mode
+            if jdk.javaCompliance != complianceJdk.javaCompliance:
+                javacArgs = get_jdk(compliance).javacLibOptions(javacArgs)
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
@@ -5439,7 +5447,7 @@ _canceled_java_requests = set()
 
 DEFAULT_JDK_TAG = 'default'
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPerference=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
 
@@ -6555,6 +6563,7 @@ def build(args, parser=None):
     parser.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
+    parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="Use javac from each project's compliance levels rather than perform a cross compilation using the default JDK")
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
