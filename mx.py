@@ -1216,11 +1216,11 @@ class JavaProject(Project, ClasspathDependency):
         if not hasattr(self, '_javac_lint_overrides'):
             overrides = []
             if get_env('JAVAC_LINT_OVERRIDES'):
-                overrides.append(get_env('JAVAC_LINT_OVERRIDES').split(','))
+                overrides += get_env('JAVAC_LINT_OVERRIDES').split(',')
             if self.suite.javacLintOverrides:
                 overrides += self.suite.javacLintOverrides
             if hasattr(self, 'javac.lint.overrides'):
-                overrides.append(getattr(self, 'javac.lint.overrides').split(','))
+                overrides += getattr(self, 'javac.lint.overrides').split(',')
             self._javac_lint_overrides = overrides
         return self._javac_lint_overrides
 
@@ -10622,7 +10622,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.3")
+version = VersionSpec("5.5.4")
 
 currentUmask = None
 
