@@ -8009,6 +8009,8 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
     launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().home})
+    if os.environ['PATH']:
+        launchOut.element('mapEntry', {'key' : 'PATH', 'value' : os.environ['PATH']})
     launchOut.close('mapAttribute')
 
     if refresh:
