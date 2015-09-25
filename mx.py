@@ -7960,8 +7960,9 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
     if isinstance(suite, BinarySuite):
         return
 
-    configZip = TimeStampFile(join(suite.get_mx_output_dir(), 'eclipse-config.zip'))
-    configLibsZip = join(suite.get_mx_output_dir(), 'eclipse-config-libs.zip')
+    mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
+    configZip = TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
+    configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
@@ -8609,8 +8610,9 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         files.append(join(p.dir, 'nbproject', 'project.properties'))
 
 def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
-    configZip = TimeStampFile(join(suite.get_mx_output_dir(), 'netbeans-config.zip'))
-    configLibsZip = join(suite.get_mx_output_dir(), 'eclipse-config-libs.zip')
+    mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
+    configZip = TimeStampFile(join(mxOutputDir, 'netbeans-config.zip'))
+    configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
@@ -10233,6 +10235,7 @@ def ensure_dir_exists(path, mode=None):
                 pass
             else:
                 raise e
+    return path
 
 def show_envs(args):
     '''print environment variables and their values
