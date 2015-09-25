@@ -26,6 +26,7 @@
 
 import sys, inspect, re, types, bisect
 from collections import OrderedDict
+from os.path import join
 import mx
 
 class MxCompatibility500(object):
@@ -57,6 +58,9 @@ class MxCompatibility500(object):
         is a TimeStampFile or a simple time stamp (i.e. a float).
         '''
         return False
+
+    def getSuiteOutputRoot(self, suite):
+        return suite.dir
 
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
@@ -104,6 +108,14 @@ class MxCompatibility533(MxCompatibility522):
 
     def newestInputIsTimeStampFile(self):
         return True
+
+class MxCompatibility555(MxCompatibility533):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.5.5")
+
+    def getSuiteOutputRoot(self, suite):
+        return join(suite.dir, 'mxbuild')
 
 def minVersion():
     _ensureCompatLoaded()
