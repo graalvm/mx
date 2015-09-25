@@ -1734,6 +1734,8 @@ class JavacCompiler(JavacLikeCompiler):
             javacArgs.append('-Werror')
         if showTasks:
             abort('Showing task tags is not currently supported for javac')
+        javacArgs.append('-encoding')
+        javacArgs.append('UTF-8')
         javac = self.altJavac if self.altJavac else jdk.javac
         jvmArgs += jdk.java_args
         cmd = [javac] + ['-J' + arg for arg in jvmArgs] + javacArgs
