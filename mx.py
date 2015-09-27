@@ -146,6 +146,30 @@ _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
+"""
+Names of commands that do not need suites loaded.
+"""
+_suite_context_free = []
+
+"""
+Decorator for commands that do not need suites loaded.
+"""
+def suite_context_free(func):
+    _suite_context_free.append(func.__name__)
+    return func
+
+"""
+Names of commands that do not need a primary suite to be available.
+"""
+_primary_suite_exempt = []
+
+"""
+Decorator for commands that do not need a primary suite to be available.
+"""
+def primary_suite_exempt(func):
+    _primary_suite_exempt.append(func.__name__)
+    return func
+
 DEP_STANDARD = "standard dependency"
 DEP_ANNOTATION_PROCESSOR = "annotation processor dependency"
 DEP_EXCLUDED = "excluded library"
@@ -1888,6 +1912,7 @@ def _make_absolute(path, prefix):
         return join(prefix, path)
     return path
 
+@primary_suite_exempt
 def sha1(args):
     """generate sha1 digest for given file"""
     parser = ArgumentParser(prog='sha1')
@@ -7013,6 +7038,7 @@ def _processorjars_suite(s):
     build(['--dependencies', ",".join(names)])
     return [ap.path for ap in apDists]
 
+@primary_suite_exempt
 def pylint(args):
     """run pylint (if available) over Python source files (found by 'hg locate' or by tree walk with -walk)"""
 
@@ -9261,6 +9287,7 @@ def _kwArg(kwargs):
         return kwargs.pop(0)
     return None
 
+@primary_suite_exempt
 def sclone(args):
     """clone a suite repository, and its imported suites"""
     parser = ArgumentParser(prog='mx sclone')
@@ -9347,6 +9374,7 @@ def _scloneimports(s, suite_import, source):
         _sclone(importee_source, importee_dest, suite_import)
         # _clone handles the recursive visit of the new imports
 
+@primary_suite_exempt
 def scloneimports(args):
     """clone the imports of an existing suite"""
     parser = ArgumentParser(prog='mx scloneimports')
@@ -10259,6 +10287,7 @@ def show_version(args):
         if out:
             print 'hg:', out
 
+@suite_context_free
 def update(args):
     '''update mx to the latest version'''
     parser = ArgumentParser(prog='mx update')
@@ -10454,22 +10483,19 @@ def _check_primary_suite():
     else:
         return _primary_suite
 
-_primary_suite_exemptions = ['sclone', 'scloneimports', 'sha1', 'pylint']
-
 # vc (suite) commands only perform a partial load of the suite metadata, to avoid
 # problems with suite invariant checks aborting the operation
 _vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
                 'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'supdate']
 
 def _needs_primary_suite(command):
-    return not command in _primary_suite_exemptions
+    return not command in _primary_suite_exempt and not command in _suite_context_free
 
-def _needs_primary_suite_check():
-    args = _argParser.initialCommandAndArgs
+def _needs_primary_suite_check(args):
     if len(args) == 0:
         return False
     for s in args:
-        if s in _primary_suite_exemptions:
+        if s in _primary_suite_exempt:
             return False
     return True
 
@@ -10598,54 +10624,58 @@ def main():
     _mvn = MavenConfig()
 
     global _primary_suite
-    primary_suite_error = 'no primary suite found'
-    primarySuiteMxDir = _findPrimarySuiteMxDir()
-    if primarySuiteMxDir == _mx_suite.mxDir:
-        _primary_suite = _mx_suite
-    elif primarySuiteMxDir:
-        _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
-        # We explicitly load the 'env' file of the primary suite now as it might influence
-        # the suite loading logic. It will get loaded again, to ensure it overrides any
-        # settings in imported suites
-        PrimarySuite.load_env(primarySuiteMxDir)
-        global _binary_suites
-        bs = os.environ.get('MX_BINARY_SUITES')
-        if bs is not None:
-            if len(bs) > 0:
-                _binary_suites = bs.split(',')
-            else:
-                _binary_suites = []
+    primarySuiteMxDir = None
+    if len(_argParser.initialCommandAndArgs) == 0 or _argParser.initialCommandAndArgs[0] not in _suite_context_free:
+        primary_suite_error = 'no primary suite found'
+        primarySuiteMxDir = _findPrimarySuiteMxDir()
+        if primarySuiteMxDir == _mx_suite.mxDir:
+            _primary_suite = _mx_suite
+        elif primarySuiteMxDir:
+            _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
+            # We explicitly load the 'env' file of the primary suite now as it might influence
+            # the suite loading logic. It will get loaded again, to ensure it overrides any
+            # settings in imported suites
+            PrimarySuite.load_env(primarySuiteMxDir)
+            global _binary_suites
+            bs = os.environ.get('MX_BINARY_SUITES')
+            if bs is not None:
+                if len(bs) > 0:
+                    _binary_suites = bs.split(',')
+                else:
+                    _binary_suites = []
 
-        # support advanced use where import version ids are ignored (so get head)
-        # experimental, not observed in all commands
-        global _suites_ignore_versions
-        igv = os.environ.get('MX_IGNORE_VERSIONS')
-        if igv  is not None:
-            if len(igv) > 0:
-                _suites_ignore_versions = igv.split(',')
-            else:
-                _suites_ignore_versions = []
+            # support advanced use where import version ids are ignored (so get head)
+            # experimental, not observed in all commands
+            global _suites_ignore_versions
+            igv = os.environ.get('MX_IGNORE_VERSIONS')
+            if igv  is not None:
+                if len(igv) > 0:
+                    _suites_ignore_versions = igv.split(',')
+                else:
+                    _suites_ignore_versions = []
 
-        # This will load all explicitly imported suites, unless it's a vc command
-        _primary_suite = PrimarySuite(primarySuiteMxDir, load=not vc_command)
-    else:
-        # in general this is an error, except for the _primary_suite_exemptions commands,
-        # and an extensions command will likely not parse in this case, as any extra arguments
-        # will not have been added to _argParser.
-        # If the command line does not contain a string matching one of the exemptions, we can safely abort,
-        # but not otherwise, as we can't be sure the string isn't in a value for some other option.
-        if _needs_primary_suite_check():
-            abort(primary_suite_error)
-
-    commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
-
-    if primarySuiteMxDir is None:
-        if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
-            abort(primary_suite_error)
+            # This will load all explicitly imported suites, unless it's a vc command
+            _primary_suite = PrimarySuite(primarySuiteMxDir, load=not vc_command)
         else:
-            warn(primary_suite_error)
+            # in general this is an error, except for the _primary_suite_exempt commands,
+            # and an extensions command will likely not parse in this case, as any extra arguments
+            # will not have been added to _argParser.
+            # If the command line does not contain a string matching one of the exemptions, we can safely abort,
+            # but not otherwise, as we can't be sure the string isn't in a value for some other option.
+            if _needs_primary_suite_check(_argParser.initialCommandAndArgs):
+                abort(primary_suite_error)
+
+        commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
+
+        if primarySuiteMxDir is None:
+            if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
+                abort(primary_suite_error)
+            else:
+                warn(primary_suite_error)
+        else:
+            os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
     else:
-        os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
+        commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
     if _opts.mx_tests:
         MXTestsSuite()
