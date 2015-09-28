@@ -501,6 +501,33 @@ class BuildTask(object):
     def cleanSharedMemoryState(self):
         self._builtBox = None
 
+    def _persistDeps(self):
+        '''
+        Saves the dependencies for this task's subject to a file. This can be used to
+        determine whether the ordered set of dependencies for this task have changed
+        since the last time it was built.
+        Returns True if file already existed and did not reflect the current dependencies.
+        '''
+        savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', self.subject.name)
+        currentDeps = [d.subject.name for d in self.deps]
+        outOfDate = False
+        if exists(savedDepsFile):
+            with open(savedDepsFile) as fp:
+                savedDeps = [l.strip() for l in fp.readlines()]
+            if savedDeps != [d.subject.name for d in self.deps]:
+                outOfDate = True
+
+        if len(currentDeps) == 0:
+            if exists(savedDepsFile):
+                os.remove(savedDepsFile)
+        else:
+            ensure_dir_exists(dirname(savedDepsFile))
+            with open(savedDepsFile, 'w') as fp:
+                for dname in currentDeps:
+                    print >> fp, dname
+
+        return outOfDate
+
     """
     Execute the build task.
     """
@@ -522,6 +549,10 @@ class BuildTask(object):
                     reason = 'dependency {} updated'.format(updated[0].subject)
                 else:
                     reason = 'dependencies updated: ' + ', '.join([u.subject.name for u in updated])
+        changed = self._persistDeps()
+        if not buildNeeded and changed:
+            buildNeeded = True
+            reason = 'dependencies were added, removed or re-ordered'
         if not buildNeeded:
             newestInput = None
             newestInputDep = None
@@ -532,10 +563,6 @@ class BuildTask(object):
                     newestInputDep = dep
             if newestInputDep:
                 logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name, newestInput))
-            # suite.py should always be taken into account, even if only doing shallow dep checking
-            suitePyTS = TimeStampFile(self.subject.suite.suite_py())
-            if not newestInput or suitePyTS.isNewerThan(newestInput):
-                newestInput = suitePyTS
 
             if get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') is None:
                 shallow_dependency_checks = self.args.shallow_dependency_checks is True
@@ -544,7 +571,7 @@ class BuildTask(object):
                 if self.args.shallow_dependency_checks is not None and shallow_dependency_checks is True:
                     warn('Explicit -s argument to build command is overridden by MX_BUILD_SHALLOW_DEPENDENCY_CHECKS')
 
-            if newestInput and shallow_dependency_checks and not self.subject.isNativeProject() and newestInput is not suitePyTS:
+            if newestInput and shallow_dependency_checks and not self.subject.isNativeProject():
                 newestInput = None
             if __name__ != self.__module__ and self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
                 newestInput = newestInput.timestamp if newestInput else float(0)
@@ -636,7 +663,7 @@ class DistributionTemplate(SuiteConstituent):
 """
 A distribution is a file containing the output from one or more projects.
 In some sense it is the ultimate "result" of a build (there can be more than one).
-It is a Dependency because a Project or and other Distributionmay expressed a dependency on it.
+It is a Dependency because a Project or another Distribution may express a dependency on it.
 
 Attributes:
     name: unique name
