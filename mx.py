@@ -4872,7 +4872,7 @@ def get_arch():
     machine = platform.uname()[4]
     if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
         return 'amd64'
-    if machine in ['sun4v', 'sun4u']:
+    if machine in ['sun4v', 'sun4u', 'sparc64']:
         return 'sparcv9'
     if machine == 'i386' and get_os() == 'darwin':
         try:
