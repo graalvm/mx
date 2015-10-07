@@ -149,7 +149,7 @@ def nyi(name, obj):
 """
 Names of commands that do not need suites loaded.
 """
-_suite_context_free = []
+_suite_context_free = ['scloneimports']
 
 """
 Decorator for commands that do not need suites loaded.
@@ -9352,53 +9352,67 @@ def sclone(args):
     _dst_suitemodel.set_primary_dir(dest)
     _src_suitemodel.set_primary_dir(source)
 
-    _sclone(source, dest, None, args.no_imports, args.kind)
+    _sclone(source, dest, None, args.no_imports, args.kind, primary=True)
 
-def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None):
+def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=False, primary=False):
     rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
+    if manual:
+        assert len(url_vcs) > 0
+        log("Clone {} at revision {} into {}".format(' or '.join((url_vc.url for url_vc in url_vcs)), rev if rev else 'tip', dest))
+        return None
     for url_vc in url_vcs:
         if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
             break
 
+    if not exists(dest):
+        if len(url_vcs) == 0:
+            reason = 'no url provided'
+            if suite_import.dynamicImport:
+                reason += ' for dynamic import. Dynamically imported suites should be cloned first (clone {} to {})'.format(suite_import.name, dest)
+        else:
+            reason = 'none of the urls worked'
+        warn("Could not clone {}: {}".format(suite_import.name, reason))
+        return None
+
     mxDir = _is_suite_dir(dest)
     if mxDir is None:
-        warn(source + ' is not an mx suite')
+        warn(dest + ' is not an mx suite')
         return None
 
     # create a Suite (without loading) to enable imports visitor
-    s = SourceSuite(mxDir, load=False)
+    s = SourceSuite(mxDir, load=False, dynamicallyImported=suite_import.dynamicImport if suite_import else False, primary=primary)
     if not no_imports:
-        s.visit_imports(_scloneimports_visitor, source=dest)
+        s.visit_imports(_scloneimports_visitor, source=dest, manual=manual)
     return s
 
-def _scloneimports_visitor(s, suite_import, source, **extra_args):
+def _scloneimports_visitor(s, suite_import, source, manual=False, **extra_args):
     """
     cloneimports visitor for Suite.visit_imports.
     The destination information is encapsulated by 's'
     """
-    _scloneimports(s, suite_import, source)
+    _scloneimports(s, suite_import, source, manual)
 
-def _scloneimports_suitehelper(sdir):
+def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
     mxDir = _is_suite_dir(sdir)
     if mxDir is None:
         abort(sdir + ' is not an mx suite')
     else:
         # create a Suite (without loading) to enable imports visitor
-        return SourceSuite(mxDir, load=False)
+        return SourceSuite(mxDir, primary=primary, load=False, dynamicallyImported=dynamicallyImported)
 
-def _scloneimports(s, suite_import, source):
+def _scloneimports(s, suite_import, source, manual=False):
     # clone first, then visit imports once we can locate them
     importee_source = _src_suitemodel.importee_dir(source, suite_import)
     importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
-        importee_suite = _scloneimports_suitehelper(importee_dest)
-        if suite_import.version is not None and importee_suite.version() != suite_import.version:
+        importee_suite = _scloneimports_suitehelper(importee_dest, dynamicallyImported=suite_import.dynamicImport)
+        if not suite_import.dynamicImport and suite_import.version is not None and importee_suite.version() != suite_import.version:
             abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
-        importee_suite.visit_imports(_scloneimports_visitor, source=importee_source)
+        importee_suite.visit_imports(_scloneimports_visitor, source=importee_source, manual=manual)
     else:
-        _sclone(importee_source, importee_dest, suite_import)
+        _sclone(importee_source, importee_dest, suite_import, manual=manual)
         # _clone handles the recursive visit of the new imports
 
 @primary_suite_exempt
@@ -9406,6 +9420,7 @@ def scloneimports(args):
     """clone the imports of an existing suite"""
     parser = ArgumentParser(prog='mx scloneimports')
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
+    parser.add_argument('--manual', action='store_true', help='does not actually do the clones but prints the necessary clones')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
     # check for non keyword args
@@ -9417,16 +9432,16 @@ def scloneimports(args):
     if not os.path.isdir(args.source):
         abort(args.source + ' is not a directory')
 
-    vcs = VC.get_vc(args.source)
-    s = _scloneimports_suitehelper(args.source)
+    source = os.path.realpath(args.source)
+    vcs = VC.get_vc(source)
+    s = _scloneimports_suitehelper(source, primary=True)
 
-    default_path = vcs.default_push(args.source)
+    default_path = vcs.default_push(source)
 
     # We can now set the primary directory for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
-    _dst_suitemodel.set_primary_dir(args.source)
-
-    s.visit_imports(_scloneimports_visitor, source=default_path)
+    _dst_suitemodel.set_primary_dir(source)
+    s.visit_imports(_scloneimports_visitor, source=default_path, manual=args.manual)
 
 def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
     """push visitor for Suite.visit_imports"""
