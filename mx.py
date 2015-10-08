@@ -4060,7 +4060,7 @@ class Suite:
         if not v:
             return []
         if not isinstance(v, list):
-            abort('Attribute "' + name + '" for ' + context + ' must be a list')
+            abort('Attribute "' + name + '" for ' + context + ' must be a list', context)
         return v
 
     @staticmethod
@@ -7222,16 +7222,26 @@ def checkoverlap(args):
         for p in d.archived_deps():
             if p.isProject():
                 if p in projToDist:
-                    projToDist[p].append(d.name)
+                    projToDist[p].append(d)
                 else:
-                    projToDist[p] = [d.name]
+                    projToDist[p] = [d]
 
     count = 0
     for p in projToDist:
         ds = projToDist[p]
         if len(ds) > 1:
-            print '{} is in more than one distribution: {}'.format(p, ds)
-            count += 1
+            remove = []
+            for d in ds:
+                if hasattr(d, 'overlaps'):
+                    overlaps = d.overlaps
+                    if not isinstance(overlaps, list):
+                        abort('Attribute "overlaps" must be a list', d)
+                    if len([o for o in ds if o.name in overlaps]) != 0:
+                        remove.append(d)
+            ds = [d for d in ds if d not in remove]
+            if len(ds) > 1:
+                print '{} is in more than one distribution: {}'.format(p, [d.name for d in ds])
+                count += 1
     return count
 
 def canonicalizeprojects(args):
