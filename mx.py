@@ -720,10 +720,11 @@ class Distribution(Dependency):
         Gets the projects and libraries whose artifacts are the contents of the archive
         created by self.make_archive().
 
-        Direct distribution depdenencies are considered as "distDependencies".
+        Direct distribution dependencies are considered as "distDependencies".
         Anything contained in the distDependencies will not be included in the archived_deps.
-        libraries listed in "excludedLibs" will also not bed included.
-        Otherwise, archived_deps will contain everything this distribution depends on (including indirect distribution depdenencies and libraries).
+        libraries listed in "excludedLibs" will also not be included.
+        Otherwise, archived_deps will contain everything this distribution depends on (including
+        indirect distribution dependencies and libraries).
         '''
         if not hasattr(self, '_archived_deps'):
             excluded = set(self.excludedLibs)
