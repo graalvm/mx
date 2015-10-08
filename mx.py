@@ -5975,7 +5975,7 @@ def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=No
         cwd = suite.dir
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
+def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the exit status is non-zero and `nonZeroIsFatal` is true, then mx is exited with
@@ -6034,7 +6034,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             stream.close()
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
-        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env)
+        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, **kwargs)
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
