@@ -7115,12 +7115,13 @@ def pylint(args):
 
     pyfiles = []
 
-    # Add mxtool's own py files
-    for root, _, files in os.walk(dirname(__file__)):
-        for f in files:
-            if f.endswith('.py'):
-                pyfile = join(root, f)
-                pyfiles.append(pyfile)
+    # Add mxtool's own py files only if no primary suite
+    if not _primary_suite:
+        for root, _, files in os.walk(dirname(__file__)):
+            for f in files:
+                if f.endswith('.py'):
+                    pyfile = join(root, f)
+                    pyfiles.append(pyfile)
     if args.walk:
         findfiles_by_walk(pyfiles)
     else:
