@@ -26,6 +26,14 @@ suite = {
       "sha1" : "6e56d67f238dbcd60acb88a81655749aa6419c5b",
     },
 
+    "SIGTEST" : {
+      "path" : "lib/sigtest.jar",
+      "urls" : [
+        "http://hg.netbeans.org/binaries/5975EC26B309B25D5C3BBC0AB761D054327CC43D-apitest.jar",
+      ],
+      "sha1" : "5975ec26b309b25d5c3bbc0ab761d054327cc43d",
+    },
+
     "JUNIT" : {
       "path" : "lib/junit-4.11.jar",
       "urls" : [

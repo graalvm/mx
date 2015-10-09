@@ -63,6 +63,7 @@ from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars
 
 import mx_unittest
 import mx_findbugs
+import mx_sigtest
 import mx_gate
 import mx_compat
 
@@ -8970,6 +8971,24 @@ def fsckprojects(args):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
 
+def find_packages(project, pkgs=None, onlyPublic=True, packages=[], exclude_packages=[]):
+    sourceDirs = project.source_dirs()
+    def is_visible(name):
+        if onlyPublic:
+            return name == 'package-info.java'
+        else:
+            return name.endswith('.java')
+    if pkgs is None:
+        pkgs = set()
+    for sourceDir in sourceDirs:
+        for root, _, files in os.walk(sourceDir):
+            if len([name for name in files if is_visible(name)]) != 0:
+                pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                if len(packages) == 0 or pkg in packages:
+                    if len(exclude_packages) == 0 or not pkg in exclude_packages:
+                        pkgs.add(pkg)
+    return pkgs
+
 def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True):
     """generate javadoc for some/all Java projects"""
 
@@ -9028,23 +9047,6 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 logv('[package-list file exists - skipping {0}]'.format(p.name))
 
 
-    def find_packages(sourceDirs, pkgs=None, impl=False):
-        def is_visible(name):
-            if impl:
-                return name.endswith('.java')
-            else:
-                return name == 'package-info.java'
-        if pkgs is None:
-            pkgs = set()
-        for sourceDir in sourceDirs:
-            for root, _, files in os.walk(sourceDir):
-                if len([name for name in files if is_visible(name)]) != 0:
-                    pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                    if len(packages) == 0 or pkg in packages:
-                        if len(exclude_packages) == 0 or not pkg in exclude_packages:
-                            pkgs.add(pkg)
-        return pkgs
-
     extraArgs = [a.lstrip('@') for a in args.extra_args]
     if args.argfile is not None:
         extraArgs += ['@' + args.argfile]
@@ -9057,7 +9059,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            pkgs = find_packages(p.source_dirs(), set(), args.implementation)
+            pkgs = find_packages(p, set(), False, packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
@@ -9118,7 +9120,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         sproots = []
         names = []
         for p in projects:
-            find_packages(p.source_dirs(), pkgs, args.implementation)
+            find_packages(p, pkgs, not args.implementation, packages, exclude_packages)
             sproots += p.source_dirs()
             names.append(p.name)
 
@@ -10452,6 +10454,7 @@ _commands = {
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
+    'sigtest': [mx_sigtest.sigtest, ''],
     'clean': [clean, ''],
     'eclipseinit': [eclipseinit, ''],
     'eclipseformat': [eclipseformat, ''],
