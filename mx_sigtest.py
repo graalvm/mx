@@ -28,10 +28,7 @@
 
 import mx
 import os
-import tempfile
-import zipfile
-import shutil
-from os.path import join, exists
+from os.path import exists
 from argparse import ArgumentParser
 
 def _should_test_project(p):
@@ -56,7 +53,6 @@ def _sigtest_generate(args, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
-    outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in nonTestProjects])
     javaCompliance = max([p.javaCompliance for p in nonTestProjects])
 
     for p in nonTestProjects:
@@ -68,7 +64,9 @@ def _sigtest_generate(args, suite=None, projects=None):
         for pkg in mx.find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
+        if exitcode != 0:
+            mx.abort('Exit code was ' + str(exitcode) + ' while generating ' + sigtestResults)
         if not exists(sigtestResults):
-            abort('Cannot generate ' + sigtestResults)
-        print("Sigtest snapshot generated to " + sigtestResults)
+            mx.abort('Cannot generate ' + sigtestResults)
+        mx.log("Sigtest snapshot generated to " + sigtestResults)
     return 0

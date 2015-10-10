@@ -8360,7 +8360,8 @@ def netbeansinit(args, refreshOnly=False, buildProcessorJars=True):
     for suite in suites(True):
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
-def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=[]):
+def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
+    dists = [] if dists is None else dists
     ensure_dir_exists(join(p.dir, 'nbproject'))
 
     jdk = get_jdk(p.javaCompliance)
@@ -8412,7 +8413,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=[]):
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'build'})
-    buildOnly = p.name;
+    buildOnly = p.name
     for d in dists:
         buildOnly = buildOnly + ',' + d.name
     out.element('arg', {'value' : '--only'})
@@ -8699,7 +8700,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
         if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
             continue
 
-        includedInDists = [ d for d in suite.dists if p in d.archived_deps()]
+        includedInDists = [d for d in suite.dists if p in d.archived_deps()]
         _netbeansinit_project(p, jdks, files, libFiles, includedInDists)
     log('If using NetBeans:')
     # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
@@ -8971,7 +8972,9 @@ def fsckprojects(args):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
 
-def find_packages(project, pkgs=None, onlyPublic=True, packages=[], exclude_packages=[]):
+def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_packages=None):
+    packages = [] if packages is None else packages
+    exclude_packages = [] if exclude_packages is None else exclude_packages
     sourceDirs = project.source_dirs()
     def is_visible(name):
         if onlyPublic:
