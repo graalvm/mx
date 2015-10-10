@@ -1,5 +1,4 @@
 suite = {
-  "mxversion" : "5.2",
   "name" : "mx",
   "libraries" : {
 
@@ -94,7 +93,7 @@ suite = {
     },
   },
 
-  "licences" : {
+  "licenses" : {
     "GPLv2-CPE" : {
       "name" : "GNU General Public License, version 2, with the Classpath Exception",
       "url" : "http://openjdk.java.net/legal/gplv2+ce.html"

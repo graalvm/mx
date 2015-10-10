@@ -3782,7 +3782,9 @@ class Suite:
         d = expand(getattr(module, dictName), [dictName])
         sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'versionConflictResolution', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories', 'javac.lint.overrides']
 
-        if d.has_key('mxversion'):
+        if self.name == 'mx':
+            self.requiredMxVersion = version
+        elif d.has_key('mxversion'):
             try:
                 self.requiredMxVersion = VersionSpec(d['mxversion'])
             except AssertionError as ae:
