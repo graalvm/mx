@@ -67,9 +67,7 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 
-
 _mx_home = os.path.realpath(dirname(__file__))
-
 
 try:
     # needed to work around https://bugs.python.org/issue1927
@@ -464,7 +462,7 @@ class ClasspathDependency(Dependency):
     def isJar(self):
         cp_repr = self.classpath_repr()
         if cp_repr:
-            return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR')
+            return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR') or '.jar_' in cp_repr
         return True
 
 """
@@ -1447,9 +1445,9 @@ class JavaProject(Project, ClasspathDependency):
         aps = self.annotation_processors()
         if len(aps):
             entries = classpath_entries(names=aps)
-            invalid = [e for e in entries if not e.isJar()]
+            invalid = [e.classpath_repr(resolve=True) for e in entries if not e.isJar()]
             if invalid:
-                abort('Annotation processor path can only contain jars: ' + str(invalid))
+                abort('Annotation processor path can only contain jars: ' + str(invalid), context=self)
             return os.pathsep.join((e for e in (e.classpath_repr(resolve=True) for e in entries) if e))
         return None
 
@@ -1964,6 +1962,26 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+def _get_path_in_cache(name, sha1, urls, ext=None):
+    """
+    Gets the path an artifact has (or would have) in the download cache.
+    """
+    assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
+    userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+    if ext is None:
+        for url in urls:
+            # Use extension of first URL whose path component ends with a non-empty extension
+            _, _, path, _, _, _ = urlparse.urlparse(url)
+            _, ext = os.path.splitext(path)
+            if ext:
+                break
+        if not ext:
+            abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
+    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(userHome, '.mx', 'cache')))
+    assert os.sep not in name, name + ' cannot contain ' + os.sep
+    assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
+    return join(cacheDir, name + '_' + sha1 + ext)
+
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     '''
     Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
@@ -1983,33 +2001,47 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
         cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
         ensure_dir_exists(cacheDir)
-        base = basename(path)
-        cachePath = join(cacheDir, base + '_' + sha1)
+
+        _, ext = os.path.splitext(path)
+        cachePath = _get_path_in_cache(name, sha1, urls, ext=ext)
 
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
-            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
-            download(cachePath, urls)
 
-        d = dirname(path)
-        if d != '':
-            ensure_dir_exists(d)
-        if canSymlink and 'symlink' in dir(os):
-            logvv('Symlinking {} to {}'.format(path, cachePath))
-            if os.path.lexists(path):
-                os.unlink(path)
-            try:
-                os.symlink(cachePath, path)
-            except OSError as e:
-                # When doing parallel building, the symlink can fail
-                # if another thread wins the race to create the symlink
-                if not os.path.lexists(path):
-                    # It was some other error
-                    raise Exception(path, e)
-        else:
-            logvv('Copying {} to {}'.format(path, cachePath))
-            shutil.copy(cachePath, path)
+            def _findLegacyCachePath():
+                for e in os.listdir(cacheDir):
+                    if sha1 in e and sha1OfFile(join(cacheDir, e)) == sha1:
+                        return join(cacheDir, e)
+                return None
+
+            legacyCachePath = _findLegacyCachePath()
+            if legacyCachePath:
+                logvv('Copying {} to {}'.format(legacyCachePath, cachePath))
+                shutil.move(legacyCachePath, cachePath)
+            else:
+                log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
+                download(cachePath, urls)
+
+        if path != cachePath:
+            d = dirname(path)
+            if d != '':
+                ensure_dir_exists(d)
+            if canSymlink and 'symlink' in dir(os):
+                logvv('Symlinking {} to {}'.format(path, cachePath))
+                if os.path.lexists(path):
+                    os.unlink(path)
+                try:
+                    os.symlink(cachePath, path)
+                except OSError as e:
+                    # When doing parallel building, the symlink can fail
+                    # if another thread wins the race to create the symlink
+                    if not os.path.lexists(path):
+                        # It was some other error
+                        raise Exception(path, e)
+            else:
+                logvv('Copying {} to {}'.format(path, cachePath))
+                shutil.copy(cachePath, path)
 
         if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
             log('SHA1 of ' + sha1OfFile(cachePath) + ' does not match expected value (' + sha1 + ')')
@@ -4105,12 +4137,24 @@ class Suite:
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
-            path = attrs.pop('path')
+            path = attrs.pop('path', None)
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
+            ext = attrs.pop('ext', None)
+            if path is None:
+                if not urls:
+                    abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
+                if not sha1:
+                    abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
+                path = _get_path_in_cache(name, sha1, urls, ext)
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
+            sourceExt = attrs.pop('sourceExt', None)
+            if sourcePath is None and sourceUrls:
+                if not sourceSha1:
+                    abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
+                sourcePath = _get_path_in_cache(name + '.sources', sourceSha1, sourceUrls, sourceExt)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', False)
             l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
