@@ -7116,8 +7116,8 @@ def pylint(args):
 
     pyfiles = []
 
-    # Add mxtool's own py files only if no primary suite
-    if not _primary_suite:
+    # Process mxtool's own py files only if mx is the primary suite
+    if _primary_suite is _mx_suite:
         for root, _, files in os.walk(dirname(__file__)):
             for f in files:
                 if f.endswith('.py'):
