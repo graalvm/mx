@@ -4072,9 +4072,11 @@ class Suite:
             path = attrs.pop('path')
             d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense)
         else:
+            defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.jar')
+            defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path', join(self.dir, 'dists', _map_to_maven_dist_name(name) + '.jar'))
-            sourcesPath = attrs.pop('sourcesPath', None)
+            path = attrs.pop('path', defaultPath)
+            sourcesPath = attrs.pop('sourcesPath', defaultSourcesPath)
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
