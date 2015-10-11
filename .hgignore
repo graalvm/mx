@@ -1,8 +1,5 @@
-bin
-lib
+mxbuild
 .*\.orig$
 .*\.pyc$
-\.class$
-\javafilelist.*\.txt$
 mx.mx/env
 workingsets.xml

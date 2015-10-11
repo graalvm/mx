@@ -10069,7 +10069,7 @@ def show_suites(args):
 
 def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
     myDir = _mx_home if myDir is None else myDir
-    binDir = join(myDir, 'bin' if not jdk else '.jdk' + str(jdk.version))
+    binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
     javaClass = join(binDir, javaClassName + '.class')
     if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):

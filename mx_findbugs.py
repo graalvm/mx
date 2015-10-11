@@ -56,7 +56,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
     if findBugsHome:
         findbugsJar = join(findBugsHome, 'lib', 'findbugs.jar')
     else:
-        findbugsLib = join(mx._mx_suite.dir, 'lib', 'findbugs-3.0.0')
+        findbugsLib = join(mx._mx_suite.get_output_root(), 'findbugs-3.0.0')
         if not exists(findbugsLib):
             tmp = tempfile.mkdtemp(prefix='findbugs-download-tmp', dir=mx._mx_suite.dir)
             try:
