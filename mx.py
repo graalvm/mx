@@ -25,7 +25,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-from os import getenv
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
@@ -6011,7 +6010,7 @@ def waitOn(p):
 
 def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
     mavenCommand = 'mvn'
-    mavenHome = getenv('MAVEN_HOME')
+    mavenHome = os.getenv('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
