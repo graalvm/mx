@@ -10293,7 +10293,10 @@ def junit(args, harness=_basic_junit_harness, parser=None):
         # However, perhaps because it's Friday 13th javac is not actually compiling
         # this file, yet not returning error. It is perhaps related to annotation processors
         # so the workaround is to extract the junit path as that is all we need.
-        junitpath = [s for s in projectscp.split(":") if "junit" in s][0]
+        junitpath = [s for s in projectscp.split(":") if "junit" in s]
+        if len(junitpath) is 0:
+            junitpath = [s for s in projectscp.split(":") if "JUNIT" in s]
+        junitpath = junitpath[0]
 
         _, binDir = _compile_mx_class('MX2JUnitWrapper', junitpath)
 
