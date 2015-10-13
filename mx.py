@@ -3551,8 +3551,6 @@ class SuiteModel:
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
-            if dd == 'hotspot':
-                print searchDir
             sd = _is_suite_dir(join(searchDir, dd), _mxDirName(name))
             if sd is not None:
                 return sd
