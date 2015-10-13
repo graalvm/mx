@@ -6693,7 +6693,7 @@ def build(args, parser=None):
     parser.add_argument('-c', action='store_true', dest='clean', help='removes existing build output')
     parallelize = parser.add_mutually_exclusive_group()
     parallelize.add_argument('-n', '--serial', action='store_const', const=False, dest='parallelize', help='serialize Java compilation')
-    parallelize.add_argument('-p', action='store_const', const=True, dest='parallelize', help='parallelize Java compilation')
+    parallelize.add_argument('-p', action='store_const', const=True, dest='parallelize', help='parallelize Java compilation (default)')
     parser.add_argument('-s', '--shallow-dependency-checks', action='store_const', const=True, help="ignore modification times "\
                         "of output files for each of P's dependencies when determining if P should be built. That "\
                         "is, only P's sources, suite.py of its suite and whether any of P's dependencies have "\
