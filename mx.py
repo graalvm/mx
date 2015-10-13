@@ -3549,6 +3549,8 @@ class SuiteModel:
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
+            if dd == 'hotspot':
+                print searchDir
             sd = _is_suite_dir(join(searchDir, dd), _mxDirName(name))
             if sd is not None:
                 return sd
@@ -10575,17 +10577,21 @@ def _mx_binary_distribution_version(name):
 def _suitename(mxDir):
     base = os.path.basename(mxDir)
     parts = base.split('.')
-    assert len(parts) == 2
+    if len(parts) == 3:
+        assert parts[0] == ''
+        assert parts[1] == 'mx'
+        return parts[2]
+    assert len(parts) == 2, parts
     assert parts[0] == 'mx'
     return parts[1]
 
 def _is_suite_dir(d, mxDirName=None):
     """
     Checks if d contains a suite.
-    If mxDirName is None, matches any suite name, otherwise checks for exactly 'mx.mxDirName'.
+    If mxDirName is None, matches any suite name, otherwise checks for exactly *mxDirName* or '.' + *mxDirName*.
     """
     if os.path.isdir(d):
-        for f in [mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.')]:
+        for f in [mxDirName, '.' + mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.') or e.startswith('.mx.')]:
             mxDir = join(d, f)
             if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
                 return mxDir
