@@ -7850,6 +7850,10 @@ def _check_ide_timestamp(suite, configZip, ide):
     return True
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
+def _eclipse_linked_resource(name, tp, location):
+    if get_os() == 'windows':
+        location = location.replace(os.sep, '/')
+    return EclipseLinkedResource(name, tp, location)
 
 def _eclipseinit_project(p, files=None, libFiles=None):
     assert get_jdk(p.javaCompliance)
@@ -7873,7 +7877,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if not genDir.startswith(p.dir):
             genDirName = basename(genDir)
             out.open('classpathentry', {'kind' : 'src', 'path' : genDirName})
-            linkedResources.append(EclipseLinkedResource(genDirName, '2', genDir))
+            linkedResources.append(_eclipse_linked_resource(genDirName, '2', genDir))
         else:
             out.open('classpathentry', {'kind' : 'src', 'path' : p.source_gen_dir(relative=True)})
 
@@ -7950,7 +7954,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     if outputDirRel.startswith('..'):
         outputDirName = basename(outputDirRel)
         out.element('classpathentry', {'kind' : 'output', 'path' : outputDirName})
-        linkedResources.append(EclipseLinkedResource(outputDirName, '2', p.output_dir()))
+        linkedResources.append(_eclipse_linked_resource(outputDirName, '2', p.output_dir()))
     else:
         out.element('classpathentry', {'kind' : 'output', 'path' : outputDirRel})
     out.close('classpath')
