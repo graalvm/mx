@@ -1970,7 +1970,9 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            _, _, path, _, _, _ = urlparse.urlparse(url)
+            _, _, path, _, query, _ = urlparse.urlparse(url)
+            if path == "/remotecontent" and query.startswith("filepath"):
+                path = query
             _, ext = os.path.splitext(path)
             if ext:
                 break
@@ -10852,7 +10854,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.7")
+version = VersionSpec("5.5.8")
 
 currentUmask = None
 
