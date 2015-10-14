@@ -4945,6 +4945,13 @@ def vc_system(kind, abortOnError=True):
     else:
         return None
 
+def get_opts():
+    """
+    Gets the parsed command line options.
+    """
+    assert _argParser.parsed is True
+    return _opts
+
 def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     Get the list of all loaded suites.
@@ -5362,6 +5369,7 @@ class ArgParser(ArgumentParser):
 
 
     def __init__(self, parents=None):
+        self.parsed = False
         if not parents:
             parents = []
         ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0)
@@ -5489,6 +5497,7 @@ class ArgParser(ArgumentParser):
             commandAndArgs = opts.__dict__.pop('commandAndArgs')
             if self.initialCommandAndArgs != commandAndArgs:
                 abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))
+            self.parsed = True
             return commandAndArgs
 
 def _format_commands():
@@ -10856,7 +10865,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.8")
+version = VersionSpec("5.5.9")
 
 currentUmask = None
 
