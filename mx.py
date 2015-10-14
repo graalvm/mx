@@ -10038,8 +10038,9 @@ def show_suites(args):
       --licenses   show element licenses
     """
     parser = ArgumentParser(prog='mx suites')
-    parser.add_argument('--locations', action='store_true', help='show element locations on disk')
-    parser.add_argument('--licenses', action='store_true', help='show element licenses')
+    parser.add_argument('-p', '--locations', action='store_true', help='show element locations on disk')
+    parser.add_argument('-l', '--licenses', action='store_true', help='show element licenses')
+    parser.add_argument('-a', '--archived-deps', action='store_true', help='show archived deps for distributions')
     args = parser.parse_args(args)
     def _location(e):
         if args.locations:
@@ -10070,6 +10071,9 @@ def show_suites(args):
                 if data:
                     out += ' (' + ', '.join(data) + ')'
                 log(out)
+                if name == 'distributions' and args.archived_deps:
+                    for a in e.archived_deps():
+                        log('      ' + a.name)
 
     for s in suites(True):
         location = _location(s)
@@ -10865,7 +10869,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.9")
+version = VersionSpec("5.5.10")
 
 currentUmask = None
 
