@@ -9668,26 +9668,36 @@ def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extr
     _sforce_imports(s, suite(suite_import.name), suite_import, import_map, strict_versions)
 
 def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, strict_versions):
+    suite_import_version = suite_import.version
     if imported_suite.name in import_map:
         # we have seen this already
-        if strict_versions:
-            if suite_import.version and import_map[imported_suite.name] != suite_import.version:
-                abort('inconsistent import versions for suite ' + imported_suite.name)
-        return
+        if not suite_import_version:
+            return
+        conflict_resolution = _opts.version_conflict_resolution
+        if conflict_resolution == 'suite':
+            conflict_resolution = importing_suite.versionConflictResolution
+        if conflict_resolution == 'latest':
+            suite_import_version = imported_suite.vc.latest(imported_suite.dir, import_map[imported_suite.name], suite_import_version)
+        elif strict_versions and import_map[imported_suite.name] != suite_import_version:
+            abort('inconsistent import versions for suite ' + imported_suite.name)
+        if import_map[imported_suite.name] != suite_import_version:
+            import_map[imported_suite.name] = suite_import_version
+        else:
+            return
     else:
-        import_map[imported_suite.name] = suite_import.version
+        import_map[imported_suite.name] = suite_import_version
 
-    if suite_import.version:
+    if suite_import_version:
         # normal case, a specific version
         importedVersion = imported_suite.version()
-        if importedVersion != suite_import.version:
+        if importedVersion != suite_import_version:
             if imported_suite.isDirty():
                 if is_interactive():
                     if not ask_yes_no('WARNING: Uncommited changes in {} will be lost! Really continue'.format(imported_suite.name), default='n'):
                         abort('aborting')
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
-            imported_suite.vc.update(imported_suite.dir, suite_import.version, mayPull=True, clean=True)
+            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=True)
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.dir, update=True)
