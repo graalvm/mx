@@ -3727,6 +3727,7 @@ class Suite:
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         _suites[self.name] = self
+        self._outputRoot = None
 
     def __str__(self):
         return self.name
@@ -3751,7 +3752,9 @@ class Suite:
         Gets the root of the directory hierarchy under which generated artifacts for this
         suite such as class files and annotation generated sources should be placed.
         '''
-        return self.getMxCompatibility().getSuiteOutputRoot(self)
+        if not self._outputRoot:
+            self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
+        return self._outputRoot
 
     def get_mx_output_dir(self):
         '''
@@ -3813,7 +3816,26 @@ class Suite:
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         d = expand(getattr(module, dictName), [dictName])
-        sections = ['imports', 'projects', 'libraries', 'jrelibraries', 'jdklibraries', 'distributions', 'name', 'mxversion', 'versionConflictResolution', 'developer', 'url', 'licenses', 'licences', 'defaultLicense', 'defaultLicence', 'repositories', 'javac.lint.overrides']
+        supported = [
+            'imports',
+            'projects',
+            'libraries',
+            'jrelibraries',
+            'jdklibraries',
+            'distributions',
+            'name',
+            'outputRoot',
+            'mxversion',
+            'versionConflictResolution',
+            'developer',
+            'url',
+            'licenses',
+            'licences',
+            'defaultLicense',
+            'defaultLicence',
+            'repositories',
+            'javac.lint.overrides'
+        ]
 
         if self.name == 'mx':
             self.requiredMxVersion = version
@@ -3839,9 +3861,9 @@ class Suite:
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
 
-        unknown = frozenset(d.keys()) - frozenset(sections)
+        unknown = frozenset(d.keys()) - frozenset(supported)
         if unknown:
-            abort(modulePath + ' defines unsupported suite sections: ' + ', '.join(unknown))
+            abort(modulePath + ' defines unsupported suite attribute: ' + ', '.join(unknown))
 
         self.suiteDict = d
 
@@ -3917,8 +3939,10 @@ class Suite:
         if suiteDict.get('name') is None:
             abort('Missing "suite=<name>" in ' + self.suite_py())
 
-        if suiteDict.get('name') != self.name:
-            abort('suite name in project file does not match ' + self.name)
+        outputRoot = suiteDict.get('outputRoot')
+        if outputRoot:
+            assert not self._outputRoot or self._outputRoot == outputRoot, self._outputRoot
+            self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
@@ -10879,7 +10903,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.10")
+version = VersionSpec("5.5.11")
 
 currentUmask = None
 
