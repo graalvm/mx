@@ -1209,6 +1209,13 @@ class Project(Dependency):
         """
         nyi('get_javac_lint_overrides', self)
 
+    def _eclipseinit(self, files=None, libFiles=None):
+        """
+        Generates an Eclipse project configuration for this project if Eclipse
+        supports projects of this type.
+        """
+        pass
+
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
@@ -1489,6 +1496,12 @@ class JavaProject(Project, ClasspathDependency):
                     arcname = join(relpath, f).replace(os.sep, '/')
                     arc.zf.write(join(root, f), arcname)
         return path
+
+    def _eclipseinit(self, files=None, libFiles=None):
+        """
+        Generates an Eclipse project configuration for this project.
+        """
+        _eclipseinit_project(self, files=files, libFiles=libFiles)
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance if self.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
@@ -1815,7 +1828,7 @@ class ECJCompiler(JavacLikeCompiler):
         jdtPropertiesSources = project.eclipse_settings_sources()['org.eclipse.jdt.core.prefs']
         if not exists(jdtProperties) or TimeStampFile(jdtProperties).isOlderThan(jdtPropertiesSources):
             # Try to fix a missing or out of date properties file by running eclipseinit
-            _eclipseinit_project(project)
+            project._eclipseinit()
         if not exists(jdtProperties):
             log('JDT properties file {0} not found'.format(jdtProperties))
         else:
@@ -8128,9 +8141,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         files += _processorjars_suite(suite)
 
     for p in suite.projects:
-        if not p.isJavaProject():
-            continue
-        _eclipseinit_project(p, files, libFiles)
+        p._eclipseinit(files, libFiles)
 
     _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies())
     files.append(launchFile)
