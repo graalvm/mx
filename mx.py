@@ -1203,6 +1203,12 @@ class Project(Dependency):
         """
         nyi('eclipse_settings_sources', self)
 
+    def eclipse_config_up_to_date(self, configZip):
+        """
+        Determines if the zipped up Eclipse configuration
+        """
+        return True
+
     def get_javac_lint_overrides(self):
         """
         Gets a string to be added to the -Xlint javac option.
@@ -1290,6 +1296,13 @@ class JavaProject(Project, ClasspathDependency):
                 overrides += getattr(self, 'javac.lint.overrides').split(',')
             self._javac_lint_overrides = overrides
         return self._javac_lint_overrides
+
+    def eclipse_config_up_to_date(self, configZip):
+        for _, sources in self.eclipse_settings_sources().iteritems():
+            for source in sources:
+                if configZip.isOlderThan(source):
+                    return False
+        return True
 
     def eclipse_settings_sources(self):
         """
@@ -7879,7 +7892,10 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
     generate_eclipse_workingsets()
 
 def _check_ide_timestamp(suite, configZip, ide):
-    """return True if and only if the projects file, imports file, eclipse-settings files, and mx itself are all older than configZip"""
+    """
+    Returns True if and only if suite.py for *suite*, all *configZip* related resources in
+    *suite* and mx itself are older than *configZip*.
+    """
     suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e == 'suite.py']
     if configZip.isOlderThan(suitePyFiles):
         return False
@@ -7888,11 +7904,9 @@ def _check_ide_timestamp(suite, configZip, ide):
         return False
 
     if ide == 'eclipse':
-        for p in [p for p in suite.projects if p.isJavaProject()]:
-            for _, sources in p.eclipse_settings_sources().iteritems():
-                for source in sources:
-                    if configZip.isOlderThan(source):
-                        return False
+        for p in [p for p in suite.projects]:
+            if not p.eclipse_config_up_to_date(configZip):
+                return False
     return True
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
