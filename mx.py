@@ -7911,9 +7911,22 @@ def _check_ide_timestamp(suite, configZip, ide):
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
 def _eclipse_linked_resource(name, tp, location):
-    if get_os() == 'windows':
-        location = location.replace(os.sep, '/')
     return EclipseLinkedResource(name, tp, location)
+
+def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
+    """
+    Gets the URI for a resource relative to an Eclipse project directory (i.e.,
+    the directory containing the ```.project``` file for the project). The URI
+    returned is based on the builtin PROJECT_LOC Eclipse variable.
+    See http://stackoverflow.com/a/7585095
+    """
+    relpath = os.path.relpath(path, eclipseProjectDir)
+    names = relpath.split(os.sep)
+    parents = len([n for n in names if n == '..'])
+    sep = '/' # Yes, even on Windows...
+    if parents:
+        return join('PARENT-{}-PROJECT_LOC'.format(parents), sep.join([n for n in names if n != '..']))
+    return join('PROJECT_LOC', sep.join([n for n in names if n != '..']))
 
 def _eclipseinit_project(p, files=None, libFiles=None):
     assert get_jdk(p.javaCompliance)
@@ -8095,7 +8108,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             out.open('link')
             out.element('name', data=lr.name)
             out.element('type', data=lr.type)
-            out.element('location', data=lr.location)
+            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir))
             out.close('link')
         out.close('linkedResources')
     out.close('projectDescription')
@@ -10928,7 +10941,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.11")
+version = VersionSpec("5.5.12")
 
 currentUmask = None
 
