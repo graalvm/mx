@@ -4306,7 +4306,8 @@ class Suite:
                                             s.vc.pull(s.dir, rev=suite_import.version, update=False)
                                         resolved = s.vc.latest(s.dir, suite_import.version, s.vc.parent(s.dir))
                                         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
-                                        s.vc.update(s.dir, rev=resolved)
+                                        if s.vc.parent(s.dir) != resolved:
+                                            s.vc.update(s.dir, rev=resolved)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
