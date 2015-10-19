@@ -18,4 +18,6 @@ If no options or command is specified, `mx` prints information on the available 
 
 For an example of `mx` usage, you can read the [Instructions][1] for the Graal project. 
 
+For detailed but somewhat out of date information about `mx`, you can look at the [wiki][2]. We are planning to refresh the documentation soon.
 [1]: https://wiki.openjdk.java.net/display/Graal/Instructions
+[2]: https://bitbucket.org/allr/mx/wiki/Home
