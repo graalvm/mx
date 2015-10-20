@@ -4906,6 +4906,8 @@ def get_jython_os():
         return 'darwin'
     elif os_name.startswith('linux'):
         return 'linux'
+    elif os_name.startswith('openbsd'):
+        return 'openbsd'
     elif os_name.startswith('sunos'):
         return 'solaris'
     elif os_name.startswith('win'):
@@ -4923,6 +4925,8 @@ def get_os():
         return 'darwin'
     elif sys.platform.startswith('linux'):
         return 'linux'
+    elif sys.platform.startswith('openbsd'):
+        return 'openbsd'
     elif sys.platform.startswith('sunos'):
         return 'solaris'
     elif sys.platform.startswith('win32'):
@@ -5913,6 +5917,9 @@ _os_jdk_locations = {
             '/usr/java'
         ]
     },
+    'openbsd': {
+        'bases': ['/usr/local/']
+    },
     'solaris': {
         'bases': ['/usr/jdk/instances']
     },
@@ -6202,7 +6209,7 @@ def add_lib_prefix(name):
     Adds the platform specific library prefix to a name
     """
     os = get_os()
-    if os == 'linux' or os == 'solaris' or os == 'darwin':
+    if os in ['darwin', 'linux', 'openbsd', 'solaris']:
         return 'lib' + name
     return name
 
@@ -6213,7 +6220,7 @@ def add_lib_suffix(name):
     os = get_os()
     if os == 'windows':
         return name + '.dll'
-    if os == 'linux' or os == 'solaris':
+    if os in ['linux', 'openbsd', 'solaris']:
         return name + '.so'
     if os == 'darwin':
         return name + '.dylib'
@@ -6226,7 +6233,7 @@ def add_debug_lib_suffix(name):
     os = get_os()
     if os == 'windows':
         return name + '.pdb'
-    if os == 'linux' or os == 'solaris':
+    if os in ['linux', 'openbsd', 'solaris']:
         return name + '.debuginfo'
     if os == 'darwin':
         return name + '.dylib.dSYM'
