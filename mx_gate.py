@@ -206,7 +206,7 @@ def gate(args):
         else:
             _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
-        with Task('BuildJavaWithJavac', tasks):
+        with Task('BuildJavaWithJavac', tasks) as t:
             if t: mx.build(['-p', '--warning-as-error', '--no-native', '--force-javac'])
 
         with Task('IDEConfigCheck', tasks) as t:
