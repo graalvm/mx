@@ -9747,6 +9747,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         if conflict_resolution == 'suite':
             conflict_resolution = importing_suite.versionConflictResolution
         if conflict_resolution == 'latest':
+            if not imported_suite.vc.exists(imported_suite.dir, suite_import_version):
+                imported_suite.vc.pull(imported_suite.dir, rev=suite_import_version, update=False)
             suite_import_version = imported_suite.vc.latest(imported_suite.dir, import_map[imported_suite.name], suite_import_version)
         elif strict_versions and import_map[imported_suite.name] != suite_import_version:
             abort('inconsistent import versions for suite ' + imported_suite.name)
