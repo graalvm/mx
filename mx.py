@@ -5666,11 +5666,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     # 2. JDK specified by set_java_command_default_jdk_tag
     # 3. JDK selected by DEFAULT_JDK_TAG tag
 
-    jdkOpt = get_jdk_option()
-    if versionCheck is None and jdkOpt.compliance:
-        versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
-
     if tag is None:
+        jdkOpt = get_jdk_option()
+        if versionCheck is None and jdkOpt.compliance:
+            versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
 
     defaultTag = tag == DEFAULT_JDK_TAG
