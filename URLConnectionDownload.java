@@ -22,6 +22,7 @@
  */
 import java.io.*;
 import java.net.*;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.*;
 
@@ -156,7 +157,13 @@ public class URLConnectionDownload {
             } catch (MalformedURLException e) {
                 throw new Error("Error in URL " + s, e);
             } catch (IOException e) {
-                System.err.println("Error reading from  " + s + ":  " + e);
+                System.err.println("Error reading from " + s + ":  " + e);
+                if (e.toString().contains("the trustAnchors parameter must be non-empty") &&
+                    System.getProperty("java.specification.version").compareTo("1.9") == 0) {
+                    System.err.println("Possible solution: copy cacerts file from OracleJDK to " +
+                        Paths.get(System.getProperty("java.home"), "lib", "security", "cacerts"));
+                    System.err.println("           Source: http://mail.openjdk.java.net/pipermail/core-libs-dev/2015-September/035528.html");
+                }
                 path.delete();
             }
         }
