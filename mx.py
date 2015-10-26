@@ -9510,7 +9510,7 @@ def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=F
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     if manual:
         assert len(url_vcs) > 0
-        log("Clone {} at revision {} into {}".format(' or '.join((url_vc.url for url_vc in url_vcs)), rev if rev else 'tip', dest))
+        log("Clone {} at revision {} into {}".format(' or '.join(("{} with {}".format(url_vc.url, url_vc.vc.kind) for url_vc in url_vcs)), rev if rev else 'tip', dest))
         return None
     for url_vc in url_vcs:
         if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
