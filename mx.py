@@ -9561,7 +9561,7 @@ def _scloneimports(s, suite_import, source, manual=False):
         importee_suite = _scloneimports_suitehelper(importee_dest, dynamicallyImported=suite_import.dynamicImport)
         if not suite_import.dynamicImport and suite_import.version is not None and importee_suite.version() != suite_import.version:
             abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
-        importee_suite.visit_imports(_scloneimports_visitor, source=importee_source, manual=manual)
+        importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual)
     else:
         _sclone(importee_source, importee_dest, suite_import, manual=manual)
         # _clone handles the recursive visit of the new imports
