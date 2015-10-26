@@ -9506,12 +9506,18 @@ def sclone(args):
 
     _sclone(source, dest, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version)
 
-def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=False, primary=False, ignoreVersion=False):
+def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False):
     rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
-    if manual:
+    if manual is not None:
         assert len(url_vcs) > 0
-        log("Clone {} at revision {} into {}".format(' or '.join(("{} with {}".format(url_vc.url, url_vc.vc.kind) for url_vc in url_vcs)), rev if rev else 'tip', dest))
+        revname = rev if rev else 'tip'
+        if suite_import.name in manual:
+            if manual[suite_import.name] != revname and not suite_import.dynamicImport:
+                abort('Version mismatch for {}: already imported at {} can not be imported again at {}'.format(suite_import.name, manual[suite_import.name], revname))
+            return None
+        log("Clone {} at revision {} into {}".format(' or '.join(("{} with {}".format(url_vc.url, url_vc.vc.kind) for url_vc in url_vcs)), revname, dest))
+        manual[suite_import.name] = revname
         return None
     for url_vc in url_vcs:
         if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
@@ -9538,7 +9544,7 @@ def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=F
         s.visit_imports(_scloneimports_visitor, source=dest, manual=manual, ignoreVersion=ignoreVersion)
     return s
 
-def _scloneimports_visitor(s, suite_import, source, manual=False, ignoreVersion=False, **extra_args):
+def _scloneimports_visitor(s, suite_import, source, manual=None, ignoreVersion=False, **extra_args):
     """
     cloneimports visitor for Suite.visit_imports.
     The destination information is encapsulated by 's'
@@ -9553,7 +9559,7 @@ def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
         # create a Suite (without loading) to enable imports visitor
         return SourceSuite(mxDir, primary=primary, load=False, dynamicallyImported=dynamicallyImported)
 
-def _scloneimports(s, suite_import, source, manual=False, ignoreVersion=False):
+def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
     # clone first, then visit imports once we can locate them
     importee_source = _src_suitemodel.importee_dir(source, suite_import)
     importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import)
@@ -9594,7 +9600,7 @@ def scloneimports(args):
     # We can now set the primary directory for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
     _dst_suitemodel.set_primary_dir(source)
-    s.visit_imports(_scloneimports_visitor, source=default_path, manual=args.manual, ignoreVersion=args.ignore_version)
+    s.visit_imports(_scloneimports_visitor, source=default_path, manual={} if args.manual else None, ignoreVersion=args.ignore_version)
 
 def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
     """push visitor for Suite.visit_imports"""
