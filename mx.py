@@ -9473,6 +9473,7 @@ def sclone(args):
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
     parser.add_argument("--no-imports", action='store_true', help='do not clone imported suites')
     parser.add_argument("--kind", help='vc kind for URL suites', default='hg')
+    parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
     # check for non keyword args
@@ -9503,9 +9504,9 @@ def sclone(args):
     _dst_suitemodel.set_primary_dir(dest)
     _src_suitemodel.set_primary_dir(source)
 
-    _sclone(source, dest, None, args.no_imports, args.kind, primary=True)
+    _sclone(source, dest, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version)
 
-def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=False, primary=False):
+def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=False, primary=False, ignoreVersion=False):
     rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     if manual:
@@ -9534,15 +9535,15 @@ def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=F
     # create a Suite (without loading) to enable imports visitor
     s = SourceSuite(mxDir, load=False, dynamicallyImported=suite_import.dynamicImport if suite_import else False, primary=primary)
     if not no_imports:
-        s.visit_imports(_scloneimports_visitor, source=dest, manual=manual)
+        s.visit_imports(_scloneimports_visitor, source=dest, manual=manual, ignoreVersion=ignoreVersion)
     return s
 
-def _scloneimports_visitor(s, suite_import, source, manual=False, **extra_args):
+def _scloneimports_visitor(s, suite_import, source, manual=False, ignoreVersion=False, **extra_args):
     """
     cloneimports visitor for Suite.visit_imports.
     The destination information is encapsulated by 's'
     """
-    _scloneimports(s, suite_import, source, manual)
+    _scloneimports(s, suite_import, source, manual, ignoreVersion)
 
 def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
     mxDir = _is_suite_dir(sdir)
@@ -9552,18 +9553,18 @@ def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
         # create a Suite (without loading) to enable imports visitor
         return SourceSuite(mxDir, primary=primary, load=False, dynamicallyImported=dynamicallyImported)
 
-def _scloneimports(s, suite_import, source, manual=False):
+def _scloneimports(s, suite_import, source, manual=False, ignoreVersion=False):
     # clone first, then visit imports once we can locate them
     importee_source = _src_suitemodel.importee_dir(source, suite_import)
     importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
         importee_suite = _scloneimports_suitehelper(importee_dest, dynamicallyImported=suite_import.dynamicImport)
-        if not suite_import.dynamicImport and suite_import.version is not None and importee_suite.version() != suite_import.version:
+        if not ignoreVersion and not suite_import.dynamicImport and suite_import.version is not None and importee_suite.version() != suite_import.version:
             abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
-        importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual)
+        importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual, ignoreVersion=ignoreVersion)
     else:
-        _sclone(importee_source, importee_dest, suite_import, manual=manual)
+        _sclone(importee_source, importee_dest, suite_import, manual=manual, ignoreVersion=ignoreVersion)
         # _clone handles the recursive visit of the new imports
 
 @primary_suite_exempt
@@ -9572,6 +9573,7 @@ def scloneimports(args):
     parser = ArgumentParser(prog='mx scloneimports')
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('--manual', action='store_true', help='does not actually do the clones but prints the necessary clones')
+    parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
     # check for non keyword args
@@ -9592,7 +9594,7 @@ def scloneimports(args):
     # We can now set the primary directory for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
     _dst_suitemodel.set_primary_dir(source)
-    s.visit_imports(_scloneimports_visitor, source=default_path, manual=args.manual)
+    s.visit_imports(_scloneimports_visitor, source=default_path, manual=args.manual, ignoreVersion=args.ignore_version)
 
 def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
     """push visitor for Suite.visit_imports"""
