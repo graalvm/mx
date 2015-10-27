@@ -1526,11 +1526,7 @@ class JavaProject(Project, ClasspathDependency):
                 # Best to initialize class paths on main process
                 get_jdk(requiredCompliance).bootclasspath()
         else:
-            if self.suite.internal:
-                versionCheck, versionDescription = _convert_compliance_to_version_check(self.javaCompliance, strict=False)
-            else:
-                versionCheck, versionDescription = self.javaCompliance, None
-            jdk = get_jdk(versionCheck, versionDescription=versionDescription)
+            jdk = get_jdk(requiredCompliance)
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
 class JavaBuildTask(ProjectBuildTask):
@@ -5727,10 +5723,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         _canceled_java_requests.add((versionDescription, purpose))
     return jdk
 
-def _convert_compliance_to_version_check(requiredCompliance, strict=None):
-    if strict is None:
-        strict = _opts.strict_compliance
-    if strict:
+def _convert_compliance_to_version_check(requiredCompliance):
+    if _opts.strict_compliance:
         versionDesc = str(requiredCompliance)
         versionCheck = requiredCompliance.exactMatch
     else:
@@ -10808,14 +10802,7 @@ def _remove_unsatisfied_deps():
                     omittedDeps.add(dep)
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
-            if dep.suite.internal:
-                versionCheck, versionDescription = _convert_compliance_to_version_check(dep.javaCompliance, strict=False)
-            else:
-                versionCheck, versionDescription = dep.javaCompliance, None
-            depJdk = get_jdk(versionCheck, versionDescription=versionDescription,
-                             cancel='some projects will be omitted which may result in errors',
-                             purpose="building projects with compliance " + str(dep.javaCompliance),
-                             tag=DEFAULT_JDK_TAG)
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
                 logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
                 omittedDeps.add(dep)
