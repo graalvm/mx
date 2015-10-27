@@ -5199,11 +5199,6 @@ def dependency(name, fatalIfMissing=True, context=None):
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
             abort('dependency named ' + name + ' is ignored', context=context)
-        print 'projects:\n  ' + '\n  '.join(sorted(_projects.keys()))
-        print '    libs:\n  ' + '\n  '.join(sorted(_libs.keys()))
-        print ' jdkLibs:\n  ' + '\n  '.join(sorted(_jdkLibs.keys()))
-        print ' jreLibs:\n  ' + '\n  '.join(sorted(_jreLibs.keys()))
-        print '   dists:\n  ' + '\n  '.join(sorted(_dists.keys()))
         abort('dependency named ' + name + ' not found', context=context)
     return d
 
