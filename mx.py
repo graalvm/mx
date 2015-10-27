@@ -1231,7 +1231,9 @@ class JavaProject(Project, ClasspathDependency):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         ClasspathDependency.__init__(self)
         self.checkstyleProj = name
-        self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance is not None else None
+        if javaCompliance is None:
+            abort('javaCompliance property required for Java project ' + name)
+        self.javaCompliance = JavaCompliance(javaCompliance)
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
@@ -1517,7 +1519,7 @@ class JavaProject(Project, ClasspathDependency):
         _eclipseinit_project(self, files=files, libFiles=libFiles)
 
     def getBuildTask(self, args):
-        requiredCompliance = self.javaCompliance if self.javaCompliance else JavaCompliance(args.compliance) if args.compliance else None
+        requiredCompliance = self.javaCompliance
         if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
             jdk = get_jdk() # build using default JDK
             if hasattr(args, 'parallelize') and args.parallelize:
