@@ -120,6 +120,12 @@ _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
 
+"""
+Map from the name of a removed dependency to the reason it was removed.
+A reason may be the name of another removed dependency, forming a causality chain.
+"""
+_removedDeps = {}
+
 _suites = dict()
 _loadedSuites = []
 
@@ -5153,6 +5159,26 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
     d.resolveDeps()
     return d
 
+def _get_reasons_dep_was_removed(name):
+    """
+    Gets the causality chain for the dependency named *name* being removed.
+    Returns None if no dependency named *name* was removed.
+    """
+    reason = _removedDeps.get(name)
+    if reason:
+        r = _get_reasons_dep_was_removed(reason)
+        if r:
+            return ['{} was removed because {} was removed'.format(name, reason)] + r
+        return [reason]
+    return None
+
+def _missing_dep_message(depName, depType):
+    msg = '{} named {} was not found'.format(depType, depName)
+    reasons = _get_reasons_dep_was_removed(depName)
+    if reasons:
+        msg += ':\n  ' + '\n  '.join(reasons)
+    return msg
+
 def distribution(name, fatalIfMissing=True, context=None):
     """
     Get the distribution for a given name. This will abort if the named distribution does
@@ -5161,7 +5187,7 @@ def distribution(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
     d = _dists.get(name)
     if d is None and fatalIfMissing:
-        abort('distribution named ' + name + ' not found', context=context)
+        abort(_missing_dep_message(name, 'distribution'), context=context)
     return d
 
 def dependency(name, fatalIfMissing=True, context=None):
@@ -5201,7 +5227,7 @@ def dependency(name, fatalIfMissing=True, context=None):
     if d is None and fatalIfMissing:
         if name in _opts.ignored_projects:
             abort('dependency named ' + name + ' is ignored', context=context)
-        abort('dependency named ' + name + ' not found', context=context)
+        abort(_missing_dep_message(name, 'dependency'), context=context)
     return d
 
 def project(name, fatalIfMissing=True, context=None):
@@ -5213,7 +5239,7 @@ def project(name, fatalIfMissing=True, context=None):
     if p is None and fatalIfMissing:
         if name in _opts.ignored_projects:
             abort('project named ' + name + ' is ignored', context=context)
-        abort('project named ' + name + ' not found', context=context)
+        abort(_missing_dep_message(name, 'project'), context=context)
     return p
 
 def library(name, fatalIfMissing=True, context=None):
@@ -5225,7 +5251,7 @@ def library(name, fatalIfMissing=True, context=None):
     if l is None and fatalIfMissing:
         if _projects.get(name):
             abort(name + ' is a project, not a library', context=context)
-        abort('library named ' + name + ' not found', context=context)
+        abort(_missing_dep_message(name, 'library'), context=context)
     return l
 
 def classpath_entries(names=None, includeSelf=True, preferProjects=False):
@@ -5859,7 +5885,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
-            log("Error: JDK at '" + jdkLocation + "' is not compatible with version " + versionDescription)
+            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + versionDescription)
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
@@ -5973,7 +5999,7 @@ def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
             if versionCheck(config.version):
                 filtered.append(config)
         except JDKConfigException as e:
-            if warn:
+            if warn and source:
                 log('Path in ' + source + "' is not pointing to a JDK (" + e.message + ")")
     return filtered
 
@@ -10780,13 +10806,16 @@ def _check_dependency_cycles():
     walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
 
 def _remove_unsatisfied_deps():
-    '''Remove projects and libraries that (recursively) depend on an optional library
+    '''
+    Remove projects and libraries that (recursively) depend on an optional library
     whose artifact does not exist or on a JRE library that is not present in the
     JDK for a project. Also remove projects whose Java compliance requirement
-    cannot be satisfied by the configured JDKs.
-    Removed projects and libraries are also removed from
-    distributions in they are listed as dependencies.'''
-    omittedDeps = set()
+    cannot be satisfied by the configured JDKs. Removed projects and libraries are
+    also removed from distributions in which they are listed as dependencies.
+    Returns a map from the name of a removed dependency to the reason it was removed.
+    A reason may be the name of another removed dependency.
+    '''
+    removedDeps = {}
     def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
@@ -10798,36 +10827,45 @@ def _remove_unsatisfied_deps():
                 finally:
                     dep.optional = True
                 if not path:
-                    logv('[omitting optional library {0} as {1} does not exist]'.format(dep, dep.path))
-                    omittedDeps.add(dep)
+                    reason = 'optional library {} was removed as {} does not exist'.format(dep, dep.path)
+                    logv('[' + reason + ']')
+                    removedDeps[dep] = reason
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
-            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be omitted which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
-                logv('[omitting project {0} as Java compliance {1} cannot be satisfied by configured JDKs]'.format(dep, dep.javaCompliance))
-                omittedDeps.add(dep)
+                reason = 'project {0} was removed as Java compliance {1} cannot be satisfied by configured JDKs'.format(dep, dep.javaCompliance)
+                logv('[' + reason + ']')
+                removedDeps[dep] = reason
             else:
                 for depDep in list(dep.deps):
-                    if depDep.isJreLibrary() or depDep.isJdkLibrary():
+                    if depDep in removedDeps:
+                        logv('[removed {} because {} was removed]'.format(dep, depDep))
+                        removedDeps[dep] = depDep.name
+                    elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
                         if not lib.is_present_in_jdk(depJdk):
-                            if depDep.optional:
-                                logv('[omitting project {} as dependency {} is missing]'.format(dep, lib))
-                                omittedDeps.add(dep)
+                            if lib.optional:
+                                reason = 'project {} was removed as dependency {} is missing'.format(dep, lib)
+                                logv('[' + reason + ']')
+                                removedDeps[dep] = reason
                             else:
                                 abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
         elif dep.isDistribution():
             dist = dep
             for distDep in list(dist.deps):
-                if distDep in omittedDeps:
-                    logv('[omitting {0} from distribution {1}]'.format(distDep, dist))
+                if distDep in removedDeps:
+                    logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
                     dist.deps.remove(distDep)
 
     walk_deps(visit=visit)
 
-    for dep in omittedDeps:
+    res = {}
+    for dep, reason in removedDeps.iteritems():
+        res[dep.name] = reason
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
+    return res
 
 def _get_command_property(command, propertyName):
     c = _commands.get(command)
@@ -10935,7 +10973,8 @@ def main():
 
     if primarySuiteMxDir and not vc_command:
         if not _get_command_property(command, "keepUnsatisfiedDependencies"):
-            _remove_unsatisfied_deps()
+            global _removedDeps
+            _removedDeps = _remove_unsatisfied_deps()
 
     def term_handler(signum, frame):
         abort(1)
