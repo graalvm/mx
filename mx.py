@@ -7750,7 +7750,7 @@ def projectgraph(args, suite=None):
             for dep in p.canonical_deps():
                 toIndex = nextToIndex.get(dep, 0)
                 nextToIndex[dep] = toIndex + 1
-                igv.element('edge', {'from' : ids[p.name], 'fromIndex' : str(fromIndex), 'to' : ids[dep], 'toIndex' : str(toIndex), 'label' : 'dependsOn'})
+                igv.element('edge', {'from' : ids[p.name], 'fromIndex' : str(fromIndex), 'to' : ids[dep.name], 'toIndex' : str(toIndex), 'label' : 'dependsOn'})
                 fromIndex = fromIndex + 1
         igv.close('edges')
         igv.close('graph')
