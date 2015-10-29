@@ -1533,6 +1533,13 @@ class JavaProject(Project, ClasspathDependency):
                 get_jdk(requiredCompliance).bootclasspath()
         else:
             jdk = get_jdk(requiredCompliance)
+
+        if hasattr(args, "jdt") and args.jdt and not args.force_javac:
+            ec = _convert_to_eclipse_supported_compliance(requiredCompliance)
+            if ec != requiredCompliance:
+                jdk = get_jdk(versionCheck=ec.exactMatch, versionDescription=str(ec))
+                requiredCompliance = ec
+
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
 class JavaBuildTask(ProjectBuildTask):
@@ -1875,7 +1882,7 @@ class ECJCompiler(JavacLikeCompiler):
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        run_java(jvmArgs + jdtArgs)
+        run_java(jvmArgs + jdtArgs, jdk=jdk)
 
 def is_debug_lib_file(fn):
     return fn.endswith(add_debug_lib_suffix(""))
@@ -7969,8 +7976,18 @@ def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
         return join('PARENT-{}-PROJECT_LOC'.format(parents), sep.join([n for n in names if n != '..']))
     return join('PROJECT_LOC', sep.join([n for n in names if n != '..']))
 
+def _convert_to_eclipse_supported_compliance(compliance):
+    """
+    Downgrades a given Java compliance to a level supported by Eclipse.
+    This accounts for the reality that Eclipse (and JDT) usually add support for JDK releases later
+    than javac support is available.
+    """
+    if compliance and compliance > "1.8":
+        return JavaCompliance("1.8")
+    return compliance
+
 def _eclipseinit_project(p, files=None, libFiles=None):
-    assert get_jdk(p.javaCompliance)
+    eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
 
     ensure_dir_exists(p.dir)
 
@@ -8005,8 +8022,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             files.append(genDir)
 
     # Every Java program depends on a JRE
-    jdk = get_jdk(p.javaCompliance)
-    out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(jdk.javaCompliance)})
+    out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(eclipseJavaCompliance)})
 
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
@@ -8169,7 +8185,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             print >> out, '# Source:', source
             with open(source) as f:
                 print >> out, f.read()
-        content = out.getvalue().replace('${javaCompliance}', str(p.javaCompliance))
+        content = out.getvalue().replace('${javaCompliance}', str(eclipseJavaCompliance))
         if processorPath:
             content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
         update_file(join(settingsDir, name), content)
@@ -8240,7 +8256,7 @@ def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [p.javaCompliance for p in dist.archived_deps() if p.isProject()]
+        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
         _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=False, appendToLogFile=False)
@@ -11005,7 +11021,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.13")
+version = VersionSpec("5.5.14")
 
 currentUmask = None
 
