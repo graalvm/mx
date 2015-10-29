@@ -5269,12 +5269,14 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
         roots = [dependency(n) for n in names]
         invalid = [d for d in roots if not isinstance(d, ClasspathDependency)]
         if invalid:
-            abort('class path roots must be a project or a distribution: ' + str(invalid))
+            abort('class path roots must be classpath dependencies: ' + str(invalid))
 
     cpEntries = []
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
             return False
+        if dst in roots or dst.isLibrary():
+            return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
             return dst.isJARDistribution() if preferDist else dst.isProject()
