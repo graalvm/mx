@@ -4136,6 +4136,10 @@ class Suite:
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', defaultPath)
             sourcesPath = attrs.pop('sourcesPath', defaultSourcesPath)
+            if sourcesPath == "<unified>":
+                sourcesPath = path
+            elif sourcesPath == "<none>":
+                sourcesPath = None
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
@@ -10999,7 +11003,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.12")
+version = VersionSpec("5.5.13")
 
 currentUmask = None
 
