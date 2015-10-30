@@ -2597,6 +2597,12 @@ class OutputCapture:
     def __call__(self, data):
         self.data += data
 
+class LinesOutputCapture:
+    def __init__(self):
+        self.lines = []
+    def __call__(self, data):
+        self.lines.append(data.rstrip())
+
 class HgConfig(VC):
     """
     Encapsulates access to Mercurial (hg)
@@ -2828,12 +2834,6 @@ class HgConfig(VC):
         return result
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
-        class LinesOutputCapture:
-            def __init__(self):
-                self.lines = []
-            def __call__(self, data):
-                self.lines.append(data.rstrip())
-
         if patterns is None:
             patterns = []
         elif not isinstance(patterns, list):
@@ -2957,8 +2957,8 @@ class GitConfig(VC):
 
     def pull(self, vcdir, rev=None, update=False, abortOnError=True):
         '''
-        We use the semantics of the hg pull here, aka. fetch in git.
-        If update is set, we use git merge afterwards (hg update)
+        Uses the semantics of the hg pull here, aka. fetch in git.
+        If update is set, git merge is executed afterwards (hg update)
         '''
         cmd = ['git', '-C', vcdir, 'fetch']
         self._log_pull(vcdir, rev)
@@ -2973,8 +2973,8 @@ class GitConfig(VC):
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         '''
-        We omit the --force flag, if we try to push an old rev to master.
-		Instead we push to a branch 'mx_push' to avoid overriden the master branch.
+        Omits the --force flag, instead pushes to branch 'mx_push'
+        to avoid overriden the master branch.
         '''
         cmd = ['git', '-C', vcdir, 'push']
         if dest:
@@ -2991,9 +2991,9 @@ class GitConfig(VC):
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         '''
-        We use 'merge' if no rev is specified. This is the intended use, to update with new
-        changes. Nevertheless, if a 'rev' is specified we use checkout, as we expect an 'rev'
-        that is older than the current HEAD of the local repository.
+        Uses 'merge' if no rev is specified. This is the intended use, to update with new
+        changes. Nevertheless, if a 'rev' is specified we use checkout, as an 'rev'
+        older than the current HEAD of the local repository is expected.
         '''
         cmd = ['git', '-C', vcdir]
         if not rev:
@@ -3009,6 +3009,19 @@ class GitConfig(VC):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
             result = self.update(vcdir, rev=rev, clean=clean, abortOnError=abortOnError)
         return result
+
+    def incoming(self, vcdir, abortOnError=True):
+        return self._checkCommits(vcdir, incoming=True, abortOnError=abortOnError)
+
+
+    def outgoing(self, vcdir, dest=None, abortOnError=True):
+        '''
+        The current branch's target remote branch is taken.
+        '''
+        if dest and abortOnError:
+            abort('Specifying a destination is currently not supported.')
+
+        return self._checkCommits(vcdir, incoming=False, abortOnError=abortOnError)
 
     # HELPER
 
@@ -3047,30 +3060,46 @@ class GitConfig(VC):
                 return None
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
-        class LinesOutputCapture:
-            def __init__(self):
-                self.lines = []
-            def __call__(self, data):
-                self.lines.append(os.path.join(vcdir, data.rstrip()))
-
         if patterns is None:
             patterns = []
         elif not isinstance(patterns, list):
             patterns = [patterns]
+
         out = LinesOutputCapture()
         rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
         if rc == 1:
             # git returns 1 if no matches were found
             return []
         elif rc == 0:
-            return out.lines
+            return [os.path.join(vcdir, l.rstrip()) for l in out.lines]
         else:
             if abortOnError:
                 abort('locate returned: ' + str(rc))
             else:
                 return None
 
-    # PRIVATE
+    def _checkCommits(self, vcdir, incoming, abortOnError=True):
+        remote = self._getUpstream(vcdir, abortOnError=abortOnError)
+        if not remote:
+            if abortOnError:
+                abort('current branch has no remote repository specified')
+            else:
+                return None
+
+        rc = self.run(['git', '-C', vcdir, 'fetch', remote[0]])
+        if rc == 0:
+            check = remote[0] + '/' + remote[1]
+            check = '..' + check if incoming else check + '..'
+            print 'changes for {}'.format(check)
+            out = OutputCapture()
+            rc = rc or self.run(['git', '-C', vcdir, 'log', check], out=out)
+            return out.data if out.data != '' else 'no changes'
+
+        if rc != 0:
+            if abortOnError:
+                abort('incoming returned: ' + str(rc))
+            else:
+                return None
 
     def run(self, *args, **kwargs):
         # Ensure git exists before executing the command
@@ -3108,35 +3137,44 @@ class GitConfig(VC):
             return None
 
     def _getRemoteName(self, vcdir, tpe, abortOnError=True):
-        branches = self.run(['git', '-C', vcdir, 'branch', '-vv'])
+        branches = LinesOutputCapture()
+        self.run(['git', '-C', vcdir, 'branch', '-vv'], out=branches)
         name = ''
-        for branch in branches:
-            if branch.strip().startsWith('*'): # current branch
+        for branch in branches.lines:
+            if branch.strip().startswith('*'): # current branch
                 m = re.search(ur'\[(\w+)/', branch)
                 if m:
-                    name = m.group(1)
+                    name = m.group(1).strip()
 
-        remotes = self.run(['git', 'remote', '-v'])
-        for remote in remotes:
-            if remote.startswith(name):
-                m = re.search(name + ur' (.+) \(' + tpe + ur'\)', remote)
-                if m:
-                    return m.group(1).strip()
+        remotes = LinesOutputCapture()
+        self.run(['git', 'remote', '-v'], out=remotes)
+        for remote in remotes.lines:
+            print remote
+            m = re.search(name + ur'\s+(.+) \(' + tpe + ur'\)', remote)
+            if m:
+                return m.group(1).strip()
 
         if abortOnError:
-            abort('no remote found.')
+            abort('no remotes found')
         else:
             return None
+
+    def _getUpstream(self, vcdir, abortOnError=True):
+        branches = LinesOutputCapture()
+        self.run(['git', '-C', vcdir, 'branch', '-vv'], out=branches)
+        for branch in branches.lines:
+            m = re.search(ur'\*\s(\S+).+\[(\S+)\/(\S+)[:.+\]|\]].+', branch)
+            if m:
+                # local branch, remote name, remote branch
+                return (m.group(2), m.group(3))
+        return None # current branch has no upstream set
+
 
     # Not yet implemented / applicable
 
     # def parent(self, vcdir, abortOnError=True):
 
     # def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
-
-    # def incoming(self, vcdir, abortOnError=True):
-
-    # def outgoing(self, vcdir, dest=None, abortOnError=True):
 
     # def bookmark(self, vcdir, name, rev, abortOnError=True):
 
