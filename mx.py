@@ -7490,7 +7490,7 @@ def _processorjars_suite(s):
 
 @primary_suite_exempt
 def pylint(args):
-    """run pylint (if available) over Python source files (found by 'hg locate' or by tree walk with -walk)"""
+    """run pylint (if available) over Python source files (found by '<vc> locate' or by tree walk with -walk)"""
 
     parser = ArgumentParser(prog='mx pylint')
     parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
@@ -7530,7 +7530,7 @@ def pylint(args):
 
     def findfiles_by_vc(pyfiles):
         for suite in suites(True, includeBinary=False):
-            files = suite.vc.locate(suite.dir, ['-f', '*.py'])
+            files = suite.vc.locate(suite.dir, ['*.py'])
             for pyfile in files:
                 if exists(pyfile):
                     pyfiles.append(pyfile)
