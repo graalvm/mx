@@ -2893,6 +2893,258 @@ class HgConfig(VC):
             return False
 
 
+class GitConfig(VC):
+    """
+    Encapsulates access to Git (git)
+    """
+    def __init__(self):
+        VC.__init__(self, 'git', 'Git')
+        self.missing = 'no git executable found'
+        self.has_git = None
+
+    def check(self, abortOnError=True):
+        # Git does lazy checking before use of the git command itself
+        return self
+
+    def init(self, vcdir, abortOnError=True):
+        return self.run(['git', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
+    def is_this_vc(self, vcdir):
+        gitDir = join(vcdir, self.metadir())
+        return os.path.isdir(gitDir)
+
+    def metadir(self):
+        return '.git'
+
+    # SCM METHODS
+
+    def add(self, vcdir, path, abortOnError=True):
+        return self.run(['git', '-C', vcdir, 'add', path]) == 0
+
+    def commit(self, vcdir, msg, abortOnError=True):
+        return self.run(['git', '-C', vcdir, 'commit', '-m', msg]) == 0
+
+    def tip(self, vcdir, abortOnError=True):
+        self.check_for_git()
+        try:
+            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', 'HEAD'])
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('git tip failed')
+            else:
+                return None
+
+    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
+        cmd = ['git', 'clone']
+        # check out different branch
+        if extra_args and 'branch' in extra_args:
+            cmd.append('--branch')
+            cmd.append(extra_args['branch'])
+
+        cmd.append(url) # from
+        if dest:
+            cmd.append(dest) # to
+        self._log_clone(url, dest, rev)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+
+        # change revision
+        if rev and rc == 0:
+            rc = rc or self.update(dest, rev=rev, abortOnError=abortOnError)
+
+        logvv(out.data)
+        return rc == 0
+
+    def pull(self, vcdir, rev=None, update=False, abortOnError=True):
+        '''
+        We use the semantics of the hg pull here, aka. fetch in git.
+        If update is set, we use git merge afterwards (hg update)
+        '''
+        cmd = ['git', '-C', vcdir, 'fetch']
+        self._log_pull(vcdir, rev)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+
+        if update:
+            rc = rc or self.update(vcdir, rev=rev, abortOnError=abortOnError)
+
+        return rc == 0
+
+    def push(self, vcdir, dest=None, rev=None, abortOnError=False):
+        '''
+        We omit the --force flag, if we try to push an old rev to master.
+		Instead we push to a branch 'mx_push' to avoid overriden the master branch.
+        '''
+        cmd = ['git', '-C', vcdir, 'push']
+        if dest:
+            cmd.append(dest)
+
+        if rev:
+            cmd.append(rev + ':mx_push')
+
+        self._log_push(vcdir, dest, rev)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+        return rc == 0
+
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        '''
+        We use 'merge' if no rev is specified. This is the intended use, to update with new
+        changes. Nevertheless, if a 'rev' is specified we use checkout, as we expect an 'rev'
+        that is older than the current HEAD of the local repository.
+        '''
+        cmd = ['git', '-C', vcdir]
+        if not rev:
+            cmd += ['merge', 'HEAD']
+        else:
+            cmd.append('checkout')
+            if clean:
+                cmd.append('--force') # throws away uncommitted changes!!!
+            cmd.append(rev)
+
+        result = self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+        if not result and mayPull and rev:
+            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
+            result = self.update(vcdir, rev=rev, clean=clean, abortOnError=abortOnError)
+        return result
+
+    # HELPER
+
+    def can_push(self, vcdir, strict=True, abortOnError=True):
+        out = OutputCapture()
+        rc = self.run(['git', '-C', vcdir, 'status', '-s'], nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            output = out.data
+            if strict:
+                # no uncommitted / not added
+                return output == ''
+            else:
+                # we check for untracked files
+                if len(output) > 0:
+                    for line in output.split('\n'):
+                        if len(line) > 0 and not line.strip().startswith('?'):
+                            return False
+                return True
+        else:
+            return False
+
+    def default_push(self, vcdir, abortOnError=True):
+        return self._getRemoteName(vcdir, 'push', abortOnError=abortOnError)
+
+    def default_pull(self, vcdir, abortOnError=True):
+        return self._getRemoteName(vcdir, 'fetch', abortOnError=abortOnError)
+
+    def isDirty(self, vcdir, abortOnError=True):
+        self.check_for_git()
+        try:
+            return len(subprocess.check_output(['git', '-C', vcdir, 'status', '-s'])) > 0
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('failed to get status')
+            else:
+                return None
+
+    def locate(self, vcdir, patterns=None, abortOnError=True):
+        class LinesOutputCapture:
+            def __init__(self):
+                self.lines = []
+            def __call__(self, data):
+                self.lines.append(os.path.join(vcdir, data.rstrip()))
+
+        if patterns is None:
+            patterns = []
+        elif not isinstance(patterns, list):
+            patterns = [patterns]
+        out = LinesOutputCapture()
+        rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
+        if rc == 1:
+            # git returns 1 if no matches were found
+            return []
+        elif rc == 0:
+            return out.lines
+        else:
+            if abortOnError:
+                abort('locate returned: ' + str(rc))
+            else:
+                return None
+
+    # PRIVATE
+
+    def run(self, *args, **kwargs):
+        # Ensure git exists before executing the command
+        self.check_for_git()
+        return run(*args, **kwargs)
+
+    def check_for_git(self, abortOnError=True):
+        if self.has_git is None:
+            try:
+                subprocess.check_output(['git', '--version'])
+                self.has_git = True
+            except OSError:
+                self.has_git = False
+                warn(self.missing)
+
+        if not self.has_git:
+            if abortOnError:
+                abort(self.missing)
+            else:
+                warn(self.missing)
+
+        return self if self.has_git else None
+
+    def git_command(self, vcdir, args, abortOnError=False, quiet=False):
+        args = ['git', '-C', vcdir] + args
+        if not quiet:
+            print '{0}'.format(" ".join(args))
+        out = OutputCapture()
+        rc = self.run(args, nonZeroIsFatal=False, out=out)
+        if rc == 0 or rc == 1:
+            return out.data
+        else:
+            if abortOnError:
+                abort(" ".join(args) + ' returned ' + str(rc))
+            return None
+
+    def _getRemoteName(self, vcdir, tpe, abortOnError=True):
+        branches = self.run(['git', '-C', vcdir, 'branch', '-vv'])
+        name = ''
+        for branch in branches:
+            if branch.strip().startsWith('*'): # current branch
+                m = re.search(ur'\[(\w+)/', branch)
+                if m:
+                    name = m.group(1)
+
+        remotes = self.run(['git', 'remote', '-v'])
+        for remote in remotes:
+            if remote.startswith(name):
+                m = re.search(name + ur' (.+) \(' + tpe + ur'\)', remote)
+                if m:
+                    return m.group(1).strip()
+
+        if abortOnError:
+            abort('no remote found.')
+        else:
+            return None
+
+    # Not yet implemented / applicable
+
+    # def parent(self, vcdir, abortOnError=True):
+
+    # def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
+
+    # def incoming(self, vcdir, abortOnError=True):
+
+    # def outgoing(self, vcdir, dest=None, abortOnError=True):
+
+    # def bookmark(self, vcdir, name, rev, abortOnError=True):
+
+    # def latest(self, vcdir, rev1, rev2, abortOnError=True):
+
+    # def exists(self, vcdir, rev):
+
+
 class BinaryVC(VC):
     """
     Emulates a VC system for binary suites, as far as possible, but particularly pull/tip
@@ -10920,7 +11172,7 @@ def main():
     vc_command = _check_vc_command()
 
     global _vc_systems
-    _vc_systems = [HgConfig(), BinaryVC()]
+    _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
     global _mvn
     _mvn = MavenConfig()
 
