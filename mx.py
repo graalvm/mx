@@ -4695,10 +4695,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         return None
     conflict_resolution = _opts.version_conflict_resolution
     if conflict_resolution == 'suite':
-        if otherImportingSuite:
-            conflict_resolution = otherImportingSuite.versionConflictResolution
-        else:
-            warn("Conflict resolution was set to 'suite' but importing suite is not available")
+        conflict_resolution = primary_suite().versionConflictResolution
 
     if conflict_resolution == 'ignore':
         warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
