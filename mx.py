@@ -4307,26 +4307,9 @@ class Suite:
                         for imported in otherImporter.suite_imports:
                             if imported.name == s.name:
                                 if imported.version != suite_import.version:
-                                    if suite_import.dynamicImport and not s.dynamicallyImported:
-                                        continue
-                                    conflict_resolution = _opts.version_conflict_resolution
-                                    if conflict_resolution == 'suite':
-                                        conflict_resolution = importing_suite.versionConflictResolution
-
-                                    if conflict_resolution == 'none':
-                                        abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(s.name, importing_suite.name, suite_import.version, otherImporter.name, imported.version))
-                                    elif conflict_resolution == 'ignore':
-                                        warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(s.name, importing_suite.name, suite_import.version, otherImporter.name, imported.version))
-                                    else:
-                                        assert conflict_resolution == 'latest'
-                                        if not isinstance(s, SourceSuite):
-                                            abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(s.name, importing_suite.name, otherImporter.name))
-                                        if not s.vc.exists(s.dir, rev=suite_import.version):
-                                            s.vc.pull(s.dir, rev=suite_import.version, update=False)
-                                        resolved = s.vc.latest(s.dir, suite_import.version, s.vc.parent(s.dir))
-                                        # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
-                                        if s.vc.parent(s.dir) != resolved:
-                                            s.vc.update(s.dir, rev=resolved)
+                                    resolved = _resolve_suite_version_conflict(s.name, s, imported.version, otherImporter, suite_import, importing_suite)
+                                    if resolved:
+                                        s.vc.update(s.dir, rev=resolved, mayPull=True)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -4452,6 +4435,36 @@ class Suite:
         if exists(path):
             return 'In definition of suite {} in {}'.format(self.name, path)
         return None
+
+def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, existingImporter, otherImport, otherImportingSuite):
+    if otherImport.dynamicImport and (not existingSuite or not existingSuite.dynamicallyImported):
+        return None
+    if not otherImport.version:
+        return None
+    conflict_resolution = _opts.version_conflict_resolution
+    if conflict_resolution == 'suite':
+        if otherImportingSuite:
+            conflict_resolution = otherImportingSuite.versionConflictResolution
+        else:
+            warn("Conflict resolution was set to 'suite' but importing suite is not available")
+
+    if conflict_resolution == 'ignore':
+        warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
+        return None
+    elif conflict_resolution == 'latest':
+        if not existingSuite:
+            return None # can not resolve at the moment
+        if not isinstance(existingSuite, SourceSuite):
+            abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
+        if not existingSuite.vc.exists(existingSuite.dir, rev=otherImport.version):
+            return otherImport.version
+        resolved = existingSuite.vc.latest(existingSuite.dir, otherImport.version, existingSuite.vc.parent(existingSuite.dir))
+        # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
+        if existingSuite.vc.parent(existingSuite.dir) == resolved:
+            return None
+        return resolved
+    if conflict_resolution == 'none':
+        abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
 
 '''A source suite'''
 class SourceSuite(Suite):
@@ -9556,16 +9569,19 @@ def sclone(args):
 
     _sclone(source, dest, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version)
 
-def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False):
+def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None):
     rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     if manual is not None:
         assert len(url_vcs) > 0
         revname = rev if rev else 'tip'
         if suite_import.name in manual:
-            if manual[suite_import.name] != revname and not suite_import.dynamicImport:
-                abort('Version mismatch for {}: already imported at {} can not be imported again at {}'.format(suite_import.name, manual[suite_import.name], revname))
-            return None
+            if manual[suite_import.name] == revname:
+                return None
+            resolved = _resolve_suite_version_conflict(suite_import.name, None, manual[suite_import.name], None, suite_import, importingSuite)
+            if not resolved:
+                return None
+            revname = resolved
         log("Clone {} at revision {} into {}".format(' or '.join(("{} with {}".format(url_vc.url, url_vc.vc.kind) for url_vc in url_vcs)), revname, dest))
         manual[suite_import.name] = revname
         return None
@@ -9616,11 +9632,20 @@ def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
         importee_suite = _scloneimports_suitehelper(importee_dest, dynamicallyImported=suite_import.dynamicImport)
-        if not ignoreVersion and not suite_import.dynamicImport and suite_import.version is not None and importee_suite.version() != suite_import.version:
-            abort("imported version of " + suite_import.name + " in " + s.name + " does not match the version in already existing suite: " + importee_suite.dir)
+        existingRevision = importee_suite.version()
+        if not ignoreVersion and existingRevision != suite_import.version:
+            resolved = _resolve_suite_version_conflict(suite_import.name, importee_suite, existingRevision, None, suite_import, s)
+            if resolved:
+                assert resolved != existingRevision
+                if manual:
+                    if suite_import.name not in manual or manual[suite_import.name] != resolved:
+                        log("Update {} to revision {} with {}".format(importee_dest, resolved, importee_suite.vc.kind))
+                        manual[suite_import.name] = resolved
+                else:
+                    importee_suite.vc.update(importee_dest, rev=resolved, mayPull=True)
         importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual, ignoreVersion=ignoreVersion)
     else:
-        _sclone(importee_source, importee_dest, suite_import, manual=manual, ignoreVersion=ignoreVersion)
+        _sclone(importee_source, importee_dest, suite_import, manual=manual, ignoreVersion=ignoreVersion, importingSuite=s)
         # _clone handles the recursive visit of the new imports
 
 @primary_suite_exempt
@@ -9798,21 +9823,10 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
     suite_import_version = suite_import.version
     if imported_suite.name in import_map:
         # we have seen this already
-        if not suite_import_version:
+        resolved = _resolve_suite_version_conflict(imported_suite.name, imported_suite, import_map[imported_suite.name], None, suite_import, importing_suite)
+        if not resolved:
             return
-        conflict_resolution = _opts.version_conflict_resolution
-        if conflict_resolution == 'suite':
-            conflict_resolution = importing_suite.versionConflictResolution
-        if conflict_resolution == 'latest':
-            if not imported_suite.vc.exists(imported_suite.dir, suite_import_version):
-                imported_suite.vc.pull(imported_suite.dir, rev=suite_import_version, update=False)
-            suite_import_version = imported_suite.vc.latest(imported_suite.dir, import_map[imported_suite.name], suite_import_version)
-        elif strict_versions and import_map[imported_suite.name] != suite_import_version:
-            abort('inconsistent import versions for suite ' + imported_suite.name)
-        if import_map[imported_suite.name] != suite_import_version:
-            import_map[imported_suite.name] = suite_import_version
-        else:
-            return
+        suite_import_version = resolved
     else:
         import_map[imported_suite.name] = suite_import_version
 
