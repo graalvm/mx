@@ -1535,9 +1535,10 @@ class JavaProject(Project, ClasspathDependency):
             jdk = get_jdk(requiredCompliance)
 
         if hasattr(args, "jdt") and args.jdt and not args.force_javac:
-            ec = _convert_to_eclipse_supported_compliance(requiredCompliance)
-            if ec != requiredCompliance:
+            ec = _convert_to_eclipse_supported_compliance(max(jdk.javaCompliance, requiredCompliance))
+            if ec < jdk.javaCompliance:
                 jdk = get_jdk(versionCheck=ec.exactMatch, versionDescription=str(ec))
+            if ec < requiredCompliance:
                 requiredCompliance = ec
 
         return JavaBuildTask(args, self, jdk, requiredCompliance)
@@ -1758,6 +1759,9 @@ class JavacLikeCompiler(JavaCompiler):
         self.tmpFiles = []
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
+    def _get_compliance_jdk(self, compliance):
+        return get_jdk(compliance)
+
     def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, showTasks):
         jvmArgs = ['-Xmx1500m']
@@ -1770,11 +1774,11 @@ class JavacLikeCompiler(JavaCompiler):
         if jdk.javaCompliance != compliance:
             # cross-compilation
             assert jdk.javaCompliance > compliance
-            complianceJdk = get_jdk(compliance)
+            complianceJdk = self._get_compliance_jdk(compliance)
             # complianceJdk.javaCompliance could be different from compliance
             # because of non-strict compliance mode
             if jdk.javaCompliance != complianceJdk.javaCompliance:
-                javacArgs = get_jdk(compliance).javacLibOptions(javacArgs)
+                javacArgs = complianceJdk.javacLibOptions(javacArgs)
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
@@ -1847,6 +1851,16 @@ class ECJCompiler(JavacLikeCompiler):
 
     def name(self):
         return 'JDT'
+
+    def _get_compliance_jdk(self, compliance):
+        jdk = get_jdk(compliance)
+        esc = _convert_to_eclipse_supported_compliance(jdk.javaCompliance)
+        if esc < jdk.javaCompliance:
+            # We need to emulate strict compliance here so that the right boot
+            # class path is selected when compiling with a JDT that does not
+            # support a JDK9 boot class path
+            jdk = get_jdk(versionCheck=esc.exactMatch, versionDescription=str(esc))
+        return jdk
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
         jvmArgs += ['-jar', self.jdtJar]
