@@ -7733,7 +7733,7 @@ def canonicalizeprojects(args):
                     if not pkg.startswith(p.name):
                         p.abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
 
-            ignoredDeps = set([d for d in p.deps if d.isProject()])
+            ignoredDeps = set([d for d in p.deps if d.isJavaProject()])
             for pkg in p.imported_java_packages():
                 for dep in p.deps:
                     if not dep.isProject():
@@ -7751,13 +7751,13 @@ def canonicalizeprojects(args):
                         candidates.add(d)
                 # Remove non-canonical candidates
                 for c in list(candidates):
-                    c.walk_deps(visit=lambda dep, edge: candidates.discard(dep) if dep.isProject() else None)
+                    c.walk_deps(visit=lambda dep, edge: candidates.discard(dep) if dep.isJavaProject() else None)
                 candidates = [d.name for d in candidates]
 
                 p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
                     p, ', '.join([d.name for d in ignoredDeps]), ','.join(candidates)))
 
-            excess = frozenset(p.deps) - set(p.canonical_deps())
+            excess = frozenset([d for d in p.deps if d.isJavaProject()]) - set(p.canonical_deps())
             if len(excess) != 0:
                 nonCanonical.append(p)
     if len(nonCanonical) != 0:
