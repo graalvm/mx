@@ -89,15 +89,32 @@ class Task:
                 global _jacoco
                 _jacoco = self.jacacoSave
 
+    @staticmethod
+    def _human_fmt(num):
+        for unit in ['', 'K', 'M', 'G']:
+            if abs(num) < 1024.0:
+                return "%3.1f%sB" % (num, unit)
+            num /= 1024.0
+        return "%.1fTB" % (num)
+
+    @staticmethod
+    def _diskstats():
+        if hasattr(os, 'statvfs'):
+            _, f_frsize, f_blocks, _, f_bavail, _, _, _, _, _ = os.statvfs(os.getcwd())
+            total = f_frsize * f_blocks
+            free = f_frsize * f_bavail
+            return ' [disk (free/total): {}/{}]'.format(Task._human_fmt(free), Task._human_fmt(total))
+        return ''
+
     def stop(self):
         self.end = time.time()
         self.duration = datetime.timedelta(seconds=self.end - self.start)
-        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']')
+        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
         return self
     def abort(self, codeOrMessage):
         self.end = time.time()
         self.duration = datetime.timedelta(seconds=self.end - self.start)
-        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']')
+        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
         mx.abort(codeOrMessage)
         return self
 
