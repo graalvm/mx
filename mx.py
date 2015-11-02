@@ -5584,7 +5584,7 @@ def library(name, fatalIfMissing=True, context=None):
 
 def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     if names is None:
-        roots = dependencies()
+        roots = set(dependencies())
     else:
         if isinstance(names, types.StringTypes):
             names = [names]
