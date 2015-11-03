@@ -217,7 +217,7 @@ def gate(args):
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
         if mx.get_env('JDT'):
-            with Task('BuildJavaWithEcj', tasks):
+            with Task('BuildJavaWithEcj', tasks) as t:
                 if t: mx.build(['-p', '--no-native', '--warning-as-error'])
             gate_clean(args, tasks, name='CleanAfterEcjBuild')
         else:
