@@ -8290,8 +8290,10 @@ def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
     parents = len([n for n in names if n == '..'])
     sep = '/' # Yes, even on Windows...
     if parents:
-        return join('PARENT-{}-PROJECT_LOC'.format(parents), sep.join([n for n in names if n != '..']))
-    return join('PROJECT_LOC', sep.join([n for n in names if n != '..']))
+        projectLoc = 'PARENT-{}-PROJECT_LOC'.format(parents)
+    else:
+        projectLoc = 'PROJECT_LOC'
+    return sep.join([projectLoc] + [n for n in names if n != '..'])
 
 def _convert_to_eclipse_supported_compliance(compliance):
     """
