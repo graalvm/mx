@@ -10927,6 +10927,7 @@ def add_argument(*args, **kwargs):
     _argParser.add_argument(*args, **kwargs)
 
 def update_commands(suite, new_commands):
+    x = suite
     for key, value in new_commands.iteritems():
         assert ':' not in key
         old = _commands.get(key)
@@ -10941,8 +10942,14 @@ def update_commands(suite, new_commands):
                 # Previously specified command from another suite
                 # is made available using a qualified name.
                 # The last (primary) suite (depth-first init) always defines the generic command
-                qkey = oldSuite.name + ':' + key
-                _commands[qkey] = old
+                # N.B. Dynamically loaded suites loaded via Suite.import_suite register after the primary
+                # suite but they must not override the primary definition.
+                if oldSuite == _primary_suite:
+                    # ensure registered as qualified by the registering suite
+                    key = suite.name  + ':' + key
+                else:
+                    qkey = oldSuite.name + ':' + key
+                    _commands[qkey] = old
         _commands[key] = value
         _commandsToSuite[key] = suite
 
@@ -11342,7 +11349,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.14")
+version = VersionSpec("5.5.15")
 
 currentUmask = None
 
