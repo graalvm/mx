@@ -10927,7 +10927,6 @@ def add_argument(*args, **kwargs):
     _argParser.add_argument(*args, **kwargs)
 
 def update_commands(suite, new_commands):
-    x = suite
     for key, value in new_commands.iteritems():
         assert ':' not in key
         old = _commands.get(key)
