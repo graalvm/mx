@@ -2171,6 +2171,7 @@ class ResourceLibrary(BaseLibrary):
     def __init__(self, suite, name, path, optional, urls, sha1):
         BaseLibrary.__init__(self, suite, name, optional, None)
         self.path = path.replace('/', os.sep)
+        self.sourcePath = None
         self.urls = urls
         self.sha1 = sha1
 
@@ -11375,7 +11376,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.0")
+version = VersionSpec("5.6.1")
 
 currentUmask = None
 
