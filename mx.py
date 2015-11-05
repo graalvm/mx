@@ -2165,6 +2165,29 @@ class BaseLibrary(Dependency):
             self.theLicense = get_license(licenseId, context=self)
 
 """
+A library that is just a resource and therefore not a ClasspathDependency
+"""
+class ResourceLibrary(BaseLibrary):
+    def __init__(self, suite, name, path, optional, urls, sha1):
+        BaseLibrary.__init__(self, suite, name, optional, None)
+        self.path = path.replace('/', os.sep)
+        self.urls = urls
+        self.sha1 = sha1
+
+    def getBuildTask(self, args):
+        return LibraryDownloadTask(args, self)
+
+    def get_path(self, resolve):
+        path = _make_absolute(self.path, self.suite.dir)
+        sha1path = path + '.sha1'
+        return download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
+
+    def _check_download_needed(self):
+        path = _make_absolute(self.path, self.suite.dir)
+        sha1path = path + '.sha1'
+        return not _check_file_with_sha1(path, self.sha1, sha1path)
+
+"""
 A library that will be provided by the JRE but may be absent.
 Any project or normal library that depends on a missing library
 will be removed from the global project and library dictionaries
@@ -4534,7 +4557,11 @@ class Suite:
                 sourcePath = _get_path_in_cache(name + '.sources', sourceSha1, sourceUrls, sourceExt)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', False)
-            l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
+            resource = attrs.pop('resource', False)
+            if resource:
+                l = ResourceLibrary(self, name, path, optional, urls, sha1)
+            else:
+                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
             l.__dict__.update(attrs)
             self.libs.append(l)
 
@@ -11348,7 +11375,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.5.15")
+version = VersionSpec("5.6.0")
 
 currentUmask = None
 
