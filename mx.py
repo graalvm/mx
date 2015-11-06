@@ -3913,7 +3913,7 @@ class MavenConfig:
     def check(self, abortOnError=True):
         if self.has_maven is None:
             try:
-                run_maven(['--version'])
+                run_maven(['--version'], out=lambda e: None)
                 self.has_maven = True
             except OSError:
                 self.has_maven = False
