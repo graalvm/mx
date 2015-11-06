@@ -10324,6 +10324,28 @@ def stip(args):
 
     _stip(s, None)
 
+def _sversions_import_visitor(s, suite_import, with_color, **extra_args):
+    _sversions(suite(suite_import.name), suite_import, with_color)
+
+def _sversions(s, suite_import, with_color):
+    s.visit_imports(_sversions_import_visitor, with_color=with_color)
+    if with_color:
+        color_on, color_off = '\033[93m', '\033[0m'
+    else:
+        color_on = color_off = ''
+    parentrev = s.vc.parent(s.dir)
+    isdirty = s.vc.isDirty(s.dir)
+    print color_on + parentrev[0:12] + color_off + parentrev[12:] + ' +'[int(isdirty)] + ' ' + s.name
+
+def sversions(args):
+    '''print working directory revision for primary suite and all imports'''
+    parser = ArgumentParser(prog='mx sversions')
+    parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
+    args = parser.parse_args(args)
+    s = _check_primary_suite()
+
+    _sversions(s, None, args.color)
+
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
     matches = []
@@ -11053,6 +11075,7 @@ _commands = {
     'spull': [spull, '[options]'],
     'spush': [spush, '[options]'],
     'stip': [stip, ''],
+    'sversions': [sversions, '[options]'],
     'supdate': [supdate, ''],
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
@@ -11120,7 +11143,7 @@ def _check_primary_suite():
 # vc (suite) commands only perform a partial load of the suite metadata, to avoid
 # problems with suite invariant checks aborting the operation
 _vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
-                'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'supdate']
+                'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'sversions', 'supdate']
 
 def _needs_primary_suite(command):
     return not command in _primary_suite_exempt and not command in _suite_context_free
