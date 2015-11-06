@@ -2981,7 +2981,9 @@ class GitConfig(VC):
                 return None
 
     def tip(self, vcdir, abortOnError=True):
-        return self._rev_parse(vcdir, 'origin/master', abortOnError=abortOnError)
+        info = self._getBranchInfo(vcdir, abortOnError=abortOnError)
+        check = info[1] + '/' + info[2]
+        return self._rev_parse(vcdir, check, abortOnError=abortOnError)
 
     def parent(self, vcdir, abortOnError=True):
         return self._rev_parse(vcdir, 'HEAD', abortOnError=abortOnError)
@@ -3026,7 +3028,7 @@ class GitConfig(VC):
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         '''
         Omits the --force flag, instead pushes to branch 'mx_push'
-        to avoid overriden the master branch.
+        to avoid overriden the master branch (if rev is specified).
         '''
         cmd = ['git', '-C', vcdir, 'push']
         if dest:
@@ -3065,7 +3067,6 @@ class GitConfig(VC):
     def incoming(self, vcdir, abortOnError=True):
         return self._checkCommits(vcdir, incoming=True, abortOnError=abortOnError)
 
-
     def outgoing(self, vcdir, dest=None, abortOnError=True):
         '''
         The current branch's target remote branch is taken.
@@ -3096,10 +3097,10 @@ class GitConfig(VC):
             return False
 
     def default_push(self, vcdir, abortOnError=True):
-        return self._getRemoteName(vcdir, 'push', abortOnError=abortOnError)
+        return self._getRepositoryURI(vcdir, 'push', abortOnError=abortOnError)
 
     def default_pull(self, vcdir, abortOnError=True):
-        return self._getRemoteName(vcdir, 'fetch', abortOnError=abortOnError)
+        return self._getRepositoryURI(vcdir, 'fetch', abortOnError=abortOnError)
 
     def isDirty(self, vcdir, abortOnError=True):
         self.check_for_git()
@@ -3131,16 +3132,17 @@ class GitConfig(VC):
                 return None
 
     def _checkCommits(self, vcdir, incoming, abortOnError=True):
-        remote = self._getUpstream(vcdir, abortOnError=abortOnError)
-        if not remote:
+        info = self._getBranchInfo(vcdir, abortOnError=abortOnError)
+        print info
+        if not info[1]:
             if abortOnError:
-                abort('current branch has no remote repository specified')
+                abort('branch has no remote repository')
             else:
                 return None
 
-        rc = self.run(['git', '-C', vcdir, 'fetch', remote[0]])
+        rc = self.run(['git', '-C', vcdir, 'fetch', info[1]])
         if rc == 0:
-            check = remote[0] + '/' + remote[1]
+            check = info[1] + '/' + info[2]
             check = '..' + check if incoming else check + '..'
             print 'changes for {}'.format(check)
             out = OutputCapture()
@@ -3188,38 +3190,43 @@ class GitConfig(VC):
                 abort(" ".join(args) + ' returned ' + str(rc))
             return None
 
-    def _getRemoteName(self, vcdir, tpe, abortOnError=True):
-        branches = LinesOutputCapture()
-        self.run(['git', '-C', vcdir, 'branch', '-vv'], out=branches)
-        name = ''
-        for branch in branches.lines:
-            if branch.strip().startswith('*'): # current branch
-                m = re.search(ur'\[(\w+)/', branch)
+    def _getRepositoryURI(self, vcdir, tpe, abortOnError=True):
+        '''
+        Retrieves the url of the remote assigned for the checked out branch.
+        '''
+        info = self._getBranchInfo(vcdir)
+        if info[1]: # has remote
+            remotes = LinesOutputCapture()
+            self.run(['git', 'remote', '-v'], out=remotes)
+            for remote in remotes.lines:
+                m = re.search(info[1] + ur'\s+(.+) \(' + tpe + ur'\)', remote)
                 if m:
-                    name = m.group(1).strip()
-
-        remotes = LinesOutputCapture()
-        self.run(['git', 'remote', '-v'], out=remotes)
-        for remote in remotes.lines:
-            print remote
-            m = re.search(name + ur'\s+(.+) \(' + tpe + ur'\)', remote)
-            if m:
-                return m.group(1).strip()
+                    return m.group(1).strip()
 
         if abortOnError:
-            abort('no remotes found')
+            abort('branch has no remote repository assigned')
         else:
             return None
 
-    def _getUpstream(self, vcdir, abortOnError=True):
+    def _getBranchInfo(self, vcdir, abortOnError=True):
+        '''
+        Returns the triple: (<local branch name>, <remote name>, <tracked remote branch name>).
+        If the branch tacks no remote branch, remote name and branch are 'None'.
+        '''
         branches = LinesOutputCapture()
         self.run(['git', '-C', vcdir, 'branch', '-vv'], out=branches)
         for branch in branches.lines:
-            m = re.search(ur'\*\s(\S+).+\[(\S+)\/(\S+)[:.+\]|\]].+', branch)
-            if m:
-                # local branch, remote name, remote branch
-                return (m.group(2), m.group(3))
-        return None # current branch has no upstream set
+            local = re.search(ur'\*\s+(\S+).+', branch) # current branch name
+            if local:
+                remote = re.search(ur'.+\[(\S+)\/(\S+)[:.+\]|\]] .+', branch) # check for remote
+                if remote:
+                    return (local.group(1), remote.group(1), remote.group(2))
+                else:
+                    return (local.group(1), None, None) # current branch has no upstream set
+        if abortOnError:
+            abort('illegal state: no branch found')
+        else:
+            return None
 
 
     # Not yet implemented / applicable
