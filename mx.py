@@ -2973,7 +2973,7 @@ class GitConfig(VC):
     def _rev_parse(self, vcdir, rev, abortOnError=True):
         self.check_for_git()
         try:
-            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', rev])
+            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', rev]).strip()
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git _rev_parse with ' + rev + ' failed')
