@@ -2963,15 +2963,21 @@ class GitConfig(VC):
     def commit(self, vcdir, msg, abortOnError=True):
         return self.run(['git', '-C', vcdir, 'commit', '-m', msg]) == 0
 
-    def tip(self, vcdir, abortOnError=True):
+    def _rev_parse(self, vcdir, rev, abortOnError=True):
         self.check_for_git()
         try:
-            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', 'HEAD'])
+            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', rev])
         except subprocess.CalledProcessError:
             if abortOnError:
-                abort('git tip failed')
+                abort('git _rev_parse with ' + rev + ' failed')
             else:
                 return None
+
+    def tip(self, vcdir, abortOnError=True):
+        return self._rev_parse(vcdir, 'origin/master', abortOnError=abortOnError)
+
+    def parent(self, vcdir, abortOnError=True):
+        return self._rev_parse(vcdir, 'HEAD', abortOnError=abortOnError)
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         cmd = ['git', 'clone']
@@ -3210,8 +3216,6 @@ class GitConfig(VC):
 
 
     # Not yet implemented / applicable
-
-    # def parent(self, vcdir, abortOnError=True):
 
     # def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
 
