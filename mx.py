@@ -5085,6 +5085,9 @@ class MXSuite(InternalSuite):
         self._init_metadata()
         self._post_init()
 
+    def vc_command_init(self):
+        pass
+
 class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
@@ -7219,6 +7222,10 @@ def build(args, parser=None):
     if roots:
         roots = _dependencies_opt_limit_to_suites(roots)
         # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
+
+    print 'INFO: BEGIN: sversions'
+    command_function('sversions')([])
+    print 'INFO: END: sversions'
 
     sortedTasks = []
     taskMap = {}
@@ -10329,6 +10336,9 @@ def _sversions_import_visitor(s, suite_import, with_color, **extra_args):
 
 def _sversions(s, suite_import, with_color):
     s.visit_imports(_sversions_import_visitor, with_color=with_color)
+    if s.vc == None:
+        print ' No version control info for suite ' + s.name
+        return
     if with_color:
         color_on, color_off = '\033[93m', '\033[0m'
     else:
