@@ -2733,7 +2733,8 @@ class HgConfig(VC):
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
         try:
-            tags = [x.split() for x in subprocess.check_output(['hg', '-R', vcdir, 'tags']).split('\n') if x.startswith(prefix)]
+            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag("re:{0}[0-9]+\\.[0-9]+")'.format(prefix), '--template', '{tags},{rev}\n'])
+            tagged_ids = [x.split(',') for x in tagged_ids_out.split('\n') if x]
             current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
@@ -2741,18 +2742,23 @@ class HgConfig(VC):
             else:
                 return None
 
-        if tags and current_id:
-            sorted_tags = sorted(tags, key=lambda e: [int(x) for x in e[0][len(prefix):].split('.')], reverse=True)
-            most_recent_tag_name, most_recent_tag_revision = sorted_tags[0]
-            most_recent_tag_id = most_recent_tag_revision[:most_recent_tag_revision.index(":")]
-            most_recent_tag_version = most_recent_tag_name[len(prefix):]
+        if tagged_ids and current_id:
+            def single(it):
+                v = next(it)
+                try:
+                    next(it)
+                    abort('iterator contained more than a single element')
+                except StopIteration:
+                    return v
+            tagged_ids = [(single((tag for tag in tags.split(' ') if tag.startswith(prefix))), revid) for tags, revid in tagged_ids]
+            version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
+            version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
+            most_recent_tag_version, most_recent_tag_id = version_ids[0]
 
-            # tagged commit is one-off with commit that tags it
-            distance_to_tag = int(current_id) - int(most_recent_tag_id)
-            if distance_to_tag == 0 or distance_to_tag == 1:
-                return most_recent_tag_version
+            if current_id == most_recent_tag_id:
+                return '.'.join((str(e) for e in most_recent_tag_version))
             else:
-                major, minor = map(int, most_recent_tag_version.split('.'))
+                major, minor = most_recent_tag_version
                 return str(major) + '.' + str(minor + 1) + '-' + snapshotSuffix
         return None
 
