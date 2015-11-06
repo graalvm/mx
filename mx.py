@@ -3720,7 +3720,7 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None):
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
@@ -3738,8 +3738,15 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
     if settingsXml:
         cmd += ['-s', settingsXml]
 
-    cmd += ['deploy:deploy-file',
-        '-DrepositoryId=' + repositoryId,
+    if gpg:
+        cmd += ['gpg:sign-and-deploy-file']
+    else:
+        cmd += ['deploy:deploy-file']
+
+    if keyid:
+        cmd += ['-Dkeyname=' + keyid]
+
+    cmd += ['-DrepositoryId=' + repositoryId,
         '-Durl=' + repositoryUrl,
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
@@ -3823,7 +3830,7 @@ def deploy_binary(args):
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None):
     if licenses is None:
         licenses = []
     for dist in dists:
@@ -3836,9 +3843,9 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
             if _opts.very_verbose or (dryRun and _opts.verbose):
                 with open(pomFile) as f:
                     log(f.read())
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, pomFile=pomFile)
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid)
         elif dist.isTARDistribution():
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
         else:
             warn('Unsupported distribution: ' + dist.name)
 
@@ -3876,9 +3883,15 @@ def maven_deploy(args):
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
+    parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
+    parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
+
+    if args.gpg_keyid and not args.gpg:
+        args.gpg = True
+        warn('Implicitely setting gpg to true since a keyid was specified')
 
     s = _primary_suite
     _mvn.check()
@@ -3902,7 +3915,7 @@ def maven_deploy(args):
         repo = repository(args.repository_id)
 
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid)
 
 class MavenConfig:
     def __init__(self):
