@@ -2734,7 +2734,7 @@ class HgConfig(VC):
         prefix = prefix + '-'
         try:
             tags = [x.split() for x in subprocess.check_output(['hg', '-R', vcdir, 'tags']).split('\n') if x.startswith(prefix)]
-            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', 'tip']).strip()
+            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
                 abort('hg tags or hg tip failed: ' + str(e))
@@ -2748,7 +2748,8 @@ class HgConfig(VC):
             most_recent_tag_version = most_recent_tag_name[len(prefix):]
 
             # tagged commit is one-off with commit that tags it
-            if int(current_id) - int(most_recent_tag_id) <= 1:
+            distance_to_tag = int(current_id) - int(most_recent_tag_id)
+            if distance_to_tag == 0 or distance_to_tag == 1:
                 return most_recent_tag_version
             else:
                 major, minor = map(int, most_recent_tag_version.split('.'))
