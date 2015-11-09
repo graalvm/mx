@@ -3251,7 +3251,10 @@ class BinaryVC(VC):
         return True
 
     def is_this_vc(self, vcdir):
-        return self.parent(vcdir, abortOnError=False)
+        try:
+            return self.parent(vcdir, abortOnError=False)
+        except IOError:
+            return False
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         '''
@@ -7237,9 +7240,10 @@ def build(args, parser=None):
         roots = _dependencies_opt_limit_to_suites(roots)
         # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
 
-    print 'INFO: BEGIN: sversions'
+    print 'INFO: BEGIN: versions'
+    command_function('version')(['--oneline'])
     command_function('sversions')([])
-    print 'INFO: END: sversions'
+    print 'INFO: END: versions'
 
     sortedTasks = []
     taskMap = {}
@@ -10368,12 +10372,14 @@ def sversions(args):
             return
         visited.add(s.dir)
         if s.vc == None:
-            print ' No version control info for suite ' + s.name
+            print 'No version control info for suite ' + s.name
         else:
             print _sversions_rev(s.vc.parent(s.dir), s.vc.isDirty(s.dir), with_color) + ' ' + s.name
         s.visit_imports(_sversions_import_visitor)
 
-    _sversions(_check_primary_suite(), None)
+    primary_suite = _check_primary_suite()
+    if not isinstance(primary_suite, MXSuite):
+        _sversions(primary_suite, None)
 
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
@@ -10954,6 +10960,18 @@ def show_envs(args):
 
 def show_version(args):
     '''print mx version'''
+
+    parser = ArgumentParser(prog='mx version')
+    parser.add_argument('--oneline', action='store_true', help='show mx revision and version in one line')
+    args = parser.parse_args(args)
+    if args.oneline:
+        vc = VC.get_vc(_mx_home, abortOnError=False)
+        if vc == None:
+            print 'No version control info for mx %s' % version
+        else:
+            print _sversions_rev(vc.parent(_mx_home), vc.isDirty(_mx_home), False) + ' mx %s' % version
+        return
+
     print version
     vc = VC.get_vc(_mx_home, abortOnError=False)
     if isinstance(vc, HgConfig):
