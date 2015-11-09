@@ -7595,6 +7595,7 @@ def pylint(args):
     """run pylint (if available) over Python source files (found by '<vc> locate' or by tree walk with -walk)"""
 
     parser = ArgumentParser(prog='mx pylint')
+    _add_command_primary_option(parser)
     parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
     args = parser.parse_args(args)
 
@@ -7619,6 +7620,8 @@ def pylint(args):
 
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
+            if args.primary and not suite.primary:
+                continue
             for root, dirs, files in os.walk(suite.dir):
                 for f in files:
                     if f.endswith('.py'):
@@ -7632,6 +7635,8 @@ def pylint(args):
 
     def findfiles_by_vc(pyfiles):
         for suite in suites(True, includeBinary=False):
+            if args.primary and not suite.primary:
+                continue
             files = suite.vc.locate(suite.dir, ['*.py'])
             for pyfile in files:
                 if exists(pyfile):
@@ -10751,6 +10756,9 @@ def assessannotationprocessors(args):
                         log('"annotationProcessors" attribute of {} should not include {}'.format(p, apdepName))
                     log('Could not find any matches for these patterns: ' + ', '.join(annotations))
 
+def _add_command_primary_option(parser):
+    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+
 def checkcopyrights(args):
     '''run copyright check on the sources'''
     class CP(ArgumentParser):
@@ -10766,7 +10774,7 @@ def checkcopyrights(args):
 
     parser = CP(prog='mx checkcopyrights')
 
-    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    _add_command_primary_option(parser)
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
     remove_doubledash(args.remainder)
@@ -11442,7 +11450,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.2")
+version = VersionSpec("5.6.3")
 
 currentUmask = None
 
