@@ -10345,30 +10345,35 @@ def stip(args):
 
     _stip(s, None)
 
-def _sversions_import_visitor(s, suite_import, with_color, **extra_args):
-    _sversions(suite(suite_import.name), suite_import, with_color)
-
-def _sversions(s, suite_import, with_color):
-    s.visit_imports(_sversions_import_visitor, with_color=with_color)
-    if s.vc == None:
-        print ' No version control info for suite ' + s.name
-        return
+def _sversions_rev(rev, isdirty, with_color):
     if with_color:
         color_on, color_off = '\033[93m', '\033[0m'
     else:
         color_on = color_off = ''
-    parentrev = s.vc.parent(s.dir)
-    isdirty = s.vc.isDirty(s.dir)
-    print color_on + parentrev[0:12] + color_off + parentrev[12:] + ' +'[int(isdirty)] + ' ' + s.name
+    return color_on + rev[0:12] + color_off + rev[12:] + ' +'[int(isdirty)]
 
 def sversions(args):
     '''print working directory revision for primary suite and all imports'''
     parser = ArgumentParser(prog='mx sversions')
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
-    s = _check_primary_suite()
+    with_color = args.color
+    visited = set()
 
-    _sversions(s, None, args.color)
+    def _sversions_import_visitor(s, suite_import, **extra_args):
+        _sversions(suite(suite_import.name), suite_import)
+
+    def _sversions(s, suite_import):
+        if s.dir in visited:
+            return
+        visited.add(s.dir)
+        if s.vc == None:
+            print ' No version control info for suite ' + s.name
+        else:
+            print _sversions_rev(s.vc.parent(s.dir), s.vc.isDirty(s.dir), with_color) + ' ' + s.name
+        s.visit_imports(_sversions_import_visitor)
+
+    _sversions(_check_primary_suite(), None)
 
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
