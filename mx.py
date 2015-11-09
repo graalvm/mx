@@ -1771,6 +1771,7 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
         else:
             javacArgs += ['-proc:none']
+        hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
             assert jdk.javaCompliance > compliance
@@ -1779,6 +1780,8 @@ class JavacLikeCompiler(JavaCompiler):
             # because of non-strict compliance mode
             if jdk.javaCompliance != complianceJdk.javaCompliance:
                 javacArgs = complianceJdk.javacLibOptions(javacArgs)
+            else:
+                hybridCrossCompilation = True
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
@@ -1786,7 +1789,7 @@ class JavacLikeCompiler(JavaCompiler):
         fileListFile = self.createFileListFile(sourceFiles, project.get_output_root())
         javacArgs.append('@' + _cygpathU2W(fileListFile))
         try:
-            self.buildJavacLike(jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks)
+            self.buildJavacLike(jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation)
         finally:
             # Do not clean up temp files if verbose as there's
             # a good chance the user wants to copy and paste the
@@ -1795,7 +1798,11 @@ class JavacLikeCompiler(JavaCompiler):
                 for n in self.tmpFiles:
                     os.remove(n)
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+        """
+        *hybridCrossCompilation* is true if the -source compilation option denotes a different JDK version than
+        the JDK libraries that will be compiled against.
+        """
         nyi('buildJavacLike', self)
 
     def createFileListFile(self, files, directory):
@@ -1819,7 +1826,7 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -1827,6 +1834,12 @@ class JavacCompiler(JavacLikeCompiler):
                 lint = ['none']
             else:
                 lint += overrides
+        if hybridCrossCompilation:
+            if lint != ['none'] and warningsAsErrors:
+                # disable the "bootstrap class path not set in conjunction with -source N" warning
+                # since we are not in strict compliance mode
+                assert not _opts.strict_compliance
+                lint += ['-options']
         knownLints = jdk.getKnownJavacLints()
         lint = [l for l in lint if l in knownLints]
         if lint:
@@ -1862,7 +1875,7 @@ class ECJCompiler(JavacLikeCompiler):
             jdk = get_jdk(versionCheck=esc.exactMatch, versionDescription=str(esc))
         return jdk
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks):
+    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
         jvmArgs += ['-jar', self.jdtJar]
         jdtArgs = javacArgs
 
