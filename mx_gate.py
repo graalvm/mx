@@ -191,11 +191,6 @@ def gate(args):
     elif args.x:
         mx.abort('-x option cannot be used without --task-filter option')
 
-    # Force
-    if not mx._opts.strict_compliance:
-        mx.log("[gate] forcing strict compliance")
-        mx._opts.strict_compliance = True
-
     tasks = []
     total = Task('Gate')
     try:
