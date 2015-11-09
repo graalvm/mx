@@ -143,18 +143,29 @@ def add_omit_clean_args(parser):
     parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
-def gate_clean(args, tasks, name='Clean'):
+def gate_clean(cleanArgs, tasks, name='Clean'):
     with Task(name, tasks) as t:
         if t:
-            cleanArgs = []
-            if not args.cleanNative:
-                cleanArgs.append('--no-native')
-            if not args.cleanJava:
-                cleanArgs.append('--no-java')
-            if not args.cleanDist:
-                cleanArgs.append('--no-dist')
             mx.command_function('clean')(cleanArgs)
 
+def check_gate_noclean_arg(args):
+    '''
+    Checks the -o option (noClean) and sets the sub-options in args appropriately
+    and returns the relevant args for the clean command (N.B. IDE currently ignored).
+    '''
+    if args.noClean:
+        args.cleanIDE = False
+        args.cleanJava = False
+        args.cleanNative = False
+        args.cleanDist = False
+    cleanArgs = []
+    if not args.cleanNative:
+        cleanArgs.append('--no-native')
+    if not args.cleanJava:
+        cleanArgs.append('--no-java')
+    if not args.cleanDist:
+        cleanArgs.append('--no-dist')
+    return cleanArgs
 
 def _warn_or_abort(msg, strict_mode):
     reporter = mx.abort if strict_mode else mx.warn
@@ -179,6 +190,7 @@ def gate(args):
         parser.add_argument(*a, **k)
 
     args = parser.parse_args(args)
+    cleanArgs = check_gate_noclean_arg(args)
 
     global _jacoco
     if args.dry_run:
@@ -197,7 +209,7 @@ def gate(args):
         with Task('Pylint', tasks) as t:
             if t: mx.command_function('pylint')([])
 
-        gate_clean(args, tasks)
+        gate_clean(cleanArgs, tasks)
 
         with Task('Distribution Overlap Check', tasks) as t:
             if t:
@@ -213,7 +225,7 @@ def gate(args):
         if mx.get_env('JDT'):
             with Task('BuildJavaWithEcj', tasks) as t:
                 if t: mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-            gate_clean(args, tasks, name='CleanAfterEcjBuild')
+            gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild')
         else:
             _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 

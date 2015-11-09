@@ -5243,19 +5243,8 @@ def _bench_test_common(args, parser, suppliedParser):
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
 
-    if args.noClean:
-        args.cleanIDE = False
-        args.cleanJava = False
-        args.cleanNative = False
-        args.cleanDist = False
+    cleanArgs = mx_gate.check_gate_noclean_arg(args)
 
-    cleanArgs = []
-    if not args.cleanNative:
-        cleanArgs.append('--no-native')
-    if not args.cleanJava:
-        cleanArgs.append('--no-java')
-    if not args.cleanDist:
-        cleanArgs.append('--no-dist')
     command_function('clean')(cleanArgs)
 
     if args.cleanIDE:
@@ -11450,7 +11439,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.1")
+version = VersionSpec("5.6.2")
 
 currentUmask = None
 
