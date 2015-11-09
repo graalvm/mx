@@ -7175,6 +7175,7 @@ def build(args, parser=None):
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
+    parser.add_argument('--sversions', action='store_true', help='show versions of mx and all suites before build')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -7229,10 +7230,12 @@ def build(args, parser=None):
         roots = _dependencies_opt_limit_to_suites(roots)
         # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
 
-    print 'INFO: BEGIN: versions'
-    command_function('version')(['--oneline'])
-    command_function('sversions')([])
-    print 'INFO: END: versions'
+    if _opts.verbose or args.sversions:
+        print 'INFO: BEGIN: versions'
+        command_function('version')(['--oneline'])
+        command_function('sversions')([])
+        print 'INFO: END: versions'
+
 
     sortedTasks = []
     taskMap = {}

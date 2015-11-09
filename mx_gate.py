@@ -206,6 +206,11 @@ def gate(args):
     tasks = []
     total = Task('Gate')
     try:
+        with Task('Versions', tasks) as t:
+            if t:
+                mx.command_function('version')(['--oneline'])
+                mx.command_function('sversions')([])
+
         with Task('Pylint', tasks) as t:
             if t: mx.command_function('pylint')([])
 
