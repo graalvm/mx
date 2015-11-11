@@ -6084,6 +6084,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         if versionCheck is None and jdkOpt.compliance:
             versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
+    else:
+        jdkOpt = TagCompliance(tag, None)
 
     defaultTag = tag == DEFAULT_JDK_TAG
     defaultJdk = defaultTag and versionCheck is None and not purpose
@@ -6095,11 +6097,14 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
 
     if tag and not defaultTag:
         factory = _getJDKFactory(tag, jdkOpt.compliance)
-        jdk = factory.getJDKConfig()
-        if jdk.tag is not None:
-            assert jdk.tag == tag
+        if factory:
+            jdk = factory.getJDKConfig()
+            if jdk.tag is not None:
+                assert jdk.tag == tag
+            else:
+                jdk.tag = tag
         else:
-            jdk.tag = tag
+            jdk = None
         return jdk
 
     # interpret string and compliance as compliance check
