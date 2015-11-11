@@ -1528,6 +1528,8 @@ class JavaProject(Project, ClasspathDependency):
         requiredCompliance = self.javaCompliance
         if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
             jdk = get_jdk() # build using default JDK
+            if jdk.javaCompliance < requiredCompliance:
+                jdk = get_jdk(requiredCompliance)
             if hasattr(args, 'parallelize') and args.parallelize:
                 # Best to initialize class paths on main process
                 get_jdk(requiredCompliance).bootclasspath()
