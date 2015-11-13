@@ -1151,7 +1151,13 @@ class Project(Dependency):
         Gets the root of the directory hierarchy under which generated artifacts for this
         project such as class files and annotation generated sources should be placed.
         '''
-        return join(self.suite.get_output_root(), self.name) if not self.subDir else join(self.suite.get_output_root(), self.subDir, self.name)
+        if not self.subDir:
+            return join(self.suite.get_output_root(), self.name)
+        names = self.subDir.split(os.sep)
+        parents = len([n for n in names if n == '..'])
+        if parents != 0:
+            return os.sep.join([self.suite.get_output_root(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
+        return join(self.suite.get_output_root(), self.subDir, self.name)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
