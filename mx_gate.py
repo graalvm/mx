@@ -211,6 +211,16 @@ def gate(args):
                 mx.command_function('version')(['--oneline'])
                 mx.command_function('sversions')([])
 
+        with Task('JDKReleaseInfo', tasks) as t:
+            if t:
+                jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
+                for jdkDir in jdkDirs.split(os.pathsep):
+                    release = join(jdkDir, 'release')
+                    if exists(release):
+                        mx.log('==== ' + jdkDir + ' ====')
+                        with open(release) as fp:
+                            mx.log(fp.read().strip())
+
         with Task('Pylint', tasks) as t:
             if t: mx.command_function('pylint')([])
 
