@@ -1849,7 +1849,8 @@ class JavacCompiler(JavacLikeCompiler):
                 assert not _opts.strict_compliance
                 lint += ['-options']
         knownLints = jdk.getKnownJavacLints()
-        lint = [l for l in lint if l in knownLints]
+        if knownLints:
+            lint = [l for l in lint if l in knownLints]
         if lint:
             javacArgs.append('-Xlint:' + ','.join(lint))
         if disableApiRestrictions:
@@ -6939,14 +6940,34 @@ class JDKConfig:
         return False
 
     def getKnownJavacLints(self):
+        '''
+        Gets the lint warnings supported by this JDK.
+        '''
         if self._knownJavacLints is None:
             out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
-            lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
-            m = lintre.search(out)
-            if not m:
-                self._knownJavacLints = []
+            if self.javaCompliance < JavaCompliance('1.9'):
+                lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
+                m = lintre.search(out)
+                if not m:
+                    self._knownJavacLints = []
+                else:
+                    self._knownJavacLints = m.group(1).split(',')
             else:
-                self._knownJavacLints = m.group(1).split(',')
+                self._knownJavacLints = []
+                lines = out.split(os.linesep)
+                inLintSection = False
+                for line in lines:
+                    if not inLintSection:
+                        if line.strip() == '-Xlint:key,...':
+                            inLintSection = True
+                    else:
+                        if line.startswith('         '):
+                            warning = line.split()[0]
+                            self._knownJavacLints.append(warning)
+                            self._knownJavacLints.append('-' + warning)
+                        elif line.strip().startswith('-X'):
+                            return self._knownJavacLints
+                warn('Did not find lint warnings in output of "javac -X"')
         return self._knownJavacLints
 
 def check_get_env(key):
@@ -11468,7 +11489,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.4")
+version = VersionSpec("5.6.5")
 
 currentUmask = None
 
