@@ -2889,16 +2889,14 @@ class HgConfig(VC):
         return rc == 0
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        if rev and mayPull and not self.exists(vcdir, rev):
+            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
         cmd = ['hg', '-R', vcdir, 'update']
         if rev:
             cmd += ['-r', rev]
         if clean:
             cmd += ['-C']
-        result = self.run(cmd, nonZeroIsFatal=abortOnError) == 0
-        if not result and mayPull and rev:
-            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
-            result = self.update(vcdir, rev=rev, clean=clean, abortOnError=abortOnError)
-        return result
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         if patterns is None:
@@ -2954,10 +2952,11 @@ class HgConfig(VC):
     def exists(self, vcdir, rev):
         self.check_for_hg()
         try:
-            subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', rev])
-            return True
+            sentinel = 'exists'
+            out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', 'present({})'.format(rev), '--template', sentinel])
+            return sentinel in out
         except subprocess.CalledProcessError:
-            return False
+            abort('exists failed')
 
 
 class GitConfig(VC):
