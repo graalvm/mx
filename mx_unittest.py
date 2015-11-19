@@ -32,6 +32,7 @@ import re
 import tempfile
 import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from os.path import exists, join
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
@@ -138,6 +139,9 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
         os.close(_)
 
+    mainClass = 'com.oracle.mxtool.junit.MxJUnitWrapper'
+    if not exists(join(mx.project('com.oracle.mxtool.junit').output_dir(), mainClass.replace('.', os.sep) + '.class')):
+        mx.build(['--only', 'com.oracle.mxtool.junit'])
     coreCp = mx.classpath(['com.oracle.mxtool.junit'])
 
     coreArgs = []
@@ -166,7 +170,6 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs + ['-cp', mx._separatedCygpathU2W(cp)]
-        mainClass = 'com.oracle.mxtool.junit.MxJUnitWrapper'
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
         mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
