@@ -64,7 +64,7 @@ def _sigtest_generate(args, suite=None, projects=None):
         for pkg in mx.find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
-        if exitcode != 0:
+        if exitcode != 95:
             mx.abort('Exit code was ' + str(exitcode) + ' while generating ' + sigtestResults)
         if not exists(sigtestResults):
             mx.abort('Cannot generate ' + sigtestResults)

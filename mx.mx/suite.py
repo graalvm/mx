@@ -24,9 +24,9 @@ suite = {
 
     "SIGTEST" : {
       "urls" : [
-        "http://hg.netbeans.org/binaries/5975EC26B309B25D5C3BBC0AB761D054327CC43D-apitest.jar",
+        "http://hg.netbeans.org/binaries/A7674A6D78B7FEA58AF76B357DAE6EA5E3FDFBE9-apitest.jar",
       ],
-      "sha1" : "5975ec26b309b25d5c3bbc0ab761d054327cc43d",
+      "sha1" : "a7674a6d78b7fea58af76b357dae6ea5e3fdfbe9",
     },
 
     "JUNIT" : {
