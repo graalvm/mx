@@ -60,7 +60,7 @@ def _sigtest_generate(args, suite=None, projects=None):
     javaCompliance = max([p.javaCompliance for p in nonTestProjects])
 
     for p in nonTestProjects:
-        sigtestResults = p.dir + os.sep + 'sigtest-report.out'
+        sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.Setup',
             '-Static', '-FileName', sigtestResults,
             '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
@@ -85,7 +85,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
 
     failed = None
     for p in nonTestProjects:
-        sigtestResults = p.dir + os.sep + 'sigtest-report.out'
+        sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         if not os.path.exists(sigtestResults):
             continue
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.SignatureTest',
