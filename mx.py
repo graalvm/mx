@@ -6295,9 +6295,12 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     return selected
 
 def ask_persist_env(varName, value, valueSeparator=None):
-    if not _primary_suite:
+    if _primary_suite:
+        envPath = join(_primary_suite.mxDir, 'env')
+    elif _mx_suite:
+        envPath = join(_mx_suite.mxDir, 'env')
+    else:
         return
-    envPath = join(_primary_suite.mxDir, 'env')
     if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y'):
         envLines = []
         if exists(envPath):
