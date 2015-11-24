@@ -3843,7 +3843,8 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
             if _opts.very_verbose or (dryRun and _opts.verbose):
                 with open(pomFile) as f:
                     log(f.read())
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid)
+            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
+                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid)
         elif dist.isTARDistribution():
             _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
         else:
@@ -8358,10 +8359,16 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     ensure_dir_exists(eclipseLaunches)
     return update_file(join(eclipseLaunches, name + '.launch'), launch)
 
+def eclipseinit_cli(args):
+    parser = ArgumentParser(prog='mx eclipseinit')
+    parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
+    args = parser.parse_args(args)
+    eclipseinit(None, args.buildProcessorJars)
+
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True):
-        _eclipseinit_suite(args, s, buildProcessorJars, refreshOnly)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly)
 
     generate_eclipse_workingsets()
 
@@ -8631,7 +8638,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if files:
             files.append(join(p.dir, '.factorypath'))
 
-def _eclipseinit_suite(args, suite, buildProcessorJars=True, refreshOnly=False):
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -11149,7 +11156,7 @@ _commands = {
     'checkstyle': [checkstyle, ''],
     'sigtest': [mx_sigtest.sigtest, ''],
     'clean': [clean, ''],
-    'eclipseinit': [eclipseinit, ''],
+    'eclipseinit': [eclipseinit_cli, ''],
     'eclipseformat': [eclipseformat, ''],
     'exportlibs': [exportlibs, ''],
     'findbugs': [mx_findbugs.findbugs, ''],
