@@ -788,7 +788,7 @@ Attributes:
     sourcesPath: as path but for source files (optional)
 """
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense, javadocType="implementation", allowsJavadocWarnings=False):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -798,6 +798,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
+        self.javadocType = javadocType
+        self.allowsJavadocWarnings = allowsJavadocWarnings
         assert path.endswith(self.localExtension())
 
     def set_archiveparticipant(self, archiveparticipant):
@@ -3723,7 +3725,7 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None):
+def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
@@ -3764,6 +3766,8 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
 
     if srcPath:
         cmd.append('-Dsources=' + srcPath)
+    if javadocPath:
+        cmd.append('-Djavadoc=' + javadocPath)
 
     if description:
         cmd.append('-Ddescription=' + description)
@@ -3833,7 +3837,7 @@ def deploy_binary(args):
     _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
     if licenses is None:
         licenses = []
     for dist in dists:
@@ -3846,8 +3850,39 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
             if _opts.very_verbose or (dryRun and _opts.verbose):
                 with open(pomFile) as f:
                     log(f.read())
+            javadocPath = None
+            if generateJavadoc:
+                projects = [p for p in dist.archived_deps() if p.isJavaProject()]
+                tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
+                javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
+                if dist.javadocType == 'implementation':
+                    javadocArgs += ['--implementation']
+                else:
+                    assert dist.javadocType == 'api'
+                if dist.allowsJavadocWarnings:
+                    javadocArgs += ['--allow-warnings']
+                javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+                tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                tmpJavadocJar.close()
+                javadocPath = tmpJavadocJar.name
+                emptyJavadoc = True
+                with zipfile.ZipFile(javadocPath, 'w') as arc:
+                    javadocDir = join(tmpDir, 'javadoc')
+                    for (dirpath, _, filenames) in os.walk(javadocDir):
+                        for filename in filenames:
+                            emptyJavadoc = False
+                            src = join(dirpath, filename)
+                            dst = os.path.relpath(src, javadocDir)
+                            arc.write(src, dst)
+                shutil.rmtree(tmpDir)
+                if emptyJavadoc:
+                    javadocPath = None
+                    warn('Javadoc for {0} was empty'.format(dist.name))
             _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
-                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid)
+                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath)
+            os.unlink(pomFile)
+            if javadocPath:
+                os.unlink(javadocPath)
         elif dist.isTARDistribution():
             _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
         else:
@@ -3918,8 +3953,10 @@ def maven_deploy(args):
             abort("Repositories are not supported in {}'s suite version".format(s.name))
         repo = repository(args.repository_id)
 
+    generateJavadoc = s.getMxCompatibility().mavenDeployJavadoc()
+
     log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
 
 class MavenConfig:
     def __init__(self):
@@ -4538,7 +4575,9 @@ class Suite:
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense)
+            javadocType = attrs.pop('javadocType', 'implementation')
+            allowsJavadocWarnings = attrs.pop('allowsJavadocWarnings', False)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
@@ -9643,7 +9682,7 @@ def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_pa
                         pkgs.add(pkg)
     return pkgs
 
-def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True):
+def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True, mayBuild=True, quietForNoPackages=False):
     """generate javadoc for some/all Java projects"""
 
     parser = ArgumentParser(prog='mx javadoc') if parser is None else parser
@@ -9658,6 +9697,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     parser.add_argument('-m', '--memory', action='store', help='-Xmx value to pass to underlying JVM')
     parser.add_argument('--packages', action='store', help='comma separated packages to process (omit to process all packages)')
     parser.add_argument('--exclude-packages', action='store', help='comma separated packages to exclude')
+    parser.add_argument('--allow-warnings', action='store_true', help='Exit normally even if warnings were found')
 
     args = parser.parse_args(args)
 
@@ -9686,22 +9726,22 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
     def assess_candidate(p, projects):
         if p in projects:
-            return False
+            return (False, 'Already visited')
         if not args.implementation and p.name.endswith('.test'):
-            return False
+            return (False, 'Test project')
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
-            return True
-        return False
+            return (True, None)
+        return (False, 'package-list file exists')
 
     projects = []
     for p in candidates:
         if p.isJavaProject():
             if includeDeps:
-                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects) if dep.isProject() else None)
-            if not assess_candidate(p, projects):
-                logv('[package-list file exists - skipping {0}]'.format(p.name))
-   
+                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
+            added, reason = assess_candidate(p, projects)
+            if not added:
+                logv('[{0} - skipping {1}]'.format(reason, p.name))
 
     extraArgs = [a.lstrip('@') for a in args.extra_args]
     if args.argfile is not None:
@@ -9711,8 +9751,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         memory = args.memory
     memory = '-J-Xmx' + memory
 
-    # The project must be built to ensure javadoc can find class files for all referenced classes
-    build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
+    if mayBuild:
+        # The project must be built to ensure javadoc can find class files for all referenced classes
+        build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
             pkgs = find_packages(p, set(), False, packages, exclude_packages)
@@ -9736,6 +9777,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             nowarnAPI = []
             if not args.warnAPI:
                 nowarnAPI.append('-XDignore.symbol.file')
+
+            if not pkgs:
+                if quietForNoPackages:
+                    return
+                else:
+                    abort('No packages to generate javadoc for!')
 
             # windowTitle onloy applies to the standard doclet processor
             windowTitle = []
@@ -9816,6 +9863,13 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             groupargs.append('-group')
             groupargs.append(k)
             groupargs.append(':'.join(v))
+
+        if not pkgs:
+            if quietForNoPackages:
+                return
+            else:
+                abort('No packages to generate javadoc for!')
+
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
         class Capture:
             def __init__(self, prefix):
@@ -9842,7 +9896,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              nowarnAPI +
              list(pkgs), True, captureOut, captureErr)
 
-        if 'warning' in captureOut.last:
+        if not args.allow_warnings and 'warning' in captureOut.last:
             abort('Error: Warnings in the javadoc are not allowed!')
 
         log('Generated {2} for {0} in {1}'.format(', '.join(names), out, docDir))
@@ -11555,7 +11609,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.5")
+version = VersionSpec("5.6.6")
 
 currentUmask = None
 

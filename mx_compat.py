@@ -62,6 +62,9 @@ class MxCompatibility500(object):
     def getSuiteOutputRoot(self, suite):
         return suite.dir
 
+    def mavenDeployJavadoc(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -116,6 +119,14 @@ class MxCompatibility555(MxCompatibility533):
 
     def getSuiteOutputRoot(self, suite):
         return join(suite.dir, 'mxbuild')
+
+class MxCompatibility566(MxCompatibility555):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.6.6")
+
+    def mavenDeployJavadoc(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()
