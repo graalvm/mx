@@ -4907,6 +4907,7 @@ class SourceSuite(Suite):
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
             workingSets = attrs.pop('workingSets', None)
+            jlintOverrides = attrs.pop('lint.overrides', None)
             if className:
                 if not self.extensions or not hasattr(self.extensions, className):
                     abort('Project {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
@@ -4933,6 +4934,8 @@ class SourceSuite(Suite):
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
                     if ap:
                         p.declaredAnnotationProcessors = ap
+                    if jlintOverrides:
+                        p._javac_lint_overrides = jlintOverrides
             p.__dict__.update(attrs)
             self.projects.append(p)
 
