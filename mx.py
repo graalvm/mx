@@ -9655,6 +9655,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     def assess_candidate(p, projects):
         if p in projects:
             return False
+        if not args.implementation and p.name.endswith('.test'):
+            return False
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
             return True
@@ -9667,7 +9669,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects) if dep.isProject() else None)
             if not assess_candidate(p, projects):
                 logv('[package-list file exists - skipping {0}]'.format(p.name))
-
+   
 
     extraArgs = [a.lstrip('@') for a in args.extra_args]
     if args.argfile is not None:
