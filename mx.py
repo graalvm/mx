@@ -147,6 +147,9 @@ _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 
+# List of functions to run when the primary suite is initialized
+_primary_suite_deferrables = []
+
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
@@ -6312,12 +6315,14 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     return selected
 
 def ask_persist_env(varName, value, valueSeparator=None):
-    if _primary_suite:
-        envPath = join(_primary_suite.mxDir, 'env')
-    elif _mx_suite:
-        envPath = join(_mx_suite.mxDir, 'env')
-    else:
+    if not _primary_suite:
+        def _deferrable():
+            assert _primary_suite
+            ask_persist_env(varName, value, valueSeparator)
+        _primary_suite_deferrables.append(_deferrable)
         return
+
+    envPath = join(_primary_suite.mxDir, 'env')
     if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y'):
         envLines = []
         if exists(envPath):
@@ -11392,6 +11397,13 @@ def _get_command_property(command, propertyName):
             return props[propertyName]
     return None
 
+def _init_primary_suite(s):
+    global _primary_suite
+    assert not _primary_suite
+    _primary_suite = s
+    for deferrable in _primary_suite_deferrables:
+        deferrable()
+
 def main():
     global _mx_suite
     _mx_suite = MXSuite()
@@ -11405,13 +11417,12 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
-    global _primary_suite
     primarySuiteMxDir = None
     if len(_argParser.initialCommandAndArgs) == 0 or _argParser.initialCommandAndArgs[0] not in _suite_context_free:
         primary_suite_error = 'no primary suite found'
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
-            _primary_suite = _mx_suite
+            _init_primary_suite(_mx_suite)
         elif primarySuiteMxDir:
             _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
             # We explicitly load the 'env' file of the primary suite now as it might influence
@@ -11437,7 +11448,7 @@ def main():
                     _suites_ignore_versions = []
 
             # This will load all explicitly imported suites, unless it's a vc command
-            _primary_suite = PrimarySuite(primarySuiteMxDir, load=not vc_command)
+            _init_primary_suite(PrimarySuite(primarySuiteMxDir, load=not vc_command))
         else:
             # in general this is an error, except for the _primary_suite_exempt commands,
             # and an extensions command will likely not parse in this case, as any extra arguments
