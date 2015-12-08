@@ -8741,8 +8741,17 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
     launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().home})
-    if os.environ['PATH']:
+    # On the mac, applications are launched with a different path than command
+    # line tools, so capture the current PATH.  In general this ensures that
+    # the eclipse builders see the same path as a working command line build.
+    if os.environ.get('PATH'):
         launchOut.element('mapEntry', {'key' : 'PATH', 'value' : os.environ['PATH']})
+    # The mx builders are run inside the directory of their associated suite,
+    # not the primary suite, so they might not see the env file of the primary
+    # suite.  Capture DEFAULT_VM in case it was only defined in the primary
+    # suite.
+    if os.environ.get('DEFAULT_VM'):
+        launchOut.element('mapEntry', {'key' : 'DEFAULT_VM', 'value' : os.environ['DEFAULT_VM']})
     launchOut.close('mapAttribute')
 
     if refresh:
