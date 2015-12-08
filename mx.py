@@ -8370,17 +8370,18 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
 def eclipseinit_cli(args):
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
+    parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True):
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole)
 
     generate_eclipse_workingsets()
 
-def _check_ide_timestamp(suite, configZip, ide):
+def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
     """
     Returns True if and only if suite.py for *suite*, all *configZip* related resources in
     *suite* and mx itself are older than *configZip*.
@@ -8390,6 +8391,9 @@ def _check_ide_timestamp(suite, configZip, ide):
         return False
     # Assume that any mx change might imply changes to the generated IDE files
     if configZip.isOlderThan(__file__):
+        return False
+
+    if settingsFile and configZip.isOlderThan(settingsFile):
         return False
 
     if ide == 'eclipse':
@@ -8646,7 +8650,19 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if files:
             files.append(join(p.dir, '.factorypath'))
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False):
+def _capture_eclipse_settings(logToConsole):
+    # Capture interesting settings which drive the output of the projects.
+    # Changes to these values should cause regeneration of the project files.
+    value = 'logToConsole=%s\n' % logToConsole
+    if os.environ.get('PATH'):
+        value = value + 'PATH=%s\n' % os.environ['PATH']
+    if os.environ.get('JAVA_HOME'):
+        value = value + 'JAVA_HOME=%s\n' % os.environ['JAVA_HOME']
+    if os.environ.get('DEFAULT_VM'):
+        value = value + 'DEFAULT_VM=%s\n' % os.environ['DEFAULT_VM']
+    return value
+
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -8658,7 +8674,9 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False):
     if refreshOnly and not configZip.exists():
         return
 
-    if _check_ide_timestamp(suite, configZip, 'eclipse'):
+    settingsFile = join(mxOutputDir, 'eclipse-project-settings')
+    update_file(settingsFile, _capture_eclipse_settings(logToConsole))
+    if _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
         logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
 
@@ -8702,7 +8720,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False):
         javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=False, appendToLogFile=False)
+        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=logToConsole, appendToLogFile=False)
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
@@ -8712,7 +8730,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False):
         update_file(projectFile, out.xml(indent='\t', newl='\n'))
         files.append(projectFile)
 
-    _zip_files(files, suite.dir, configZip.path)
+    _zip_files(files + [settingsFile], suite.dir, configZip.path)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 def _zip_files(files, baseDir, zipPath):
