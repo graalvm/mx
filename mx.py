@@ -10240,13 +10240,13 @@ def sbookmarkimports(args):
         _check_primary_suite().visit_imports(_sbookmark_visitor)
 
 
-def _scheck_imports_visitor(s, suite_import, bookmark_imports):
+def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted):
     """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports)
+    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports, ignore_uncommitted)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports):
+def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted):
     importedVersion = imported_suite.version()
-    if imported_suite.isDirty():
+    if imported_suite.isDirty() and not ignore_uncommitted:
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
         if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
             msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.dir)
@@ -10269,10 +10269,11 @@ def scheckimports(args):
     """check that suite import versions are up to date"""
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
+    parser.add_argument('-i', '--ignore-uncommitted', action='store_true', help="Ignore uncommitted changes in the suite")
     args = parser.parse_args(args)
     # check imports of all suites
     for s in suites():
-        s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports)
+        s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports, ignore_uncommitted=args.ignore_uncommitted)
 
 def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
     """sforceimports visitor for Suite.visit_imports"""
