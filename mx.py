@@ -3749,7 +3749,7 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
         cmd += ['deploy:deploy-file']
 
     if keyid:
-        cmd += ['-Dkeyname=' + keyid]
+        cmd += ['-Dgpg.keyname=' + keyid]
 
     cmd += ['-DrepositoryId=' + repositoryId,
         '-Durl=' + repositoryUrl,
