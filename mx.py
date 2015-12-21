@@ -9460,8 +9460,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
 
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'LANGUAGE_LEVEL': intellijLanguageLevel, 'inherit-compiler-output': 'false'})
-        moduleXml.element('output', attributes={'url': 'file://$MODULE_DIR$/bin'})
-        moduleXml.element('exclude-output')
+        moduleXml.element('output', attributes={'url': 'file://$MODULE_DIR$/' + p.output_dir(relative=True)})
 
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         for src in p.srcDirs:
@@ -9472,7 +9471,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if len(p.annotation_processors()) > 0:
             genDir = p.source_gen_dir()
             ensure_dir_exists(genDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + os.path.relpath(genDir, p.dir), 'isTestSource': 'false'})
+            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + p.source_gen_dir_name(), 'isTestSource': 'false'})
 
         for name in ['.externalToolBuilders', '.settings', 'nbproject']:
             _intellij_exclude_if_exists(moduleXml, p, name)
