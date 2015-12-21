@@ -9492,6 +9492,18 @@ def _intellij_suite(args, suite, refreshOnly=False):
         p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
         moduleXml.close('component')
+
+        # Checkstyle
+        csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
+        if (exists(csConfig)):
+            moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
+            moduleXml.open('option', attributes={'name': 'configuration'})
+            moduleXml.open('map')
+            moduleXml.element('entry', attributes={'key' : "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+            moduleXml.close('map')
+            moduleXml.close('option')
+            moduleXml.close('component')
+
         moduleXml.close('module')
         moduleFile = join(p.dir, p.name + '.iml')
         update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
@@ -9577,6 +9589,31 @@ def _intellij_suite(args, suite, refreshOnly=False):
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+
+    # Wite checkstyle-idea.xml for the CheckStyle-IDEA
+    checkstyleXml = XMLDoc()
+    checkstyleXml.open('project', attributes={'version': '4'})
+    checkstyleXml.open('component', attributes={'name': 'CheckStyle-IDEA'})
+    checkstyleXml.open('option', attributes={'name' : "configuration"})
+    checkstyleXml.open('map')
+
+    # Initialize an entry for each styles that is used
+    checkstyleProjects = set([])
+    for p in suite.projects_recursive():
+        if (not p.isJavaProject()):
+            continue
+        csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
+        if ((p.checkstyleProj in checkstyleProjects) or (not exists(csConfig))):
+            continue
+        checkstyleProjects.add(p.checkstyleProj)
+        checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleProjects)), 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+
+    checkstyleXml.close('map')
+    checkstyleXml.close('option')
+    checkstyleXml.close('component')
+    checkstyleXml.close('project')
+    checkstyleFile = join(ideaProjectDirectory, 'checkstyle-idea.xml')
+    update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
 
     # TODO look into copyright settings
     # TODO should add vcs.xml support
