@@ -9597,7 +9597,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     checkstyleXml.open('option', attributes={'name' : "configuration"})
     checkstyleXml.open('map')
 
-    # Initialize an entry for each styles that is used
+    # Initialize an entry for each style that is used
     checkstyleProjects = set([])
     for p in suite.projects_recursive():
         if (not p.isJavaProject()):
@@ -9614,6 +9614,43 @@ def _intellij_suite(args, suite, refreshOnly=False):
     checkstyleXml.close('project')
     checkstyleFile = join(ideaProjectDirectory, 'checkstyle-idea.xml')
     update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
+
+    # mx integration
+    # 1) Make an ant file for archiving the project.
+    antXml = XMLDoc()
+    antXml.open('project', attributes={'name': suite.name, 'default': 'archive'})
+    antXml.open('target', attributes={'name': 'archive'})
+    antXml.open('exec', attributes={'executable': '/bin/bash'})
+    antXml.element('arg', attributes={'value': 'mx'})
+    antXml.element('arg', attributes={'value': 'archive'})
+
+    distDeps = set([])
+    for p in suite.projects_recursive():
+        for dep in p.deps:
+            if dep.isJARDistribution():
+                distDeps.add(dep.name)
+
+    for dist in distDeps:
+        antXml.element('arg', attributes={'value': '@' + dist})
+
+    antXml.close('exec')
+    antXml.close('target')
+    antXml.close('project')
+    antFile = join(ideaProjectDirectory, 'ant-mx-archive.xml')
+    update_file(antFile, antXml.xml(indent='  ', newl='\n'))
+
+    # 2) Tell IDEA that there is an ant-build.
+    metaAntXml = XMLDoc()
+    metaAntXml.open('project', attributes={'version': '4'})
+    metaAntXml.open('component', attributes={'name': 'AntConfiguration'})
+    metaAntXml.open('buildFile', attributes={'url': 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'})
+    metaAntXml.element('executeOn', attributes={'event': 'afterCompilation', 'target': 'archive'})
+    metaAntXml.close('buildFile')
+    metaAntXml.close('component')
+    metaAntXml.close('project')
+    metaAntFile = join(ideaProjectDirectory, 'ant.xml')
+    update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
+
 
     # TODO look into copyright settings
     # TODO should add vcs.xml support
