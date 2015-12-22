@@ -8487,8 +8487,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         ensure_dir_exists(srcDir)
         out.element('classpathentry', {'kind' : 'src', 'path' : src})
 
-    processorPath = p.annotation_processors_path()
-    if processorPath:
+    processors = p.annotation_processors()
+    if processors:
         genDir = p.source_gen_dir()
         ensure_dir_exists(genDir)
         if not genDir.startswith(p.dir):
@@ -8672,18 +8672,22 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             with open(source) as f:
                 print >> out, f.read()
         content = out.getvalue().replace('${javaCompliance}', str(eclipseJavaCompliance))
-        if processorPath:
+        if processors:
             content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
         update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
 
-    if processorPath:
+    if processors:
         out = XMLDoc()
         out.open('factorypath')
         out.element('factorypathentry', {'kind' : 'PLUGIN', 'id' : 'org.eclipse.jst.ws.annotations.core', 'enabled' : 'true', 'runInBatchMode' : 'false'})
-        for e in processorPath.split(os.pathsep):
-            out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+        processorsPath = classpath_entries(names=processors)
+        for e in processorsPath:
+            if e.isDistribution():
+                out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+            else:
+                out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
         out.close('factorypath')
         update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
         if files:
@@ -8742,10 +8746,8 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         ensure_dir_exists(projectDir)
         relevantResources = []
         for d in dist.archived_deps():
-            if d.isProject():
-                for srcDir in d.source_dirs():
-                    relevantResources.append(join(d.name, os.path.relpath(srcDir, d.dir)))
-                relevantResources.append(join(d.name, os.path.relpath(d.output_dir(), d.dir)))
+            if d.isProject() or d.isDistribution():
+                relevantResources.append(RelevantResource('/' + d.name, RELEVANT_RESOURCE_PROJECT))
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -8759,11 +8761,18 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=False, async=False, logToConsole=logToConsole, appendToLogFile=False)
+        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=True, async=False, logToConsole=logToConsole, appendToLogFile=False, refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
         out.close('natures')
+        out.open('linkedResources')
+        out.open('link')
+        out.element('name', data=basename(dist.path))
+        out.element('type', data='1') # type 1 is file, type 2 is folder
+        out.element('location', data=dist.path)
+        out.close('link')
+        out.close('linkedResources')
         out.close('projectDescription')
         projectFile = join(projectDir, '.project')
         update_file(projectFile, out.xml(indent='\t', newl='\n'))
@@ -8789,6 +8798,10 @@ def _zip_files(files, baseDir, zipPath):
     finally:
         if exists(tmp):
             os.remove(tmp)
+
+RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
+RELEVANT_RESOURCE_DIRECTORY = 2
+RELEVANT_RESOURCE_PROJECT = 4
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
@@ -8820,10 +8833,10 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
         launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.ATTR_REFRESH_RECURSIVE', 'value':  'false'})
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.debug.core.ATTR_REFRESH_SCOPE', 'value':  refreshScope})
 
-    if relevantResources is not None:
+    if relevantResources:
         resources = '${working_set:<?xml version="1.0" encoding="UTF-8"?><resources>'
         for relevantResource in relevantResources:
-            resources += '<item path="' + relevantResource + '" type="2" />'
+            resources += '<item path="' + relevantResource.path + '" type="' + str(relevantResource.type) + '" />'
         resources += '</resources>}'
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_BUILD_SCOPE', 'value': resources})
 
