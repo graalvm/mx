@@ -1331,28 +1331,17 @@ class JavaProject(Project, ClasspathDependency):
         files earlier in the list).
         """
         if not hasattr(self, '_eclipse_settings'):
-            esdict = {}
-            hasAps = self.annotation_processors()
-            # start with the mxtool defaults
-            defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
-            if exists(defaultEclipseSettingsDir):
-                for name in os.listdir(defaultEclipseSettingsDir):
-                    if isfile(join(defaultEclipseSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
-                        esdict[name] = [os.path.abspath(join(defaultEclipseSettingsDir, name))]
-
-            # append suite overrides
-            eclipseSettingsDir = join(self.suite.mxDir, 'eclipse-settings')
-            if exists(eclipseSettingsDir):
-                for name in os.listdir(eclipseSettingsDir):
-                    if isfile(join(eclipseSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
-                        esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
+            esdict = self.suite.eclipse_settings_sources().copy()
 
             # check for project overrides
             projectSettingsDir = join(self.dir, 'eclipse-settings')
             if exists(projectSettingsDir):
                 for name in os.listdir(projectSettingsDir):
-                    if isfile(join(projectSettingsDir, name)) and name != "org.eclipse.jdt.apt.core.prefs" or hasAps:
-                        esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+                    esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+
+            if not self.annotation_processors():
+                esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
+
             self._eclipse_settings = esdict
         return self._eclipse_settings
 
@@ -5113,6 +5102,28 @@ class SourceSuite(Suite):
                 mxDirBase = basename(self.mxDir)
                 arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
 
+    def eclipse_settings_sources(self):
+        """
+        Gets a dictionary from the name of an Eclipse settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        """
+        if not hasattr(self, '_eclipse_settings'):
+            esdict = {}
+            # start with the mxtool defaults
+            defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
+            if exists(defaultEclipseSettingsDir):
+                for name in os.listdir(defaultEclipseSettingsDir):
+                    esdict[name] = [os.path.abspath(join(defaultEclipseSettingsDir, name))]
+
+            # append suite overrides
+            eclipseSettingsDir = join(self.mxDir, 'eclipse-settings')
+            if exists(eclipseSettingsDir):
+                for name in os.listdir(eclipseSettingsDir):
+                    esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
+            self._eclipse_settings = esdict
+        return self._eclipse_settings
 
 '''
 A pre-built suite downloaded from a Maven repository.
@@ -9450,7 +9461,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     def _complianceToIntellijLanguageLevel(compliance):
         return 'JDK_1_' + str(compliance.value)
 
-    # create the modules (1 module  = 1 Intellij project)
+    # create the modules (1 IntelliJ module = 1 mx project/distribution)
     for p in suite.projects_recursive():
         if not p.isJavaProject():
             continue
@@ -9460,12 +9471,9 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         ensure_dir_exists(p.dir)
 
-        annotationProcessorProfileKey = tuple(p.annotation_processors())
-
-        if not annotationProcessorProfileKey in annotationProcessorProfiles:
-            annotationProcessorProfiles[annotationProcessorProfileKey] = [p]
-        else:
-            annotationProcessorProfiles[annotationProcessorProfileKey].append(p)
+        processors = p.annotation_processors()
+        if processors:
+            annotationProcessorProfiles.setdefault(tuple(processors), []).append(p)
 
         intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
 
@@ -9481,7 +9489,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             ensure_dir_exists(srcDir)
             moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': 'false'})
 
-        if len(p.annotation_processors()) > 0:
+        if processors:
             genDir = p.source_gen_dir()
             ensure_dir_exists(genDir)
             moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + p.source_gen_dir_name(), 'isTestSource': 'false'})
@@ -9577,6 +9585,9 @@ def _intellij_suite(args, suite, refreshOnly=False):
             compilerXml.element('sourceOutputDir', attributes={'name': 'src_gen'})  # TODO use p.source_gen_dir() ?
             compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
+
+            # IntelliJ supports both directories and jars on the annotation processor path whereas
+            # Eclipse only supports jars.
             for apDep in processors:
                 def processApDep(dep, edge):
                     if dep.isLibrary():
@@ -9595,15 +9606,35 @@ def _intellij_suite(args, suite, refreshOnly=False):
     compilerFile = join(ideaProjectDirectory, 'compiler.xml')
     update_file(compilerFile, compilerXml.xml(indent='  ', newl='\n'))
 
-    # Wite misc.xml for global JDK config
+    # Write misc.xml for global JDK config
     miscXml = XMLDoc()
-    miscXml.open('project', attributes={'version': '4'})
-    miscXml.element('component', attributes={'name': 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    miscXml.open('project', attributes={'version' : '4'})
+
+    sources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
+    if sources:
+        out = StringIO.StringIO()
+        print >> out, '# GENERATED -- DO NOT EDIT'
+        for source in sources:
+            print >> out, '# Source:', source
+            with open(source) as f:
+                for line in f:
+                    if (line.startswith('org.eclipse.jdt.core.formatter.')):
+                        print >> out, line.strip()
+        formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
+        update_file(formatterConfigFile, out.getvalue())
+        miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
+        miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
+        miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
+        miscXml.element('option', attributes={'name' : 'name', 'value' : suite.name})
+        miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
+        miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
+        miscXml.close('component')
+    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
-    # Wite checkstyle-idea.xml for the CheckStyle-IDEA
+    # Write checkstyle-idea.xml for the CheckStyle-IDEA
     checkstyleXml = XMLDoc()
     checkstyleXml.open('project', attributes={'version': '4'})
     checkstyleXml.open('component', attributes={'name': 'CheckStyle-IDEA'})
