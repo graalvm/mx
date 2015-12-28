@@ -104,9 +104,20 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         out = OutputCapture()
         print 'Checking ' + checktype + ' signature changes against ' + sigtestResults
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
-        if exitcode != 95:
-            print out.data
-            failed = sigtestResults
+        mx.ensure_dir_exists(p.get_output_root())
+        with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w') as f:
+            f.write('<?xml version="1.0" encoding="UTF-8" standalone="no"?>')
+            f.write('<testsuite errors="0" failures="')
+            if exitcode != 95:
+                print out.data
+                failed = sigtestResults
+                f.write('1')
+            else:
+                f.write('0')
+            f.write('" name="' + p.name + '.sigtest.' + checktype + '" tests="1" time="0.0">')
+            f.write('<testcase classname="' + p.name + '.sigtest.' + checktype + '" name="check" time="0.0"/><system-err><![CDATA[')
+            f.write(out.data)
+            f.write(']]></system-err></testsuite>')
     if failed:
         mx.abort('Signature error in ' + failed)
     else:
