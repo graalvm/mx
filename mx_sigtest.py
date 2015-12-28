@@ -83,6 +83,11 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         return 1
     javaCompliance = max([p.javaCompliance for p in nonTestProjects])
 
+    class OutputCapture:
+        def __init__(self):
+            self.data = ""
+        def __call__(self, data):
+            self.data += data
     failed = None
     for p in nonTestProjects:
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
@@ -96,9 +101,14 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
             cmd.append('-b')
         for pkg in mx.find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
-        exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
+        out = OutputCapture()
+        print 'Checking ' + checktype + ' signature changes against ' + sigtestResults
+        exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
         if exitcode != 95:
+            print out.data
             failed = sigtestResults
     if failed:
         mx.abort('Signature error in ' + failed)
+    else:
+        print 'OK.'
     return 0
