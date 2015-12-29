@@ -4937,6 +4937,11 @@ class SourceSuite(Suite):
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
+            genDeps = Suite._pop_list(attrs, 'generatedDependencies', context)
+            if genDeps:
+                deps += genDeps
+                # Re-add generatedDependencies attribute so it can be used in canonicalizeprojects
+                attrs['generatedDependencies'] = genDeps
             workingSets = attrs.pop('workingSets', None)
             jlintOverrides = attrs.pop('lint.overrides', None)
             if className:
@@ -7911,9 +7916,16 @@ def canonicalizeprojects(args):
                             ignoredDeps.discard(dep)
                         if pkg in dep.extended_java_packages():
                             ignoredDeps.discard(dep)
+
+            genDeps = frozenset([dependency(name, context=p) for name in getattr(p, "generatedDependencies", [])])
+            incorrectGenDeps = genDeps - ignoredDeps
+            ignoredDeps -= genDeps
+            if incorrectGenDeps:
+                p.abort('{0} should declare following as normal dependencies, not generatedDependencies: {1}'.format(p, ', '.join([d.name for d in incorrectGenDeps])))
+
             if len(ignoredDeps) != 0:
                 candidates = set()
-                # Compute dependencies based on projects required by p
+                # Compute candidate dependencies based on projects required by p
                 for d in dependencies():
                     if d.isJavaProject() and not d.defined_java_packages().isdisjoint(p.imported_java_packages()):
                         candidates.add(d)
@@ -7922,7 +7934,9 @@ def canonicalizeprojects(args):
                     c.walk_deps(visit=lambda dep, edge: candidates.discard(dep) if dep.isJavaProject() else None)
                 candidates = [d.name for d in candidates]
 
-                p.abort('{0} does not use any packages defined in these projects: {1}\nComputed project dependencies: {2}'.format(
+                msg = 'Non-generated source code in {0} does not use any packages defined in these projects: {1}\nIf the above projects are only ' \
+                        'used in generated sources, declare them in a "generatedDependencies" attribute of {0}.\nComputed project dependencies: {2}'
+                p.abort(msg.format(
                     p, ', '.join([d.name for d in ignoredDeps]), ','.join(candidates)))
 
             excess = frozenset([d for d in p.deps if d.isJavaProject()]) - set(p.canonical_deps())
@@ -11726,7 +11740,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.6")
+version = VersionSpec("5.6.7")
 
 currentUmask = None
 
