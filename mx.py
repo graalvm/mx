@@ -8772,7 +8772,11 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         ensure_dir_exists(projectDir)
         relevantResources = []
         for d in dist.archived_deps():
-            if d.isProject() or d.isDistribution():
+            if d.isProject():
+                for srcDir in d.source_dirs():
+                    relevantResources.append(RelevantResource(join(d.name, os.path.relpath(srcDir, d.dir)), RELEVANT_RESOURCE_DIRECTORY))
+                relevantResources.append(RelevantResource(join(d.name, os.path.relpath(d.output_dir(), d.dir)), RELEVANT_RESOURCE_DIRECTORY))
+            elif d.isDistribution():
                 relevantResources.append(RelevantResource('/' + d.name, RELEVANT_RESOURCE_PROJECT))
         out = XMLDoc()
         out.open('projectDescription')
