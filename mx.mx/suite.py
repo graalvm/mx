@@ -29,6 +29,13 @@ suite = {
       "sha1" : "a7674a6d78b7fea58af76b357dae6ea5e3fdfbe9",
     },
 
+    "CODESNIPPET-DOCLET" : {
+      "urls" : [
+        "http://repo1.maven.org/maven2/org/apidesign/javadoc/codesnippet-doclet/0.3/codesnippet-doclet-0.3.jar",
+      ],
+      "sha1" : "77f7f561600019dc535ba2aa4d52efbe2e7384ee",
+    },
+
     "JUNIT" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.11.jar",

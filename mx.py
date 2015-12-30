@@ -9866,13 +9866,17 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
+    snippets = [];
     for p in candidates:
         if p.isJavaProject():
+            snippets += p.source_dirs()
             if includeDeps:
                 p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
             added, reason = assess_candidate(p, projects)
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
+    snippets = os.pathsep.join(snippets)
+    snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
     extraArgs = [a.lstrip('@') for a in args.extra_args]
     if args.argfile is not None:
@@ -9935,6 +9939,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-d', out,
                      '-overview', overviewFile,
                      '-sourcepath', sp,
+                     '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
+                     '-docletpath', snippetslib,
+                     '-snippetpath', snippets,
                      '-source', str(jdk.javaCompliance)] +
                      jdk.javadocLibOptions([]) +
                      ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
@@ -10018,6 +10025,9 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-classpath', cp,
              '-quiet',
              '-d', out,
+             '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
+             '-docletpath', snippetslib,
+             '-snippetpath', snippets,
              '-sourcepath', sp] +
              ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
