@@ -7343,7 +7343,8 @@ def build(args, parser=None):
         names = args.only.split(',')
         roots = [dependency(name) for name in names]
     elif args.dependencies is not None:
-        assert args.dependencies
+        if len(args.dependencies) == 0:
+            abort('The value of the --dependencies argument cannot be the empty string')
         names = args.dependencies.split(',')
         roots = [dependency(name) for name in names]
     else:
@@ -9877,6 +9878,12 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
+
+    if not projects:
+        log('All projects were skipped.')
+        if not _opts.verbose:
+            log('Re-run with global -v option to see why.')
+        return
 
     extraArgs = [a.lstrip('@') for a in args.extra_args]
     if args.argfile is not None:
