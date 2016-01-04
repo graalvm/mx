@@ -6488,9 +6488,18 @@ def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
     return None
 
 def find_classpath_arg(vmArgs):
-    for index in range(len(vmArgs)):
+    """
+    Searches for the last class path argument in `vmArgs` and returns its
+    index and value as a tuple. If no class path argument is found, then
+    the tuple (None, None) is returned.
+    """
+    # If the last argument is '-cp' or '-classpath' then it is not
+    # valid since the value is missing. As such, we ignore the
+    # last argument.
+    for index in reversed(range(len(vmArgs) - 1)):
         if vmArgs[index] in ['-cp', '-classpath']:
             return index + 1, vmArgs[index + 1]
+    return None, None
 
 _java_command_default_jdk_tag = None
 
