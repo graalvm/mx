@@ -1217,6 +1217,8 @@ class Project(Dependency):
         the list of files providing its generated content, in overriding order
         (i.e., settings from files later in the list override settings from
         files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
         """
         nyi('eclipse_settings_sources', self)
 
@@ -1329,21 +1331,21 @@ class JavaProject(Project, ClasspathDependency):
         the list of files providing its generated content, in overriding order
         (i.e., settings from files later in the list override settings from
         files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
         """
-        if not hasattr(self, '_eclipse_settings'):
-            esdict = self.suite.eclipse_settings_sources().copy()
+        esdict = self.suite.eclipse_settings_sources()
 
-            # check for project overrides
-            projectSettingsDir = join(self.dir, 'eclipse-settings')
-            if exists(projectSettingsDir):
-                for name in os.listdir(projectSettingsDir):
-                    esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+        # check for project overrides
+        projectSettingsDir = join(self.dir, 'eclipse-settings')
+        if exists(projectSettingsDir):
+            for name in os.listdir(projectSettingsDir):
+                esdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
 
-            if not self.annotation_processors():
-                esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
+        if not self.annotation_processors():
+            esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
 
-            self._eclipse_settings = esdict
-        return self._eclipse_settings
+        return esdict
 
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
         """
@@ -5116,22 +5118,22 @@ class SourceSuite(Suite):
         the list of files providing its generated content, in overriding order
         (i.e., settings from files later in the list override settings from
         files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
         """
-        if not hasattr(self, '_eclipse_settings'):
-            esdict = {}
-            # start with the mxtool defaults
-            defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
-            if exists(defaultEclipseSettingsDir):
-                for name in os.listdir(defaultEclipseSettingsDir):
-                    esdict[name] = [os.path.abspath(join(defaultEclipseSettingsDir, name))]
+        esdict = {}
+        # start with the mxtool defaults
+        defaultEclipseSettingsDir = join(_mx_suite.dir, 'eclipse-settings')
+        if exists(defaultEclipseSettingsDir):
+            for name in os.listdir(defaultEclipseSettingsDir):
+                esdict[name] = [os.path.abspath(join(defaultEclipseSettingsDir, name))]
 
-            # append suite overrides
-            eclipseSettingsDir = join(self.mxDir, 'eclipse-settings')
-            if exists(eclipseSettingsDir):
-                for name in os.listdir(eclipseSettingsDir):
-                    esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
-            self._eclipse_settings = esdict
-        return self._eclipse_settings
+        # append suite overrides
+        eclipseSettingsDir = join(self.mxDir, 'eclipse-settings')
+        if exists(eclipseSettingsDir):
+            for name in os.listdir(eclipseSettingsDir):
+                esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
+        return esdict
 
 '''
 A pre-built suite downloaded from a Maven repository.
