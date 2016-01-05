@@ -222,7 +222,9 @@ def gate(args):
                             mx.log(fp.read().strip())
 
         with Task('Pylint', tasks) as t:
-            if t: mx.command_function('pylint')([])
+            if t:
+                if mx.command_function('pylint')([]) != 0:
+                    t.abort('Pylint error.')
 
         gate_clean(cleanArgs, tasks)
 

@@ -8088,21 +8088,21 @@ def pylint(args):
     rcfile = join(dirname(__file__), '.pylintrc')
     if not exists(rcfile):
         log('pylint configuration file does not exist: ' + rcfile)
-        return
+        return -1
 
     try:
         output = subprocess.check_output(['pylint', '--version'], stderr=subprocess.STDOUT)
         m = re.match(r'.*pylint (\d+)\.(\d+)\.(\d+).*', output, re.DOTALL)
         if not m:
             log('could not determine pylint version from ' + output)
-            return
+            return -1
         major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
         if major != 1 or minor != 1:
             log('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
-            return
+            return -1
     except BaseException:
         log('pylint is not available')
-        return
+        return -1
 
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
@@ -8153,6 +8153,8 @@ def pylint(args):
     for pyfile in pyfiles:
         log('Running pylint on ' + pyfile + '...')
         run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env)
+
+    return 0
 
 """
 Utility for creating and updating a zip or tar file atomically.
