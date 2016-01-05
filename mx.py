@@ -8100,8 +8100,8 @@ def pylint(args):
         if major != 1 or minor != 1:
             log('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
             return -1
-    except BaseException:
-        log('pylint is not available')
+    except BaseException as e:
+        log('pylint is not available: ' + str(e))
         return -1
 
     def findfiles_by_walk(pyfiles):
