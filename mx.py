@@ -58,7 +58,7 @@ from collections import Callable
 from collections import OrderedDict, namedtuple
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
-from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir, isfile
+from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
 
 import mx_unittest
 import mx_findbugs
@@ -9547,7 +9547,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         # Checkstyle
         csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-        if (exists(csConfig)):
+        if exists(csConfig):
             moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
             moduleXml.open('option', attributes={'name': 'configuration'})
             moduleXml.open('map')
@@ -9649,7 +9649,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             print >> out, '# Source:', source
             with open(source) as f:
                 for line in f:
-                    if (line.startswith('org.eclipse.jdt.core.formatter.')):
+                    if line.startswith('org.eclipse.jdt.core.formatter.'):
                         print >> out, line.strip()
         formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
         update_file(formatterConfigFile, out.getvalue())
@@ -9675,10 +9675,10 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Initialize an entry for each style that is used
     checkstyleProjects = set([])
     for p in suite.projects_recursive():
-        if (not p.isJavaProject()):
+        if not p.isJavaProject():
             continue
         csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-        if ((p.checkstyleProj in checkstyleProjects) or (not exists(csConfig))):
+        if p.checkstyleProj in checkstyleProjects or not exists(csConfig):
             continue
         checkstyleProjects.add(p.checkstyleProj)
         checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleProjects)), 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
@@ -9883,7 +9883,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
-    snippets = [];
+    snippets = []
     for p in candidates:
         if p.isJavaProject():
             snippets += p.source_dirs()
