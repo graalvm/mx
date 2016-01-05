@@ -2921,7 +2921,10 @@ class HgConfig(VC):
                 return None
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
-        return run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=abortOnError) == 0
+        ret = run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=False)
+        if ret != 0:
+            logging = abort if abortOnError else warn
+            logging("Failed to create bookmark {0} at revision {1} in {2}".format(name, rev, vcdir))
 
     def latest(self, vcdir, rev1, rev2, abortOnError=True):
         #hg log -r 'heads(ancestors(26030a079b91) and ancestors(6245feb71195))' --template '{node}\n'
