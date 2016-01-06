@@ -9899,15 +9899,17 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
-    snippets = []
     for p in candidates:
         if p.isJavaProject():
-            snippets += p.source_dirs()
             if includeDeps:
                 p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
             added, reason = assess_candidate(p, projects)
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
+    snippets = []
+    for p in projects_opt_limit_to_suites():
+        if p.isJavaProject():
+            snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
