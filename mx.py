@@ -9846,6 +9846,8 @@ def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_pa
                         pkgs.add(pkg)
     return pkgs
 
+_javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
+
 def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True, mayBuild=True, quietForNoPackages=False):
     """generate javadoc for some/all Java projects"""
 
@@ -9867,8 +9869,10 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
     # build list of projects to be processed
     if args.projects is not None:
+        partialJavadoc = True
         candidates = [project(name) for name in args.projects.split(',')]
     else:
+        partialJavadoc = False
         candidates = projects_opt_limit_to_suites()
 
     # optionally restrict packages within a project
@@ -10050,17 +10054,27 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 abort('No packages to generate javadoc for!')
 
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
-        class Capture:
-            def __init__(self, prefix):
+
+        class WarningCapture:
+            def __init__(self, prefix, forward, ignoreBrokenRefs):
                 self.prefix = prefix
-                self.last = ''
+                self.forward = forward
+                self.ignoreBrokenRefs = ignoreBrokenRefs
+                self.warnings = 0
 
             def __call__(self, msg):
-                self.last = msg
-                print(self.prefix + msg),
+                shouldPrint = self.forward
+                if ': warning - ' in  msg:
+                    if not self.ignoreBrokenRefs or not _javadocRefNotFound.search(msg):
+                        self.warnings += 1
+                        shouldPrint = True
+                    else:
+                        shouldPrint = False
+                if shouldPrint or _opts.verbose:
+                    log(self.prefix + msg)
 
-        captureOut = Capture('stdout: ')
-        captureErr = Capture('stderr: ')
+        captureOut = WarningCapture('stdout: ', False, partialJavadoc)
+        captureErr = WarningCapture('stderr: ', True, partialJavadoc)
 
         run([get_jdk().javadoc, memory,
              '-classpath', cp,
@@ -10078,8 +10092,10 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              nowarnAPI +
              list(pkgs), True, captureOut, captureErr)
 
-        if not args.allow_warnings and 'warning' in captureOut.last:
+        if not args.allow_warnings and captureErr.warnings:
             abort('Error: Warnings in the javadoc are not allowed!')
+        if args.allow_warnings and not captureErr.warnings:
+            logv("Warnings were allowed but there was none")
 
         log('Generated {2} for {0} in {1}'.format(', '.join(names), out, docDir))
 
