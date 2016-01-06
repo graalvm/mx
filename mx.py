@@ -8799,7 +8799,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             if d.isProject():
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
-                relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(p), IRESOURCE_FOLDER))
+                relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
             elif d.isDistribution():
                 relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
         out = XMLDoc()
@@ -11807,7 +11807,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.7")
+version = VersionSpec("5.6.8")
 
 currentUmask = None
 
