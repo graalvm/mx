@@ -8512,6 +8512,19 @@ def _convert_to_eclipse_supported_compliance(compliance):
         return JavaCompliance("1.8")
     return compliance
 
+def _get_eclipse_output_path(p, linkedResources=None):
+    """
+    Gets the Eclipse path attribute value for the output of project `p`.
+    """
+    outputDirRel = p.output_dir(relative=True)
+    if outputDirRel.startswith('..'):
+        outputDirName = basename(outputDirRel)
+        if linkedResources:
+            linkedResources.append(_eclipse_linked_resource(outputDirName, '2', p.output_dir()))
+        return outputDirName
+    else:
+        return outputDirRel
+
 def _eclipseinit_project(p, files=None, libFiles=None):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
 
@@ -8606,13 +8619,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     for dep in sorted(projectDeps):
         out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
-    outputDirRel = p.output_dir(relative=True)
-    if outputDirRel.startswith('..'):
-        outputDirName = basename(outputDirRel)
-        out.element('classpathentry', {'kind' : 'output', 'path' : outputDirName})
-        linkedResources.append(_eclipse_linked_resource(outputDirName, '2', p.output_dir()))
-    else:
-        out.element('classpathentry', {'kind' : 'output', 'path' : outputDirRel})
+
+    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
     out.close('classpath')
     classpathFile = join(p.dir, '.classpath')
     update_file(classpathFile, out.xml(indent='\t', newl='\n'))
@@ -8786,12 +8794,14 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         ensure_dir_exists(projectDir)
         relevantResources = []
         for d in dist.archived_deps():
+            # Eclipse does not seem to trigger a build for a distribution if the references
+            # to the constituent projects are of type IRESOURCE_PROJECT.
             if d.isProject():
-                for srcDir in d.source_dirs():
-                    relevantResources.append(RelevantResource(join(d.name, os.path.relpath(srcDir, d.dir)), RELEVANT_RESOURCE_DIRECTORY))
-                relevantResources.append(RelevantResource(join(d.name, os.path.relpath(d.output_dir(), d.dir)), RELEVANT_RESOURCE_DIRECTORY))
+                for srcDir in d.srcDirs:
+                    relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
+                relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(p), IRESOURCE_FOLDER))
             elif d.isDistribution():
-                relevantResources.append(RelevantResource('/' + d.name, RELEVANT_RESOURCE_PROJECT))
+                relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -8813,7 +8823,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.open('linkedResources')
         out.open('link')
         out.element('name', data=basename(dist.path))
-        out.element('type', data='1') # type 1 is file, type 2 is folder
+        out.element('type', data=str(IRESOURCE_FILE))
         out.element('location', data=dist.path)
         out.close('link')
         out.close('linkedResources')
@@ -8844,8 +8854,11 @@ def _zip_files(files, baseDir, zipPath):
             os.remove(tmp)
 
 RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
-RELEVANT_RESOURCE_DIRECTORY = 2
-RELEVANT_RESOURCE_PROJECT = 4
+
+# http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
+IRESOURCE_FILE = 1
+IRESOURCE_FOLDER = 2
+IRESOURCE_PROJECT = 4
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
@@ -8872,15 +8885,16 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
         if refreshFile is None:
             refreshScope = '${project}'
         else:
-            refreshScope = '${working_set:<?xml version="1.0" encoding="UTF-8"?><resources><item path="' + refreshFile + '" type="1"/></resources>}'
+            refreshScope = '${working_set:<?xml version="1.0" encoding="UTF-8"?><resources><item path="' + refreshFile + '" type="' + str(IRESOURCE_FILE) + '"/></resources>}'
 
         launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.ATTR_REFRESH_RECURSIVE', 'value':  'false'})
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.debug.core.ATTR_REFRESH_SCOPE', 'value':  refreshScope})
 
     if relevantResources:
+        # http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.debug/core/3.9.1/org/eclipse/debug/core/RefreshUtil.java#169
         resources = '${working_set:<?xml version="1.0" encoding="UTF-8"?><resources>'
         for relevantResource in relevantResources:
-            resources += '<item path="' + relevantResource.path + '" type="' + str(relevantResource.type) + '" />'
+            resources += '<item path="' + relevantResource.path + '" type="' + str(relevantResource.type) + '"/>'
         resources += '</resources>}'
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_BUILD_SCOPE', 'value': resources})
 
