@@ -8519,7 +8519,7 @@ def _get_eclipse_output_path(p, linkedResources=None):
     outputDirRel = p.output_dir(relative=True)
     if outputDirRel.startswith('..'):
         outputDirName = basename(outputDirRel)
-        if linkedResources:
+        if linkedResources is not None:
             linkedResources.append(_eclipse_linked_resource(outputDirName, '2', p.output_dir()))
         return outputDirName
     else:
