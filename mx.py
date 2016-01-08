@@ -2438,14 +2438,13 @@ Potentially long running operations should log the command. If '-v' is set
 the command should be logged.
 '''
 class VC(object):
+    __metaclass__ = ABCMeta
     """
     base class for all supported Distriuted Version Constrol abstractions
 
     :ivar str kind: the VC type identifier
     :ivar str proper_name: the long name descriptor of the VCS
     """
-    __metaclass__ = ABCMeta
-    #TODO: decide which methods need to be abstract
 
     def __init__(self, kind, proper_name):
         self.kind = kind
@@ -2548,10 +2547,17 @@ class VC(object):
         abort(self.kind + " id is not implemented")
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
-        '''
+        """
         Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
         or None if no such tags exist.
-        '''
+
+        :param str vcdir: a valid repository path
+        :param str prefix: the prefix
+        :param str snapshotSuffix: the snapshot suffix
+        :param bool abortOnError: if True abort on mx error
+        :return: a release version
+        :rtype: str
+        """
         abort(self.kind + " release_version_from_tags is not implemented")
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
@@ -2703,34 +2709,65 @@ class VC(object):
         abort(self.kind + " update is not implemented")
 
     def isDirty(self, vcdir, abortOnError=True):
-        '''
+        """
         check whether the working directory is dirty
-        '''
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True of the working directory is dirty, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " isDirty is not implemented")
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
-        '''
-        Return a list of paths under vc control that match 'patterns'
-        '''
+        """
+        Return a list of paths under vc control that match :param:`patterns`
+
+        :param str vcdir: a valid repository path
+        :param patterns: a list of patterns
+        :type patterns: str or None or list
+        :param bool abortOnError: if True abort on mx error
+        :return: a list of paths under vc control
+        :rtype: list
+        """
         abort(self.kind + " locate is not implemented")
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
-        '''
+        """
         Place a bookmark at a given revision
-        '''
+
+        :param str vcdir: a valid repository path
+        :param str name: the name of the bookmark
+        :param str rev: the desired revision
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " bookmark is not implemented")
 
     def latest(self, vcdir, rev1, rev2, abortOnError=True):
-        '''
+        """
         Returns the latest of 2 revisions.
         The revisions should be related in the DAG.
-        '''
+
+        :param str vcdir: a valid repository path
+        :param str rev1: the first revision
+        :param str rev2: the second revision
+        :param bool abortOnError: if True abort on mx error
+        :return: the latest of the 2 revisions
+        :rtype: str or None
+        """
         abort(self.kind + " latest is not implemented")
 
     def exists(self, vcdir, rev):
-        '''
-        Returns true if a given revision exists in the repository.
-        '''
+        """
+        Check if a given revision exists in the repository.
+
+        :param str vcdir: a valid repository path
+        :param str rev: the second revision
+        :return: True if revision exists, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " exists is not implemented")
 
 
@@ -3154,37 +3191,73 @@ class GitConfig(VC):
             else:
                 return None
 
-    def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
-        # TODO: HERE not implemented
-        prefix = prefix + '-'
+    def _prefix(self, prefix):
+        if not prefix.endswith('-'):
+            prefix = '{}-'.format(prefix)
+        return prefix
+
+    def _tags(self, vcdir, prefix, abortOnError=True):
+        # git -C . tag -l prefix-*
+        prefix = self._prefix(prefix)
         try:
-            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag("re:{0}[0-9]+\\.[0-9]+")'.format(prefix), '--template', '{tags},{rev}\n'])
-            tagged_ids = [x.split(',') for x in tagged_ids_out.split('\n') if x]
-            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
+            tags_out = subprocess.check_output(['git', '-C', vcdir, 'tag', '--sort=refname', '-l', '{0}*'.format(prefix)])
+            return tags_out.strip().split('\n')
         except subprocess.CalledProcessError as e:
             if abortOnError:
-                abort('hg tags or hg tip failed: ' + str(e))
+                abort('git tag failed: ' + str(e))
             else:
                 return None
 
-        if tagged_ids and current_id:
-            def single(it):
-                v = next(it)
-                try:
-                    next(it)
-                    abort('iterator contained more than a single element')
-                except StopIteration:
-                    return v
-            tagged_ids = [(single((tag for tag in tags.split(' ') if tag.startswith(prefix))), revid) for tags, revid in tagged_ids]
-            version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
-            version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
-            most_recent_tag_version, most_recent_tag_id = version_ids[0]
-
-            if current_id == most_recent_tag_id:
-                return '.'.join((str(e) for e in most_recent_tag_version))
+    def _tag_revision(self, vcdir, tag, abortOnError=True):
+        # git -C . show -s --format="%H" TAG
+        try:
+            tag_rev = subprocess.check_output(['git', '-C', vcdir, 'show', '-s', '--format="%H"', tag])
+            return tag_rev.strip()
+        except subprocess.CalledProcessError as e:
+            if abortOnError:
+                abort('git show failed: ' + str(e))
             else:
-                major, minor = most_recent_tag_version
-                return str(major) + '.' + str(minor + 1) + '-' + snapshotSuffix
+                return None
+
+    def _latest_revision(self, vcdir, abortOnError=True):
+        # git log -n 1 --format="%H"
+        try:
+            latest_rev = subprocess.check_output(['git', '-C', vcdir, 'log', '-n', '1', '--format="%H"'])
+            return latest_rev.strip()
+        except subprocess.CalledProcessError as e:
+            if abortOnError:
+                abort('git log failed: ' + str(e))
+            else:
+                return None
+
+
+    def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
+        """
+        Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
+        or None if no such tags exist.
+
+        :param str vcdir: a valid repository path
+        :param str prefix: the prefix
+        :param str snapshotSuffix: the snapshot suffix
+        :param bool abortOnError: if True abort on mx error
+        :return: a release version
+        :rtype: str
+        """
+        matching_tags = self._tags(vcdir, prefix, abortOnError=abortOnError)
+        matching_tags = [ (tag, self._tag_revision(vcdir, tag, abortOnError=abortOnError))
+                          for tag in matching_tags ]
+        latest_rev = self._latest_revision(vcdir, abortOnError=abortOnError)
+        if latest_rev and matching_tags:
+            prefix = self._prefix(prefix)
+            most_recent_tag, most_recent_rev = matching_tags[0]
+            version = most_recent_tag[len(prefix):].split('.')
+            version = map(int, version)
+
+            if latest_rev == most_recent_rev:
+                return '.'.join(map(str, version))
+            else:
+                major, minor = version
+                return '{0}.{1}-{2}'.format(major, minor, snapshotSuffix)
         return None
 
     def metadir(self):
@@ -3247,10 +3320,10 @@ class GitConfig(VC):
             else:
                 return None
 
-    def _log_changes(self, vcdir, path=None, incoming=True):
+    def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', '-C', vcdir, 'log', '{0}origin/master{1}'.format(
-                ('..','') if incoming else ('', '..'))]
+                ('..', '') if incoming else ('', '..'))]
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, out=out)
@@ -3274,7 +3347,7 @@ class GitConfig(VC):
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
         if rc:
-            return self._log_changes(vcdir, incoming=True)
+            return self._log_changes(vcdir, incoming=True, abortOnError=abortOnError)
         else:
             if abortOnError:
                 abort('incoming returned ' + str(rc))
@@ -3292,7 +3365,7 @@ class GitConfig(VC):
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
         if rc:
-            return self._log_changes(vcdir, path=dest, incoming=False)
+            return self._log_changes(vcdir, path=dest, incoming=False, abortOnError=abortOnError)
         else:
             if abortOnError:
                 abort('outgoing returned ' + str(rc))
@@ -3430,65 +3503,107 @@ class GitConfig(VC):
             cmd.append('-f')
         return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
-        # def locate(self, vcdir, patterns=None, abortOnError=True):
-        #     if patterns is None:
-        #         patterns = []
-        #     elif not isinstance(patterns, list):
-        #         patterns = [patterns]
-        #     out = LinesOutputCapture()
-        #     rc = self.run(['hg', 'locate', '-R', vcdir] + patterns, out=out, nonZeroIsFatal=False)
-        #     if rc == 1:
-        #         # hg locate returns 1 if no matches were found
-        #         return []
-        #     elif rc == 0:
-        #         return out.lines
-        #     else:
-        #         if abortOnError:
-        #             abort('locate returned: ' + str(rc))
-        #         else:
-        #             return None
-        #
-        # def isDirty(self, vcdir, abortOnError=True):
-        #     self.check_for_git()
-        #     try:
-        #         return len(subprocess.check_output(['hg', 'status', '-q', '-R', vcdir])) > 0
-        #     except subprocess.CalledProcessError:
-        #         if abortOnError:
-        #             abort('failed to get status')
-        #         else:
-        #             return None
-        #
-        # def bookmark(self, vcdir, name, rev, abortOnError=True):
-        #     return run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=abortOnError) == 0
-        #
-        # def latest(self, vcdir, rev1, rev2, abortOnError=True):
-        #     #hg log -r 'heads(ancestors(26030a079b91) and ancestors(6245feb71195))' --template '{node}\n'
-        #     self.check_for_git()
-        #     try:
-        #         revs = [rev1, rev2]
-        #         revsetIntersectAncestors = ' or '.join(('ancestors({})'.format(rev) for rev in revs))
-        #         revset = 'heads({})'.format(revsetIntersectAncestors)
-        #         out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
-        #         parents = out.rstrip('\n').split('\n')
-        #         if len(parents) != 1:
-        #             if abortOnError:
-        #                 abort('hg log returned {} possible latest (expected 1)'.format(len(parents)))
-        #             return None
-        #         return parents[0]
-        #     except subprocess.CalledProcessError:
-        #         if abortOnError:
-        #             abort('latest failed')
-        #         else:
-        #             return None
-        #
-        # def exists(self, vcdir, rev):
-        #     self.check_for_git()
-        #     try:
-        #         sentinel = 'exists'
-        #         out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', 'present({})'.format(rev), '--template', sentinel])
-        #         return sentinel in out
-        #     except subprocess.CalledProcessError:
-        #         abort('exists failed')
+    def locate(self, vcdir, patterns=None, abortOnError=True):
+        """
+        Return a list of paths under vc control that match :param:`patterns`
+
+        :param str vcdir: a valid repository path
+        :param patterns: a list of patterns
+        :type patterns: str or list or None
+        :param bool abortOnError: if True abort on mx error
+        :return: a list of paths under vc control
+        :rtype: list
+        """
+        if patterns is None:
+            patterns = []
+        elif not isinstance(patterns, list):
+            patterns = [patterns]
+        patterns = map(lambda ptrn: '"{0}"'.format(ptrn), patterns)
+        out = LinesOutputCapture()
+        rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
+        if rc == 0:
+            return out.lines
+        else:
+            if abortOnError:
+                abort('locate returned: ' + str(rc))
+            else:
+                return None
+
+    def isDirty(self, vcdir, abortOnError=True):
+        """
+        check whether the working directory is dirty
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True of the working directory is dirty, False otherwise
+        :rtype: bool
+        """
+        self.check_for_git()
+        try:
+            output = subprocess.check_output(['git', '-C', vcdir, 'status', '--porcelain'])
+            return len(output.strip()) > 0
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('failed to get status')
+            else:
+                return None
+
+    def bookmark(self, vcdir, name, rev, abortOnError=True):
+        """
+        Place a bookmark at a given revision
+
+        :param str vcdir: a valid repository path
+        :param str name: the name of the bookmark
+        :param str rev: the desired revision
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        return run(['git', '-C', vcdir, 'branch', '-f', name, rev], nonZeroIsFatal=abortOnError) == 0
+
+    def latest(self, vcdir, rev1, rev2, abortOnError=True):
+        """
+        Returns the latest of 2 revisions (in chronological order).
+        The revisions should be related in the DAG.
+
+        :param str vcdir: a valid repository path
+        :param str rev1: the first revision
+        :param str rev2: the second revision
+        :param bool abortOnError: if True abort on mx error
+        :return: the latest of the 2 revisions
+        :rtype: str or None
+        """
+        self.check_for_git()
+        try:
+            out = subprocess.check_output(['git', '-C', vcdir, 'rev-list', '-n', '1', '--date-order', rev1, rev2])
+            changesets = out.strip().split('\n')
+            if len(changesets) != 1:
+                if abortOnError:
+                    abort('git rev-list returned {0} possible latest (expected 1)'.format(len(changesets)))
+                return None
+            return changesets[0]
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('latest failed')
+            else:
+                return None
+
+    def exists(self, vcdir, rev):
+        """
+        Check if a given revision exists in the repository.
+
+        :param str vcdir: a valid repository path
+        :param str rev: the second revision
+        :return: True if revision exists, False otherwise
+        :rtype: bool
+        """
+        self.check_for_git()
+        try:
+            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--format=oneline', '-s', rev])
+            return out.strip().startswith(rev)
+        except subprocess.CalledProcessError:
+            abort('exists failed')
+
 
 
 class BinaryVC(VC):
