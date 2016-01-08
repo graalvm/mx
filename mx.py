@@ -3244,8 +3244,8 @@ class GitConfig(VC):
         :rtype: str
         """
         matching_tags = self._tags(vcdir, prefix, abortOnError=abortOnError)
-        matching_tags = [ (tag, self._tag_revision(vcdir, tag, abortOnError=abortOnError))
-                          for tag in matching_tags ]
+        matching_tags = [(tag, self._tag_revision(vcdir, tag, abortOnError=abortOnError))
+                          for tag in matching_tags]
         latest_rev = self._latest_revision(vcdir, abortOnError=abortOnError)
         if latest_rev and matching_tags:
             prefix = self._prefix(prefix)
@@ -3518,7 +3518,7 @@ class GitConfig(VC):
             patterns = []
         elif not isinstance(patterns, list):
             patterns = [patterns]
-        patterns = map(lambda ptrn: '"{0}"'.format(ptrn), patterns)
+        patterns = ['"{0}"'.format(pattern) for pattern in patterns]
         out = LinesOutputCapture()
         rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
         if rc == 0:
