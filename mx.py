@@ -31,6 +31,8 @@ mx is a command line tool for managing the development of Java code organized as
 Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 """
 import sys
+from abc import ABCMeta
+
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
     sys.modules['mx'] = sys.modules.pop('__main__')
@@ -2435,13 +2437,29 @@ Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
 '''
-class VC:
+class VC(object):
+    """
+    base class for all supported Distriuted Version Constrol abstractions
+
+    :ivar str kind: the VC type identifier
+    :ivar str proper_name: the long name descriptor of the VCS
+    """
+    __metaclass__ = ABCMeta
+    #TODO: decide which methods need to be abstract
+
     def __init__(self, kind, proper_name):
         self.kind = kind
         self.proper_name = proper_name
 
     @staticmethod
     def is_valid_kind(kind):
+        """
+        tests if the given VCS kind is valid or not
+
+        :param str kind: the VCS kind
+        :return: True if a valid VCS kind
+        :rtype: bool
+        """
         for vcs in _vc_systems:
             if kind == vcs.kind:
                 return True
@@ -2449,11 +2467,15 @@ class VC:
 
     @staticmethod
     def get_vc(vcdir, abortOnError=True):
-        '''
-        Given that 'vcdir' is repository directory, attempt to determine
-        what kind of VC it is managed by. Return the VC instance or None if it
-        cannot be determined.
-        '''
+        """
+        Given that :param:`vcdir` is a repository directory, attempt to determine
+        what kind of VCS is it managed by. Return None if it cannot be determined.
+
+        :param str vcdir: a valid path to a version controlled directory
+        :param boo abortOnError: if an error occurs, abort mx operations
+        :return: an instance of VC or None if it cannot be determined
+        :rtype: :class:`VC`
+        """
         for vcs in _vc_systems:
             vcs.check()
             if vcs.is_this_vc(vcdir):
@@ -2502,17 +2524,27 @@ class VC:
         abort(self.kind + " commit is not implemented")
 
     def tip(self, vcdir, abortOnError=True):
-        '''
-        Return the most recent changeset for repo at vcdir.
-        Return None if fails and abortOnError=False
-        '''
+        """
+        Get the most recent changeset for repo at :param:`vcdir`.
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
         abort(self.kind + " tip is not implemented")
 
     def parent(self, vcdir, abortOnError=True):
-        '''
-        Return the parent changeset of the working directory for repo at vcdir.
-        Return None if fails and abortOnError=False
-        '''
+        """
+        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
         abort(self.kind + " id is not implemented")
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
@@ -2523,11 +2555,17 @@ class VC:
         abort(self.kind + " release_version_from_tags is not implemented")
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
-        '''
-        Clone the repo at url to 'dest' (None is vc specific) using 'rev' (None means tip)
-        Result is True/False for success/failure respectively.
-        'extra_args' is for subclass-specific information in/out
-        '''
+        """
+        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+
+        :param str url: the repository url
+        :param str dest: the path to destination, if None the destination is
+                         chosen by the vcs
+        :param str rev: the desired revision, if None use tip
+        :param dict extra_args: for subclass-specific information in/out
+        :return: True if the operation is successful, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " clone is not implemented")
 
     def _log_clone(self, url, dest=None, rev=None):
@@ -2540,11 +2578,18 @@ class VC:
         log(msg)
 
     def pull(self, vcdir, rev=None, update=False, abortOnError=True):
-        '''
-        Pull a given changeset (the head if 'rev='None'), optionally updating the working directory.
-        Updating is only done if something was pulled. If there were no new changesets or rev was already
-        known locally, no update is performed.
-        '''
+        """
+        Pull a given changeset (the head if `rev` is None), optionally updating
+        the working directory. Updating is only done if something was pulled.
+        If there were no new changesets or `rev` was already known locally,
+        no update is performed.
+
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision, if None use tip
+        :param bool abortOnError: if True abort on mx error
+        :return: True if the operation is successful, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " pull is not implemented")
 
     def _log_pull(self, vcdir, rev):
@@ -2558,38 +2603,73 @@ class VC:
         log(msg)
 
     def can_push(self, vcdir, strict=True):
-        '''
-        Return True if we can push 'vcdir'.  if 'strict=True' no uncommitted changes or unadded are allowed.
-        '''
+        """
+        Check if :param:`vcdir` can be pushed.
+
+        :param str vcdir: a valid repository path
+        :param bool strict: if set no uncommitted changes or unadded are allowed
+        :return: True if we can push, False otherwise
+        :rtype: bool
+        """
 
     def default_push(self, vcdir, abortOnError=True):
-        '''
-        Return the default push target for this repo.
-        '''
+        """
+        get the default push target for this repo
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: default push target for repo
+        :rtype: str
+        """
         abort(self.kind + " default_push is not implemented")
 
     def default_pull(self, vcdir, abortOnError=True):
-        '''
-        Return the default push target for this repo.
-        '''
+        """
+        get the default pull target for this repo
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: default pull target for repo
+        :rtype: str
+        """
         abort(self.kind + " default_pull is not implemented")
 
     def incoming(self, vcdir, abortOnError=True):
-        '''
+        """
         list incoming changesets
-        '''
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
         abort(self.kind + ": outgoing is not implemented")
 
     def outgoing(self, vcdir, dest=None, abortOnError=True):
-        '''
-        list outgoing changesets to 'dest' or default-push if None
-        '''
+        """
+        llist outgoing changesets to 'dest' or default-push if None
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
         abort(self.kind + ": outgoing is not implemented")
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=True):
-        '''
-        Push 'vcdir' at rev 'rev', to default if 'target'=None else 'target'
-        '''
+        """
+        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
+        is None, else push to :param:`dest`.
+
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision
+        :param str dest: the path to destination
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + ": push is not implemented")
 
     def _log_push(self, vcdir, dest, rev):
@@ -2605,14 +2685,21 @@ class VC:
         log(msg)
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=True):
-        '''
-        update 'vcdir' working directory.
+        """
+        update the :param:`vcdir` working directory.
+        If :param:`rev` is not specified, update to the tip of the current branch.
+        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
+        :param:`rev` can not be found locally.
+        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
 
-        If 'rev' is not specified, update to the tip of the current branch.
-        If 'rev' is specified, mayPull controls whether a pull will be attempted if
-        'rev' can not be found locally.
-        If 'clean' is true, uncommitted changes will be discarded (no backup!).
-        '''
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision
+        :param bool mayPull: flag to controll whether to pull or not
+        :param bool clean: discard uncommitted changes without backing up
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
         abort(self.kind + " update is not implemented")
 
     def isDirty(self, vcdir, abortOnError=True):
@@ -2968,217 +3055,8 @@ class GitConfig(VC):
         self.has_git = None
 
     def check(self, abortOnError=True):
-        # Git does lazy checking before use of the git command itself
+        # Mercurial does lazy checking before use of the git command itself
         return self
-
-    def init(self, vcdir, abortOnError=True):
-        return self.run(['git', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
-
-    def is_this_vc(self, vcdir):
-        gitDir = join(vcdir, self.metadir())
-        # check for existence to also cover git submodules
-        return os.path.exists(gitDir)
-
-    def metadir(self):
-        return '.git'
-
-    # SCM METHODS
-
-    def add(self, vcdir, path, abortOnError=True):
-        return self.run(['git', '-C', vcdir, 'add', path]) == 0
-
-    def commit(self, vcdir, msg, abortOnError=True):
-        return self.run(['git', '-C', vcdir, 'commit', '-m', msg]) == 0
-
-    def _rev_parse(self, vcdir, rev, abortOnError=True):
-        self.check_for_git()
-        try:
-            return subprocess.check_output(['git', '-C', vcdir, 'rev-parse', rev]).strip()
-        except subprocess.CalledProcessError:
-            if abortOnError:
-                abort('git _rev_parse with ' + rev + ' failed')
-            else:
-                return None
-
-    def tip(self, vcdir, abortOnError=True):
-        info = self._getBranchInfo(vcdir, abortOnError=abortOnError)
-        check = info[1] + '/' + info[2]
-        return self._rev_parse(vcdir, check, abortOnError=abortOnError)
-
-    def parent(self, vcdir, abortOnError=True):
-        return self._rev_parse(vcdir, 'HEAD', abortOnError=abortOnError)
-
-    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
-        cmd = ['git', 'clone']
-        # check out different branch
-        if extra_args and 'branch' in extra_args:
-            cmd.append('--branch')
-            cmd.append(extra_args['branch'])
-
-        cmd.append(url) # from
-        if dest:
-            cmd.append(dest) # to
-        self._log_clone(url, dest, rev)
-        out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
-
-        # change revision
-        if rev and rc == 0:
-            rc = rc or self.update(dest, rev=rev, abortOnError=abortOnError)
-
-        logvv(out.data)
-        return rc == 0
-
-    def pull(self, vcdir, rev=None, update=False, abortOnError=True):
-        '''
-        Uses the semantics of the hg pull here, aka. fetch in git.
-        If update is set, git merge is executed afterwards (hg update)
-        '''
-        cmd = ['git', '-C', vcdir, 'fetch']
-        self._log_pull(vcdir, rev)
-        out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        logvv(out.data)
-
-        if update:
-            rc = rc or self.update(vcdir, rev=rev, abortOnError=abortOnError)
-
-        return rc == 0
-
-    def push(self, vcdir, dest=None, rev=None, abortOnError=False):
-        '''
-        Omits the --force flag, instead pushes to branch 'mx_push'
-        to avoid overriden the master branch (if rev is specified).
-        '''
-        cmd = ['git', '-C', vcdir, 'push']
-        if dest:
-            cmd.append(dest)
-
-        if rev:
-            cmd.append(rev + ':mx_push')
-
-        self._log_push(vcdir, dest, rev)
-        out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
-        logvv(out.data)
-        return rc == 0
-
-    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
-        '''
-        Uses 'merge' if no rev is specified. This is the intended use, to update with new
-        changes. Nevertheless, if a 'rev' is specified we use checkout, as an 'rev'
-        older than the current HEAD of the local repository is expected.
-        '''
-        cmd = ['git', '-C', vcdir]
-        if not rev:
-            cmd += ['merge', 'HEAD']
-        else:
-            cmd.append('checkout')
-            if clean:
-                cmd.append('--force') # throws away uncommitted changes!!!
-            cmd.append(rev)
-
-        result = self.run(cmd, nonZeroIsFatal=abortOnError) == 0
-        if not result and mayPull and rev:
-            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
-            result = self.update(vcdir, rev=rev, clean=clean, abortOnError=abortOnError)
-        return result
-
-    def incoming(self, vcdir, abortOnError=True):
-        return self._checkCommits(vcdir, incoming=True, abortOnError=abortOnError)
-
-    def outgoing(self, vcdir, dest=None, abortOnError=True):
-        '''
-        The current branch's target remote branch is taken.
-        '''
-        if dest and abortOnError:
-            abort('Specifying a destination is currently not supported.')
-
-        return self._checkCommits(vcdir, incoming=False, abortOnError=abortOnError)
-
-    # HELPER
-
-    def can_push(self, vcdir, strict=True, abortOnError=True):
-        out = OutputCapture()
-        rc = self.run(['git', '-C', vcdir, 'status', '-s'], nonZeroIsFatal=abortOnError, out=out)
-        if rc == 0:
-            output = out.data
-            if strict:
-                # no uncommitted / not added
-                return output == ''
-            else:
-                # we check for untracked files
-                if len(output) > 0:
-                    for line in output.split('\n'):
-                        if len(line) > 0 and not line.strip().startswith('?'):
-                            return False
-                return True
-        else:
-            return False
-
-    def default_push(self, vcdir, abortOnError=True):
-        return self._getRepositoryURI(vcdir, 'push', abortOnError=abortOnError)
-
-    def default_pull(self, vcdir, abortOnError=True):
-        return self._getRepositoryURI(vcdir, 'fetch', abortOnError=abortOnError)
-
-    def isDirty(self, vcdir, abortOnError=True):
-        self.check_for_git()
-        try:
-            return len(subprocess.check_output(['git', '-C', vcdir, 'status', '-s'])) > 0
-        except subprocess.CalledProcessError:
-            if abortOnError:
-                abort('failed to get status')
-            else:
-                return None
-
-    def locate(self, vcdir, patterns=None, abortOnError=True):
-        if patterns is None:
-            patterns = []
-        elif not isinstance(patterns, list):
-            patterns = [patterns]
-
-        out = LinesOutputCapture()
-        rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
-        if rc == 1:
-            # git returns 1 if no matches were found
-            return []
-        elif rc == 0:
-            return [os.path.join(vcdir, l.rstrip()) for l in out.lines]
-        else:
-            if abortOnError:
-                abort('locate returned: ' + str(rc))
-            else:
-                return None
-
-    def _checkCommits(self, vcdir, incoming, abortOnError=True):
-        info = self._getBranchInfo(vcdir, abortOnError=abortOnError)
-        print info
-        if not info[1]:
-            if abortOnError:
-                abort('branch has no remote repository')
-            else:
-                return None
-
-        rc = self.run(['git', '-C', vcdir, 'fetch', info[1]])
-        if rc == 0:
-            check = info[1] + '/' + info[2]
-            check = '..' + check if incoming else check + '..'
-            print 'changes for {}'.format(check)
-            out = OutputCapture()
-            rc = rc or self.run(['git', '-C', vcdir, 'log', check], out=out)
-            return out.data if out.data != '' else 'no changes'
-
-        if rc != 0:
-            if abortOnError:
-                abort('incoming returned: ' + str(rc))
-            else:
-                return None
-
-    def run(self, *args, **kwargs):
-        # Ensure git exists before executing the command
-        self.check_for_git()
-        return run(*args, **kwargs)
 
     def check_for_git(self, abortOnError=True):
         if self.has_git is None:
@@ -3197,6 +3075,18 @@ class GitConfig(VC):
 
         return self if self.has_git else None
 
+    def run(self, *args, **kwargs):
+        # Ensure hg exists before executing the command
+        self.check_for_git()
+        return run(*args, **kwargs)
+
+    def init(self, vcdir, abortOnError=True):
+        return self.run(['git', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
+    def is_this_vc(self, vcdir):
+        gitdir = join(vcdir, self.metadir())
+        return os.path.isdir(gitdir)
+
     def git_command(self, vcdir, args, abortOnError=False, quiet=False):
         args = ['git', '-C', vcdir] + args
         if not quiet:
@@ -3210,54 +3100,395 @@ class GitConfig(VC):
                 abort(" ".join(args) + ' returned ' + str(rc))
             return None
 
-    def _getRepositoryURI(self, vcdir, tpe, abortOnError=True):
-        '''
-        Retrieves the url of the remote assigned for the checked out branch.
-        '''
-        info = self._getBranchInfo(vcdir)
-        if info[1]: # has remote
-            remotes = LinesOutputCapture()
-            self.run(['git', 'remote', '-v'], out=remotes)
-            for remote in remotes.lines:
-                m = re.search(info[1] + ur'\s+(.+) \(' + tpe + ur'\)', remote)
-                if m:
-                    return m.group(1).strip()
+    def add(self, vcdir, path, abortOnError=True):
+        # git add does not support quiet mode, so we capture the output instead ...
+        out = OutputCapture()
+        return self.run(['git', '-C', vcdir, 'add', path], out=out) == 0
 
-        if abortOnError:
-            abort('branch has no remote repository assigned')
+    def commit(self, vcdir, msg, abortOnError=True):
+        return self.run(['git', '-C', vcdir, 'commit', '-a', '-m', msg]) == 0
+
+    def tip(self, vcdir, abortOnError=True):
+        """
+        Get the most recent changeset for repo at :param:`vcdir`.
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
+        self.check_for_git()
+        # We don't use run because this can be called very early before _opts is set
+        try:
+            return subprocess.check_output(['git' '-C', vcdir, 'rev-list', 'HEAD', '-1'])
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('git rev-list HEAD failed')
+            else:
+                return None
+
+    def parent(self, vcdir, abortOnError=True):
+        """
+        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
+        self.check_for_git()
+        # We don't use run because this can be called very early before _opts is set
+        try:
+            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--pretty=format:"%P"', "-s"])
+            parents = out.rstrip('\n').split('\n')
+            if len(parents) != 1:
+                if abortOnError:
+                    abort('git show returned {0} parents (expected 1)'.format(len(parents)))
+                return None
+            return parents[0]
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('git show failed')
+            else:
+                return None
+
+    def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
+        # TODO: HERE not implemented
+        prefix = prefix + '-'
+        try:
+            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag("re:{0}[0-9]+\\.[0-9]+")'.format(prefix), '--template', '{tags},{rev}\n'])
+            tagged_ids = [x.split(',') for x in tagged_ids_out.split('\n') if x]
+            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
+        except subprocess.CalledProcessError as e:
+            if abortOnError:
+                abort('hg tags or hg tip failed: ' + str(e))
+            else:
+                return None
+
+        if tagged_ids and current_id:
+            def single(it):
+                v = next(it)
+                try:
+                    next(it)
+                    abort('iterator contained more than a single element')
+                except StopIteration:
+                    return v
+            tagged_ids = [(single((tag for tag in tags.split(' ') if tag.startswith(prefix))), revid) for tags, revid in tagged_ids]
+            version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
+            version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
+            most_recent_tag_version, most_recent_tag_id = version_ids[0]
+
+            if current_id == most_recent_tag_id:
+                return '.'.join((str(e) for e in most_recent_tag_version))
+            else:
+                major, minor = most_recent_tag_version
+                return str(major) + '.' + str(minor + 1) + '-' + snapshotSuffix
+        return None
+
+    def metadir(self):
+        return '.git'
+
+    def _clone(self, url, dest=None, abortOnError=True, **extra_args):
+        cmd = ['git', 'clone']
+        cmd.append(url)
+        if dest:
+            cmd.append(dest)
+        self._log_clone(url, dest)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+        return rc == 0
+
+    def _reset_rev(self, rev, dest=None, abortOnError=True, **extra_args):
+        cmd = ['git']
+        if dest:
+            cmd.extend(['-C', dest])
+        cmd.extend(['reset', '--hard', rev])
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+        return rc == 0
+
+    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
+        """
+        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+
+        :param str url: the repository url
+        :param str dest: the path to destination, if None the destination is
+                         chosen by the vcs
+        :param str rev: the desired revision, if None use tip
+        :param dict extra_args: for subclass-specific information in/out
+        :return: True if the operation is successful, False otherwise
+        :rtype: bool
+        """
+        # TODO: speedup git clone
+        # git clone git://source.winehq.org/git/wine.git ~/wine-git --depth 1
+        # downsides: This parameter will have the effect of preventing you from
+        # cloning it or fetching from it, and other repositories will be unable
+        # to push to you, and you won't be able to push to other repositories.
+        self._log_clone(url, dest, rev)
+        success = self._clone(url, dest=dest, abortOnError=abortOnError, **extra_args)
+        if success and rev:
+            success = self._reset_rev(rev, dest=dest, abortOnError=abortOnError, **extra_args)
+            if not success:
+                #TODO: should the cloned repo be removed from disk if the reset op failed?
+                log('reset revision failed, removing {0}'.format(dest))
+                shutil.rmtree(os.path.abspath(dest))
+        return success
+
+    def _fetch(self, vcdir, abortOnError=True):
+        try:
+            return subprocess.check_call(['git' '-C', vcdir, 'fetch'])
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('git fetch failed')
+            else:
+                return None
+
+    def _log_changes(self, vcdir, path=None, incoming=True):
+        out = OutputCapture()
+        cmd = ['git', '-C', vcdir, 'log', '{0}origin/master{1}'.format(
+                ('..','') if incoming else ('', '..'))]
+        if path:
+            cmd.extend(['--', path])
+        rc = self.run(cmd, nonZeroIsFatal=False, out=out)
+        if rc == 0 or rc == 1:
+            return out.data
         else:
+            if abortOnError:
+                abort('{0} returned {1}'.format(
+                        'incoming' if incoming else 'outgoing', str(rc)))
             return None
 
-    def _getBranchInfo(self, vcdir, abortOnError=True):
-        '''
-        Returns the triple: (<local branch name>, <remote name>, <tracked remote branch name>).
-        If the branch tacks no remote branch, remote name and branch are 'None'.
-        '''
-        branches = LinesOutputCapture()
-        self.run(['git', '-C', vcdir, 'branch', '-vv'], out=branches)
-        for branch in branches.lines:
-            local = re.search(ur'\*\s+(\S+).+', branch) # current branch name
-            if local:
-                remote = re.search(ur'.+\[(\S+)\/(\S+)[:.+\]|\]] .+', branch) # check for remote
-                if remote:
-                    return (local.group(1), remote.group(1), remote.group(2))
-                else:
-                    return (local.group(1), None, None) # current branch has no upstream set
-        if abortOnError:
-            abort('illegal state: no branch found')
+    def incoming(self, vcdir, abortOnError=True):
+        """
+        list incoming changesets
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
+        rc = self._fetch(vcdir, abortOnError=abortOnError)
+        if rc:
+            return self._log_changes(vcdir, incoming=True)
         else:
+            if abortOnError:
+                abort('incoming returned ' + str(rc))
             return None
 
+    def outgoing(self, vcdir, dest=None, abortOnError=True):
+        """
+        llist outgoing changesets to 'dest' or default-push if None
 
-    # Not yet implemented / applicable
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: most recent changeset for specified repository,
+                 None if failure and :param:`abortOnError`=False
+        :rtype: str
+        """
+        rc = self._fetch(vcdir, abortOnError=abortOnError)
+        if rc:
+            return self._log_changes(vcdir, path=dest, incoming=False)
+        else:
+            if abortOnError:
+                abort('outgoing returned ' + str(rc))
+            return None
 
-    # def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
+    def pull(self, vcdir, rev=None, update=False, abortOnError=True):
+        """
+        Pull a given changeset (the head if `rev` is None), optionally updating
+        the working directory. Updating is only done if something was pulled.
+        If there were no new changesets or `rev` was already known locally,
+        no update is performed.
 
-    # def bookmark(self, vcdir, name, rev, abortOnError=True):
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision, if None use tip
+        :param bool abortOnError: if True abort on mx error
+        :return: True if the operation is successful, False otherwise
+        :rtype: bool
+        """
+        cmd = ['git', '-C', vcdir, 'pull', 'origin']
+        if rev:
+            cmd.append(rev)
+        self._log_pull(vcdir, rev)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+        return rc == 0
 
-    # def latest(self, vcdir, rev1, rev2, abortOnError=True):
+    def can_push(self, vcdir, strict=True, abortOnError=True):
+        """
+        Check if :param:`vcdir` can be pushed.
 
-    # def exists(self, vcdir, rev):
+        :param str vcdir: a valid repository path
+        :param bool strict: if set no uncommitted changes or unadded are allowed
+        :return: True if we can push, False otherwise
+        :rtype: bool
+        """
+        out = OutputCapture()
+        rc = self.run(['git', '-C', vcdir, 'status', '--porcelain'], nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            output = out.data
+            if strict:
+                return output == ''
+            else:
+                if len(output) > 0:
+                    for line in output.split('\n'):
+                        if len(line) > 0 and not line.startswith('??'):
+                            return False
+                return True
+        else:
+            return False
+
+    def _path(self, vcdir, name, abortOnError=True):
+        out = OutputCapture()
+        rc = self.run(['git', '-C', vcdir, 'remove', '-v'], nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            output = out.data
+            suffix = '({0})'.format(name)
+            for line in output.split(os.linesep):
+                if line.strip().endswith(suffix):
+                    return line.split()[1]
+        if abortOnError:
+            abort("no '{0}' path for repository {1}".format(name, vcdir))
+        return None
+
+    def default_push(self, vcdir, abortOnError=True):
+        """
+        get the default push target for this repo
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: default push target for repo
+        :rtype: str
+        """
+        push = self._path(vcdir, 'push', abortOnError=False)
+        if push:
+            return push
+        return self.default_pull(vcdir, abortOnError=abortOnError)
+
+    def default_pull(self, vcdir, abortOnError=True):
+        """
+        get the default pull target for this repo
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: default pull target for repo
+        :rtype: str
+        """
+        return self._path(vcdir, 'fetch', abortOnError=abortOnError)
+
+    def push(self, vcdir, dest=None, rev=None, abortOnError=False):
+        """
+        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
+        is None, else push to :param:`dest`.
+
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision
+        :param str dest: the path to destination
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        cmd = ['git', '-C', vcdir, 'push']
+        cmd.append(dest if dest else 'origin')
+        cmd.append('{0}master'.format('{0}:'.format(rev) if rev else ''))
+        self._log_push(vcdir, dest, rev)
+        out = OutputCapture()
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        logvv(out.data)
+        return rc == 0
+
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        """
+        update the :param:`vcdir` working directory.
+        If :param:`rev` is not specified, update to the tip of the current branch.
+        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
+        :param:`rev` can not be found locally.
+        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
+
+        :param str vcdir: a valid repository path
+        :param str rev: the desired revision
+        :param bool mayPull: flag to controll whether to pull or not
+        :param bool clean: discard uncommitted changes without backing up
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        if rev and mayPull and not self.exists(vcdir, rev):
+            self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
+        cmd = ['git', '-C', vcdir, 'checkout']
+        if rev:
+            cmd.extend(['-b', rev, rev])
+        else:
+            cmd.extend(['-b', 'master'])
+        if clean:
+            cmd.append('-f')
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+
+        # def locate(self, vcdir, patterns=None, abortOnError=True):
+        #     if patterns is None:
+        #         patterns = []
+        #     elif not isinstance(patterns, list):
+        #         patterns = [patterns]
+        #     out = LinesOutputCapture()
+        #     rc = self.run(['hg', 'locate', '-R', vcdir] + patterns, out=out, nonZeroIsFatal=False)
+        #     if rc == 1:
+        #         # hg locate returns 1 if no matches were found
+        #         return []
+        #     elif rc == 0:
+        #         return out.lines
+        #     else:
+        #         if abortOnError:
+        #             abort('locate returned: ' + str(rc))
+        #         else:
+        #             return None
+        #
+        # def isDirty(self, vcdir, abortOnError=True):
+        #     self.check_for_git()
+        #     try:
+        #         return len(subprocess.check_output(['hg', 'status', '-q', '-R', vcdir])) > 0
+        #     except subprocess.CalledProcessError:
+        #         if abortOnError:
+        #             abort('failed to get status')
+        #         else:
+        #             return None
+        #
+        # def bookmark(self, vcdir, name, rev, abortOnError=True):
+        #     return run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=abortOnError) == 0
+        #
+        # def latest(self, vcdir, rev1, rev2, abortOnError=True):
+        #     #hg log -r 'heads(ancestors(26030a079b91) and ancestors(6245feb71195))' --template '{node}\n'
+        #     self.check_for_git()
+        #     try:
+        #         revs = [rev1, rev2]
+        #         revsetIntersectAncestors = ' or '.join(('ancestors({})'.format(rev) for rev in revs))
+        #         revset = 'heads({})'.format(revsetIntersectAncestors)
+        #         out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
+        #         parents = out.rstrip('\n').split('\n')
+        #         if len(parents) != 1:
+        #             if abortOnError:
+        #                 abort('hg log returned {} possible latest (expected 1)'.format(len(parents)))
+        #             return None
+        #         return parents[0]
+        #     except subprocess.CalledProcessError:
+        #         if abortOnError:
+        #             abort('latest failed')
+        #         else:
+        #             return None
+        #
+        # def exists(self, vcdir, rev):
+        #     self.check_for_git()
+        #     try:
+        #         sentinel = 'exists'
+        #         out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', 'present({})'.format(rev), '--template', sentinel])
+        #         return sentinel in out
+        #     except subprocess.CalledProcessError:
+        #         abort('exists failed')
 
 
 class BinaryVC(VC):
@@ -11807,7 +12038,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.8")
+version = VersionSpec("5.6.9")
 
 currentUmask = None
 
