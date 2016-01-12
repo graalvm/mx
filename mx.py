@@ -6426,9 +6426,7 @@ class JDKFactory(object):
 def addJDKFactory(tag, compliance, factory):
     assert tag != DEFAULT_JDK_TAG
     complianceMap = _jdkFactories.setdefault(tag, {})
-    assert compliance not in complianceMap
     complianceMap[compliance] = factory
-
 
 def _getJDKFactory(tag, compliance):
     if tag not in _jdkFactories:
@@ -12153,7 +12151,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.9")
+version = VersionSpec("5.6.10")
 
 currentUmask = None
 
