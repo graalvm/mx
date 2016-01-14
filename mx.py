@@ -9175,7 +9175,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.open('link')
         out.element('name', data=basename(dist.path))
         out.element('type', data=str(IRESOURCE_FILE))
-        out.element('location', data=dist.path)
+        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir))
         out.close('link')
         out.close('linkedResources')
         out.close('projectDescription')
