@@ -2045,9 +2045,11 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            _, _, path, _, query, _ = urlparse.urlparse(url)
-            if path == "/remotecontent" and query.startswith("filepath"):
-                path = query
+            o = urlparse.urlparse(url)
+            if o.path == "/remotecontent" and o.query.startswith("filepath"):
+                path = o.query
+            else:
+                path = o.path
             _, ext = os.path.splitext(path)
             if ext:
                 break
