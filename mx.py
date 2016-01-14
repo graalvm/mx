@@ -2135,7 +2135,7 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     def _sha1CachedValid():
         if not exists(sha1path):
             return False
-        if os.stat(path).st_mtime > os.stat(sha1path).st_mtime:
+        if TimeStampFile(path, followSymlinks=True).isNewerThan(sha1path):
             return False
         return True
 
@@ -2150,9 +2150,14 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     if exists(path):
         if sha1Check and sha1:
             if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
+                logv('Create/update SHA1 cache file ' + sha1path)
                 _writeSha1Cached()
 
             if sha1 != _sha1Cached():
+                if sha1 == sha1OfFile(path):
+                    logv('Fix corrupt SHA1 cache file ' + sha1path)
+                    _writeSha1Cached()
+                    return True
                 return False
     elif mustExist:
         return False
