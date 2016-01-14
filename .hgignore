@@ -3,3 +3,4 @@ mxbuild
 .*\.pyc$
 mx.mx/env
 workingsets.xml
+.idea

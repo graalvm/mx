@@ -3093,7 +3093,7 @@ class GitConfig(VC):
     """
     def __init__(self):
         VC.__init__(self, 'git', 'Git')
-        self.missing = 'no git executable found'
+        self.missing = 'No Git executable found. You must install Git in order to proceed!'
         self.has_git = None
 
     def check(self, abortOnError=True):
