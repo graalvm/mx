@@ -6823,6 +6823,8 @@ def _sorted_unique_jdk_configs(configs):
     return sorted(unique_configs, cmp=_compare_configs, reverse=True)
 
 def is_interactive():
+    if get_env('CONTINUOUS_INTEGRATION'):
+        return False
     return sys.__stdin__.isatty()
 
 def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
