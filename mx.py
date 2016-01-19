@@ -3503,9 +3503,9 @@ class GitConfig(VC):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
         cmd = ['git', '-C', vcdir, 'checkout']
         if rev:
-            cmd.extend(['-b', rev, rev])
+            cmd.extend([rev])
         else:
-            cmd.extend(['-b', 'master'])
+            cmd.extend(['master'])
         if clean:
             cmd.append('-f')
         return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
