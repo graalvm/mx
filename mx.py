@@ -4459,6 +4459,7 @@ class SuiteImport:
         self.version = version
         self.urlinfos = [] if urlinfos is None else urlinfos
         self.dynamicImport = dynamicImport
+        self.kind = kind
 
     @staticmethod
     def parse_specification(import_dict, context, dynamicImport=False):
@@ -4472,7 +4473,7 @@ class SuiteImport:
         if not isinstance(urls, list):
             abort('suite import urls must be a list', context=context)
         urlinfos = []
-        kind = None
+        mainKind = None
         for urlinfo in urls:
             if isinstance(urlinfo, dict) and urlinfo.get('url') and urlinfo.get('kind'):
                 kind = urlinfo.get('kind')
@@ -4481,8 +4482,11 @@ class SuiteImport:
             else:
                 abort('suite import url must be a dict with {"url", kind", attributes', context=context)
             vc = vc_system(kind)
+            if kind != 'binary':
+                assert not mainKind, "Only expecting one non-binary kind"
+                mainKind = kind
             urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
-        return SuiteImport(name, version, urlinfos, kind, dynamicImport=dynamicImport)
+        return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -5229,6 +5233,8 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
     elif conflict_resolution == 'latest':
+        if existingSuite.vc.kind != otherImport.kind:
+            return None
         if not existingSuite:
             return None # can not resolve at the moment
         if not isinstance(existingSuite, SourceSuite):
@@ -10906,6 +10912,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                         abort('aborting')
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
+            if imported_suite.vc.kind != suite_import.kind:
+                abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
             imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=True)
     else:
         # unusual case, no version specified, so pull the head
@@ -10937,6 +10945,8 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         vcs = imported_suite.vc
         # by default we pull to the revision id in the import, but pull head if update_versions = True
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
+        if rev and vcs.kind != suite_import.kind:
+            abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
         vcs.pull(imported_suite.dir, rev, update=not no_update)
 
     if not primary and update_versions:
