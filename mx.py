@@ -3184,14 +3184,13 @@ class GitConfig(VC):
         """
         self.check_for_git()
         # We don't use run because this can be called very early before _opts is set
+        if exists(join(vcdir, self.metadir(), 'MERGE_HEAD')):
+            if abortOnError:
+                abort('More than one parent exist during merge')
+            return None
         try:
-            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--pretty=format:"%P"', "-s"])
-            parents = out.rstrip('\n').split('\n')
-            if len(parents) != 1:
-                if abortOnError:
-                    abort('git show returned {0} parents (expected 1)'.format(len(parents)))
-                return None
-            return parents[0]
+            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--pretty=format:%H', "-s", 'HEAD'])
+            return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git show failed')
