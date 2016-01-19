@@ -4565,7 +4565,12 @@ class Suite:
         suite such as class files and annotation generated sources should be placed.
         '''
         if not self._outputRoot:
-            self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
+            suiteDict = self.suiteDict
+            outputRoot = suiteDict.get('outputRoot')
+            if outputRoot:
+                self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
+            else:
+                self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
         return self._outputRoot
 
     def get_mx_output_dir(self):
@@ -4750,11 +4755,6 @@ class Suite:
         suiteDict = self.suiteDict
         if suiteDict.get('name') is None:
             abort('Missing "suite=<name>" in ' + self.suite_py())
-
-        outputRoot = suiteDict.get('outputRoot')
-        if outputRoot:
-            assert not self._outputRoot or self._outputRoot == outputRoot, self._outputRoot
-            self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
 
         libsMap = self._check_suiteDict('libraries')
         jreLibsMap = self._check_suiteDict('jrelibraries')
@@ -12161,7 +12161,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.10")
+version = VersionSpec("5.6.11")
 
 currentUmask = None
 
