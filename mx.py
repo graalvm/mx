@@ -4161,7 +4161,7 @@ def deploy_binary(args):
         abort('Current prinary suite has no version control')
     _mvn.check()
     def _versionGetter(suite):
-        return '{0}-SNAPSHOT'.format(suite.vc.parent(s.dir))
+        return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.dir))
     dists = s.dists
     if args.only:
         only = args.only.split(',')
