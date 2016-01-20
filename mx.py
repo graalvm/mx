@@ -3132,11 +3132,11 @@ class GitConfig(VC):
         return os.path.isdir(gitdir)
 
     def git_command(self, vcdir, args, abortOnError=False, quiet=False):
-        args = ['git', '-C', vcdir] + args
+        args = ['git'] + args
         if not quiet:
             print '{0}'.format(" ".join(args))
         out = OutputCapture()
-        rc = self.run(args, nonZeroIsFatal=False, out=out)
+        rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -3147,10 +3147,10 @@ class GitConfig(VC):
     def add(self, vcdir, path, abortOnError=True):
         # git add does not support quiet mode, so we capture the output instead ...
         out = OutputCapture()
-        return self.run(['git', '-C', vcdir, 'add', path], out=out) == 0
+        return self.run(['git', 'add', path], cwd=vcdir, out=out) == 0
 
     def commit(self, vcdir, msg, abortOnError=True):
-        return self.run(['git', '-C', vcdir, 'commit', '-a', '-m', msg]) == 0
+        return self.run(['git', 'commit', '-a', '-m', msg], cwd=vcdir) == 0
 
     def tip(self, vcdir, abortOnError=True):
         """
@@ -3165,7 +3165,7 @@ class GitConfig(VC):
         self.check_for_git()
         # We don't use run because this can be called very early before _opts is set
         try:
-            return subprocess.check_output(['git' '-C', vcdir, 'rev-list', 'HEAD', '-1'])
+            return subprocess.check_output(['git', 'rev-list', 'HEAD', '-1'], cwd=vcdir)
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git rev-list HEAD failed')
@@ -3189,7 +3189,7 @@ class GitConfig(VC):
                 abort('More than one parent exist during merge')
             return None
         try:
-            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--pretty=format:%H', "-s", 'HEAD'])
+            out = subprocess.check_output(['git', 'show', '--pretty=format:%H', "-s", 'HEAD'], cwd=vcdir)
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -3206,7 +3206,7 @@ class GitConfig(VC):
         # git -C . tag -l prefix-*
         prefix = self._prefix(prefix)
         try:
-            tags_out = subprocess.check_output(['git', '-C', vcdir, 'tag', '--sort=refname', '-l', '{0}*'.format(prefix)])
+            tags_out = subprocess.check_output(['git', 'tag', '--sort=refname', '-l', '{0}*'.format(prefix)], cwd=vcdir)
             return tags_out.strip().split('\n')
         except subprocess.CalledProcessError as e:
             if abortOnError:
@@ -3217,7 +3217,7 @@ class GitConfig(VC):
     def _tag_revision(self, vcdir, tag, abortOnError=True):
         # git -C . show -s --format="%H" TAG
         try:
-            tag_rev = subprocess.check_output(['git', '-C', vcdir, 'show', '-s', '--format="%H"', tag])
+            tag_rev = subprocess.check_output(['git', 'show', '-s', '--format="%H"', tag], cwd=vcdir)
             return tag_rev.strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
@@ -3228,7 +3228,7 @@ class GitConfig(VC):
     def _latest_revision(self, vcdir, abortOnError=True):
         # git log -n 1 --format="%H"
         try:
-            latest_rev = subprocess.check_output(['git', '-C', vcdir, 'log', '-n', '1', '--format="%H"'])
+            latest_rev = subprocess.check_output(['git', 'log', '-n', '1', '--format="%H"'], cwd=vcdir)
             return latest_rev.strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
@@ -3282,11 +3282,10 @@ class GitConfig(VC):
 
     def _reset_rev(self, rev, dest=None, abortOnError=True, **extra_args):
         cmd = ['git']
-        if dest:
-            cmd.extend(['-C', dest])
+        cwd = None if dest is None else dest
         cmd.extend(['reset', '--hard', rev])
         out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=cwd, out=out)
         logvv(out.data)
         return rc == 0
 
@@ -3319,7 +3318,7 @@ class GitConfig(VC):
 
     def _fetch(self, vcdir, abortOnError=True):
         try:
-            return subprocess.check_call(['git' '-C', vcdir, 'fetch'])
+            return subprocess.check_call(['git', 'fetch'], cwd=vcdir)
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git fetch failed')
@@ -3328,11 +3327,11 @@ class GitConfig(VC):
 
     def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
-        cmd = ['git', '-C', vcdir, 'log', '{0}origin/master{1}'.format(
+        cmd = ['git', 'log', '{0}origin/master{1}'.format(
                 ('..', '') if incoming else ('', '..'))]
         if path:
             cmd.extend(['--', path])
-        rc = self.run(cmd, nonZeroIsFatal=False, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
         if rc == 0 or rc == 1:
             return out.data
         else:
@@ -3390,12 +3389,12 @@ class GitConfig(VC):
         :return: True if the operation is successful, False otherwise
         :rtype: bool
         """
-        cmd = ['git', '-C', vcdir, 'pull', 'origin']
+        cmd = ['git', 'pull', 'origin']
         if rev:
             cmd.append(rev)
         self._log_pull(vcdir, rev)
         out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
         logvv(out.data)
         return rc == 0
 
@@ -3409,7 +3408,7 @@ class GitConfig(VC):
         :rtype: bool
         """
         out = OutputCapture()
-        rc = self.run(['git', '-C', vcdir, 'status', '--porcelain'], nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['git', 'status', '--porcelain'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             if strict:
@@ -3425,7 +3424,7 @@ class GitConfig(VC):
 
     def _path(self, vcdir, name, abortOnError=True):
         out = OutputCapture()
-        rc = self.run(['git', '-C', vcdir, 'remove', '-v'], nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['git', 'remove', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             suffix = '({0})'.format(name)
@@ -3473,12 +3472,12 @@ class GitConfig(VC):
         :return: True on success, False otherwise
         :rtype: bool
         """
-        cmd = ['git', '-C', vcdir, 'push']
+        cmd = ['git', 'push']
         cmd.append(dest if dest else 'origin')
         cmd.append('{0}master'.format('{0}:'.format(rev) if rev else ''))
         self._log_push(vcdir, dest, rev)
         out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         logvv(out.data)
         return rc == 0
 
@@ -3500,14 +3499,14 @@ class GitConfig(VC):
         """
         if rev and mayPull and not self.exists(vcdir, rev):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
-        cmd = ['git', '-C', vcdir, 'checkout']
+        cmd = ['git', 'checkout']
         if rev:
             cmd.extend([rev])
         else:
             cmd.extend(['master'])
         if clean:
             cmd.append('-f')
-        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+        return self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
@@ -3526,7 +3525,7 @@ class GitConfig(VC):
             patterns = [patterns]
         patterns = ['"{0}"'.format(pattern) for pattern in patterns]
         out = LinesOutputCapture()
-        rc = self.run(['git', '-C', vcdir, 'ls-files'] + patterns, out=out, nonZeroIsFatal=False)
+        rc = self.run(['git', 'ls-files'] + patterns, cwd=vcdir, out=out, nonZeroIsFatal=False)
         if rc == 0:
             return out.lines
         else:
@@ -3546,7 +3545,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            output = subprocess.check_output(['git', '-C', vcdir, 'status', '--porcelain'])
+            output = subprocess.check_output(['git', 'status', '--porcelain'], cwd=vcdir)
             return len(output.strip()) > 0
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -3565,7 +3564,7 @@ class GitConfig(VC):
         :return: True on success, False otherwise
         :rtype: bool
         """
-        return run(['git', '-C', vcdir, 'branch', '-f', name, rev], nonZeroIsFatal=abortOnError) == 0
+        return run(['git', 'branch', '-f', name, rev], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def latest(self, vcdir, rev1, rev2, abortOnError=True):
         """
@@ -3581,7 +3580,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            out = subprocess.check_output(['git', '-C', vcdir, 'rev-list', '-n', '1', '--date-order', rev1, rev2])
+            out = subprocess.check_output(['git', 'rev-list', '-n', '1', '--date-order', rev1, rev2], cwd=vcdir)
             changesets = out.strip().split('\n')
             if len(changesets) != 1:
                 if abortOnError:
@@ -3605,7 +3604,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            out = subprocess.check_output(['git', '-C', vcdir, 'show', '--format=oneline', '-s', rev])
+            out = subprocess.check_output(['git', 'show', '--format=oneline', '-s', rev], cwd=vcdir)
             return out.strip().startswith(rev)
         except subprocess.CalledProcessError:
             abort('exists failed')
