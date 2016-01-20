@@ -4482,7 +4482,7 @@ class SuiteImport:
                 abort('suite import url must be a dict with {"url", kind", attributes', context=context)
             vc = vc_system(kind)
             if kind != 'binary':
-                assert not mainKind, "Only expecting one non-binary kind"
+                assert not mainKind or mainKind == kind, "Only expecting one non-binary kind"
                 mainKind = kind
             urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
         return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
