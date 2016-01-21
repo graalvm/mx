@@ -5233,10 +5233,10 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
     elif conflict_resolution == 'latest':
-        if existingSuite.vc.kind != otherImport.kind:
-            return None
         if not existingSuite:
             return None # can not resolve at the moment
+        if existingSuite.vc.kind != otherImport.kind:
+            return None
         if not isinstance(existingSuite, SourceSuite):
             abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
         if not existingSuite.vc.exists(existingSuite.dir, rev=otherImport.version):
