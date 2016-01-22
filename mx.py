@@ -780,6 +780,12 @@ class Distribution(Dependency):
         '''
         nyi('needsUpdate', self)
 
+    def maven_artifact_id(self):
+        return _map_to_maven_dist_name(self.remoteName())
+
+    def maven_group_id(self):
+        return _mavenGroupId(self.suite)
+
 """
 A JARDistribution is a distribution for JavaProjects and Java libraries.
 A Distribution always generates a jar/zip file for the built components
@@ -790,7 +796,7 @@ Attributes:
     sourcesPath: as path but for source files (optional)
 """
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense, javadocType="implementation", allowsJavadocWarnings=False):
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense, javadocType="implementation", allowsJavadocWarnings=False, maven=True):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -802,7 +808,22 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.definedAnnotationProcessors = []
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
+        self.maven = maven
         assert path.endswith(self.localExtension())
+
+    def maven_artifact_id(self):
+        if isinstance(self.maven, types.DictType):
+            artifact_id = self.maven.get('artifactId', None)
+            if artifact_id:
+                return artifact_id
+        return super(JARDistribution, self).maven_artifact_id()
+
+    def maven_group_id(self):
+        if isinstance(self.maven, types.DictType):
+            artifact_id = self.maven.get('groupId', None)
+            if artifact_id:
+                return artifact_id
+        return super(JARDistribution, self).maven_artifact_id()
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -4071,12 +4092,9 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None):
+def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
-
-    groupId = _mavenGroupId(suite)
-    artifactId = name
 
     cmd = ['--batch-mode']
 
@@ -4118,7 +4136,7 @@ def _deploy_binary_maven(suite, name, jarPath, version, repositoryId, repository
     if description:
         cmd.append('-Ddescription=' + description)
 
-    log('Deploying {0}:{1}...'.format(suite.name, name))
+    log('Deploying {0}:{1}...'.format(groupId, artifactId))
     if dryRun:
         log(' '.join((pipes.quote(t) for t in cmd)))
     else:
@@ -4180,7 +4198,7 @@ def deploy_binary(args):
 
     version = _versionGetter(s)
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
-    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
+    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(s), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
@@ -4224,13 +4242,13 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
                 if emptyJavadoc:
                     javadocPath = None
                     warn('Javadoc for {0} was empty'.format(dist.name))
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
+            _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
                 dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath)
             os.unlink(pomFile)
             if javadocPath:
                 os.unlink(javadocPath)
         elif dist.isTARDistribution():
-            _deploy_binary_maven(dist.suite, _map_to_maven_dist_name(dist.remoteName()), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
+            _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
         else:
             warn('Unsupported distribution: ' + dist.name)
 
@@ -4282,10 +4300,12 @@ def maven_deploy(args):
     _mvn.check()
     def _versionGetter(suite):
         return suite.release_version(snapshotSuffix='SNAPSHOT')
-    dists = s.dists
+    dists = [d for d in s.dists if d.maven]
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only]
+    if not dists:
+        abort("No distribution to deploy")
 
     for dist in dists:
         if not dist.exists():
@@ -4927,7 +4947,10 @@ class Suite:
             javaCompliance = attrs.pop('javaCompliance', None)
             javadocType = attrs.pop('javadocType', 'implementation')
             allowsJavadocWarnings = attrs.pop('allowsJavadocWarnings', False)
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings)
+            maven = attrs.pop('maven', True)
+            if isinstance(maven, types.DictType) and maven.get('version', None):
+                abort("'version' is not supported in maven specification for distributions")
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings, maven=maven)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
@@ -12171,7 +12194,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.11")
+version = VersionSpec("5.6.12")
 
 currentUmask = None
 
