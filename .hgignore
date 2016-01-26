@@ -1,6 +1,0 @@
-mxbuild
-.*\.orig$
-.*\.pyc$
-mx.mx/env
-workingsets.xml
-.idea
