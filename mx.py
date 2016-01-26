@@ -3350,7 +3350,7 @@ class GitConfig(VC):
     def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', 'log', '{0}origin/master{1}'.format(
-                ('..', '') if incoming else ('', '..'))]
+                '..', '' if incoming else '', '..')]
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
@@ -3361,6 +3361,19 @@ class GitConfig(VC):
                 abort('{0} returned {1}'.format(
                         'incoming' if incoming else 'outgoing', str(rc)))
             return None
+
+    def _active_branch(self, vcdir, abortOnError=True):
+        out = OutputCapture()
+        cmd = ['git', 'branch']
+        rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
+        if rc == 0:
+            for line in out.data.splitlines():
+                if line.strip().startswith('*'):
+                    print line
+                    return line.split()[1].strip()
+        if abortOnError:
+            abort('no active git branch found')
+        return None
 
     def incoming(self, vcdir, abortOnError=True):
         """
@@ -3373,7 +3386,7 @@ class GitConfig(VC):
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
-        if rc:
+        if rc == 0:
             return self._log_changes(vcdir, incoming=True, abortOnError=abortOnError)
         else:
             if abortOnError:
@@ -3391,7 +3404,7 @@ class GitConfig(VC):
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
-        if rc:
+        if rc == 0:
             return self._log_changes(vcdir, path=dest, incoming=False, abortOnError=abortOnError)
         else:
             if abortOnError:
@@ -3411,14 +3424,20 @@ class GitConfig(VC):
         :return: True if the operation is successful, False otherwise
         :rtype: bool
         """
-        cmd = ['git', 'pull', 'origin']
-        if rev:
-            cmd.append(rev)
-        self._log_pull(vcdir, rev)
-        out = OutputCapture()
-        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
-        logvv(out.data)
-        return rc == 0
+        rc = self._fetch(vcdir, abortOnError)
+        if rc == 0 and update:
+            active_branch = self._active_branch(vcdir, abortOnError)
+            refspec = '{0}:{1}'.format(rev if rev else 'HEAD', active_branch)
+            cmd = ['git', 'pull', 'origin', refspec]
+            self._log_pull(vcdir, rev)
+            out = OutputCapture()
+            rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
+            logvv(out.data)
+            return rc == 0
+        else:
+            if abortOnError:
+                abort('fetch returned ' + str(rc))
+            return False
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         """
@@ -11725,13 +11744,13 @@ def update(args):
     args = parser.parse_args(args)
 
     vc = VC.get_vc(_mx_home, abortOnError=False)
-    if isinstance(vc, HgConfig):
+    if isinstance(vc, GitConfig):
         if args.dry_run:
-            print vc.hg_command(_mx_home, ['incoming'])
+            print vc.incoming(_mx_home)
         else:
-            print vc.hg_command(_mx_home, ['pull', '-u'])
+            print vc.pull(_mx_home, update=True)
     else:
-        print 'Cannot update mx as hg is unavailable'
+        print 'Cannot update mx as git is unavailable'
 
 def remove_doubledash(args):
     if '--' in args:
