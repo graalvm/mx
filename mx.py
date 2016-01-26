@@ -3465,7 +3465,7 @@ class GitConfig(VC):
 
     def _path(self, vcdir, name, abortOnError=True):
         out = OutputCapture()
-        rc = self.run(['git', 'remove', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['git', 'remote', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             suffix = '({0})'.format(name)
@@ -4096,11 +4096,11 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 l.warn("Library's suite version is too old to have maven metadata")
         pom.close('dependencies')
     pom.open('scm')
-    pull = dist.suite.vc.default_pull(dist.suite.dir, abortOnError=validateMetadata != 'none')
-    push = dist.suite.vc.default_push(dist.suite.dir, abortOnError=validateMetadata != 'none')
-    pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, pull))
-    pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, push))
-    pom.element('url', data=pull)
+    scm = dist.suite.scm_metadata(abortOnError=validateMetadata != 'none')
+    pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.read))
+    if scm.read != scm.write or validateMetadata == 'full':
+        pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.write))
+    pom.element('url', data=scm.url)
     pom.close('scm')
     pom.close('project')
     return pom.xml(indent='  ', newl='\n')
@@ -4553,6 +4553,13 @@ def _validate_abolute_url(urlstr, acceptNone=False):
     url = urlparse.urlsplit(urlstr)
     return url.scheme and url.netloc
 
+class SCMMetadata(object):
+    def __init__(self, url, read, write):
+        self.url = url
+        self.read = read
+        self.write = write
+
+
 '''
 Command state and methods for all suite subclasses
 '''
@@ -4581,6 +4588,7 @@ class Suite:
         self.javacLintOverrides = []
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
+        self.scm = None
         _suites[self.name] = self
         self._outputRoot = None
 
@@ -4694,7 +4702,8 @@ class Suite:
             'defaultLicense',
             'defaultLicence',
             'repositories',
-            'javac.lint.overrides'
+            'javac.lint.overrides',
+            'scm'
         ]
 
         if self.name == 'mx':
@@ -4804,11 +4813,21 @@ class Suite:
         jdkLibsMap = self._check_suiteDict('jdklibraries')
         distsMap = self._check_suiteDict('distributions')
         importsMap = self._check_suiteDict('imports')
+        scmDict = self._check_suiteDict('scm')
         self.developer = self._check_suiteDict('developer')
         self.url = suiteDict.get('url')
         if not _validate_abolute_url(self.url, acceptNone=True):
             abort('Invalid url in {}'.format(self.suite_py()))
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
+
+        if scmDict:
+            try:
+                read = scmDict.pop('read')
+            except NameError:
+                abort("Missing required 'read' attribute for 'scm'", context=self)
+            write = scmDict.pop('write', read)
+            url = scmDict.pop('url', read)
+            self.scm = SCMMetadata(url, read, write)
 
         for name, attrs in sorted(jreLibsMap.iteritems()):
             jar = attrs.pop('jar')
@@ -5240,6 +5259,8 @@ class Suite:
                 imported_suite._post_init()
         return imported_suite
 
+    def scm_metadata(self, abortOnError=False):
+        return self.scm
 
     def suite_py(self):
         return join(self.mxDir, 'suite.py')
@@ -5326,6 +5347,18 @@ class SourceSuite(Suite):
                 tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
             self._releaseVersion = tag
         return self._releaseVersion
+
+    def scm_metadata(self, abortOnError=False):
+        scm = self.scm
+        if scm:
+            return scm
+        pull = self.vc.default_pull(self.dir, abortOnError=abortOnError)
+        if abortOnError and not pull:
+            abort("Can not find scm metadata for suite {0} ({1})".format(self.name, self.dir))
+        push = self.vc.default_push(self.dir, abortOnError=abortOnError)
+        if not push:
+            push = pull
+        return SCMMetadata(pull, pull, push)
 
     def _load_metadata(self):
         Suite._load_metadata(self)
@@ -10783,7 +10816,7 @@ def scloneimports(args):
     vcs = VC.get_vc(source)
     s = _scloneimports_suitehelper(source, primary=True)
 
-    default_path = vcs.default_push(source)
+    default_path = vcs.default_pull(source)
 
     # We can now set the primary directory for the dst suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
@@ -12213,7 +12246,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.13")
+version = VersionSpec("5.6.14")
 
 currentUmask = None
 
