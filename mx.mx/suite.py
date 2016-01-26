@@ -31,9 +31,9 @@ suite = {
 
     "CODESNIPPET-DOCLET" : {
       "urls" : [
-        "http://repo1.maven.org/maven2/org/apidesign/javadoc/codesnippet-doclet/0.5/codesnippet-doclet-0.5.jar",
+        "http://repo1.maven.org/maven2/org/apidesign/javadoc/codesnippet-doclet/0.6/codesnippet-doclet-0.6.jar",
       ],
-      "sha1" : "e9f37916a0ee0f2f6dc0c1d4ae0ce6e7c7a6e874",
+      "sha1" : "b670b28ff66cecd951ffab1ec65a66a6886de940",
     },
 
     "JUNIT" : {
