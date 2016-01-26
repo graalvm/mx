@@ -1,6 +1,6 @@
 *.pyc
 *.orig
-mx.mx/env
-workingsets.xml
-.idea
-mxbuild/
+/mx.mx/env
+/workingsets.xml
+/.idea
+/mxbuild
