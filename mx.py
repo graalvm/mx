@@ -3465,7 +3465,7 @@ class GitConfig(VC):
 
     def _path(self, vcdir, name, abortOnError=True):
         out = OutputCapture()
-        rc = self.run(['git', 'remove', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['git', 'remote', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
             output = out.data
             suffix = '({0})'.format(name)
