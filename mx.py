@@ -820,10 +820,10 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def maven_group_id(self):
         if isinstance(self.maven, types.DictType):
-            artifact_id = self.maven.get('groupId', None)
-            if artifact_id:
-                return artifact_id
-        return super(JARDistribution, self).maven_artifact_id()
+            group_id = self.maven.get('groupId', None)
+            if group_id:
+                return group_id
+        return super(JARDistribution, self).maven_group_id()
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -4008,8 +4008,8 @@ def _mavenGroupId(suite):
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
 def _genPom(dist, versionGetter, validateMetadata='none'):
-    groupId = _mavenGroupId(dist.suite)
-    artifactId = _map_to_maven_dist_name(dist.remoteName())
+    groupId = dist.maven_group_id()
+    artifactId = dist.maven_artifact_id()
     version = versionGetter(dist.suite)
     pom = XMLDoc()
     pom.open('project', attributes={
