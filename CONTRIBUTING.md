@@ -4,6 +4,9 @@ to your first pull request indicating the name you used to sign the OCA if it is
 from your github profile.
 
 Pull requests can only be merged by committers and a committer cannot merge
-their own pull requests. 
+his or her own pull requests.
+
+When creating a pull request, make sure you designate an assignee to ensure
+the request is processed in a timely manner.
 
 [1]: http://www.oracle.com/technetwork/community/oca-486395.html
