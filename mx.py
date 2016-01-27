@@ -3220,7 +3220,15 @@ class GitConfig(VC):
                 return None
 
     def _tags(self, vcdir, prefix, abortOnError=True):
-        # git -C . tag -l prefix-*
+        """
+        Get the list of tags starting with :param:`prefix` in the repository at :param:`vcdir` that are ancestors
+        of the current HEAD.
+
+        :param str vcdir: a valid repository path
+        :param str prefix: the prefix used to filter the tags
+        :param bool abortOnError: if True abort on mx error
+        :rtype: list of str
+        """
         _tags_prefix = 'tag: '
         try:
             tags_out = subprocess.check_output(['git', 'log', '--simplify-by-decoration', '--pretty=format:%d', 'HEAD'], cwd=vcdir)
@@ -3243,7 +3251,14 @@ class GitConfig(VC):
                 return None
 
     def _commitish_revision(self, vcdir, commitish, abortOnError=True):
-        # git -C . show -s --format="%H" TAG
+        """
+        Get the commit hash for a commit-ish specifier.
+
+        :param str vcdir: a valid repository path
+        :param str commitish: a commit-ish specifier
+        :param bool abortOnError: if True abort on mx error
+        :rtype: str
+        """
         try:
             rev = subprocess.check_output(['git', 'show', '-s', '--format="%H"', commitish], cwd=vcdir)
             return rev.strip()
