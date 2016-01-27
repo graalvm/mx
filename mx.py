@@ -3219,28 +3219,34 @@ class GitConfig(VC):
             else:
                 return None
 
-    def _prefix(self, prefix):
-        if not prefix.endswith('-'):
-            prefix = '{}-'.format(prefix)
-        return prefix
-
     def _tags(self, vcdir, prefix, abortOnError=True):
         # git -C . tag -l prefix-*
-        prefix = self._prefix(prefix)
+        _tags_prefix = 'tag: '
         try:
-            tags_out = subprocess.check_output(['git', 'tag', '-l', '{0}*'.format(prefix)], cwd=vcdir)
-            return tags_out.strip().split('\n')
+            tags_out = subprocess.check_output(['git', 'log', '--simplify-by-decoration', '--pretty=format:%d', 'HEAD'], cwd=vcdir)
+            tags_out = tags_out.strip()
+            tags = []
+            for line in tags_out.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                assert line.startswith('(') and line.endswith(')'), "Unexpected format: " + line
+                search = _tags_prefix + prefix
+                for decoration in line[1:-1].split(', '):
+                    if decoration.startswith(search):
+                        tags.append(decoration[len(_tags_prefix):])
+            return tags
         except subprocess.CalledProcessError as e:
             if abortOnError:
                 abort('git tag failed: ' + str(e))
             else:
                 return None
 
-    def _tag_revision(self, vcdir, tag, abortOnError=True):
+    def _commitish_revision(self, vcdir, commitish, abortOnError=True):
         # git -C . show -s --format="%H" TAG
         try:
-            tag_rev = subprocess.check_output(['git', 'show', '-s', '--format="%H"', tag], cwd=vcdir)
-            return tag_rev.strip()
+            rev = subprocess.check_output(['git', 'show', '-s', '--format="%H"', commitish], cwd=vcdir)
+            return rev.strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
                 abort('git show failed: ' + str(e))
@@ -3248,15 +3254,7 @@ class GitConfig(VC):
                 return None
 
     def _latest_revision(self, vcdir, abortOnError=True):
-        # git log -n 1 --format="%H"
-        try:
-            latest_rev = subprocess.check_output(['git', 'log', '-n', '1', '--format="%H"'], cwd=vcdir)
-            return latest_rev.strip()
-        except subprocess.CalledProcessError as e:
-            if abortOnError:
-                abort('git log failed: ' + str(e))
-            else:
-                return None
+        return self._commitish_revision(vcdir, 'HEAD', abortOnError=abortOnError)
 
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
@@ -3271,21 +3269,21 @@ class GitConfig(VC):
         :return: a release version
         :rtype: str
         """
-        matching_tags = self._tags(vcdir, prefix, abortOnError=abortOnError)
-        matching_tags = [(tag, self._tag_revision(vcdir, tag, abortOnError=abortOnError))
-                          for tag in matching_tags]
+        tag_prefix = prefix + '-'
+        matching_tags = self._tags(vcdir, tag_prefix, abortOnError=abortOnError)
         latest_rev = self._latest_revision(vcdir, abortOnError=abortOnError)
         if latest_rev and matching_tags:
-            prefix = self._prefix(prefix)
-            most_recent_tag, most_recent_rev = matching_tags[0]
-            version = most_recent_tag[len(prefix):].split('.')
-            version = map(int, version)
+            matching_versions = [[int(x) for x in tag[len(tag_prefix):].split('.')] for tag in matching_tags]
+            matching_versions = sorted(matching_versions, reverse=True)
+            most_recent_version = matching_versions[0]
+            most_recent_tag = tag_prefix + '.'.join((str(x) for x in most_recent_version))
+            most_recent_tag_revision = self._commitish_revision(vcdir, most_recent_tag)
 
-            if latest_rev == most_recent_rev:
-                return '.'.join(map(str, version))
+            if latest_rev == most_recent_tag_revision:
+                return most_recent_tag[len(tag_prefix):]
             else:
-                major, minor = version
-                return '{0}.{1}-{2}'.format(major, minor, snapshotSuffix)
+                major, minor = most_recent_version
+                return '{0}.{1}-{2}'.format(major, minor  + 1, snapshotSuffix)
         return None
 
     def metadir(self):
