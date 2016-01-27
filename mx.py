@@ -3228,7 +3228,7 @@ class GitConfig(VC):
         # git -C . tag -l prefix-*
         prefix = self._prefix(prefix)
         try:
-            tags_out = subprocess.check_output(['git', 'tag', '--sort=refname', '-l', '{0}*'.format(prefix)], cwd=vcdir)
+            tags_out = subprocess.check_output(['git', 'tag', '-l', '{0}*'.format(prefix)], cwd=vcdir)
             return tags_out.strip().split('\n')
         except subprocess.CalledProcessError as e:
             if abortOnError:
