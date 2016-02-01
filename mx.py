@@ -3440,13 +3440,17 @@ class GitConfig(VC):
         rc = self._fetch(vcdir, abortOnError)
         if rc == 0 and update:
             active_branch = self._active_branch(vcdir, abortOnError)
-            refspec = '{0}:{1}'.format(rev if rev else 'HEAD', active_branch)
-            cmd = ['git', 'pull', 'origin', refspec]
-            self._log_pull(vcdir, rev)
-            out = OutputCapture()
-            rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
-            logvv(out.data)
-            return rc == 0
+            if rev:
+                return self.update(vcdir, rev=rev, mayPull=False, clean=True, abortOnError=abortOnError)
+            else:
+                # refspec = '{0}:{1}'.format(rev if rev else 'HEAD', active_branch)
+                refspec = 'HEAD:{0}'.format(active_branch)
+                cmd = ['git', 'pull', 'origin', refspec]
+                self._log_pull(vcdir, rev)
+                out = OutputCapture()
+                rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
+                logvv(out.data)
+                return rc == 0
         else:
             if abortOnError:
                 abort('fetch returned ' + str(rc))
@@ -3555,7 +3559,9 @@ class GitConfig(VC):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
         cmd = ['git', 'checkout']
         if rev:
-            cmd.extend([rev])
+            cmd.extend(['--detach', rev])
+            if not _opts.verbose:
+                cmd.append('-q')
         else:
             cmd.extend(['master'])
         if clean:
