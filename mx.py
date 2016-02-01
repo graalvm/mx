@@ -231,6 +231,9 @@ class SuiteConstituent(object):
         self.name = name
         self.suite = suite
 
+        # Should this constituent be visible outside its suite
+        self.internal = False
+
     def origin(self):
         """
         Gets a 2-tuple (file, line) describing the source file where this constituent
@@ -450,6 +453,8 @@ class Dependency(SuiteConstituent):
                         abort('cannot have an inter-suite reference to a project: ' + dep.name, context=self)
                     if s is None and self.suite is not dep.suite:
                         abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                    if self.suite is not dep.suite and dep.internal:
+                        abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
@@ -11708,7 +11713,7 @@ def maven_install(args):
     arcdists = []
     for dist in s.dists:
         # ignore non-exported dists
-        if not dist.name.startswith('COM_ORACLE'):
+        if not dist.internal and not dist.name.startswith('COM_ORACLE'):
             arcdists.append(dist)
 
     mxMetaName = _mx_binary_distribution_root(s.name)
