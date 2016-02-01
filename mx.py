@@ -3442,20 +3442,23 @@ class GitConfig(VC):
         :return: True if the operation is successful, False otherwise
         :rtype: bool
         """
-        rc = self._fetch(vcdir, abortOnError)
-        if rc == 0 and update:
+        if update and not rev:
             active_branch = self._active_branch(vcdir, abortOnError)
-            refspec = '{0}:{1}'.format(rev if rev else 'HEAD', active_branch)
-            cmd = ['git', 'pull', 'origin', refspec]
+            cmd = ['git', 'pull', 'origin', 'HEAD:{0}'.format(active_branch)]
             self._log_pull(vcdir, rev)
             out = OutputCapture()
             rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
             logvv(out.data)
             return rc == 0
         else:
-            if abortOnError:
-                abort('fetch returned ' + str(rc))
-            return False
+            rc = self._fetch(vcdir, abortOnError)
+            if rc == 0:
+                if rev:
+                    return self.update(vcdir, rev=rev, mayPull=False, clean=True, abortOnError=abortOnError)
+            else:
+                if abortOnError:
+                    abort('fetch returned ' + str(rc))
+                return False
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         """
@@ -3560,7 +3563,9 @@ class GitConfig(VC):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
         cmd = ['git', 'checkout']
         if rev:
-            cmd.extend([rev])
+            cmd.extend(['--detach', rev])
+            if not _opts.verbose:
+                cmd.append('-q')
         else:
             cmd.extend(['master'])
         if clean:
@@ -12266,7 +12271,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.14")
+version = VersionSpec("5.6.15")
 
 currentUmask = None
 
