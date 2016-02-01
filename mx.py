@@ -8334,6 +8334,8 @@ def checkoverlap(args):
 
     projToDist = {}
     for d in sorted_dists():
+        if d.internal:
+            continue
         for p in d.archived_deps():
             if p.isProject():
                 if p in projToDist:
