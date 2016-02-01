@@ -2,7 +2,7 @@ language: python
 python:
   - "2.7"
 install:
-  - sudo pip install astroid==1.1.0
-  - sudo pip install pylint==1.1.0
+  - pip install astroid==1.1.0
+  - pip install pylint==1.1.0
   - pylint --version
 script: ./mx --strict-compliance gate
