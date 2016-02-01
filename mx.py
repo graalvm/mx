@@ -3459,7 +3459,6 @@ class GitConfig(VC):
                 if abortOnError:
                     abort('fetch returned ' + str(rc))
                 return False
-        
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         """
