@@ -6451,7 +6451,16 @@ class ArgParser(ArgumentParser):
             if opts.vm: self.unknown += ['--vm', opts.vm]
             if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
 
-            self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
+            self.initialCommandAndArgs = []
+            for arg in opts.__dict__.pop('initialCommandAndArgs'):
+                # For some reasons, argparse will consider an unknown argument starting with '-'
+                # and containing a space as a positional argument instead of as an optional
+                # argument. We need to treat these as unknown optional arguments.
+                if arg.startswith('-'):
+                    assert ' ' in arg, arg
+                    self.unknown.append(arg)
+                else:
+                    self.initialCommandAndArgs.append(arg)
 
             # Give the timeout options a default value to avoid the need for hasattr() tests
             opts.__dict__.setdefault('timeout', 0)
