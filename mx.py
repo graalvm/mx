@@ -3453,8 +3453,8 @@ class GitConfig(VC):
         else:
             rc = self._fetch(vcdir, abortOnError)
             if rc == 0:
-                if rev:
-                    return self.update(vcdir, rev=rev, mayPull=False, clean=True, abortOnError=abortOnError)
+                if rev and update:
+                    return self.update(vcdir, rev=rev, mayPull=False, clean=False, abortOnError=abortOnError)
             else:
                 if abortOnError:
                     abort('fetch returned ' + str(rc))
