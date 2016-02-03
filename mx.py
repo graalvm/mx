@@ -1274,10 +1274,11 @@ class ProjectBuildTask(BuildTask):
         BuildTask.__init__(self, project, args, parallelism)
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleLibraryName, theLicense=None):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         ClasspathDependency.__init__(self)
         self.checkstyleProj = name
+        self.checkstyleLibraryName = checkstyleLibraryName
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
         self.javaCompliance = JavaCompliance(javaCompliance)
@@ -5425,7 +5426,8 @@ class SourceSuite(Suite):
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense)
+                    checkstyleName = self.getMxCompatibility().checkstyleLibraryName()
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleName, theLicense=theLicense)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -6457,18 +6459,6 @@ class ArgParser(ArgumentParser):
             if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
 
             self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
-
-            # For some reason, argparse considers an unknown argument starting with '-'
-            # and containing a space as a positional argument instead of an optional
-            # argument. We need to treat these as unknown optional arguments.
-            while len(self.initialCommandAndArgs) > 0:
-                arg = self.initialCommandAndArgs[0]
-                if arg.startswith('-'):
-                    assert ' ' in arg, arg
-                    self.unknown.append(arg)
-                    del self.initialCommandAndArgs[0]
-                else:
-                    break
 
             # Give the timeout options a default value to avoid the need for hasattr() tests
             opts.__dict__.setdefault('timeout', 0)
@@ -8546,6 +8536,7 @@ def checkstyle(args):
             continue
         if args.primary and not p.suite.primary:
             continue
+        checkstyleLibrary = library(p.checkstyleLibraryName).get_path(True)
         sourceDirs = p.source_dirs()
 
         config = join(project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
@@ -8594,11 +8585,10 @@ def checkstyle(args):
 
             auditfileName = join(p.dir, 'checkstyleOutput.txt')
             log('Running Checkstyle on {0} using {1}...'.format(sourceDir, config))
-
             try:
                 for chunk in _chunk_files_for_command_line(javafilelist):
                     try:
-                        run_java(['-Xmx1g', '-jar', library('CHECKSTYLE').get_path(True), '-f', 'xml', '-c', config, '-o', auditfileName] + chunk, nonZeroIsFatal=False)
+                        run_java(['-Xmx1g', '-jar', checkstyleLibrary, '-f', 'xml', '-c', config, '-o', auditfileName] + chunk, nonZeroIsFatal=False)
                     finally:
                         if exists(auditfileName):
                             errors = []
@@ -12283,7 +12273,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.15")
+version = VersionSpec("5.6.16")
 
 currentUmask = None
 
