@@ -3713,7 +3713,8 @@ class BinaryVC(VC):
         mxname = _mx_binary_distribution_root(suite_name)
         self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
-        self._pull_artifact(metadata, mxname, mxname, mx_jar_path)
+        if not self._pull_artifact(metadata, mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
+            return False
         run([get_jdk(tag=DEFAULT_JDK_TAG).jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
@@ -5186,13 +5187,15 @@ class Suite:
                 version = None
 
         # The following two functions abstract state that varies between binary and source suites
+        def _is_binary_mode():
+            return searchMode == 'binary'
 
         def _find_suite_dir():
             '''
             Attempts to locate an existing suite in the local context
             Returns the path to the mx.name dir if found else None
             '''
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 # binary suites are always stored relative to the importing suite in mx-private directory
                 return importing_suite._find_binary_suite_dir(suite_import.name)
             else:
@@ -5201,7 +5204,7 @@ class Suite:
 
         def _get_import_dir():
             '''Return directory where the suite will be cloned to'''
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
                 importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
@@ -5210,46 +5213,58 @@ class Suite:
                 return importDir
 
         def _clone_kwargs():
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 return dict(result=dict())
             else:
                 return dict()
 
-        clone_kwargs = _clone_kwargs()
-        importMxDir = _find_suite_dir()
-        if importMxDir is None:
-            # No local copy, so use the URLs in order to "download" one
-            importDir = _get_import_dir()
-            fail = True
-            urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
-            for urlinfo in urlinfos:
-                if not urlinfo.vc.check(abortOnError=False):
-                    continue
-                if searchMode == 'binary':
-                    # pass extra necessary extra info
-                    clone_kwargs['suite_name'] = suite_import.name
+        def _try_clone():
+            clone_kwargs = _clone_kwargs()
+            importMxDir = _find_suite_dir()
+            if importMxDir is None:
+                # No local copy, so use the URLs in order to "download" one
+                importDir = _get_import_dir()
+                fail = True
+                urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
+                for urlinfo in urlinfos:
+                    if not urlinfo.vc.check(abortOnError=False):
+                        continue
+                    if _is_binary_mode():
+                        # pass extra necessary extra info
+                        clone_kwargs['suite_name'] = suite_import.name
 
-                if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
-                    importMxDir = _find_suite_dir()
-                    if importMxDir is None:
-                        # wasn't a suite after all, this is an error
-                        pass
+                    if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
+                        importMxDir = _find_suite_dir()
+                        if importMxDir is None:
+                            # wasn't a suite after all, this is an error
+                            pass
+                        else:
+                            fail = False
+                        # we are done searching either way
+                        break
                     else:
-                        fail = False
-                    # we are done searching either way
-                    break
-                else:
-                    # it is possible that the clone partially populated the target
-                    # which will mess an up an alternate, so we clean it
-                    if exists(importDir):
-                        shutil.rmtree(importDir)
+                        # it is possible that the clone partially populated the target
+                        # which will mess an up an alternate, so we clean it
+                        if exists(importDir):
+                            shutil.rmtree(importDir)
 
-            # end of search
-            if fail:
-                if fatalIfMissing:
-                    abort('import ' + suite_import.name + ' not found (search mode ' + searchMode + ')')
-                else:
+                # end of search
+                if fail:
                     return None
+            return importMxDir
+
+        importMxDir = _try_clone()
+
+        if  _is_binary_mode() and importMxDir is None:
+            log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
+            searchMode = "source"
+            importMxDir = _try_clone()
+
+        if importMxDir is None:
+            if fatalIfMissing:
+                abort("Import suite '{0}' not found (binary or source)".format(suite_import.name))
+            else:
+                return None
 
         # Factory method?
         if searchMode == 'binary':
