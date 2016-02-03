@@ -5426,8 +5426,8 @@ class SourceSuite(Suite):
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    checkstyleName = self.getMxCompatibility().checkstyleLibraryName()
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleName, theLicense=theLicense)
+                    checkstyleLibraryName = self.getMxCompatibility().checkstyleLibraryName()
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleLibraryName, theLicense=theLicense)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
