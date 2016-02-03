@@ -5195,7 +5195,7 @@ class Suite:
             Attempts to locate an existing suite in the local context
             Returns the path to the mx.name dir if found else None
             '''
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 # binary suites are always stored relative to the importing suite in mx-private directory
                 return importing_suite._find_binary_suite_dir(suite_import.name)
             else:
@@ -5204,7 +5204,7 @@ class Suite:
 
         def _get_import_dir():
             '''Return directory where the suite will be cloned to'''
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
                 importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
@@ -5213,7 +5213,7 @@ class Suite:
                 return importDir
 
         def _clone_kwargs():
-            if searchMode == 'binary':
+            if _is_binary_mode():
                 return dict(result=dict())
             else:
                 return dict()
@@ -5229,7 +5229,7 @@ class Suite:
                 for urlinfo in urlinfos:
                     if not urlinfo.vc.check(abortOnError=False):
                         continue
-                    if searchMode == 'binary':
+                    if _is_binary_mode():
                         # pass extra necessary extra info
                         clone_kwargs['suite_name'] = suite_import.name
 
@@ -5257,7 +5257,6 @@ class Suite:
 
         if  _is_binary_mode() and importMxDir is None:
             log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
-            #_change_to_source_mode()
             searchMode = "source"
             importMxDir = _try_clone()
 
