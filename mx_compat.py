@@ -65,6 +65,9 @@ class MxCompatibility500(object):
     def mavenDeployJavadoc(self):
         return False
 
+    def checkstyleLibraryName(self):
+        return 'CHECKSTYLE_6.0'
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -127,6 +130,14 @@ class MxCompatibility566(MxCompatibility555):
 
     def mavenDeployJavadoc(self):
         return True
+
+class MxCompatibility5616(MxCompatibility566):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.6.16")
+
+    def checkstyleLibraryName(self):
+        return 'CHECKSTYLE_6.15'
 
 def minVersion():
     _ensureCompatLoaded()
