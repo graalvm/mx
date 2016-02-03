@@ -57,7 +57,7 @@ suite = {
       }
     },
 
-    "CHECKSTYLE" : {
+    "CHECKSTYLE_6.0" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-6.0-all.jar",
         "jar:http://sourceforge.net/projects/checkstyle/files/checkstyle/6.0/checkstyle-6.0-bin.zip/download!/checkstyle-6.0/checkstyle-6.0-all.jar",
@@ -68,6 +68,20 @@ suite = {
         "groupId" : "com.puppycrawl.tools",
         "artifactId" : "checkstyle",
         "version" : "6.0",
+      }
+    },
+
+    "CHECKSTYLE_6.15" : {
+      "urls" : [
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-6.15-all.jar",
+        "jar:http://sourceforge.net/projects/checkstyle/files/checkstyle/6.15/checkstyle-6.15-all.jar",
+      ],
+      "sha1" : "db9ade7f4ef4ecb48e3f522873946f9b48f949ee",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "6.15",
       }
     },
 
