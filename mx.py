@@ -5232,7 +5232,7 @@ class Suite:
                     if searchMode == 'binary':
                         # pass extra necessary extra info
                         clone_kwargs['suite_name'] = suite_import.name
-    
+
                     if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
                         importMxDir = _find_suite_dir()
                         if importMxDir is None:
@@ -5247,20 +5247,20 @@ class Suite:
                         # which will mess an up an alternate, so we clean it
                         if exists(importDir):
                             shutil.rmtree(importDir)
-    
+
                 # end of search
                 if fail:
                     return None
             return importMxDir
-        
+
         importMxDir = _try_clone()
-        
+
         if  _is_binary_mode() and importMxDir is None:
             log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
             #_change_to_source_mode()
             searchMode = "source"
             importMxDir = _try_clone()
-            
+
         if importMxDir is None:
             if fatalIfMissing:
                 abort("Import suite '{0}' not found (binary or source)".format(suite_import.name))
