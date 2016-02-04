@@ -12293,6 +12293,9 @@ def main():
                 abort('Command timed out after ' + str(_opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(_opts.timeout)
+        # compile java resources ahead of time to avoid races in parallel tasks
+        for java_resource in ['URLConnectionDownload', 'CheckCopyright']:
+            _compile_mx_class(java_resource)
         retcode = c(command_args)
         if retcode is not None and retcode != 0:
             abort(retcode)
