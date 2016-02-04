@@ -8047,6 +8047,7 @@ def eclipseformat(args):
     parser.add_argument('-e', '--eclipse-exe', help='location of the Eclipse executable')
     parser.add_argument('-C', '--no-backup', action='store_false', dest='backup', help='do not save backup of modified files')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
+    parser.add_argument('--primary', action='store_true', help='process only the projects that are part of the primary suite')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -8070,6 +8071,8 @@ def eclipseformat(args):
     if args.projects is not None:
         projectsToProcess = [project(name) for name in args.projects.split(',')]
     else:
+        if args.primary:
+            _opts.specific_suites = [_primary_suite.name]
         projectsToProcess = projects(True)
 
     class Batch:
