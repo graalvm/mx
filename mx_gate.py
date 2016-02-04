@@ -264,7 +264,7 @@ def gate(args):
             _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
         with Task('Checkstyle', tasks) as t:
-            if t and mx.command_function('checkstyle')([]) != 0:
+            if t and mx.command_function('checkstyle')(['--primary']) != 0:
                 t.abort('Checkstyle warnings were found')
 
         with Task('Checkheaders', tasks) as t:
