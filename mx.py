@@ -5992,28 +5992,21 @@ def projects_from_names(projectNames):
 
 def projects(opt_limit_to_suite=False, limit_to_primary=False):
     """
-    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True or by the primary suite if limit_to_primary == True
+    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by the primary suite if limit_to_primary == True
     """
 
     sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
     if opt_limit_to_suite:
-        return _dependencies_opt_limit_to_suites(sortedProjects)
-    elif limit_to_primary:
-        return _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
-    else:
-        return sortedProjects
+        sortedProjects = _dependencies_opt_limit_to_suites(sortedProjects)
+    if limit_to_primary:
+        sortedProjects = _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
+    return sortedProjects
 
 def projects_opt_limit_to_suites():
     """
     Get the list of all loaded projects optionally limited by --suite option
     """
     return projects(True, False)
-
-def projects_primary_suite():
-    """
-    Get the list of all projects loaded by the primary suite
-    """
-    return projects(False, True)
 
 def _dependencies_limited_to_suites(deps, suites):
     result = []
@@ -8083,7 +8076,7 @@ def eclipseformat(args):
     if args.projects is not None:
         projectsToProcess = [project(name) for name in args.projects.split(',')]
     elif args.primary:
-        projectsToProcess = projects_primary_suite()
+        projectsToProcess = projects(limit_to_primary=True)
     else:
         projectsToProcess = projects_opt_limit_to_suites()
 
