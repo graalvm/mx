@@ -2909,7 +2909,7 @@ class HgConfig(VC):
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
         try:
-            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag("re:{0}[0-9]+\\.[0-9]+")'.format(prefix), '--template', '{tags},{rev}\n'])
+            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag()', '--template', '{tags},{rev}\n'])
             tagged_ids = [x.split(',') for x in tagged_ids_out.split('\n') if x]
             current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
         except subprocess.CalledProcessError as e:
@@ -2919,14 +2919,15 @@ class HgConfig(VC):
                 return None
 
         if tagged_ids and current_id:
-            def single(it):
-                v = next(it)
+            def first(it):
                 try:
-                    next(it)
-                    abort('iterator contained more than a single element')
-                except StopIteration:
+                    v = next(it)
                     return v
-            tagged_ids = [(single((tag for tag in tags.split(' ') if tag.startswith(prefix))), revid) for tags, revid in tagged_ids]
+                except StopIteration:
+                    return None
+            tag_re = re.compile(r"^{0}[0-9]+\.[0-9]+$".format(prefix))
+            tagged_ids = [(first((tag for tag in tags.split(' ') if tag_re.match(tag))), revid) for tags, revid in tagged_ids]
+            tagged_ids = [(tag, revid) for tag, revid in tagged_ids if tag]
             version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
             version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
             most_recent_tag_version, most_recent_tag_id = version_ids[0]
