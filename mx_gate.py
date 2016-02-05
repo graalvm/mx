@@ -239,12 +239,13 @@ def gate(args):
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        if mx.get_env('JDT'):
-            with Task('BuildJavaWithEcj', tasks) as t:
-                if t: mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-            gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild')
-        else:
-            _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
+        with Task('BuildJavaWithEcj', tasks) as t:
+            if t:
+                if mx.get_env('JDT'):
+                    mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
+                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild')
+                else:
+                    _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
         with Task('BuildJavaWithJavac', tasks) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--no-native', '--force-javac'])
