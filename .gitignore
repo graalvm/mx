@@ -7,3 +7,13 @@
 ecj.jar
 /diagrams
 /docs
+/java/*/nbproject/
+/java/*/build.xml
+/java/*/.settings
+/java/*/.classpath
+/java/*/.project
+/java/*/bin/
+/java/*/.checkstyle
+/java/*/*.iml
+/java/*/.factorypath
+/java/*.dist/
