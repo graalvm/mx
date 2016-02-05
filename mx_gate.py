@@ -256,13 +256,14 @@ def gate(args):
                     mx.command_function('ideclean')([])
                     mx.command_function('ideinit')([])
 
-        eclipse_exe = mx.get_env('ECLIPSE_EXE')
-        if eclipse_exe is not None:
-            with Task('CodeFormatCheck', tasks) as t:
-                if t and mx.command_function('eclipseformat')(['-e', eclipse_exe]) != 0:
-                    t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-        else:
-            _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
+        with Task('CodeFormatCheck', tasks) as t:
+            if t:
+                eclipse_exe = mx.get_env('ECLIPSE_EXE')
+                if eclipse_exe is not None:
+                    if mx.command_function('eclipseformat')(['-e', eclipse_exe]) != 0:
+                        t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
+                else:
+                    _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
         with Task('Checkstyle', tasks) as t:
             if t and mx.command_function('checkstyle')(['--primary']) != 0:
