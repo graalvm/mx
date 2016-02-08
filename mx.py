@@ -5990,14 +5990,16 @@ def projects_from_names(projectNames):
     else:
         return [project(name) for name in projectNames]
 
-def projects(opt_limit_to_suite=False):
+def projects(opt_limit_to_suite=False, limit_to_primary=False):
     """
-    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True
+    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True or by the primary suite if limit_to_primary == True
     """
 
     sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
     if opt_limit_to_suite:
         return _dependencies_opt_limit_to_suites(sortedProjects)
+    elif limit_to_primary:
+        return _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
     else:
         return sortedProjects
 
@@ -6005,18 +6007,27 @@ def projects_opt_limit_to_suites():
     """
     Get the list of all loaded projects optionally limited by --suite option
     """
-    return projects(True)
+    return projects(True, False)
+
+def projects_primary_suite():
+    """
+    Get the list of all projects loaded by the primary suite
+    """
+    return projects(False, True)
+
+def _dependencies_limited_to_suites(deps, suites):
+    result = []
+    for d in deps:
+        s = d.suite
+        if s.name in suites:
+            result.append(d)
+    return result
 
 def _dependencies_opt_limit_to_suites(deps):
     if not _opts.specific_suites:
         return deps
     else:
-        result = []
-        for d in deps:
-            s = d.suite
-            if s.name in _opts.specific_suites:
-                result.append(d)
-        return result
+        return _dependencies_limited_to_suites(deps, _opts.specific_suites)
 
 def annotation_processors():
     """
@@ -8048,6 +8059,7 @@ def eclipseformat(args):
     parser.add_argument('-e', '--eclipse-exe', help='location of the Eclipse executable')
     parser.add_argument('-C', '--no-backup', action='store_false', dest='backup', help='do not save backup of modified files')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
+    parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -8070,8 +8082,10 @@ def eclipseformat(args):
     # build list of projects to be processed
     if args.projects is not None:
         projectsToProcess = [project(name) for name in args.projects.split(',')]
+    elif args.primary:
+        projectsToProcess = projects_primary_suite()
     else:
-        projectsToProcess = projects(True)
+        projectsToProcess = projects_opt_limit_to_suites()
 
     class Batch:
         def __init__(self, settingsDir):
