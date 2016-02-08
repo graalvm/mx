@@ -52,7 +52,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
             mx.abort('VM option ' + t + ' must precede ' + tests[0])
 
     candidates = {}
-    for p in mx.projects_opt_limit_to_suites():
+    for p in mx.projects(opt_limit_to_suite=True):
         if not p.isJavaProject():
             continue
         if suite and not p.suite == suite:
@@ -66,7 +66,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     if len(tests) == 0:
         classes = candidates.keys()
         jdk = mx.get_jdk()
-        projectsCp = mx.classpath([pcp.name for pcp in mx.projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
+        projectsCp = mx.classpath([pcp.name for pcp in mx.projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
     else:
         projs = set()
         found = False
