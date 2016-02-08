@@ -5992,28 +5992,21 @@ def projects_from_names(projectNames):
 
 def projects(opt_limit_to_suite=False, limit_to_primary=False):
     """
-    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True or by the primary suite if limit_to_primary == True
+    Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by primary suite if limit_to_primary == True
     """
 
     sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
     if opt_limit_to_suite:
-        return _dependencies_opt_limit_to_suites(sortedProjects)
-    elif limit_to_primary:
-        return _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
-    else:
-        return sortedProjects
+        sortedProjects = _dependencies_opt_limit_to_suites(sortedProjects)
+    if limit_to_primary:
+        sortedProjects = _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
+    return sortedProjects
 
 def projects_opt_limit_to_suites():
     """
     Get the list of all loaded projects optionally limited by --suite option
     """
-    return projects(True, False)
-
-def projects_primary_suite():
-    """
-    Get the list of all projects loaded by the primary suite
-    """
-    return projects(False, True)
+    return projects(opt_limit_to_suite=True)
 
 def _dependencies_limited_to_suites(deps, suites):
     result = []
@@ -8083,9 +8076,9 @@ def eclipseformat(args):
     if args.projects is not None:
         projectsToProcess = [project(name) for name in args.projects.split(',')]
     elif args.primary:
-        projectsToProcess = projects_primary_suite()
+        projectsToProcess = projects(limit_to_primary=True)
     else:
-        projectsToProcess = projects_opt_limit_to_suites()
+        projectsToProcess = projects(opt_limit_to_suite=True)
 
     class Batch:
         def __init__(self, settingsDir):
@@ -8573,7 +8566,7 @@ def checkstyle(args):
     args = parser.parse_args(args)
 
     totalErrors = 0
-    for p in projects_opt_limit_to_suites():
+    for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject():
             continue
         if args.primary and not p.suite.primary:
@@ -10377,7 +10370,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         candidates = [project(name) for name in args.projects.split(',')]
     else:
         partialJavadoc = False
-        candidates = projects_opt_limit_to_suites()
+        candidates = projects(opt_limit_to_suite=True)
 
     # optionally restrict packages within a project
     packages = []
@@ -11694,7 +11687,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
 
     candidates = []
     jdk = get_jdk()
-    for p in projects_opt_limit_to_suites():
+    for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject() or jdk.javaCompliance < p.javaCompliance:
             continue
         candidates += _find_classes_with_annotations(p, None, ['@Test']).keys()
@@ -11713,7 +11706,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t + '"')
 
-    projectscp = classpath([pcp.name for pcp in projects_opt_limit_to_suites() if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
