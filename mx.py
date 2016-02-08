@@ -10370,7 +10370,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         candidates = [project(name) for name in args.projects.split(',')]
     else:
         partialJavadoc = False
-        candidates = projects(opt_limit_to_suite=True)
+        candidates = projects_opt_limit_to_suites()
 
     # optionally restrict packages within a project
     packages = []
