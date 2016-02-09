@@ -4204,12 +4204,14 @@ def deploy_binary(args):
                             Path to settings.mxl file used for Maven
       -n, --dry-run         Dry run that only prints the action a normal run would
                             perform without actually deploying anything
+      --platform-dependent  Limit deployment to platform dependent distributions only
       --only ONLY           Limit deployment to these distributions
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
+    parser.add_argument('--platform-dependent', action='store_true', help='Limit deployment to platform dependent distributions only')
     parser.add_argument('repository', action='store', help='Repository name used for Maven deploy (must be defined in a suite.py file)')
     args = parser.parse_args(args)
 
@@ -4229,6 +4231,8 @@ def deploy_binary(args):
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only]
+    if args.platform_dependent:
+        dists = [d for d in dists if d.platformDependent]
 
     mxMetaName = _mx_binary_distribution_root(s.name)
     s.create_mx_binary_distribution_jar()
@@ -4243,7 +4247,8 @@ def deploy_binary(args):
 
     version = _versionGetter(s)
     log('Deploying {0} distributions for version {1}'.format(s.name, version))
-    _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(s), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
+    if not args.platform_dependent:
+        _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(s), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
