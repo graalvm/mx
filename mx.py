@@ -3763,7 +3763,7 @@ class BinaryVC(VC):
         if not distribution.needsUpdate(TimeStampFile(join(vcdir, _mx_binary_distribution_version(suiteName)), followSymlinks=False)):
             return
         metadata = self._readMetadata(vcdir)
-        artifactId = _map_to_maven_dist_name(distribution.name)
+        artifactId = distribution.maven_artifact_id()
         path = distribution.path[:-len(distribution.localExtension())] + distribution.remoteExtension()
         if distribution.isJARDistribution():
             sourcesPath = distribution.sourcesPath
@@ -5647,9 +5647,6 @@ class BinarySuite(Suite):
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
-        for dist in self.dists:
-            self.vc.getDistribution(self.dir, dist)
-
     def _load_env(self):
         pass
 
@@ -5657,6 +5654,11 @@ class BinarySuite(Suite):
         # This gets done explicitly in _load_binary_suite as we need the info there
         # so, in that mode, we don't want to call the superclass method again
         pass
+
+    def _load_distribution(self, name, attrs):
+        ret = Suite._load_distribution(self, name, attrs)
+        self.vc.getDistribution(self.dir, ret)
+        return ret
 
     def _register_metadata(self):
         # since we are working with the original suite.py file, we remove some
