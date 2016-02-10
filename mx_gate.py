@@ -45,10 +45,14 @@ class Task:
     startAtFilter = None
     filtersExclude = False
 
-    def __init__(self, title, tasks=None, disableJacoco=False):
+    tags = None
+    tagsExclude = False
+
+    def __init__(self, title, tasks=None, disableJacoco=False, tags=None):
         self.tasks = tasks
         self.title = title
         self.skipped = False
+        self.tags = tags
         if tasks is not None:
             for t in tasks:
                 if t.title == title:
@@ -66,6 +70,12 @@ class Task:
                     self.skipped = any([f in title for f in Task.filters])
                 else:
                     self.skipped = not any([f in title for f in Task.filters])
+            if Task.tags is not None:
+                if Task.tagsExclude:
+                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
+                else:
+                    _tags = self.tags if self.tags else []
+                    self.skipped = not any([t in Task.tags for t in _tags])
         if not self.skipped:
             self.start = time.time()
             self.end = None
@@ -180,12 +190,13 @@ def gate(args):
     add_omit_clean_args(parser)
     parser.add_argument('--all-suites', action='store_true', help='run gate tasks for all suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
-    parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
+    parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
+    filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run')
     for a, k in _extra_gate_arguments:
         parser.add_argument(*a, **k)
 
@@ -200,8 +211,11 @@ def gate(args):
     elif args.task_filter:
         Task.filters = args.task_filter.split(',')
         Task.filtersExclude = args.x
+    elif args.tags:
+        Task.tags = args.tags.split(',')
+        Task.tagsExclude = args.x
     elif args.x:
-        mx.abort('-x option cannot be used without --task-filter option')
+        mx.abort('-x option cannot be used without --task-filter or the --tags option')
 
     tasks = []
     total = Task('Gate')
