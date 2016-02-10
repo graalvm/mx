@@ -3822,6 +3822,10 @@ class BinaryVC(VC):
         assert metadata.snapshotVersion.endswith('-SNAPSHOT')
         return metadata.snapshotVersion[:-len('-SNAPSHOT')]
 
+    def isDirty(self, abortOnError=True):
+        # a binary repo can not be dirty
+        return False
+
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = urllib2.urlopen(url)
