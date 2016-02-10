@@ -32,6 +32,13 @@ import xml.dom.minidom
 import mx
 
 """
+Predefined Task tags.
+"""
+class Tags:
+    style = 'style'
+    build = 'build'
+
+"""
 Context manager for a single gate task that can prevent the
 task from executing or time and log its execution.
 """
@@ -153,8 +160,8 @@ def add_omit_clean_args(parser):
     parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
-def gate_clean(cleanArgs, tasks, name='Clean'):
-    with Task(name, tasks) as t:
+def gate_clean(cleanArgs, tasks, name='Clean', tags=None):
+    with Task(name, tasks, tags=tags) as t:
         if t:
             mx.command_function('clean')(cleanArgs)
 
@@ -235,42 +242,43 @@ def gate(args):
                         with open(release) as fp:
                             mx.log(fp.read().strip())
 
-        with Task('Pylint', tasks) as t:
+        with Task('Pylint', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.command_function('pylint')(['--primary']) != 0:
                     _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
-        gate_clean(cleanArgs, tasks)
+        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.style])
 
-        with Task('Distribution Overlap Check', tasks) as t:
+        with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.command_function('checkoverlap')([]) != 0:
                     t.abort('Found overlapping distributions.')
 
-        with Task('Canonicalization Check', tasks) as t:
+        with Task('Canonicalization Check', tasks, tags=[Tags.style]) as t:
             if t:
                 mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        with Task('BuildJavaWithEcj', tasks) as t:
+        with Task('BuildJavaWithEcj', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.get_env('JDT'):
                     mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild')
+                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.style])
                 else:
                     _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
-        with Task('BuildJavaWithJavac', tasks) as t:
+        # Tag.style: build needed by findbugs
+        with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.style]) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--no-native', '--force-javac'])
 
-        with Task('IDEConfigCheck', tasks) as t:
+        with Task('IDEConfigCheck', tasks, tags=[Tags.style]) as t:
             if t:
                 if args.cleanIDE:
                     mx.command_function('ideclean')([])
                     mx.command_function('ideinit')([])
 
-        with Task('CodeFormatCheck', tasks) as t:
+        with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
             if t:
                 eclipse_exe = mx.get_env('ECLIPSE_EXE')
                 if eclipse_exe is not None:
@@ -279,15 +287,15 @@ def gate(args):
                 else:
                     _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
-        with Task('Checkstyle', tasks) as t:
+        with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('checkstyle')(['--primary']) != 0:
                 t.abort('Checkstyle warnings were found')
 
-        with Task('Checkheaders', tasks) as t:
+        with Task('Checkheaders', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('checkheaders')([]) != 0:
                 t.abort('Checkheaders warnings were found')
 
-        with Task('FindBugs', tasks) as t:
+        with Task('FindBugs', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
 
