@@ -9994,6 +9994,8 @@ def intellijinit(args, refreshOnly=False):
         _intellij_suite(args, suite, refreshOnly)
 
 def _intellij_suite(args, suite, refreshOnly=False):
+    if isinstance(suite, BinarySuite):
+        return
 
     libraries = set()
 
