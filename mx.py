@@ -5934,6 +5934,8 @@ def _separatedCygpathW2U(p):
 
 def get_arch():
     machine = platform.uname()[4]
+    if machine in ['aarch64']:
+        return 'aarch64'
     if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
         return 'amd64'
     if machine in ['sun4v', 'sun4u', 'sparc64']:
