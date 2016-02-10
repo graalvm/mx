@@ -3673,7 +3673,7 @@ class GitConfig(VC):
             out = subprocess.check_output(['git', 'show', '--format=oneline', '-s', rev], cwd=vcdir)
             return out.strip().startswith(rev)
         except subprocess.CalledProcessError:
-            abort('exists failed')
+            return False
 
 
 
