@@ -20,7 +20,7 @@ For an example of `mx` usage, you can read the [Instructions][1] for the Graal p
 
 ### mx versioning ###
 
-`mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if you
+`mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if the
 version is sufficient for a given `mx` suite, first compare the major version
 number of your `mx` version against the major number of the required version
 specified in the suite.  If these versions are not equal, you cannot expect
@@ -29,7 +29,7 @@ equal to the specified minor version number.  Compatibility is ensured
 regardless of the patch level.  However, if your patch level is lower than the
 required patch level you might trigger bugs in `mx`.
 
-From a developer point of view this versioning scheme enforces the following
+From a `mx` developer point of view this versioning scheme enforces the following
 update policy:
 - If you make a change that prevents the new version of `mx` from loading
 older files, increase the major number and reset both the minor and the patch
