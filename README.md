@@ -29,7 +29,7 @@ equal to the specified minor version number.  Compatibility is ensured
 regardless of the patch level.  However, if your patch level is lower than the
 required patch level you might trigger bugs in `mx`.
 
-From a `mx` developer point of view this versioning scheme enforces the following
+From an `mx` developer point of view this versioning scheme enforces the following
 update policy:
 - If you make a change that prevents the new version of `mx` from loading
 older files, increase the major number and reset both the minor and the patch
