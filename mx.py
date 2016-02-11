@@ -6548,6 +6548,7 @@ class ArgParser(ArgumentParser):
             opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
 
             mx_gate._jacoco = opts.jacoco
+            mx_gate.Task.verbose = opts.verbose
         else:
             parser = ArgParser(parents=[self])
             parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')

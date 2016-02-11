@@ -55,6 +55,8 @@ class Task:
     tags = None
     tagsExclude = False
 
+    verbose = False
+
     def __init__(self, title, tasks=None, disableJacoco=False, tags=None):
         self.tasks = tasks
         self.title = title
@@ -328,7 +330,7 @@ def gate(args):
 
     mx.log('Gate task times:')
     for t in tasks:
-        mx.log('  ' + str(t.duration) + '\t' + t.title)
+        mx.log('  ' + str(t.duration) + '\t' + t.title + ("" if not (Task.verbose and t.tags) else (' [' + ','.join(t.tags) + ']')))
     mx.log('  =======')
     mx.log('  ' + str(total.duration))
 
