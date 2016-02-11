@@ -18,4 +18,26 @@ If no options or command is specified, `mx` prints information on the available 
 
 For an example of `mx` usage, you can read the [Instructions][1] for the Graal project. 
 
+### mx versioning ###
+
+`mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if you
+version is sufficient for a given `mx` suite, first compare the major version
+number of your `mx` version against the major number of the required version
+specified in the suite.  If these versions are not equal, you cannot expect
+`mx` to be compatible with this suite.  The minor number has to be greater or
+equal to the specified minor version number.  Compatibility is ensured
+regardless of the patch level.  However, if your patch level is lower than the
+required patch level you might trigger bugs in `mx`.
+
+From a developer point of view this versioning scheme enforces the following
+update policy:
+- If you make a change that prevents the new version of `mx` from loading
+older files, increase the major number and reset both the minor and the patch
+level to 0.
+- If you add new functionality without breaking backward compatibility, leave
+the major as it is, increase the minor number and reset the patch level.
+- If you only fixed a bug without changing the public API (i.e., all files for
+the current version can still be loaded with the new version and vice versa),
+leave the major and minor versions as they are but increase the patch level.
+
 [1]: https://wiki.openjdk.java.net/display/Graal/Instructions
