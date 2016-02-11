@@ -35,6 +35,7 @@ import mx
 Predefined Task tags.
 """
 class Tags:
+    always = 'always'
     style = 'style'
     build = 'build'
 
@@ -223,18 +224,21 @@ def gate(args):
     elif args.tags:
         Task.tags = args.tags.split(',')
         Task.tagsExclude = args.x
+        if not Task.tagsExclude:
+            # implicitly include 'always'
+            Task.tags += [Tags.always]
     elif args.x:
         mx.abort('-x option cannot be used without --task-filter or the --tags option')
 
     tasks = []
     total = Task('Gate')
     try:
-        with Task('Versions', tasks) as t:
+        with Task('Versions', tasks, tags=[Tags.always]) as t:
             if t:
                 mx.command_function('version')(['--oneline'])
                 mx.command_function('sversions')([])
 
-        with Task('JDKReleaseInfo', tasks) as t:
+        with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
             if t:
                 jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
                 for jdkDir in jdkDirs.split(os.pathsep):
