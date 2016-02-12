@@ -6548,6 +6548,7 @@ class ArgParser(ArgumentParser):
             opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
 
             mx_gate._jacoco = opts.jacoco
+            mx_gate.Task.verbose = opts.verbose
         else:
             parser = ArgParser(parents=[self])
             parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
@@ -12326,7 +12327,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.6.16")
+version = VersionSpec("5.7.0")
 
 currentUmask = None
 

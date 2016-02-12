@@ -32,6 +32,14 @@ import xml.dom.minidom
 import mx
 
 """
+Predefined Task tags.
+"""
+class Tags:
+    always = 'always'
+    style = 'style'
+    build = 'build'
+
+"""
 Context manager for a single gate task that can prevent the
 task from executing or time and log its execution.
 """
@@ -45,10 +53,16 @@ class Task:
     startAtFilter = None
     filtersExclude = False
 
-    def __init__(self, title, tasks=None, disableJacoco=False):
+    tags = None
+    tagsExclude = False
+
+    verbose = False
+
+    def __init__(self, title, tasks=None, disableJacoco=False, tags=None):
         self.tasks = tasks
         self.title = title
         self.skipped = False
+        self.tags = tags
         if tasks is not None:
             for t in tasks:
                 if t.title == title:
@@ -66,6 +80,12 @@ class Task:
                     self.skipped = any([f in title for f in Task.filters])
                 else:
                     self.skipped = not any([f in title for f in Task.filters])
+            if Task.tags is not None:
+                if Task.tagsExclude:
+                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
+                else:
+                    _tags = self.tags if self.tags else []
+                    self.skipped = not any([t in Task.tags for t in _tags])
         if not self.skipped:
             self.start = time.time()
             self.end = None
@@ -143,8 +163,8 @@ def add_omit_clean_args(parser):
     parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
-def gate_clean(cleanArgs, tasks, name='Clean'):
-    with Task(name, tasks) as t:
+def gate_clean(cleanArgs, tasks, name='Clean', tags=None):
+    with Task(name, tasks, tags=tags) as t:
         if t:
             mx.command_function('clean')(cleanArgs)
 
@@ -180,12 +200,13 @@ def gate(args):
     add_omit_clean_args(parser)
     parser.add_argument('--all-suites', action='store_true', help='run gate tasks for all suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
-    parser.add_argument('-x', action='store_true', help='makes --task-filter an exclusion instead of inclusion filter')
+    parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
+    filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run')
     for a, k in _extra_gate_arguments:
         parser.add_argument(*a, **k)
 
@@ -200,18 +221,24 @@ def gate(args):
     elif args.task_filter:
         Task.filters = args.task_filter.split(',')
         Task.filtersExclude = args.x
+    elif args.tags:
+        Task.tags = args.tags.split(',')
+        Task.tagsExclude = args.x
+        if not Task.tagsExclude:
+            # implicitly include 'always'
+            Task.tags += [Tags.always]
     elif args.x:
-        mx.abort('-x option cannot be used without --task-filter option')
+        mx.abort('-x option cannot be used without --task-filter or the --tags option')
 
     tasks = []
     total = Task('Gate')
     try:
-        with Task('Versions', tasks) as t:
+        with Task('Versions', tasks, tags=[Tags.always]) as t:
             if t:
                 mx.command_function('version')(['--oneline'])
                 mx.command_function('sversions')([])
 
-        with Task('JDKReleaseInfo', tasks) as t:
+        with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
             if t:
                 jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
                 for jdkDir in jdkDirs.split(os.pathsep):
@@ -221,42 +248,43 @@ def gate(args):
                         with open(release) as fp:
                             mx.log(fp.read().strip())
 
-        with Task('Pylint', tasks) as t:
+        with Task('Pylint', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.command_function('pylint')(['--primary']) != 0:
                     _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
-        gate_clean(cleanArgs, tasks)
+        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.style])
 
-        with Task('Distribution Overlap Check', tasks) as t:
+        with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.command_function('checkoverlap')([]) != 0:
                     t.abort('Found overlapping distributions.')
 
-        with Task('Canonicalization Check', tasks) as t:
+        with Task('Canonicalization Check', tasks, tags=[Tags.style]) as t:
             if t:
                 mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        with Task('BuildJavaWithEcj', tasks) as t:
+        with Task('BuildJavaWithEcj', tasks, tags=[Tags.style]) as t:
             if t:
                 if mx.get_env('JDT'):
                     mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild')
+                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.style])
                 else:
                     _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
-        with Task('BuildJavaWithJavac', tasks) as t:
+        # Tag.style: build needed by findbugs
+        with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.style]) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--no-native', '--force-javac'])
 
-        with Task('IDEConfigCheck', tasks) as t:
+        with Task('IDEConfigCheck', tasks, tags=[Tags.style]) as t:
             if t:
                 if args.cleanIDE:
                     mx.command_function('ideclean')([])
                     mx.command_function('ideinit')([])
 
-        with Task('CodeFormatCheck', tasks) as t:
+        with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
             if t:
                 eclipse_exe = mx.get_env('ECLIPSE_EXE')
                 if eclipse_exe is not None:
@@ -265,15 +293,15 @@ def gate(args):
                 else:
                     _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
 
-        with Task('Checkstyle', tasks) as t:
+        with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('checkstyle')(['--primary']) != 0:
                 t.abort('Checkstyle warnings were found')
 
-        with Task('Checkheaders', tasks) as t:
+        with Task('Checkheaders', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('checkheaders')([]) != 0:
                 t.abort('Checkheaders warnings were found')
 
-        with Task('FindBugs', tasks) as t:
+        with Task('FindBugs', tasks, tags=[Tags.style]) as t:
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
 
@@ -306,7 +334,7 @@ def gate(args):
 
     mx.log('Gate task times:')
     for t in tasks:
-        mx.log('  ' + str(t.duration) + '\t' + t.title)
+        mx.log('  ' + str(t.duration) + '\t' + t.title + ("" if not (Task.verbose and t.tags) else (' [' + ','.join(t.tags) + ']')))
     mx.log('  =======')
     mx.log('  ' + str(total.duration))
 
