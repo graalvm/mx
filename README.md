@@ -40,4 +40,46 @@ the major as it is, increase the minor number and reset the patch level.
 the current version can still be loaded with the new version and vice versa),
 leave the major and minor versions as they are but increase the patch level.
 
+The version update strategy is designed to help users to detect if their `mx`
+version is compatible with a suite.  Thus, changes to the code that do not
+affect users do not require a change in the version number.  See the following
+examples.  In these examples, by *user* we mean command line clients or `mx`
+extensions (for example `mx_graal-core.py`).
+
+- "I found a for-loop in the code that could be expressed using a map
+function. I changed it accordingly."  This change has no influence on users.
+Thus, no version change is required!
+
+- "I added a new `mx` command."  Since this function was not available to
+users before, old scripts will continue to work with the new version.  New
+scripts, however, might not work with old versions.  This is a minor update
+and requires a new minor number and a reset of the patch level.
+
+- "I fixed a bug that caused a wrong result of a publicly available function."
+This is a bugfix that is user visible.  The patch level should be increased
+since users of old versions can expect at least the bug that was just fixed.
+
+- "I fixed some documentation."  This fix has no impact on the usage of `mx`
+and should thus not change the version of `mx`.
+
+- "I fixed a function.  The result now differs from the results before.  A
+user cannot call this function."  Since this function is invisible to the
+user, no version update is required.
+
+- "I fixed a function.  The result now differs from the results before.  A
+user could call this function."  Since the semantics of the function changed
+and the function is part of the API, old scripts might not work properly
+anymore.  Since this change is not backward compatible, this is a major update.
+
+- "I added some internal functions."  Since the functions are internal, they
+have no impact on users.  No version changed is required.
+
+- "I added some new commands."  Since the commands did not change the old
+commands, old scripts will continue to work as expected.  New scripts that
+depend on the new commands will not work with older versions of `mx`.  Thus,
+we need a new minor release.
+
+- "I removed some commands from `mx`.  There are alternative commands now."
+This change essentially changed the API.  Thus, we require a new major release.
+
 [1]: https://wiki.openjdk.java.net/display/Graal/Instructions
