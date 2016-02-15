@@ -3593,7 +3593,6 @@ class GitConfig(VC):
             patterns = []
         elif not isinstance(patterns, list):
             patterns = [patterns]
-        patterns = ['"{0}"'.format(pattern) for pattern in patterns]
         out = LinesOutputCapture()
         rc = self.run(['git', 'ls-files'] + patterns, cwd=vcdir, out=out, nonZeroIsFatal=False)
         if rc == 0:
@@ -12331,7 +12330,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.7.0")
+version = VersionSpec("5.7.1")
 
 currentUmask = None
 
