@@ -104,7 +104,7 @@ def cpu_count():
         cpus = runtime.availableProcessors()
     else:
         cpus = multiprocessing.cpu_count()
-    if hasattr(_opts, 'cpu_count'):
+    if _opts.cpu_count:
         return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
     else:
         return cpus
@@ -6467,7 +6467,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
-        self.add_argument('-j', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>')
+        self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -7545,7 +7545,7 @@ class JDKConfig:
         Gets the lint warnings supported by this JDK.
         '''
         if self._knownJavacLints is None:
-            out = subprocess.check_output([self.javac, '-X', '-Xms8M'], stderr=subprocess.STDOUT)
+            out = subprocess.check_output([self.javac, '-X', '-J-Xms8M', '-J-Xint'], stderr=subprocess.STDOUT)
             if self.javaCompliance < JavaCompliance('1.9'):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
