@@ -101,9 +101,13 @@ def cpu_count():
     if is_jython():
         from java.lang import Runtime
         runtime = Runtime.getRuntime()
-        return runtime.availableProcessors()
+        cpus = runtime.availableProcessors()
     else:
-        return multiprocessing.cpu_count()
+        cpus = multiprocessing.cpu_count()
+    if _opts.cpu_count:
+        return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
+    else:
+        return cpus
 
 try: subprocess.check_output
 except: subprocess.check_output = check_output
@@ -6463,6 +6467,7 @@ class ArgParser(ArgumentParser):
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
+        self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -6478,7 +6483,6 @@ class ArgParser(ArgumentParser):
             # appended to the unknown options to be reparsed in the second parse
             parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
             parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
-
 
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
@@ -7541,7 +7545,7 @@ class JDKConfig:
         Gets the lint warnings supported by this JDK.
         '''
         if self._knownJavacLints is None:
-            out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
+            out = subprocess.check_output([self.javac, '-X', '-J-Xms8M', '-J-Xint'], stderr=subprocess.STDOUT)
             if self.javaCompliance < JavaCompliance('1.9'):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
