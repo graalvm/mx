@@ -4777,7 +4777,16 @@ class Suite:
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
 
-        unknown = frozenset(d.keys()) - frozenset(supported)
+        unknown = set(d.keys()) - frozenset(supported)
+
+        suiteExtensionAttributePrefix = self.name + ':'
+        suiteSpecific = {n[len(suiteExtensionAttributePrefix):] : d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
+        for n, v in suiteSpecific.iteritems():
+            if hasattr(self, n):
+                abort('Cannot override built-in suite attribute "' + n + '"', context=self)
+            setattr(self, n, v)
+            unknown.remove(suiteExtensionAttributePrefix + n)
+
         if unknown:
             abort(modulePath + ' defines unsupported suite attribute: ' + ', '.join(unknown))
 
@@ -12339,7 +12348,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.7.1")
+version = VersionSpec("5.8.0")
 
 currentUmask = None
 
