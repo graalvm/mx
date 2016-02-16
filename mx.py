@@ -2222,6 +2222,9 @@ class BaseLibrary(Dependency):
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
+    """
+    Return string where references to instance variables from given text string are replaced.
+    """
     def substVars(self, text):
         return text.format(**vars(self))
 
