@@ -2222,6 +2222,9 @@ class BaseLibrary(Dependency):
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
+    def substVars(self, text):
+        return text.format(**vars(self))
+
 """
 A library that is just a resource and therefore not a ClasspathDependency
 """
@@ -2239,7 +2242,8 @@ class ResourceLibrary(BaseLibrary):
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        return download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
+        urls = [self.substVars(url) for url in self.urls]
+        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
 
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
@@ -2410,7 +2414,8 @@ class Library(BaseLibrary, ClasspathDependency):
 
         bootClassPathAgent = getattr(self, 'bootClassPathAgent').lower() == 'true' if hasattr(self, 'bootClassPathAgent') else False
 
-        return download_file_with_sha1(self.name, path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+        urls = [self.substVars(url) for url in self.urls]
+        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
 
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
@@ -2423,7 +2428,8 @@ class Library(BaseLibrary, ClasspathDependency):
         path = _make_absolute(self.sourcePath, self.suite.dir)
         sha1path = path + '.sha1'
 
-        return download_file_with_sha1(self.name, path, self.sourceUrls, self.sourceSha1, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
+        sourceUrls = [self.substVars(url) for url in self.sourceUrls]
+        return download_file_with_sha1(self.name, path, sourceUrls, self.sourceSha1, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
 
     def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
