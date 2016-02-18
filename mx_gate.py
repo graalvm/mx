@@ -35,9 +35,10 @@ import mx
 Predefined Task tags.
 """
 class Tags:
-    always = 'always'
-    style = 'style'
-    build = 'build'
+    always = 'always'       # special tag that is always implicitly selected
+    style = 'style'         # code style checks (without build)
+    build = 'build'         # build
+    fullbuild = 'fullbuild' # full build (including warnings, findbugs and ide init)
 
 """
 Context manager for a single gate task that can prevent the
@@ -253,7 +254,7 @@ def gate(args):
                 if mx.command_function('pylint')(['--primary']) != 0:
                     _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
-        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.style])
+        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild])
 
         with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
             if t:
@@ -266,19 +267,18 @@ def gate(args):
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        with Task('BuildJavaWithEcj', tasks, tags=[Tags.style]) as t:
+        with Task('BuildJavaWithEcj', tasks, tags=[Tags.fullbuild]) as t:
             if t:
                 if mx.get_env('JDT'):
                     mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.style])
+                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                 else:
                     _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
-        # Tag.style: build needed by findbugs
-        with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.style]) as t:
+        with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--no-native', '--force-javac'])
 
-        with Task('IDEConfigCheck', tasks, tags=[Tags.style]) as t:
+        with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
             if t:
                 if args.cleanIDE:
                     mx.command_function('ideclean')([])
@@ -301,7 +301,7 @@ def gate(args):
             if t and mx.command_function('checkheaders')([]) != 0:
                 t.abort('Checkheaders warnings were found')
 
-        with Task('FindBugs', tasks, tags=[Tags.style]) as t:
+        with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
 
