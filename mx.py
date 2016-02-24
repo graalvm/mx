@@ -3974,7 +3974,7 @@ class MavenRepo:
         except urllib2.URLError as e:
             if isinstance(e, urllib2.HTTPError) and e.code == 404:
                 return None
-            abort('Error while retreiving snappshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
+            abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
         try:
             tree = etreeParse(metadataFile)
             root = tree.getroot()
