@@ -8601,6 +8601,15 @@ def checkstyle(args):
     args = parser.parse_args(args)
 
     totalErrors = 0
+
+    class Batch:
+        def __init__(self, config, suite):
+            self.suite = suite
+            self.timestamp = TimeStampFile(join(suite.get_mx_output_dir(), 'checkstyle-timestamps', os.path.abspath(config)[1:] + '.timestamp'))
+            self.sources = []
+            self.projects = []
+
+    batches = {}
     for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject():
             continue
@@ -8618,6 +8627,9 @@ def checkstyle(args):
         jdk = get_jdk(p.javaCompliance)
         assert jdk
 
+        batch = batches.setdefault(config, Batch(config, p.suite))
+        batch.projects.append(p)
+
         for sourceDir in sourceDirs:
             javafilelist = []
             for root, _, files in os.walk(sourceDir):
@@ -8626,10 +8638,9 @@ def checkstyle(args):
                 logv('[no Java sources in {0} - skipping]'.format(sourceDir))
                 continue
 
-            timestamp = TimeStampFile(join(p.suite.get_mx_output_dir(), 'checkstyle-timestamps', sourceDir[len(p.suite.dir) + 1:].replace(os.sep, '_') + '.timestamp'))
             mustCheck = False
-            if not args.force and timestamp.exists():
-                mustCheck = timestamp.isOlderThan(javafilelist)
+            if not args.force and batch.timestamp.exists():
+                mustCheck = batch.timestamp.isOlderThan(javafilelist)
             else:
                 mustCheck = True
 
@@ -8653,34 +8664,39 @@ def checkstyle(args):
 
                 javafilelist = [name for name in javafilelist if not match(name)]
 
-            auditfileName = join(p.dir, 'checkstyleOutput.txt')
-            log('Running Checkstyle on {0} using {1}...'.format(sourceDir, config))
-            try:
-                for chunk in _chunk_files_for_command_line(javafilelist):
-                    try:
-                        run_java(['-Xmx1g', '-jar', checkstyleLibrary, '-f', 'xml', '-c', config, '-o', auditfileName] + chunk, nonZeroIsFatal=False)
-                    finally:
-                        if exists(auditfileName):
-                            errors = []
-                            source = [None]
-                            def start_element(name, attrs):
-                                if name == 'file':
-                                    source[0] = attrs['name']
-                                elif name == 'error':
-                                    errors.append('{0}:{1}: {2}'.format(source[0], attrs['line'], attrs['message']))
+            batch.sources.extend(javafilelist)
 
-                            xp = xml.parsers.expat.ParserCreate()
-                            xp.StartElementHandler = start_element
-                            with open(auditfileName) as fp:
-                                xp.ParseFile(fp)
-                            if len(errors) != 0:
-                                map(log, errors)
-                                totalErrors = totalErrors + len(errors)
-                            else:
-                                timestamp.touch()
-            finally:
-                if exists(auditfileName):
-                    os.unlink(auditfileName)
+    for config, batch in batches.iteritems():
+        if len(batch.sources) == 0:
+            continue
+        auditfileName = join(batch.suite.dir, 'checkstyleOutput.txt')
+        log('Running Checkstyle on {0} using {1}...'.format(', '.join([p.name for p in batch.projects]), config))
+        try:
+            for chunk in _chunk_files_for_command_line(batch.sources):
+                try:
+                    run_java(['-Xmx1g', '-jar', checkstyleLibrary, '-f', 'xml', '-c', config, '-o', auditfileName] + chunk, nonZeroIsFatal=False)
+                finally:
+                    if exists(auditfileName):
+                        errors = []
+                        source = [None]
+                        def start_element(name, attrs):
+                            if name == 'file':
+                                source[0] = attrs['name']
+                            elif name == 'error':
+                                errors.append('{0}:{1}: {2}'.format(source[0], attrs['line'], attrs['message']))
+
+                        xp = xml.parsers.expat.ParserCreate()
+                        xp.StartElementHandler = start_element
+                        with open(auditfileName) as fp:
+                            xp.ParseFile(fp)
+                        if len(errors) != 0:
+                            map(log, errors)
+                            totalErrors = totalErrors + len(errors)
+                        else:
+                            batch.timestamp.touch()
+        finally:
+            if exists(auditfileName):
+                os.unlink(auditfileName)
     return totalErrors
 
 def rmtree(dirPath):
