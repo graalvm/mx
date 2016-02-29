@@ -7061,7 +7061,8 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, referenc
     def run_with_heap(heap, args, timeout=timeout, suppressStderr=True, nonZeroIsFatal=False):
         log('Trying with ' + str(heap) + 'MB of heap...')
         with open(os.devnull, 'w') as fnull:
-            exitCode = run_java(['-Xmx' + str(heap) + 'M'] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+            vmArgs, pArgs = extract_VM_args(args=args, useDoubleDash=False, allowClasspath=True, defaultAllVMArgs=True)
+            exitCode = run_java(vmArgs + ['-Xmx' + str(heap) + 'M'] + pArgs, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
             if exitCode:
                 log('failed')
             else:
