@@ -7062,7 +7062,7 @@ def _kill_process_group(pid, sig):
         log('Error killing subprocess ' + str(pgid) + ': ' + str(sys.exc_info()[1]))
         return False
 
-def _waitWithTimeout(process, args, timeout):
+def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
         while True:
             try:
@@ -7089,7 +7089,14 @@ def _waitWithTimeout(process, args, timeout):
             return _returncode(status)
         remaining = end - time.time()
         if remaining <= 0:
-            abort('Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args)))
+            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args))
+            if nonZeroIsFatal:
+                abort(msg)
+            else:
+                log(msg)
+                for p, _ in _currentSubprocesses:
+                    _kill_process_group(p.pid, signal.SIGKILL)
+                return 1
         delay = min(delay * 2, remaining, .05)
         time.sleep(delay)
 
@@ -7218,7 +7225,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if get_os() == 'windows':
                 abort('Use of timeout not (yet) supported on Windows')
-            retcode = _waitWithTimeout(p, args, timeout)
+            retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
     except OSError as e:
         log('Error executing \'' + ' '.join(args) + '\': ' + str(e))
         if _opts.verbose:
