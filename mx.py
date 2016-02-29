@@ -7053,6 +7053,43 @@ def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=No
         jdk = get_jdk()
     return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
 
+def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, referenceHeap=4096, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+    """computes the minimum heap size required to run a Java program within a certain overhead factor"""
+
+    def run_with_heap(heap, args, timeout=timeout, suppressStderr=True, nonZeroIsFatal=False):
+        log('Trying with ' + str(heap) + 'MB of heap...')
+        with open(os.devnull, 'w') as fnull:
+            exitCode = run_java(['-Xmx' + str(heap) + 'M'] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+            if exitCode:
+                log('failed')
+            else:
+                log('succeeded')
+            return exitCode
+
+    if overheadFactor > 0:
+        t = time.time()
+        if run_with_heap(referenceHeap, args, timeout=timeout, suppressStderr=False):
+            return 1
+        referenceTime = time.time() - t
+        maxTime = referenceTime * overheadFactor
+        log('Reference time = ' + str(referenceTime))
+        log('Maximum time = ' + str(maxTime))
+    else:
+        maxTime = None
+
+    heap = 10
+    while run_with_heap(heap, args, timeout=maxTime):
+        heap += 10
+    heap -= 9
+    successful = 0
+    while successful < 3:
+        if run_with_heap(heap, args, timeout=maxTime):
+            heap += 1
+            successful = 0
+        else:
+            successful += 1
+    log(benchName + ' ' + str(heap))
+
 def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
     try:
@@ -12052,6 +12089,7 @@ _commands = {
     'sha1': [sha1, ''],
     'test': [test, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
+    'minheap' : [run_java_min_heap, ''],
 }
 _commandsToSuite = {}
 
