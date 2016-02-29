@@ -7131,8 +7131,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
                 abort(msg)
             else:
                 log(msg)
-                for p, _ in _currentSubprocesses:
-                    _kill_process_group(p.pid, signal.SIGKILL)
+                _kill_process_group(process.pid, signal.SIGKILL)
                 return 1
         delay = min(delay * 2, remaining, .05)
         time.sleep(delay)
