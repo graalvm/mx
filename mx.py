@@ -68,6 +68,8 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 
+ERROR_TIMEOUT = 0x700000000 # not 32 bits
+
 _mx_home = os.path.realpath(dirname(__file__))
 
 try:
@@ -7132,7 +7134,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
             else:
                 log(msg)
                 _kill_process_group(process.pid, signal.SIGKILL)
-                return 1
+                return ERROR_TIMEOUT
         delay = min(delay * 2, remaining, .05)
         time.sleep(delay)
 
@@ -7182,8 +7184,10 @@ def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=No
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
-    If the exit status is non-zero and `nonZeroIsFatal` is true, then mx is exited with
-    the same exit status.
+    If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
+    is false, otherwise it kills all subprocesses and raises a SystemExit exception.
+    If the exit status of the command is non-zero, mx is exited with the same exit status if
+    `nonZeroIsFatal` is true, otherwise the exit status is returned.
     Each line of the standard output and error streams of the subprocess are redirected to
     out and err if they are callable objects.
     """
