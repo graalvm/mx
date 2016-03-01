@@ -134,5 +134,11 @@ suite = {
       ],
       "javaCompliance" : "1.8",
     },
+
+    "com.oracle.mxtool.compilerserver" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "javaCompliance" : "1.7",
+    },
   },
 }
