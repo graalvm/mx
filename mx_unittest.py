@@ -54,7 +54,7 @@ def _find_classes_by_annotated_methods(annotations, suite):
                         isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
     if len(binarySuiteDists) != 0:
         # Ensure Java support class is built
-        mx.build(['--only', 'com.oracle.mxtool.junit'])
+        mx.build(['--dependencies', 'com.oracle.mxtool.junit'])
 
         # Create map from jar file to the binary suite distribution defining it
         jars = {d.classpath_repr() : d for d in binarySuiteDists}
