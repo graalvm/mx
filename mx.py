@@ -154,6 +154,7 @@ _vc_systems = []
 _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
+_urlrewrites = [] # list of URLRewrite objects
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
@@ -4573,7 +4574,8 @@ class SuiteImport:
             if kind != 'binary':
                 assert not mainKind or mainKind == kind, "Only expecting one non-binary kind"
                 mainKind = kind
-            urlinfos.append(SuiteImportURLInfo(urlinfo.get('url'), kind, vc))
+            url = URLRewrite._apply_rewrites(urlinfo.get('url'))
+            urlinfos.append(SuiteImportURLInfo(url, kind, vc))
         return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
 
     @staticmethod
@@ -4589,7 +4591,7 @@ class SuiteImport:
             else:
                 assert not source.startswith("http:")
                 vc = VC.get_vc(source)
-            return [SuiteImportURLInfo(source, 'source', vc)]
+            return [SuiteImportURLInfo(URLRewrite._apply_rewrites(source), 'source', vc)]
         elif isinstance(source, list):
             result = [s for s in source if s.kind != 'binary']
             return result
@@ -4608,6 +4610,29 @@ class SCMMetadata(object):
         self.read = read
         self.write = write
 
+"""
+Represents a regular expression based rewrite rule that
+can be applied to a URL.
+"""
+class URLRewrite(object):
+    def __init__(self, pattern, replacement):
+        self.pattern = pattern
+        self.replacement = replacement
+
+    def _apply(self, url):
+        match = self.pattern.match(url)
+        if match:
+            return self.pattern.sub(self.replacement, url)
+        else:
+            return None
+
+    @staticmethod
+    def _apply_rewrites(url):
+        for urlrewrite in _urlrewrites:
+            res = urlrewrite._apply(url)
+            if res:
+                return res
+        return url
 
 '''
 Command state and methods for all suite subclasses
@@ -4752,6 +4777,7 @@ class Suite:
             'defaultLicence',
             'repositories',
             'javac.lint.overrides',
+            'urlrewrites',
             'scm'
         ]
 
@@ -4778,6 +4804,24 @@ class Suite:
         javacLintOverrides = d.get('javac.lint.overrides', None)
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
+
+        if self.primary:
+            urlrewrites = d.get('urlrewrites')
+            if urlrewrites:
+                for urlrewrite in urlrewrites:
+                    if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
+                        abort('Each element in the "urlrewrites" array must be a dictionary with a single entry', context=self)
+                    for pattern, attrs in urlrewrite.iteritems():
+                        replacement = attrs.pop('replacement', None)
+                        if replacement is None:
+                            abort('URL rewrite for pattern "' + pattern + '" is missing replacement attribute', context=self)
+                        if len(attrs) != 0:
+                            abort('Unsupported attributes found for URL rewrite "' + pattern + '": ' + str(attrs), context=self)
+                        try:
+                            pattern = re.compile(pattern)
+                        except Exception as e: # pylint: disable=broad-except
+                            abort('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e), context=self)
+                        _urlrewrites.append(URLRewrite(pattern, replacement))
 
         unknown = set(d.keys()) - frozenset(supported)
 
@@ -12426,7 +12470,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.8.1")
+version = VersionSpec("5.9.0")
 
 currentUmask = None
 
