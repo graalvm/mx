@@ -10694,6 +10694,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
              '-docletpath', snippetslib,
              '-snippetpath', snippets,
+             '-verifysincepresent',
              '-sourcepath', sp] +
              ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
