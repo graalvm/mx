@@ -10522,9 +10522,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
     snippets = []
+    verifySincePresent = [];
     for p in projects_opt_limit_to_suites():
         if p.isJavaProject():
             snippets += p.source_dirs()
+            verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
@@ -10694,8 +10696,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
              '-docletpath', snippetslib,
              '-snippetpath', snippets,
-             '-verifysincepresent',
              '-sourcepath', sp] +
+             verifySincePresent +
              ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
@@ -12427,7 +12429,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.8.1")
+version = VersionSpec("5.9.0")
 
 currentUmask = None
 
