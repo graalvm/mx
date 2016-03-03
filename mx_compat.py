@@ -68,6 +68,9 @@ class MxCompatibility500(object):
     def checkstyleLibraryName(self):
         return 'CHECKSTYLE_6.0'
 
+    def verifySincePresent(self):
+        return []
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -138,6 +141,14 @@ class MxCompatibility5616(MxCompatibility566):#pylint: disable=too-many-ancestor
 
     def checkstyleLibraryName(self):
         return 'CHECKSTYLE_6.15'
+
+class MxCompatibility59(MxCompatibility5616):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.9.0")
+
+    def verifySincePresent(self):
+        return ['-verifysincepresent']
 
 def minVersion():
     _ensureCompatLoaded()
