@@ -4211,11 +4211,12 @@ def deploy_binary(args):
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY] repository
+    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY] repository-id [repository-url]
 
     positional arguments:
-      repository            Repository name used for Maven deploy (must be defined
-                            in a suite.py file)
+      repository-id         Repository ID used for binary deploy
+      repository-url        Repository URL used for binary deploy, if no url is
+                            given, the repository-id is looked up in suite.py
 
     optional arguments:
       -h, --help            show this help message and exit
@@ -4231,43 +4232,74 @@ def deploy_binary(args):
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--platform-dependent', action='store_true', help='Limit deployment to platform dependent distributions only')
-    parser.add_argument('repository', action='store', help='Repository name used for Maven deploy (must be defined in a suite.py file)')
+    parser.add_argument('--all-suites', action='store_true', help='Perform binary deploy also for dependent suites')
+    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for binary deploy')
+    parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for binary deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
 
-    s = _primary_suite
-    if not s.getMxCompatibility().supportsLicenses():
-        log("Not deploying '{0}' because licenses aren't defined".format(s.name))
+    suites = OrderedDict()
+
+    def import_visitor(s, suite_import, **extra_args):
+        suite_collector(suite(suite_import.name), suite_import)
+
+    def suite_collector(s, suite_import):
+        if s in suites:
+            return
+        suites[s] = None
+        s.visit_imports(import_visitor)
+
+    primary_suite = _check_primary_suite()
+    if args.all_suites:
+        suite_collector(primary_suite, None)
+    else:
+        suites[primary_suite] = None
+
+    for s in iter(suites):
+        _deploy_binary(args, s)
+
+def _deploy_binary(args, suite):
+    log("_deploy_binary for '{0}'".format(suite.name))
+    if not suite.getMxCompatibility().supportsLicenses():
+        log("Not deploying '{0}' because licenses aren't defined".format(suite.name))
         return
-    if not s.getMxCompatibility().supportsRepositories():
-        log("Not deploying '{0}' because repositories aren't defined".format(s.name))
+    if not suite.getMxCompatibility().supportsRepositories():
+        log("Not deploying '{0}' because repositories aren't defined".format(suite.name))
         return
-    if not s.vc:
-        abort('Current prinary suite has no version control')
+    if not suite.vc:
+        abort('Current primary suite has no version control')
     _mvn.check()
     def _versionGetter(suite):
         return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.dir))
-    dists = s.dists
+    dists = suite.dists
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only]
     if args.platform_dependent:
         dists = [d for d in dists if d.platformDependent]
 
-    mxMetaName = _mx_binary_distribution_root(s.name)
-    s.create_mx_binary_distribution_jar()
-    mxMetaJar = s.mx_binary_distribution_jar_path()
+    mxMetaName = _mx_binary_distribution_root(suite.name)
+    suite.create_mx_binary_distribution_jar()
+    mxMetaJar = suite.mx_binary_distribution_jar_path()
     assert exists(mxMetaJar)
+    if args.all_suites:
+        dists = [d for d in dists if d.exists()]
     for dist in dists:
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
+    if args.url:
+        repo = Repository(None, args.repository_id, args.url, repository(args.repository_id).licenses)
+    else:
+        if not suite.getMxCompatibility().supportsRepositories():
+            abort("Repositories are not supported in {}'s suite version".format(suite.name))
+        repo = repository(args.repository_id)
 
-    repo = repository(args.repository)
-
-    version = _versionGetter(s)
-    log('Deploying {0} distributions for version {1}'.format(s.name, version))
+    version = _versionGetter(suite)
+    log('Deploying {0} distributions for version {1}'.format(suite.name, version))
+    log('Repo: name: {0} url: {1} dists: {2}'.format(repo.name, repo.url, [d.name for d in dists]))
+    #return
     if not args.platform_dependent:
-        _deploy_binary_maven(s, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(s), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
+        _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
