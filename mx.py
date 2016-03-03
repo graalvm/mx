@@ -10522,7 +10522,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
     snippets = []
-    verifySincePresent = [];
+    verifySincePresent = []
     for p in projects_opt_limit_to_suites():
         if p.isJavaProject():
             snippets += p.source_dirs()
