@@ -68,6 +68,8 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 
+ERROR_TIMEOUT = 0x700000000 # not 32 bits
+
 _mx_home = os.path.realpath(dirname(__file__))
 
 try:
@@ -7053,6 +7055,57 @@ def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=No
         jdk = get_jdk()
     return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
 
+def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+    """computes the minimum heap size required to run a Java program within a certain overhead factor"""
+    assert minHeap <= maxHeap
+
+    def run_with_heap(heap, args, timeout=timeout, suppressStderr=True, nonZeroIsFatal=False):
+        log('Trying with %sMB of heap...' % heap)
+        with open(os.devnull, 'w') as fnull:
+            vmArgs, pArgs = extract_VM_args(args=args, useDoubleDash=False, allowClasspath=True, defaultAllVMArgs=True)
+            exitCode = run_java(vmArgs + ['-Xmx%dM' % heap] + pArgs, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+            if exitCode:
+                log('failed')
+            else:
+                log('succeeded')
+            return exitCode
+
+    if overheadFactor > 0:
+        t = time.time()
+        if run_with_heap(maxHeap, args, timeout=timeout, suppressStderr=False):
+            log('The reference heap (%sMB) is too low.' % maxHeap)
+            return 1
+        referenceTime = time.time() - t
+        maxTime = referenceTime * overheadFactor
+        log('Reference time = ' + str(referenceTime))
+        log('Maximum time = ' + str(maxTime))
+    else:
+        maxTime = None
+
+    currMin = minHeap
+    currMax = maxHeap
+    lastSuccess = maxHeap
+
+    while currMax >= currMin:
+        logv('Min = %s; Max = %s' % (currMin, currMax))
+        avg = (currMax + currMin) / 2
+
+        successful = 0
+        while successful < repetitions:
+            if run_with_heap(avg, args, timeout=maxTime):
+                break
+            else:
+                successful += 1
+
+        if successful == repetitions:
+            lastSuccess = avg
+            currMax = avg - 1
+        else:
+            currMin = avg + 1
+
+    # We cannot bisect further. The last succesful attempt is the result.
+    log('%s %s' % (benchName, lastSuccess))
+
 def _kill_process_group(pid, sig):
     pgid = os.getpgid(pid)
     try:
@@ -7062,7 +7115,7 @@ def _kill_process_group(pid, sig):
         log('Error killing subprocess ' + str(pgid) + ': ' + str(sys.exc_info()[1]))
         return False
 
-def _waitWithTimeout(process, args, timeout):
+def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
         while True:
             try:
@@ -7089,7 +7142,13 @@ def _waitWithTimeout(process, args, timeout):
             return _returncode(status)
         remaining = end - time.time()
         if remaining <= 0:
-            abort('Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args)))
+            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args))
+            if nonZeroIsFatal:
+                abort(msg)
+            else:
+                log(msg)
+                _kill_process_group(process.pid, signal.SIGKILL)
+                return ERROR_TIMEOUT
         delay = min(delay * 2, remaining, .05)
         time.sleep(delay)
 
@@ -7139,8 +7198,10 @@ def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=No
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
-    If the exit status is non-zero and `nonZeroIsFatal` is true, then mx is exited with
-    the same exit status.
+    If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
+    is false, otherwise it kills all subprocesses and raises a SystemExit exception.
+    If the exit status of the command is non-zero, mx is exited with the same exit status if
+    `nonZeroIsFatal` is true, otherwise the exit status is returned.
     Each line of the standard output and error streams of the subprocess are redirected to
     out and err if they are callable objects.
     """
@@ -7218,7 +7279,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if get_os() == 'windows':
                 abort('Use of timeout not (yet) supported on Windows')
-            retcode = _waitWithTimeout(p, args, timeout)
+            retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
     except OSError as e:
         log('Error executing \'' + ' '.join(args) + '\': ' + str(e))
         if _opts.verbose:
@@ -7509,7 +7570,7 @@ class JDKConfig:
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
         cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
-        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout)
 
     def bootclasspath(self, filtered=True):
         self._init_classpaths()
@@ -12045,6 +12106,7 @@ _commands = {
     'sha1': [sha1, ''],
     'test': [test, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
+    'minheap' : [run_java_min_heap, ''],
 }
 _commandsToSuite = {}
 
