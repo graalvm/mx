@@ -2094,6 +2094,17 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
     return join(cacheDir, name + '_' + sha1 + ext)
 
+def download_file_exists(urls):
+    '''
+    Returns true if the given urls really exist on the server.
+    '''
+    log('download_file_exists: ' + ', '.join(urls))
+    _, binDir = _compile_mx_class('URLConnectionDownload')
+    command = [get_jdk(tag=DEFAULT_JDK_TAG).java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
+    command += ['--no-progress', '--skip-download']
+    command += urls
+    return run(command, nonZeroIsFatal=False) == 0
+
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     '''
     Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
@@ -4211,7 +4222,10 @@ def deploy_binary(args):
 
     All binaries must be built first using 'mx build'.
 
-    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY] repository-id [repository-url]
+    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY]
+                            [--platform-dependent] [--all-suites]
+                            [--skip-existing]
+                            repository-id [repository-url]
 
     positional arguments:
       repository-id         Repository ID used for binary deploy
@@ -4224,8 +4238,11 @@ def deploy_binary(args):
                             Path to settings.mxl file used for Maven
       -n, --dry-run         Dry run that only prints the action a normal run would
                             perform without actually deploying anything
-      --platform-dependent  Limit deployment to platform dependent distributions only
       --only ONLY           Limit deployment to these distributions
+      --platform-dependent  Limit deployment to platform dependent distributions
+                            only
+      --all-suites          Perform binary deploy also for dependent suites
+      --skip-existing       Do not deploy if already in repository
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -4233,6 +4250,7 @@ def deploy_binary(args):
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--platform-dependent', action='store_true', help='Limit deployment to platform dependent distributions only')
     parser.add_argument('--all-suites', action='store_true', help='Perform binary deploy also for dependent suites')
+    parser.add_argument('--skip-existing', action='store_true', help='Do not deploy if already in repository')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for binary deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for binary deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
@@ -4258,7 +4276,6 @@ def deploy_binary(args):
         _deploy_binary(args, s)
 
 def _deploy_binary(args, suite):
-    log("_deploy_binary for '{0}'".format(suite.name))
     if not suite.getMxCompatibility().supportsLicenses():
         log("Not deploying '{0}' because licenses aren't defined".format(suite.name))
         return
@@ -4296,8 +4313,12 @@ def _deploy_binary(args, suite):
 
     version = _versionGetter(suite)
     log('Deploying {0} distributions for version {1}'.format(suite.name, version))
-    log('Repo: name: {0} url: {1} dists: {2}'.format(repo.name, repo.url, [d.name for d in dists]))
-    #return
+    if args.skip_existing:
+        metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, _mavenGroupId(suite).replace('.', '/'), _map_to_maven_dist_name(mxMetaName), version)
+        if download_file_exists([metadata_url]):
+            log('Skip deployment for already deployed suite {0} for version {1}'.format(suite.name, version))
+            return
+
     if not args.platform_dependent:
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)

@@ -73,28 +73,41 @@ public class URLConnectionDownload {
         return "";
     }
 
-	/**
-	 * Downloads content from a given URL to a given file.
-	 *
-	 * @param args
-	 *            --no-progress is an optional first arg to suppress progress meter
-	 *            arg[0] is the path where to write the content. The remainder
-	 *            of args are the URLs to try, stopping after the first
-	 *            successful one
-	 */
+    /**
+     * Downloads content from a given URL to a given file.
+     *
+     * @param args
+     *            --no-progress is an optional first arg to suppress progress meter
+     *            --skip-download optional, bypasses downloading (e.g. to check if URL exists on server)
+     *            arg[0] is the path where to write the content. The remainder
+     *            of args are the URLs to try, stopping after the first
+     *            successful one
+     */
     public static void main(String[] args) {
-    	boolean verbose = true;
-    	int firstArgIndex = 0;
-    	if (args[0].equals("--no-progress")) {
-    		firstArgIndex = 1;
-    		verbose = false;
-    	}
-    	File path = new File(args[firstArgIndex]);
-    	String[] urls = new String[args.length - 1 - firstArgIndex];
-    	System.arraycopy(args, firstArgIndex + 1, urls, 0, urls.length);
-
-        File parent = path.getParentFile();
-        makeDirectory(parent);
+        boolean verbose = true;
+        boolean skipDownload = false;
+        int firstArgIndex = 0;
+        while(true) {
+            if (args[firstArgIndex].equals("--no-progress")) {
+                verbose = false;
+                firstArgIndex += 1;
+            } else if (args[firstArgIndex].equals("--skip-download")) {
+                skipDownload = true;
+                firstArgIndex += 1;
+            } else {
+                break;
+            }
+        }
+      
+        File path = null;
+        if (!skipDownload) {
+            path = new File(args[firstArgIndex]);
+            File parent = path.getParentFile();
+            makeDirectory(parent);
+            firstArgIndex += 1;
+        }
+        String[] urls = new String[args.length - firstArgIndex];
+        System.arraycopy(args, firstArgIndex, urls, 0, urls.length);
 
         // Enable use of system proxies
         System.setProperty("java.net.useSystemProxies", "true");
@@ -115,11 +128,11 @@ public class URLConnectionDownload {
         for (String s : urls) {
             try {
                 while (true) {
-                    System.err.println("Downloading " + s + " to  " + path + proxyMsg);
+                    System.err.println("Downloading " + s + (path != null ? " to  " + path : "") + proxyMsg);
                     URL url = new URL(s);
                     URLConnection conn = url.openConnection();
                     // 10 second timeout to establish connection
-                    conn.setConnectTimeout(10000);
+                    conn.setConnectTimeout(skipDownload ? 300 : 10000);
 
                     if (conn instanceof HttpURLConnection) {
                         // HttpURLConnection per default follows redirections,
@@ -136,21 +149,25 @@ public class URLConnectionDownload {
                         }
                     }
                     InputStream in = conn.getInputStream();
-                    int size = conn.getContentLength();
-                    FileOutputStream out = new FileOutputStream(path);
-                    int read = 0;
-                    byte[] buf = new byte[8192];
-                    int n = 0;
-                    while ((read = in.read(buf)) != -1) {
-                        n += read;
-                        if (verbose) {
-                            long percent = ((long) n * 100 / size);
-                            System.err.print("\r " + n + " bytes " + (size == -1 ? "" : " (" + percent + "%)"));
+                    if (!skipDownload) {
+                        int size = conn.getContentLength();
+                        FileOutputStream out = new FileOutputStream(path);
+                        int read = 0;
+                        byte[] buf = new byte[8192];
+                        int n = 0;
+                        while ((read = in.read(buf)) != -1) {
+                            n += read;
+                            if (verbose) {
+                                long percent = ((long) n * 100 / size);
+                                System.err.print("\r " + n + " bytes " + (size == -1 ? "" : " (" + percent + "%)"));
+                            }
+                            out.write(buf, 0, read);
                         }
-                        out.write(buf, 0, read);
+                        System.err.println();
+                        out.close();
+                    } else {
+                        System.err.println("Skip downloading");
                     }
-                    System.err.println();
-                    out.close();
                     in.close();
                     return;
                 }
@@ -164,10 +181,12 @@ public class URLConnectionDownload {
                         Paths.get(System.getProperty("java.home"), "lib", "security", "cacerts"));
                     System.err.println("           Source: http://mail.openjdk.java.net/pipermail/core-libs-dev/2015-September/035528.html");
                 }
-                path.delete();
+                if (path != null) {
+                    path.delete();
+                }
             }
         }
-        throw new Error("Could not download content to  " + path + " from  " + Arrays.toString(urls));
+        throw new Error("Could not download content" + (path != null ? " to  " + path : "") + " from  " + Arrays.toString(urls));
     }
 
     private static void makeDirectory(File directory) {
