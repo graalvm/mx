@@ -27,8 +27,6 @@
 #
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
-
-Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 """
 import sys
 from abc import ABCMeta
