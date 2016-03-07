@@ -2098,12 +2098,13 @@ def download_file_exists(urls):
     '''
     Returns true if the given urls really exist on the server.
     '''
-    log('download_file_exists: ' + ', '.join(urls))
     _, binDir = _compile_mx_class('URLConnectionDownload')
     command = [get_jdk(tag=DEFAULT_JDK_TAG).java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
     command += ['--no-progress', '--skip-download']
     command += urls
-    return run(command, nonZeroIsFatal=False) == 0
+    def devnull(s):
+        pass
+    return run(command, err=devnull, nonZeroIsFatal=False) == 0
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     '''
