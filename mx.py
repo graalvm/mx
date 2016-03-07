@@ -4314,19 +4314,17 @@ def _deploy_binary(args, suite):
         repo = repository(args.repository_id)
 
     version = _versionGetter(suite)
-    log('Deploying {0} distributions for version {1}'.format(suite.name, version))
+    log('Deploying suite {0} distributions for version {1}'.format(suite.name, version))
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
             metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, _mavenGroupId(suite).replace('.', '/'), _map_to_maven_dist_name(dist.name), version)
-            log('Check for existence of {0}'.format(metadata_url))
             if download_file_exists([metadata_url]):
                 log('Skip deployment for already deployed distribution {0} in suite {1} for version {2}'.format(dist.name, suite.name, version))
             else:
                 non_existing_dists.append(dist)
         dists = non_existing_dists
         if not dists:
-            log('All distributions in suite {0} where already deployed. Early exit!'.format(suite.name))
             return
 
     if not args.platform_dependent:
