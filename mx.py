@@ -9160,12 +9160,16 @@ def eclipseinit_cli(args):
     args = parser.parse_args(args)
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True):
         _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole)
 
     generate_eclipse_workingsets()
+
+    if doFsckProjects and not refreshOnly:
+        fsckprojects([])
+
 
 def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
     """
@@ -9822,11 +9826,14 @@ def _workingset_open(wsdoc, ws):
 def _workingset_element(wsdoc, p):
     wsdoc.element('item', {'elementID': '=' + p, 'factoryID': 'org.eclipse.jdt.ui.PersistableJavaElementFactory'})
 
-def netbeansinit(args, refreshOnly=False, buildProcessorJars=True):
+def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
     for suite in suites(True):
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
+
+    if doFsckProjects and not refreshOnly:
+        fsckprojects([])
 
 def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     dists = [] if dists is None else dists
@@ -10181,7 +10188,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(files, suite.dir, configZip.path)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
-def intellijinit(args, refreshOnly=False):
+def intellijinit(args, refreshOnly=False, doFsckProjects=True):
     """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
@@ -10189,6 +10196,9 @@ def intellijinit(args, refreshOnly=False):
 
     for suite in suites(True):
         _intellij_suite(args, suite, refreshOnly)
+
+    if doFsckProjects and not refreshOnly:
+        fsckprojects([])
 
 def _intellij_suite(args, suite, refreshOnly=False):
     if isinstance(suite, BinarySuite):
@@ -10496,11 +10506,11 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     mx_ide = os.environ.get('MX_IDE', 'all').lower()
     all_ides = mx_ide == 'all'
     if all_ides or mx_ide == 'eclipse':
-        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
+        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'netbeans':
-        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars)
+        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        intellijinit(args, refreshOnly=refreshOnly)
+        intellijinit(args, refreshOnly=refreshOnly, doFsckProjects=False)
     if not refreshOnly:
         fsckprojects([])
 
@@ -12527,7 +12537,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.9.0")
+version = VersionSpec("5.9.1")
 
 currentUmask = None
 
