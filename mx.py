@@ -4318,7 +4318,7 @@ def _deploy_binary(args, suite):
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
-            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, _mavenGroupId(suite).replace('.', '/'), _map_to_maven_dist_name(dist.name), version)
+            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, _mavenGroupId(suite).replace('.', '/'), dist.maven_artifact_id(), version)
             if download_file_exists([metadata_url]):
                 log('Skip deployment for already deployed distribution {0} in suite {1} for version {2}'.format(dist.name, suite.name, version))
             else:
