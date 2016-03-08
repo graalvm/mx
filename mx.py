@@ -4242,16 +4242,17 @@ def deploy_binary(args):
       --only ONLY           Limit deployment to these distributions
       --platform-dependent  Limit deployment to platform dependent distributions
                             only
-      --all-suites          Perform binary deploy also for dependent suites
-      --skip-existing       Do not deploy if already in repository
+      --all-suites          Deploy suite and the distributions it depends on in
+                            other suites
+      --skip-existing       Do not deploy distributions if already in repository
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
     parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--platform-dependent', action='store_true', help='Limit deployment to platform dependent distributions only')
-    parser.add_argument('--all-suites', action='store_true', help='Perform binary deploy also for dependent suites')
-    parser.add_argument('--skip-existing', action='store_true', help='Do not deploy if already in repository')
+    parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
+    parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for binary deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for binary deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
@@ -4313,11 +4314,17 @@ def _deploy_binary(args, suite):
         repo = repository(args.repository_id)
 
     version = _versionGetter(suite)
-    log('Deploying {0} distributions for version {1}'.format(suite.name, version))
+    log('Deploying suite {0} version {1}'.format(suite.name, version))
     if args.skip_existing:
-        metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, _mavenGroupId(suite).replace('.', '/'), _map_to_maven_dist_name(mxMetaName), version)
-        if download_file_exists([metadata_url]):
-            log('Skip deployment for already deployed suite {0} for version {1}'.format(suite.name, version))
+        non_existing_dists = []
+        for dist in dists:
+            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(repo.url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version)
+            if download_file_exists([metadata_url]):
+                log('In suite {0} version {1} skip existing distribution {2}'.format(suite.name, version, dist.name))
+            else:
+                non_existing_dists.append(dist)
+        dists = non_existing_dists
+        if not dists:
             return
 
     if not args.platform_dependent:
