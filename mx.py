@@ -3697,8 +3697,8 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            out = subprocess.check_output(['git', 'show', '--format=oneline', '-s', rev], cwd=vcdir)
-            return out.strip().startswith(rev)
+            subprocess.check_output(['git', 'cat-file', '-e', rev], cwd=vcdir)
+            return True
         except subprocess.CalledProcessError:
             return False
 
