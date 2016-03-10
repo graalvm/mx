@@ -1282,11 +1282,9 @@ class ProjectBuildTask(BuildTask):
         BuildTask.__init__(self, project, args, parallelism)
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleLibraryName, theLicense=None):
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         ClasspathDependency.__init__(self)
-        self.checkstyleProj = name
-        self.checkstyleLibraryName = checkstyleLibraryName
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
         self.javaCompliance = JavaCompliance(javaCompliance)
@@ -5583,8 +5581,7 @@ class SourceSuite(Suite):
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    checkstyleLibraryName = self.getMxCompatibility().checkstyleLibraryName()
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, checkstyleLibraryName, theLicense=theLicense)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -8878,10 +8875,10 @@ def checkstyle(args):
             continue
         if args.primary and not p.suite.primary:
             continue
-        checkstyleLibrary = library(p.checkstyleLibraryName).get_path(True)
         sourceDirs = p.source_dirs()
 
-        config = join(project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
+        checkstyleProj = project(p.checkstyleProj)
+        config = join(checkstyleProj.dir, '.checkstyle_checks.xml')
         if not exists(config):
             logv('[No Checkstyle configuration found for {0} - skipping]'.format(p))
             continue
@@ -8890,7 +8887,19 @@ def checkstyle(args):
         jdk = get_jdk(p.javaCompliance)
         assert jdk
 
-        batch = batches.setdefault(config, Batch(config, p.suite))
+        if hasattr(p, 'checkstyleVersion'):
+            checkstyleVersion = p.checkstyleVersion
+            # Resolve the library here to get a contextual error message
+            library('CHECKSTYLE_' + checkstyleVersion, context=p)
+        elif hasattr(checkstyleProj, 'checkstyleVersion'):
+            checkstyleVersion = checkstyleProj.checkstyleVersion
+            # Resolve the library here to get a contextual error message
+            library('CHECKSTYLE_' + checkstyleVersion, context=checkstyleProj)
+        else:
+            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
+
+        key = (config, checkstyleVersion)
+        batch = batches.setdefault(key, Batch(config, p.suite))
         batch.projects.append(p)
 
         for sourceDir in sourceDirs:
@@ -8929,11 +8938,13 @@ def checkstyle(args):
 
             batch.sources.extend(javafilelist)
 
-    for config, batch in batches.iteritems():
+    for key, batch in batches.iteritems():
         if len(batch.sources) == 0:
             continue
+        config, checkstyleVersion = key
+        checkstyleLibrary = library('CHECKSTYLE_' + checkstyleVersion).get_path(True)
         auditfileName = join(batch.suite.dir, 'checkstyleOutput.txt')
-        log('Running Checkstyle on {0} using {1}...'.format(', '.join([p.name for p in batch.projects]), config))
+        log('Running Checkstyle [{0}] on {1} using {2}...'.format(checkstyleVersion, ', '.join([p.name for p in batch.projects]), config))
         try:
             for chunk in _chunk_files_for_command_line(batch.sources):
                 try:
