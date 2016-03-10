@@ -155,6 +155,7 @@ _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 _urlrewrites = [] # list of URLRewrite objects
+_original_environ = dict(os.environ)
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
@@ -2096,15 +2097,15 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
 
 def download_file_exists(urls):
     '''
-    Returns true if the given urls really exist on the server.
+    Returns true if one of the given urls denotes an existing resource.
     '''
-    _, binDir = _compile_mx_class('URLConnectionDownload')
-    command = [get_jdk(tag=DEFAULT_JDK_TAG).java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
-    command += ['--no-progress', '--skip-download']
-    command += urls
-    def devnull(s):
-        pass
-    return run(command, err=devnull, nonZeroIsFatal=False) == 0
+    for url in urls:
+        try:
+            urllib2.urlopen(url, timeout=0.5).close()
+            return True
+        except:
+            pass
+    return False
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     '''
@@ -3859,6 +3860,7 @@ def _hashFromUrl(url):
     try:
         return hashFile.read()
     except urllib2.URLError as e:
+        _suggest_http_proxy_error(e)
         abort('Error while retrieving sha1 {0}: {2}'.format(url, str(e)))
     finally:
         if hashFile:
@@ -3953,11 +3955,12 @@ class MavenRepo:
 
     def getArtifactVersions(self, groupId, artifactId):
         metadataUrl = "{0}/{1}/{2}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId)
-        logv('Retreiving and parsing {0}'.format(metadataUrl))
+        logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl)
+            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
         except urllib2.HTTPError as e:
-            abort('Error while retreiving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
+            _suggest_http_proxy_error(e)
+            abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
             tree = etreeParse(metadataFile)
             root = tree.getroot()
@@ -3975,7 +3978,7 @@ class MavenRepo:
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
         except urllib2.URLError as e:
-            abort('Error while retreiving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
+            abort('Error while retrieving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
         finally:
             if metadataFile:
                 metadataFile.close()
@@ -3983,12 +3986,13 @@ class MavenRepo:
     def getSnapshot(self, groupId, artifactId, version):
         assert version.endswith('-SNAPSHOT')
         metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId, version)
-        logv('Retreiving and parsing {0}'.format(metadataUrl))
+        logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl)
+            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
         except urllib2.URLError as e:
             if isinstance(e, urllib2.HTTPError) and e.code == 404:
                 return None
+            _suggest_http_proxy_error(e)
             abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
         try:
             tree = etreeParse(metadataFile)
@@ -7285,12 +7289,43 @@ def waitOn(p):
         retcode = p.wait()
     return retcode
 
+def _parse_http_proxy(envVarNames):
+    """
+    Parses the value of the first existing environment variable named
+    in `envVarNames` into a host and port tuple where port is None if
+    it's not present in the environment variable.
+    """
+    p = re.compile(r'(?:https?://)?([^:]+):?(\d+)?$')
+    for name in envVarNames:
+        value = get_env(name)
+        if value:
+            m = p.match(value)
+            if m:
+                return m.group(1), m.group(2)
+            else:
+                abort("Value of " + name + " is not valid:  " + value)
+    return (None, None)
+
 def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
+    proxyArgs = []
+    def add_proxy_property(name, value):
+        if value:
+            return proxyArgs.append('-D' + name + '=' + value)
+
+    host, port = _parse_http_proxy(["HTTP_PROXY", "http_proxy"])
+    add_proxy_property('proxyHost', host)
+    add_proxy_property('proxyPort', port)
+    host, port = _parse_http_proxy(["HTTPS_PROXY", "https_proxy"])
+    add_proxy_property('https.proxyHost', host)
+    add_proxy_property('https.proxyPort', port)
+    if proxyArgs:
+        proxyArgs.append('-DproxySet=true')
+
     mavenCommand = 'mvn'
     mavenHome = os.getenv('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
-    return run([mavenCommand] + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
+    return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
     commands = [sys.executable, join(_mx_home, 'mx.py')]
@@ -7909,6 +7944,19 @@ def abort(codeOrMessage, context=None):
                 codeOrMessage = contextMsg + ":\n" + codeOrMessage
     raise SystemExit(codeOrMessage)
 
+def _suggest_http_proxy_error(e):
+    """
+    Displays a message related to http proxies that may explain the reason for the exception `e`.
+    """
+    proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
+    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.iterkeys()}
+    if not proxyDefs:
+        log('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
+            '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
+    else:
+        defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
+        log('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
+
 def download(path, urls, verbose=False, abortOnError=True):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
@@ -7921,18 +7969,67 @@ def download(path, urls, verbose=False, abortOnError=True):
 
     assert not path.endswith(os.sep)
 
-    _, binDir = _compile_mx_class('URLConnectionDownload')
-    command = [get_jdk(tag=DEFAULT_JDK_TAG).java, '-cp', _cygpathU2W(binDir), 'URLConnectionDownload']
-    if _opts.no_download_progress or not sys.stderr.isatty():
-        command.append('--no-progress')
-    command.append(_cygpathU2W(path))
-    command += urls
-    if run(command, nonZeroIsFatal=False) == 0:
-        return True
+    # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
+    jarURLPattern = re.compile('jar:(.*)!/(.*)')
+    progress = not _opts.no_download_progress and sys.stderr.isatty()
+    for url in urls:
+        log('Downloading ' + url + ' to ' + path)
+        m = jarURLPattern.match(url)
+        jarEntryName = None
+        if m:
+            url = m.group(1)
+            jarEntryName = m.group(2)
+
+        # Use a temp file while downloading to avoid multiple threads
+        # overwriting the same file.
+        _, tmp = tempfile.mkstemp(suffix='', prefix=basename(path) + '.', dir=d)
+        conn = None
+        try:
+            # 10 second timeout to establish connection
+            conn = urllib2.urlopen(url, timeout=10)
+
+            # Not all servers support the "Content-Length" header
+            lengthHeader = conn.info().getheader('Content-Length')
+            length = int(lengthHeader.strip()) if lengthHeader else -1
+
+            bytesRead = 0
+            chunkSize = 8192
+
+            with open(tmp, 'wb') as fp:
+                chunk = conn.read(chunkSize)
+                while chunk:
+                    bytesRead += len(chunk)
+                    fp.write(chunk)
+                    if progress:
+                        sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
+                    chunk = conn.read(chunkSize)
+
+            if progress:
+                sys.stdout.write('\n')
+
+            if jarEntryName:
+                with zipfile.ZipFile(tmp, 'r') as zf:
+                    jarEntry = zf.read(jarEntryName)
+                with open(tmp, 'wb') as fp:
+                    fp.write(jarEntry)
+
+            # Relax the permissions on the temporary file as it's created with restrictive permissions
+            os.chmod(tmp, 0o666 & ~currentUmask)
+            # Atomic on Unix
+            shutil.move(tmp, path)
+            return True
+
+        except (IOError, socket.timeout) as e:
+            log("Error reading from " + url + ": " + str(e))
+            _suggest_http_proxy_error(e)
+            if exists(tmp):
+                os.remove(tmp)
+        finally:
+            if conn:
+                conn.close()
 
     if abortOnError:
-        abort('Could not download to ' + path + ' from any of the following URLs:\n\n    ' +
-              '\n    '.join(urls) + '\n\nPlease use a web browser to do the download manually')
+        abort('Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls))
     else:
         return False
 
@@ -12423,6 +12520,18 @@ def main():
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
 
+    # Set the https proxy environment variable from the http proxy environment
+    # variable if the former is not explicitly specified but the latter is and
+    # vice versa.
+    # This is for supporting servers that redirect a http URL to a https URL.
+    httpProxy = os.environ.get('http_proxy', os.environ.get('HTTP_PROXY'))
+    httpsProxy = os.environ.get('https_proxy', os.environ.get('HTTPS_PROXY'))
+    if httpProxy:
+        if not httpsProxy:
+            os.environ['https_proxy'] = httpProxy
+    elif httpsProxy:
+        os.environ['http_proxy'] = httpsProxy
+
     _argParser._parse_cmd_line(_opts, firstParse=True)
     vc_command = _check_vc_command()
 
@@ -12535,7 +12644,7 @@ def main():
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(_opts.timeout)
         # compile java resources ahead of time to avoid races in parallel tasks
-        for java_resource in ['URLConnectionDownload', 'CheckCopyright']:
+        for java_resource in ['CheckCopyright']:
             _compile_mx_class(java_resource)
         retcode = c(command_args)
         if retcode is not None and retcode != 0:
