@@ -4757,6 +4757,8 @@ class Suite:
             outputRoot = suiteDict.get('outputRoot')
             if outputRoot:
                 self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
+            elif get_env('MX_ALT_OUTPUT_ROOT') is not None:
+                self._outputRoot = join(get_env('MX_ALT_OUTPUT_ROOT'), self.name)
             else:
                 self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
         return self._outputRoot
@@ -6541,7 +6543,13 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
-        return ArgumentParser.format_help(self) + _format_commands()
+        return ArgumentParser.format_help(self) + """
+environment variables:
+  JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
+  MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
+                        content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
+                        this with the suite level "outputRoot" attribute in suite.py.
+""" +_format_commands()
 
 
     def __init__(self, parents=None):
@@ -9567,17 +9575,36 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if files:
             files.append(join(p.dir, '.factorypath'))
 
+def _get_ide_envvars():
+    """
+    Gets a dict of environment variables that must be captured in generated IDE configurations.
+    """
+    result = {'JAVA_HOME' : get_jdk().home}
+    names = [
+        # On the mac, applications are launched with a different path than command
+        # line tools, so capture the current PATH.  In general this ensures that
+        # the eclipse builders see the same path as a working command line build.
+        'PATH',
+        # The mx builders are run inside the directory of their associated suite,
+        # not the primary suite, so they might not see the env file of the primary
+        # suite.  Capture DEFAULT_VM in case it was only defined in the primary
+        # suite.
+        'DEFAULT_VM',
+        'MX_ALT_OUTPUT_ROOT',
+    ]
+    for name in names:
+        value = get_env(name)
+        if value is not None:
+            result[name] = value
+    return result
+
 def _capture_eclipse_settings(logToConsole):
     # Capture interesting settings which drive the output of the projects.
     # Changes to these values should cause regeneration of the project files.
-    value = 'logToConsole=%s\n' % logToConsole
-    if os.environ.get('PATH'):
-        value = value + 'PATH=%s\n' % os.environ['PATH']
-    if os.environ.get('JAVA_HOME'):
-        value = value + 'JAVA_HOME=%s\n' % os.environ['JAVA_HOME']
-    if os.environ.get('DEFAULT_VM'):
-        value = value + 'DEFAULT_VM=%s\n' % os.environ['DEFAULT_VM']
-    return value
+    settings = 'logToConsole=%s\n' % logToConsole
+    for name, value in _get_ide_envvars().iteritems():
+        settings = settings + '%s=%s\n' % (name, value)
+    return settings
 
 def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
@@ -9693,18 +9720,8 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    launchOut.element('mapEntry', {'key' : 'JAVA_HOME', 'value' : get_jdk().home})
-    # On the mac, applications are launched with a different path than command
-    # line tools, so capture the current PATH.  In general this ensures that
-    # the eclipse builders see the same path as a working command line build.
-    if os.environ.get('PATH'):
-        launchOut.element('mapEntry', {'key' : 'PATH', 'value' : os.environ['PATH']})
-    # The mx builders are run inside the directory of their associated suite,
-    # not the primary suite, so they might not see the env file of the primary
-    # suite.  Capture DEFAULT_VM in case it was only defined in the primary
-    # suite.
-    if os.environ.get('DEFAULT_VM'):
-        launchOut.element('mapEntry', {'key' : 'DEFAULT_VM', 'value' : os.environ['DEFAULT_VM']})
+    for key, value in _get_ide_envvars().iteritems():
+        launchOut.element('mapEntry', {'key' : key, 'value' : value})
     launchOut.close('mapAttribute')
 
     if refresh:
@@ -12664,7 +12681,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.10.0")
+version = VersionSpec("5.11.0")
 
 currentUmask = None
 
