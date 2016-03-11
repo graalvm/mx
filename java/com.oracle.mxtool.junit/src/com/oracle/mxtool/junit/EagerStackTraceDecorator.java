@@ -33,7 +33,9 @@ public class EagerStackTraceDecorator extends MxRunListenerDecorator {
     @Override
     public void testFailed(Failure failure) {
         super.testFailed(failure);
-        failure.getException().printStackTrace(getWriter());
+        getWriter().println();
+        getWriter().println(failure.getTestHeader());
+        getWriter().print(failure.getTrace());
     }
 
 }
