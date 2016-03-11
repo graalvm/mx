@@ -230,7 +230,8 @@ unittestHelpSuffix = """
       --enable-timing        enable JUnit test timing
       --regex <regex>        run only testcases matching a regular expression
       --color                enable colors output
-      --eager-stacktrace     print stacktrace eagerly
+      --eager-stacktrace     print stacktrace eagerly (default)
+      --no-eager-stacktrace  do not print stacktrace eagerly
       --gc-after-test        force a GC after each test
 
     To avoid conflicts with VM options '--' can be used as delimiter.
@@ -275,9 +276,11 @@ def unittest(args):
     parser.add_argument('--enable-timing', help='enable JUnit test timing', action='store_true')
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
     parser.add_argument('--color', help='enable color output', action='store_true')
-    parser.add_argument('--eager-stacktrace', help='print stacktrace eagerly', action='store_true')
     parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
+    eagerStacktrace = parser.add_mutually_exclusive_group()
+    eagerStacktrace.add_argument('--eager-stacktrace', action='store_const', const=True, dest='eager_stacktrace', help='print test errors as they occur (default)')
+    eagerStacktrace.add_argument('--no-eager-stacktrace', action='store_const', const=False, dest='eager_stacktrace', help='print test errors after all tests have run')
 
     ut_args = []
     delimiter = False
@@ -308,5 +311,7 @@ def unittest(args):
                 parsed_args.blacklist = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
         except IOError:
             mx.log('warning: could not read blacklist: ' + parsed_args.blacklist)
+    if parsed_args.eager_stacktrace is None:
+        parsed_args.eager_stacktrace = True
 
     _unittest(args, ['@Test', '@Parameters'], **parsed_args.__dict__)
