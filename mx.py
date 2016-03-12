@@ -2730,7 +2730,7 @@ class VC(object):
         """
         abort(self.kind + ": outgoing is not implemented")
 
-    def push(self, vcdir, dest=None, rev=None, abortOnError=True):
+    def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         """
         Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
         is None, else push to :param:`dest`.
@@ -2756,7 +2756,7 @@ class VC(object):
         msg += ' with ' + self.proper_name
         log(msg)
 
-    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=True):
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         """
         update the :param:`vcdir` working directory.
         If :param:`rev` is not specified, update to the tip of the current branch.
@@ -3595,6 +3595,8 @@ class GitConfig(VC):
         """
         if rev and mayPull and not self.exists(vcdir, rev):
             self.pull(vcdir, rev=rev, update=False, abortOnError=abortOnError)
+            if not self.exists(vcdir, rev):
+                abort('Fetch of %s succeeded\nbut did not contain requested revision %s.\nCheck that the suite.py repository location is mentioned by \'git remote -v\'' % (vcdir, rev))
         cmd = ['git', 'checkout']
         if rev:
             cmd.extend(['--detach', rev])
