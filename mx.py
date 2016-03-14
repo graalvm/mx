@@ -5779,6 +5779,9 @@ class BinarySuite(Suite):
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir)
 
+    def release_version(self):
+        return self.version()
+
     def isDirty(self, abortOnError=True):
         # a binary suite can not be dirty
         return False
