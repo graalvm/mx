@@ -879,6 +879,9 @@ class JARDistribution(Distribution, ClasspathDependency):
     def make_archive(self):
         # are sources combined into main archive?
         unified = self.path == self.sourcesPath
+        snippetsPattern = None
+        if hasattr(self.suite, 'snippetsPattern'):
+            snippetsPattern = re.compile(self.suite.snippetsPattern)
 
         with Archiver(self.path) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
@@ -968,6 +971,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                             else:
                                 for f in files:
+                                    if snippetsPattern and snippetsPattern.match(f):
+                                        continue
                                     arcname = join(relpath, f).replace(os.sep, '/')
                                     with open(join(root, f), 'rb') as fp:
                                         contents = fp.read()
@@ -4840,6 +4845,7 @@ class Suite:
             'licences',
             'defaultLicense',
             'defaultLicence',
+            'snippetsPattern',
             'repositories',
             'javac.lint.overrides',
             'urlrewrites',
@@ -4887,6 +4893,9 @@ class Suite:
                         except Exception as e: # pylint: disable=broad-except
                             abort('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e), context=self)
                         _urlrewrites.append(URLRewrite(pattern, replacement))
+
+        if d.get('snippetsPattern'):
+            self.snippetsPattern = d.get('snippetsPattern')
 
         unknown = set(d.keys()) - frozenset(supported)
 
@@ -10754,8 +10763,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
+    snippetsPatterns = set()
     for p in candidates:
         if p.isJavaProject():
+            if hasattr(p.suite, 'snippetsPattern'):
+                snippetsPatterns.add(p.suite.snippetsPattern)
             if includeDeps:
                 p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
             added, reason = assess_candidate(p, projects)
@@ -10769,6 +10781,14 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
+
+
+    if len(snippetsPatterns) > 1:
+        abort(snippetsPatterns)
+    if len(snippetsPatterns) > 0:
+        snippetsPatterns = ['-snippetclasses', ''.join(snippetsPatterns)]
+    else:
+        snippetsPatterns = []
 
     if not projects:
         log('All projects were skipped.')
@@ -10841,6 +10861,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-docletpath', snippetslib,
                      '-snippetpath', snippets,
                      '-source', str(jdk.javaCompliance)] +
+                     snippetsPatterns +
                      jdk.javadocLibOptions([]) +
                      ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
                      links +
@@ -10938,6 +10959,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-snippetpath', snippets,
              '-sourcepath', sp] +
              verifySincePresent +
+             snippetsPatterns +
              ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
@@ -12681,7 +12703,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.12.0")
+version = VersionSpec("5.13.0")
 
 currentUmask = None
 
