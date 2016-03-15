@@ -1739,11 +1739,12 @@ class JavaBuildTask(ProjectBuildTask):
                 showTasks=self.args.jdt_show_task_tags
             )
             logvv('Finished Java compilation for {}'.format(self.subject.name))
-            def allOutputFiles():
-                for root, _, filenames in os.walk(outputDir):
-                    for fname in filenames:
-                        yield os.path.join(root, fname)
-            self._newestOutput = TimeStampFile(max(allOutputFiles(), key=os.path.getmtime))
+            output = []
+            for root, _, filenames in os.walk(outputDir):
+                for fname in filenames:
+                    output.append(os.path.join(root, fname))
+            if output:
+                self._newestOutput = TimeStampFile(max(output, key=os.path.getmtime))
         # Jasmin build
         for src in self._jasmFileList():
             className = None
