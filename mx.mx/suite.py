@@ -103,6 +103,13 @@ suite = {
         "version" : "1.3",
       }
     },
+
+    "JMH" : {
+      "sha1" : "7e1577cf6e1f1326b78a322d206fa9412fd41ae9",
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2.jar"],
+      "sourceSha1" : "12a67f0dcdfe7e43218bf38c1d7fd766122a3dc7",
+      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2-sources.jar"],
+    },
   },
 
   "licenses" : {
