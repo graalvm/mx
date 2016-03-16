@@ -1096,10 +1096,11 @@ Attributes:
     path: suite-local path to where the tar file will be placed
 """
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
         self.relpath = relpath
+        self.output = output
 
     def make_archive(self):
         directory = dirname(self.path)
@@ -1140,9 +1141,17 @@ class NativeTARDistribution(Distribution):
     def postPull(self, f):
         assert f.endswith('.gz')
         logv('Uncompressing {}...'.format(f))
+        tarfilename = None
         with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
             shutil.copyfileobj(gz, tar)
+            tarfilename = tar.name
         os.remove(f)
+        if self.output:
+            output = join(self.suite.dir, self.output)
+            assert tarfilename
+            with tarfile.open(tarfilename, 'r:') as tar:
+                log('Extract {} to {}'.format(tarfilename, output))
+                tar.extractall(output)
 
     def prePush(self, f):
         tgz = f + '.gz'
@@ -5311,7 +5320,8 @@ class Suite:
         if native:
             path = attrs.pop('path')
             relpath = attrs.pop('relpath', False)
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath)
+            output = attrs.pop('output', None)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
             defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.jar')
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
@@ -12884,7 +12894,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.14.1")
+version = VersionSpec("5.14.2")
 
 currentUmask = None
 
