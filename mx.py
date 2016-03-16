@@ -650,6 +650,15 @@ class BuildTask(object):
     def cleanForbidden(self):
         return False
 
+    def prepare(self, daemons):
+        """
+        Perform any task initialization that must be done in the main process.
+        This will be called just befor the task is launched.
+        The 'daemons' argument is a dictionary for storing any persistent state
+        that might be shared between tasks.
+        """
+        pass
+
     """
     Build the artifacts.
     """
@@ -1717,15 +1726,21 @@ class JavaBuildTask(ProjectBuildTask):
         if self.args.jdt and not self.args.force_javac:
             return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
         else:
-            return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
+            if self.args.no_daemon or self.args.alt_javac:
+                return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
+            else:
+                return JavacDaemonCompiler(self.args.extra_javac_args)
+
+    def prepare(self, daemons):
+        self.compiler = self._getCompiler()
+        self.compiler.prepare(self.jdk, daemons)
 
     def build(self):
-        compiler = self._getCompiler()
         outputDir = self.subject.output_dir()
         ensure_dir_exists(outputDir)
         # Java build
         if self._javaFileList():
-            compiler.build(
+            self.compiler.build(
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
@@ -1798,6 +1813,13 @@ class JavaCompiler:
     def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, showTasks):
         nyi('build', self)
+
+    def prepare(self, jdk, daemons):
+        """
+        Perform any task initialization that must be done in the main process.
+        This will be called just befor the task is launched.
+        """
+        pass
 
 class JavacLikeCompiler(JavaCompiler):
     def __init__(self, extraJavacArgs):
@@ -1898,10 +1920,104 @@ class JavacCompiler(JavacLikeCompiler):
             abort('Showing task tags is not currently supported for javac')
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
-        javac = self.altJavac if self.altJavac else jdk.javac
         jvmArgs += jdk.java_args
+        self.run(jdk, jvmArgs, javacArgs)
+
+    def run(self, jdk, jvmArgs, javacArgs):
+        javac = self.altJavac if self.altJavac else jdk.javac
         cmd = [javac] + ['-J' + arg for arg in jvmArgs] + javacArgs
         run(cmd)
+
+class JavacDaemonCompiler(JavacCompiler):
+    def __init__(self, extraJavacArgs=None):
+        JavacCompiler.__init__(self, None, extraJavacArgs)
+
+    def name(self):
+        return 'javac-daemon'
+
+    def run(self, jdk, jvmArgs, javacArgs):
+        # ignore the jvmArgs
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', self.daemon.port))
+        javacCommandLine = " ".join(javacArgs)
+        logv(self.daemon.jdk.javac + ' ' + javacCommandLine)
+        s.send((javacCommandLine + "\n").encode('utf-8'))
+        f = s.makefile()
+        retcode = int(f.readline().decode('utf-8'))
+        s.close()
+        if retcode:
+            if _opts.verbose:
+                if _opts.very_verbose:
+                    raise subprocess.CalledProcessError(retcode, jdk.javac + ' '.join(javacArgs))
+                else:
+                    log('[exit code: ' + str(retcode) + ']')
+            abort(retcode)
+
+        return retcode
+
+    def prepare(self, jdk, daemons):
+        name = 'javac-daemon-' + jdk.java
+        self.daemon = daemons.get(name)
+        if not self.daemon:
+            self.daemon = JavacDaemon(jdk)
+            daemons[name] = self.daemon
+
+class Daemon:
+    def shutdown(self):
+        pass
+
+class JavacDaemon(Daemon):
+    def __init__(self, jdk):
+        self.jdk = jdk
+        self.mainClass = 'com.oracle.mxtool.compilerserver.JavacDaemon'
+        build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
+        self.coreCp = classpath(['com.oracle.mxtool.compilerserver'])
+        # allocate a new port
+        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        serversocket.bind(('127.0.0.1', 0))
+        self.port = serversocket.getsockname()[1]
+        serversocket.close()
+
+        self.proc = multiprocessing.Process(target=self.runDaemon, args=())
+        self.proc.daemon = True
+        self.proc.start()
+        self.sub = _addSubprocess(self.proc, [str(self)])
+        # wait for process to finish launching
+        retries = 0
+        while True:
+            self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                self.connection.connect(('127.0.0.1', self.port))
+                logv('[Started ' + str(self) + ']')
+                return
+            except socket.error as e:
+                retries = retries + 1
+                if retries > 5:
+                    logv('[Error starting ' + str(self) + ': ' + str(e) + ']')
+                    raise e
+                else:
+                    time.sleep(2)
+
+    def runDaemon(self):
+        run([self.jdk.java] + ['-cp', self.jdk.toolsjar + ':' + self.coreCp, self.mainClass, str(self.port)])
+
+    def shutdown(self):
+        if self.proc:
+            try:
+                self.connection.send("\n")
+                self.connection.close()
+                logv('[Stopped ' + str(self) + ']')
+            except socket.error as e:
+                logv('Error stopping ' + str(self) + ': ' + str(e))
+
+            self.proc.join()
+            _removeSubprocess(self.sub)
+            self.proc = None
+            self.sub = None
+
+    def __str__(self):
+        return 'javac-daemon on port ' + str(self.port) + ' for ' + str(self.jdk)
 
 class ECJCompiler(JavacLikeCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
@@ -8124,6 +8240,8 @@ def build(args, parser=None):
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
+    parser.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
+
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
     compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
@@ -8206,6 +8324,7 @@ def build(args, parser=None):
                 log(str(task))
         log("-- Serialized build plan --")
 
+    daemons = {}
     if args.parallelize:
         def joinTasks(tasks):
             failed = []
@@ -8256,6 +8375,7 @@ def build(args, parser=None):
             for t in active:
                 cpus += t.parallelism
             return cpus
+
         while len(worklist) != 0:
             while True:
                 active, failed = checkTasks(active)
@@ -8287,6 +8407,7 @@ def build(args, parser=None):
                 if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
                     worklist.remove(task)
                     task.initSharedMemoryState()
+                    task.prepare(daemons)
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
                     task._finished = False
                     task.proc.start()
@@ -8298,13 +8419,19 @@ def build(args, parser=None):
             worklist = sortWorklist(worklist)
 
         failed += joinTasks(active)
+
         if len(failed):
             for t in failed:
                 log('{0} failed'.format(t))
             abort('{0} build tasks failed'.format(len(failed)))
+
     else:  # not parallelize
         for t in sortedTasks:
+            t.prepare(daemons)
             t.execute()
+
+    for daemon in daemons.values():
+        daemon.shutdown()
 
     # TODO check for distributions overlap (while loading suites?)
 
