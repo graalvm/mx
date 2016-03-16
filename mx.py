@@ -67,6 +67,7 @@ import mx_findbugs
 import mx_sigtest
 import mx_gate
 import mx_compat
+import mx_microbench
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -12505,6 +12506,7 @@ _commands = {
     'test': [test, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'minheap' : [run_java_min_heap, ''],
+    'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
 }
 _commandsToSuite = {}
 
@@ -12836,7 +12838,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.13.0")
+version = VersionSpec("5.14.0")
 
 currentUmask = None
 
