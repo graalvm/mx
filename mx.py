@@ -1096,9 +1096,10 @@ Attributes:
     path: suite-local path to where the tar file will be placed
 """
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
+        self.relpath = relpath
 
     def make_archive(self):
         directory = dirname(self.path)
@@ -1108,8 +1109,13 @@ class NativeTARDistribution(Distribution):
             for d in self.archived_deps():
                 if not d.isNativeProject():
                     abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
+                output = d.getOutput()
+                output = join(self.suite.dir, output) if output else None
                 for r in d.getResults():
-                    filename = basename(r)
+                    if output and self.relpath:
+                        filename = os.path.relpath(r, output)
+                    else:
+                        filename = basename(r)
                     assert filename not in files, filename
                     # Make debug-info files optional for distribution
                     if is_debug_lib_file(r) and not os.path.exists(r):
@@ -5304,7 +5310,8 @@ class Suite:
         platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense)
+            relpath = attrs.pop('relpath', False)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath)
         else:
             defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.jar')
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
@@ -12877,7 +12884,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.14.0")
+version = VersionSpec("5.14.1")
 
 currentUmask = None
 
