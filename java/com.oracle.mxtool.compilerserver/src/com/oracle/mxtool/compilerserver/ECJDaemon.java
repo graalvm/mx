@@ -22,32 +22,38 @@
  */
 package com.oracle.mxtool.compilerserver;
 
+import java.io.PrintWriter;
 import java.lang.reflect.Method;
 
-public class JavacDaemon extends CompilerDaemon {
+public class ECJDaemon extends CompilerDaemon {
 
-    private final class JavacCompiler implements Compiler {
+    private final class ECJCompiler implements Compiler {
         public int compile(String[] args) throws Exception {
-            final Object receiver = javacMainClass.newInstance();
-            return (Integer) compileMethod.invoke(receiver, new Object[]{args});
+            for (int i = 0; i < args.length; i++) {
+                if (args[i].length() == 0) {
+                    args[i] = "\"\"";
+                }
+            }
+            boolean result = (Boolean) compileMethod.invoke(null, join(" ", args), new PrintWriter(System.out), new PrintWriter(System.err), null);
+            return result ? 0 : -1;
         }
     }
 
-    private Class<?> javacMainClass;
     private Method compileMethod;
 
-    JavacDaemon() throws Exception {
-        this.javacMainClass = Class.forName("com.sun.tools.javac.Main");
-        this.compileMethod = javacMainClass.getMethod("compile", new Class<?>[]{(new String[]{}).getClass()});
+    ECJDaemon() throws Exception {
+        Class<?> ecjMainClass = Class.forName("org.eclipse.jdt.core.compiler.batch.BatchCompiler");
+        Class<?> progressClass = Class.forName("org.eclipse.jdt.core.compiler.CompilationProgress");
+        this.compileMethod = ecjMainClass.getMethod("compile", String.class, PrintWriter.class, PrintWriter.class, progressClass);
     }
 
     @Override
     Compiler createCompiler() {
-        return new JavacCompiler();
+        return new ECJCompiler();
     }
 
     public static void main(String[] args) throws Exception {
-        JavacDaemon daemon = new JavacDaemon();
+        ECJDaemon daemon = new ECJDaemon();
         daemon.run(args);
     }
 }
