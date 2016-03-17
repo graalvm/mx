@@ -1096,9 +1096,11 @@ Attributes:
     path: suite-local path to where the tar file will be placed
 """
 class NativeTARDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
+        self.relpath = relpath
+        self.output = output
 
     def make_archive(self):
         directory = dirname(self.path)
@@ -1108,8 +1110,13 @@ class NativeTARDistribution(Distribution):
             for d in self.archived_deps():
                 if not d.isNativeProject():
                     abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
+                output = d.getOutput()
+                output = join(self.suite.dir, output) if output else None
                 for r in d.getResults():
-                    filename = basename(r)
+                    if output and self.relpath:
+                        filename = os.path.relpath(r, output)
+                    else:
+                        filename = basename(r)
                     assert filename not in files, filename
                     # Make debug-info files optional for distribution
                     if is_debug_lib_file(r) and not os.path.exists(r):
@@ -1134,9 +1141,17 @@ class NativeTARDistribution(Distribution):
     def postPull(self, f):
         assert f.endswith('.gz')
         logv('Uncompressing {}...'.format(f))
+        tarfilename = None
         with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
             shutil.copyfileobj(gz, tar)
+            tarfilename = tar.name
         os.remove(f)
+        if self.output:
+            output = join(self.suite.dir, self.output)
+            assert tarfilename
+            with tarfile.open(tarfilename, 'r:') as tar:
+                logv('Extracting {} to {}'.format(tarfilename, output))
+                tar.extractall(output)
 
     def prePush(self, f):
         tgz = f + '.gz'
@@ -5304,7 +5319,9 @@ class Suite:
         platformDependent = bool(os_arch)
         if native:
             path = attrs.pop('path')
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense)
+            relpath = attrs.pop('relpath', False)
+            output = attrs.pop('output', None)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
             defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.jar')
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
@@ -5745,7 +5762,7 @@ class SourceSuite(Suite):
                 native = attrs.pop('native', False)
                 if native:
                     output = attrs.pop('output', None)
-                    results = Suite._pop_list(attrs, 'output', context)
+                    results = Suite._pop_list(attrs, 'results', context)
                     p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
@@ -12877,7 +12894,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.14.0")
+version = VersionSpec("5.14.2")
 
 currentUmask = None
 
