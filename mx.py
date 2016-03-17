@@ -1725,7 +1725,10 @@ class JavaBuildTask(ProjectBuildTask):
 
     def _getCompiler(self):
         if self.args.jdt and not self.args.force_javac:
-            return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+            if self.args.no_daemon:
+                return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+            else:
+                return ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
         else:
             if self.args.no_daemon or self.args.alt_javac:
                 return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
@@ -1936,25 +1939,8 @@ class JavacDaemonCompiler(JavacCompiler):
     def name(self):
         return 'javac-daemon'
 
-    def run(self, jdk, jvmArgs, javacArgs):
-        # ignore the jvmArgs
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(('127.0.0.1', self.daemon.port))
-        javacCommandLine = " ".join(javacArgs)
-        logv(self.daemon.jdk.javac + ' ' + javacCommandLine)
-        s.send((javacCommandLine + "\n").encode('utf-8'))
-        f = s.makefile()
-        retcode = int(f.readline().decode('utf-8'))
-        s.close()
-        if retcode:
-            if _opts.verbose:
-                if _opts.very_verbose:
-                    raise subprocess.CalledProcessError(retcode, jdk.javac + ' '.join(javacArgs))
-                else:
-                    log('[exit code: ' + str(retcode) + ']')
-            abort(retcode)
-
-        return retcode
+    def run(self, jdk, jvmArgs, compilerArgs):
+        return self.daemon.compile(jdk, compilerArgs)
 
     def prepare(self, jdk, daemons):
         name = 'javac-daemon-' + jdk.java
@@ -1967,12 +1953,12 @@ class Daemon:
     def shutdown(self):
         pass
 
-class JavacDaemon(Daemon):
-    def __init__(self, jdk):
+class CompilerDaemon(Daemon):
+    def __init__(self, jdk, mainClass, toolJar):
         self.jdk = jdk
-        self.mainClass = 'com.oracle.mxtool.compilerserver.JavacDaemon'
+        self.mainClass = mainClass
         build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
-        self.coreCp = classpath(['com.oracle.mxtool.compilerserver'])
+        self.classpath = classpath(['com.oracle.mxtool.compilerserver']) + ':' + toolJar
         # allocate a new port
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -2001,12 +1987,32 @@ class JavacDaemon(Daemon):
                     time.sleep(2)
 
     def runDaemon(self):
-        run([self.jdk.java] + ['-cp', self.jdk.toolsjar + ':' + self.coreCp, self.mainClass, str(self.port)])
+        verbose = ['-v'] if _opts.verbose else []
+        run([self.jdk.java] + ['-cp', self.classpath, self.mainClass] + verbose + [str(self.port)])
+
+    def compile(self, jdk, compilerArgs):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', self.port))
+        logv(jdk.javac + ' ' + ' '.join(compilerArgs))
+        commandLine = u'\x00'.join(compilerArgs)
+        s.send((commandLine + "\n").encode('utf-8'))
+        f = s.makefile()
+        retcode = int(f.readline().decode('utf-8'))
+        s.close()
+        if retcode:
+            if _opts.verbose:
+                if _opts.very_verbose:
+                    raise subprocess.CalledProcessError(retcode, jdk.java + ' '.join(compilerArgs))
+                else:
+                    log('[exit code: ' + str(retcode) + ']')
+            abort(retcode)
+
+        return retcode
 
     def shutdown(self):
         if self.proc:
             try:
-                self.connection.send("\n")
+                self.connection.send("\n".encode('utf8'))
                 self.connection.close()
                 logv('[Stopped ' + str(self) + ']')
             except socket.error as e:
@@ -2018,7 +2024,14 @@ class JavacDaemon(Daemon):
             self.sub = None
 
     def __str__(self):
-        return 'javac-daemon on port ' + str(self.port) + ' for ' + str(self.jdk)
+        return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
+
+class JavacDaemon(CompilerDaemon):
+    def __init__(self, jdk):
+        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar)
+
+    def name(self):
+        return 'javac-daemon'
 
 class ECJCompiler(JavacLikeCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
@@ -2039,7 +2052,6 @@ class ECJCompiler(JavacLikeCompiler):
         return jdk
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
-        jvmArgs += ['-jar', self.jdtJar]
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -2072,7 +2084,34 @@ class ECJCompiler(JavacLikeCompiler):
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        run_java(jvmArgs + jdtArgs, jdk=jdk)
+        self.run(jdk, jvmArgs, jdtArgs)
+
+    def run(self, jdk, jvmArgs, jdtArgs):
+        run_java(jvmArgs + ['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
+
+class ECJDaemonCompiler(ECJCompiler):
+    def __init__(self, jdtJar, extraJavacArgs=None):
+        ECJCompiler.__init__(self, jdtJar, extraJavacArgs)
+
+    def name(self):
+        return 'ecj-daemon'
+
+    def run(self, jdk, jvmArgs, compilerArgs):
+        return self.daemon.compile(jdk, compilerArgs)
+
+    def prepare(self, jdk, daemons):
+        name = 'ecj-daemon-' + jdk.java + '-' + self.jdtJar
+        self.daemon = daemons.get(name)
+        if not self.daemon:
+            self.daemon = ECJDaemon(jdk, self.jdtJar)
+            daemons[name] = self.daemon
+
+class ECJDaemon(CompilerDaemon):
+    def __init__(self, jdk, jdtJar):
+        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
+
+    def name(self):
+        return 'ecj-daemon'
 
 def is_debug_lib_file(fn):
     return fn.endswith(add_debug_lib_suffix(""))
