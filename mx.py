@@ -5745,7 +5745,7 @@ class SourceSuite(Suite):
                 native = attrs.pop('native', False)
                 if native:
                     output = attrs.pop('output', None)
-                    results = Suite._pop_list(attrs, 'output', context)
+                    results = Suite._pop_list(attrs, 'results', context)
                     p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
