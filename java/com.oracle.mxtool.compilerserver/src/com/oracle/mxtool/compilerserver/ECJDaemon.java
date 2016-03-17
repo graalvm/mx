@@ -29,12 +29,7 @@ public class ECJDaemon extends CompilerDaemon {
 
     private final class ECJCompiler implements Compiler {
         public int compile(String[] args) throws Exception {
-            for (int i = 0; i < args.length; i++) {
-                if (args[i].length() == 0) {
-                    args[i] = "\"\"";
-                }
-            }
-            boolean result = (Boolean) compileMethod.invoke(null, join(" ", args), new PrintWriter(System.out), new PrintWriter(System.err), null);
+            boolean result = (Boolean) compileMethod.invoke(null, args, new PrintWriter(System.out), new PrintWriter(System.err), null);
             return result ? 0 : -1;
         }
     }
@@ -44,7 +39,7 @@ public class ECJDaemon extends CompilerDaemon {
     ECJDaemon() throws Exception {
         Class<?> ecjMainClass = Class.forName("org.eclipse.jdt.core.compiler.batch.BatchCompiler");
         Class<?> progressClass = Class.forName("org.eclipse.jdt.core.compiler.CompilationProgress");
-        this.compileMethod = ecjMainClass.getMethod("compile", String.class, PrintWriter.class, PrintWriter.class, progressClass);
+        this.compileMethod = ecjMainClass.getMethod("compile", String[].class, PrintWriter.class, PrintWriter.class, progressClass);
     }
 
     @Override
