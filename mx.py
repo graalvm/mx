@@ -1150,7 +1150,7 @@ class NativeTARDistribution(Distribution):
             output = join(self.suite.dir, self.output)
             assert tarfilename
             with tarfile.open(tarfilename, 'r:') as tar:
-                log('Extract {} to {}'.format(tarfilename, output))
+                logv('Extracting {} to {}'.format(tarfilename, output))
                 tar.extractall(output)
 
     def prePush(self, f):
