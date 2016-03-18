@@ -10598,8 +10598,9 @@ def _intellij_suite(args, suite, refreshOnly=False):
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
+        proj = p
         def processDep(dep, edge):
-            if dep is p:
+            if dep is proj:
                 return
 
             if dep.isLibrary():
@@ -10765,14 +10766,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
     antXml.element('arg', attributes={'value': 'mx'})
     antXml.element('arg', attributes={'value': 'archive'})
 
-    distDeps = set([])
-    for p in suite.projects_recursive():
-        for dep in p.deps:
-            if dep.isJARDistribution():
-                distDeps.add(dep.name)
-
-    for dist in distDeps:
-        antXml.element('arg', attributes={'value': '@' + dist})
+    for dist in sorted_dists():
+        antXml.element('arg', attributes={'value': '@' + dist.name})
 
     antXml.close('exec')
     antXml.close('target')
