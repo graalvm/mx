@@ -8087,7 +8087,8 @@ def _send_sigquit():
             if get_os() == 'windows':
                 log("mx: implement me! want to send SIGQUIT to my child process")
             else:
-                _kill_process_group(p.pid, sig=signal.SIGQUIT)
+                # only send SIGQUIT to the child not the process group
+                os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
 def abort(codeOrMessage, context=None):
