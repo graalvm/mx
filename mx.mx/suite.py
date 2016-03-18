@@ -145,7 +145,7 @@ suite = {
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.7",
+      "javaCompliance" : "1.7+", # jdk7 or later
     },
   },
 }

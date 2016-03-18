@@ -7055,7 +7055,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     return jdk
 
 def _convert_compliance_to_version_check(requiredCompliance):
-    if _opts.strict_compliance:
+    if _opts.strict_compliance and not requiredCompliance.isLowerBound:
         versionDesc = str(requiredCompliance)
         versionCheck = requiredCompliance.exactMatch
     else:
@@ -7277,6 +7277,9 @@ def _find_available_jdks(versionCheck):
                     candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
                 else:
                     candidateJdks += [join(base, n) for n in os.listdir(base)]
+
+    # Eliminate redundant candidates
+    candidateJdks = sorted(frozenset((os.path.realpath(jdk) for jdk in candidateJdks)))
 
     return _filtered_jdk_configs(candidateJdks, versionCheck)
 
@@ -7726,6 +7729,7 @@ class JavaCompliance:
         m = re.match(r'(?:1\.)?(\d+).*', ver)
         assert m is not None, 'not a recognized version string: ' + ver
         self.value = int(m.group(1))
+        self.isLowerBound = ver.endswith('+')
 
     def __str__(self):
         return '1.' + str(self.value)
@@ -7736,7 +7740,6 @@ class JavaCompliance:
     def __cmp__(self, other):
         if isinstance(other, types.StringType):
             other = JavaCompliance(other)
-
         return cmp(self.value, other.value)
 
     def __hash__(self):
@@ -7744,7 +7747,13 @@ class JavaCompliance:
 
     def exactMatch(self, version):
         assert isinstance(version, VersionSpec)
-        return len(version.parts) > 1 and version.parts[0] == 1 and version.parts[1] == self.value
+        if len(version.parts) > 1 and version.parts[0] == 1:
+            value = version.parts[1]
+            if not self.isLowerBound:
+                return value == self.value
+            else:
+                return value >= self.value
+        return False
 
 """
 A version specification as defined in JSR-56
@@ -12722,10 +12731,15 @@ def _remove_unsatisfied_deps():
                                 abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
         elif dep.isDistribution():
             dist = dep
-            for distDep in list(dist.deps):
-                if distDep in removedDeps:
-                    logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
-                    dist.deps.remove(distDep)
+            if dist.deps:
+                for distDep in list(dist.deps):
+                    if distDep in removedDeps:
+                        logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
+                        dist.deps.remove(distDep)
+                if not dist.deps:
+                    reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
+                    logv('[' + reason + ']')
+                    removedDeps[dep] = reason
 
     walk_deps(visit=visit)
 
@@ -12889,7 +12903,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.14.2")
+version = VersionSpec("5.15.0")
 
 currentUmask = None
 
