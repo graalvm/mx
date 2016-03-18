@@ -1971,9 +1971,8 @@ class Daemon:
 class CompilerDaemon(Daemon):
     def __init__(self, jdk, mainClass, toolJar):
         self.jdk = jdk
-        self.mainClass = mainClass
         build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
-        self.classpath = classpath(['com.oracle.mxtool.compilerserver']) + ':' + toolJar
+        cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
         # allocate a new port
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1981,11 +1980,14 @@ class CompilerDaemon(Daemon):
         self.port = serversocket.getsockname()[1]
         serversocket.close()
 
-        self.proc = multiprocessing.Process(target=self.runDaemon, args=())
-        self.proc.daemon = True
-        self.proc.start()
-        self.sub = _addSubprocess(self.proc, [str(self)])
-        # wait for process to finish launching
+        # Start Java process asynchronously
+        verbose = ['-v'] if _opts.verbose else []
+        args = [jdk.java] + ['-cp', cp, mainClass] + verbose + [str(self.port)]
+        p = subprocess.Popen(args)
+        # Ensure the process is cleaned up when mx exits
+        _addSubprocess(p, args)
+
+        # wait for Java process to finish launching
         retries = 0
         while True:
             self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2001,16 +2003,12 @@ class CompilerDaemon(Daemon):
                 else:
                     time.sleep(2)
 
-    def runDaemon(self):
-        verbose = ['-v'] if _opts.verbose else []
-        run([self.jdk.java] + ['-cp', self.classpath, self.mainClass] + verbose + [str(self.port)])
-
     def compile(self, jdk, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', self.port))
         logv(jdk.javac + ' ' + ' '.join(compilerArgs))
         commandLine = u'\x00'.join(compilerArgs)
-        s.send((commandLine + "\n").encode('utf-8'))
+        s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
         retcode = int(f.readline().decode('utf-8'))
         s.close()
@@ -2025,18 +2023,12 @@ class CompilerDaemon(Daemon):
         return retcode
 
     def shutdown(self):
-        if self.proc:
-            try:
-                self.connection.send("\n".encode('utf8'))
-                self.connection.close()
-                logv('[Stopped ' + str(self) + ']')
-            except socket.error as e:
-                logv('Error stopping ' + str(self) + ': ' + str(e))
-
-            self.proc.join()
-            _removeSubprocess(self.sub)
-            self.proc = None
-            self.sub = None
+        try:
+            self.connection.send('\n'.encode('utf8'))
+            self.connection.close()
+            logv('[Stopped ' + str(self) + ']')
+        except socket.error as e:
+            logv('Error stopping ' + str(self) + ': ' + str(e))
 
     def __str__(self):
         return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
@@ -8185,7 +8177,7 @@ def download(path, urls, verbose=False, abortOnError=True):
 
         # Use a temp file while downloading to avoid multiple threads
         # overwriting the same file.
-        _, tmp = tempfile.mkstemp(suffix='', prefix=basename(path) + '.', dir=d)
+        fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(path) + '.', dir=d)
         conn = None
         try:
             # 10 second timeout to establish connection
@@ -8218,6 +8210,9 @@ def download(path, urls, verbose=False, abortOnError=True):
 
             # Relax the permissions on the temporary file as it's created with restrictive permissions
             os.chmod(tmp, 0o666 & ~currentUmask)
+            # Windows will complain about tmp being in use by another process
+            # when calling shutil.move if we don't close the file descriptor.
+            os.close(fd)
             # Atomic on Unix
             shutil.move(tmp, path)
             return True

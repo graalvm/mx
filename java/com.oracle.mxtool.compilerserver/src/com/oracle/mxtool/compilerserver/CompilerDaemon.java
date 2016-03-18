@@ -63,7 +63,9 @@ public abstract class CompilerDaemon {
         serverSocket.bind(new InetSocketAddress(port));
         logf("Started server on port %d\n", port);
 
-        int threadCount = Runtime.getRuntime().availableProcessors();
+        // Need at least 2 threads since we dedicate one to the control
+        // connection waiting for the shutdown message.
+        int threadCount = Math.max(2, Runtime.getRuntime().availableProcessors());
         threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(), new ThreadFactory() {
             public Thread newThread(Runnable runnable) {
                 return new Thread(runnable);
@@ -117,7 +119,7 @@ public abstract class CompilerDaemon {
 
                 try {
                     String commandLine = input.readLine();
-                    if (commandLine.length() == 0) {
+                    if (commandLine == null || commandLine.length() == 0) {
                         logf("Shutting down\n");
                         running = false;
                         while (threadPool.getActiveCount() > 1) {
@@ -132,6 +134,11 @@ public abstract class CompilerDaemon {
                         logf("Result = %d\n", result);
 
                         output.write(result + "\n");
+
+                        // Try close open file handles (may help on Windows)
+                        System.gc();
+                        System.gc();
+                        System.runFinalization();
                     }
                 } finally {
                     // close IO streams, then socket
