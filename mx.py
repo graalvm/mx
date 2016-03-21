@@ -1983,7 +1983,8 @@ class CompilerDaemon(Daemon):
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
         args = [jdk.java] + ['-cp', cp, mainClass] + verbose + [str(self.port)]
-        p = subprocess.Popen(args)
+        preexec_fn, creationflags = _get_new_progress_group_args()
+        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags)
         # Ensure the process is cleaned up when mx exits
         _addSubprocess(p, args)
 
@@ -7523,6 +7524,21 @@ def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=No
         cwd = suite.dir
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
+def _get_new_progress_group_args():
+    """
+    Gets a tuple containing the `preexec_fn` and `creationflags` parameters to subprocess.Popen
+    required to create a subprocess that can be killed via os.killpg without killing the
+    process group of the parent process.
+    """
+    preexec_fn = None
+    creationflags = 0
+    if not is_jython():
+        if get_os() == 'windows':
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            preexec_fn = os.setsid
+    return preexec_fn, creationflags
+
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
@@ -7568,15 +7584,10 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     sub = None
 
     try:
-        # On Unix, the new subprocess should be in a separate group so that a timeout alarm
-        # can use os.killpg() to kill the whole subprocess group
-        preexec_fn = None
-        creationflags = 0
-        if not is_jython():
-            if get_os() == 'windows':
-                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-            elif timeout is not None:
-                preexec_fn = os.setsid
+        if timeout or get_os() == 'windows':
+            preexec_fn, creationflags = _get_new_progress_group_args()
+        else:
+            preexec_fn, creationflags = (None, 0)
 
         def redirect(stream, f):
             for line in iter(stream.readline, ''):
@@ -12899,7 +12910,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.15.0")
+version = VersionSpec("5.15.1")
 
 currentUmask = None
 
