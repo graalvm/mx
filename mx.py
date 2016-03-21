@@ -10231,6 +10231,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('arg', {'value' : buildOnly})
     out.element('arg', {'value' : '--force-javac'})
     out.element('arg', {'value' : '--no-native'})
+    out.element('arg', {'value' : '--no-daemon'})
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
