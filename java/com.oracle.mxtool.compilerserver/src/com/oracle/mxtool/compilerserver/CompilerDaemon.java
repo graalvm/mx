@@ -145,11 +145,6 @@ public abstract class CompilerDaemon {
                         logf("Result = %d\n", result);
 
                         output.write(result + "\n");
-
-                        // Try close open file handles (may help on Windows)
-                        System.gc();
-                        System.gc();
-                        System.runFinalization();
                     }
                 } finally {
                     // close IO streams, then socket
