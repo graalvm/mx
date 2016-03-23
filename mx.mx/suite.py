@@ -110,6 +110,11 @@ suite = {
       "sourceSha1" : "12a67f0dcdfe7e43218bf38c1d7fd766122a3dc7",
       "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2-sources.jar"],
     },
+
+    "TESTNG" : {
+      "urls" : ["http://central.maven.org/maven2/org/testng/testng/6.9.10/testng-6.9.10.jar"],
+      "sha1" : "6feb3e964aeb7097aff30c372aac3ec0f8d87ede",
+    },
   },
 
   "licenses" : {
