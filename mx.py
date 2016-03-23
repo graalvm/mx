@@ -9530,7 +9530,7 @@ def eclipseinit_cli(args):
 
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True):
     """(re)generate Eclipse project configurations and working sets"""
-    for s in suites(True):
+    for s in suites(True) + [_mx_suite]:
         _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole)
 
     generate_eclipse_workingsets()
@@ -10844,12 +10844,12 @@ def ideclean(args):
         if exists(path):
             os.remove(path)
 
-    for s in suites():
+    for s in suites() + [_mx_suite]:
         rm(join(s.get_mx_output_dir(), 'eclipse-config.zip'))
         rm(join(s.get_mx_output_dir(), 'netbeans-config.zip'))
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
 
-    for p in projects():
+    for p in projects() + _mx_suite.projects:
         if not p.isJavaProject():
             continue
 
