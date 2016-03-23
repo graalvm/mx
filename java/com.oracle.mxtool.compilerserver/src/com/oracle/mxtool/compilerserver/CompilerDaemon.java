@@ -28,6 +28,7 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -42,8 +43,9 @@ public abstract class CompilerDaemon {
     }
 
     private boolean verbose = false;
-    private boolean running;
+    private volatile boolean running;
     private ThreadPoolExecutor threadPool;
+    private ServerSocket serverSocket;
 
     public void run(String[] args) throws Exception {
         if (args.length == 2) {
@@ -58,10 +60,9 @@ public abstract class CompilerDaemon {
 
         // create socket
         int port = Integer.parseInt(args[args.length - 1]);
-        ServerSocket serverSocket = new ServerSocket();
+        serverSocket = new ServerSocket();
         serverSocket.setReuseAddress(true);
         serverSocket.bind(new InetSocketAddress(port));
-        logf("Started server on port %d\n", port);
 
         // Need at least 2 threads since we dedicate one to the control
         // connection waiting for the shutdown message.
@@ -72,11 +73,19 @@ public abstract class CompilerDaemon {
             }
         });
 
+        logf("Started server on port %d [%d threads]\n", port, threadCount);
         running = true;
         while (running) {
-            threadPool.submit(new Connection(serverSocket.accept(), createCompiler()));
+            try {
+                threadPool.submit(new Connection(serverSocket.accept(), createCompiler()));
+            } catch (SocketException e) {
+                if (running) {
+                    e.printStackTrace();
+                } else {
+                    // Socket was closed
+                }
+            }
         }
-        serverSocket.close();
     }
 
     private static void usage() {
@@ -125,6 +134,8 @@ public abstract class CompilerDaemon {
                         while (threadPool.getActiveCount() > 1) {
                             threadPool.awaitTermination(50, TimeUnit.MILLISECONDS);
                         }
+                        serverSocket.close();
+                        // Just to be sure...
                         System.exit(0);
                     } else {
                         String[] args = commandLine.split("\u0000");
@@ -134,11 +145,6 @@ public abstract class CompilerDaemon {
                         logf("Result = %d\n", result);
 
                         output.write(result + "\n");
-
-                        // Try close open file handles (may help on Windows)
-                        System.gc();
-                        System.gc();
-                        System.runFinalization();
                     }
                 } finally {
                     // close IO streams, then socket
