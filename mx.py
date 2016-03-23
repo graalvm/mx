@@ -44,6 +44,7 @@ except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
 import os, errno, time, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
+import __builtin__
 import textwrap
 import socket
 import tarfile, gzip
@@ -1778,7 +1779,8 @@ class JavaBuildTask(ProjectBuildTask):
                 for fname in filenames:
                     output.append(os.path.join(root, fname))
             if output:
-                self._newestOutput = TimeStampFile(max(output, key=os.path.getmtime))
+                key = lambda x: os.path.getmtime(_safe_path(x))
+                self._newestOutput = TimeStampFile(max(output, key=key))
         # Jasmin build
         for src in self._jasmFileList():
             className = None
@@ -9196,10 +9198,38 @@ def checkstyle(args):
                 os.unlink(auditfileName)
     return totalErrors
 
+def _safe_path(path):
+    '''
+    If not on Windows, this function returns `path`.
+    Otherwise, it return a potentially transformed path that is safe for file operations.
+    This is works around the MAX_PATH limit on Windows:
+    https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
+    '''
+    if get_os() == 'windows':
+        if isabs(path):
+            if path.startswith('\\\\'):
+                if path[2:].startswith('?\\'):
+                    # if it already has a \\?\ don't do the prefix
+                    pass
+                else:
+                    # only a UNC path has a double slash prefix
+                    path = '\\\\?\\UNC' + path
+            else:
+                path = '\\\\?\\' + path
+    return path
+
+def open(name, mode='r'): # pylint: disable=redefined-builtin
+    '''
+    Wrapper for builtin open function that handles long path names on Windows.
+    '''
+    if get_os() == 'windows':
+        name = _safe_path(name)
+    return __builtin__.open(name, mode=mode)
+
 def rmtree(dirPath):
     path = dirPath
     if get_os() == 'windows':
-        path = unicode("\\\\?\\" + dirPath)
+        path = unicode(_safe_path(dirPath))
     if os.path.isdir(path):
         shutil.rmtree(path)
     else:
@@ -12911,7 +12941,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.15.2")
+version = VersionSpec("5.15.3")
 
 currentUmask = None
 
