@@ -10996,21 +10996,22 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
     projects = []
     snippetsPatterns = set()
+    verifySincePresent = []
     for p in candidates:
         if p.isJavaProject():
             if hasattr(p.suite, 'snippetsPattern'):
                 snippetsPatterns.add(p.suite.snippetsPattern)
+                if p.suite.primary:
+                    verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
             if includeDeps:
                 p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
             added, reason = assess_candidate(p, projects)
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
     snippets = []
-    verifySincePresent = []
     for p in projects_opt_limit_to_suites():
         if p.isJavaProject():
             snippets += p.source_dirs()
-            verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
