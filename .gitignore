@@ -1,6 +1,7 @@
 *.pyc
 *.orig
 /mx.mx/env
+/mx.mx/eclipse-launches/
 /workingsets.xml
 /.idea
 /mxbuild
