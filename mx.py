@@ -1971,9 +1971,11 @@ class Daemon:
         pass
 
 class CompilerDaemon(Daemon):
-    def __init__(self, jdk, mainClass, toolJar):
+    def __init__(self, jdk, mainClass, toolJar, buildArgs=None):
         self.jdk = jdk
-        build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
+        if not buildArgs:
+            buildArgs = []
+        build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
         cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
         # allocate a new port
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2038,7 +2040,7 @@ class CompilerDaemon(Daemon):
 
 class JavacDaemon(CompilerDaemon):
     def __init__(self, jdk):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar)
+        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar, ['--force-javac'])
 
     def name(self):
         return 'javac-daemon'
