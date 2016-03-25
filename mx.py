@@ -2954,6 +2954,17 @@ class VC(object):
         """
         abort(self.kind + " isDirty is not implemented")
 
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        abort(self.kind + " status is not implemented")
+
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
         Return a list of paths under vc control that match :param:`patterns`
@@ -3281,6 +3292,10 @@ class HgConfig(VC):
                 abort('failed to get status')
             else:
                 return None
+
+    def status(self, vcdir, abortOnError=True):
+        cmd = ['hg', '-R', vcdir, 'status']
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         ret = run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=False)
@@ -3821,6 +3836,17 @@ class GitConfig(VC):
             else:
                 return None
 
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        return run(['git', 'status'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         """
         Place a bookmark at a given revision
@@ -4027,6 +4053,10 @@ class BinaryVC(VC):
     def isDirty(self, abortOnError=True):
         # a binary repo can not be dirty
         return False
+
+    def status(self, abortOnError=True):
+        # a binary repo has nothing to report
+        return True
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -11657,15 +11687,28 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         # normal case, a specific version
         importedVersion = imported_suite.version()
         if importedVersion != suite_import_version:
+            clean = True
             if imported_suite.isDirty():
                 if is_interactive():
-                    if not ask_yes_no('WARNING: Uncommited changes in {} will be lost! Really continue'.format(imported_suite.name), default='n'):
-                        abort('aborting')
+                    retry = True
+                    while retry:
+                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge?'.format(imported_suite.name),
+                                              options='[ascm]', default='a')
+                        if answer == 'a':
+                            abort('aborting')
+                        elif answer == 's':
+                            imported_suite.vc.status(imported_suite.dir)
+                        elif answer == 'c':
+                            retry = False
+                        elif answer == 'm':
+                            clean = False
+                            retry = False
+
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=True)
+            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=clean)
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.dir, update=True)
@@ -12465,14 +12508,14 @@ def remove_doubledash(args):
     if '--' in args:
         args.remove('--')
 
-def ask_yes_no(question, default=None):
+def ask_question(question, options, default=None, answer=None):
     """"""
-    assert not default or default == 'y' or default == 'n'
-    questionMark = '? [yn]: '
+    assert not default or default in options
+    questionMark = '? ' + options + ': '
     if default:
         questionMark = questionMark.replace(default, default.upper())
-    if _opts.answer:
-        answer = str(_opts.answer)
+    if answer:
+        answer = str(answer)
         print question + questionMark + answer
     else:
         if is_interactive():
@@ -12484,7 +12527,11 @@ def ask_yes_no(question, default=None):
                 answer = default
             else:
                 abort("Can not answer '" + question + "?' if stdin is not a tty")
-    return answer.lower().startswith('y')
+    return answer.lower()
+
+def ask_yes_no(question, default=None):
+    """"""
+    return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
 
 def add_argument(*args, **kwargs):
     """
