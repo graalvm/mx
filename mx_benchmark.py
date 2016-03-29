@@ -108,21 +108,33 @@ def add_benchmark_suite(suite):
 class JavaBenchmarkSuite(BenchmarkSuite):
     """Convenience suite used for benchmarks running on the JDK.
     """
+    def __init__(self, name, benchmarks, defaultVmArgs):
+        self.rawName = name
+        self.rawBenchmarks = benchmarks
+        self.defaultVmArgs = defaultVmArgs
+
+    def name(self):
+        return self.rawName
+
+    def benchmarks(self):
+        return self.rawBenchmarks
+
+    def extraDimensions(self, benchmark, vmargs, runargs):
+        return {}
 
     def run(self, benchmarks, vmargs, runargs):
         jdk = mx.get_jdk()
-        print(jdk)
+        out = mx.OutputCapture()
+        jdk.run_java(vmargs + self.defaultVmArgs + runargs, out=out)
+        print(out.data)
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
     """Example suite used for testing and as a subclassing template.
     """
-
-    def name(self):
-        return "test"
-
-    def benchmarks(self):
-        return ["simple-bench", "complex-bench"]
+    def __init__(self):
+        super(TestBenchmarkSuite, self).__init__(
+            "test", ["simple-bench", "complex-bench"], [])
 
     def extraDimensions(self, benchmarks, vmargs, runargs):
         return {}
@@ -233,18 +245,33 @@ class BenchmarkExecutor(object):
           "build.number": self.buildNumber(),
         }
 
-    def execute(self, suite, benchname, args):
+    def getSuiteAndBenchNames(self, args):
+        suitename, benchnames = args.benchmark.split(":")
+        suite = _benchmark_suites.get(suitename)
+        if not suite:
+            mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
+        benchmarks = suite.benchmarks()
+        if not benchnames in benchmarks and benchnames is not "*":
+            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
+                benchnames, suitename))
+        if benchnames is "*":
+            benchnames = benchmarks
+        else:
+            benchnames = [benchnames]
+        return suite, benchnames
+
+    def execute(self, suite, benchnames, args):
         def postProcess(results):
             processed = []
             for result in results:
                 if not isinstance(result, dict):
                     result = result.__dict__
-                point = self.dimensions(suite, benchname, args)
+                point = self.dimensions(suite, benchnames, args)
                 point.update(result)
                 processed.append(point)
             return processed
 
-        results = suite.run(benchname, args.vmargs, args.runargs)
+        results = suite.run(benchnames, args.vmargs, args.runargs)
         processedResults = postProcess(results)
         return processedResults
 
@@ -254,23 +281,16 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
-            "--vmargs", help="VM arguments to pass to the benchmark.")
+            "--vmargs", help="VM arguments to pass to the benchmark.", default=[])
         parser.add_argument(
-            "--runargs", help="Run arguments to pass to the benchmark.")
+            "--runargs", help="Run arguments to pass to the benchmark.", default=[])
         parser.add_argument(
             "-p", "--path", help="Path to the output file.")
         args = parser.parse_args(args)
 
-        suitename, benchname = args.benchmark.split(":")
-        suite = _benchmark_suites.get(suitename)
-        if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
-        benchmarks = suite.benchmarks()
-        if not benchname in benchmarks:
-            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
-                benchname, suitename))
+        suite, benchnames = self.getSuiteAndBenchNames(args)
 
-        results = self.execute(suite, benchname, args)
+        results = self.execute(suite, benchnames, args)
         dump = json.dumps(results)
         with open(args.path, "w") as txtfile:
           txtfile.write(dump)
