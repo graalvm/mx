@@ -9728,7 +9728,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             libFiles.append(path)
 
     for dep in sorted(projectDeps):
-        out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+        if not dep.isNativeProject():
+            out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
@@ -12991,7 +12992,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.15.3")
+version = VersionSpec("5.15.4")
 
 currentUmask = None
 
