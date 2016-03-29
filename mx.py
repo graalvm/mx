@@ -9728,7 +9728,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             libFiles.append(path)
 
     for dep in sorted(projectDeps):
-        if not isinstance(dep, NativeProject):
+        if not dep.isNativeProject():
             out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
 
