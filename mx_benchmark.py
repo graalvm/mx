@@ -230,7 +230,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
-class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0921
+class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
     """
     def defaultVmArgs(self):
