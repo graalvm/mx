@@ -105,54 +105,171 @@ def add_bm_suite(suite):
     _bm_suites[suite.name()] = suite
 
 
-class JavaBenchmarkSuite(BenchmarkSuite):
+class StdOutRule(object):
+    """Each rule contains a parsing pattern and a replacement template.
+  
+    A parsing pattern is a regex that may contain any number of named groups,
+    as shown in the example:
+
+        r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
+
+    The above parsing regex captures the benchmark name into a variable `benchmark`
+    and the elapsed number of milliseconds into a variable called `value`.
+
+    A replacement template is a dictionary that describes how to create a measurement:
+
+        {
+          "benchmark": ("<benchmark>", str),
+          "metric.name": "time",
+          "metric.value": ("<value>", int),
+          "metric.unit": "ms",
+          "metric.score-function": "id",
+          "metric.type": "numeric",
+          "metric.better": "lower",
+          "metric.iteration": ("<:iteration>", id),
+        }
+
+    When `instantiate` is called, the tuples in the template shown above are
+    replaced with the corresponding named groups from the parsing pattern, and converted
+    to the specified type.
+    """
+
+    def __init__(self, pattern, replacement):
+        self.pattern = pattern
+        self.replacement = replacement
+
+    def parse(self, text):
+        datapoints = []
+        capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
+        varpat = re.compile(r"<:([a-zA-Z_][0-9a-zA-Z_]*)>")
+        for iteration, m in enumerate(re.finditer(self.pattern, text)):
+            datapoint = {}
+            for key, value in self.replacement.iteritems():
+                inst = value
+                if isinstance(inst, tuple):
+                    v, tp = inst
+                    # Instantiate with named captured groups.
+                    def var(name):
+                        if name is "iteration":
+                            return iteration
+                        else:
+                            raise RuntimeError("Unknown var {0}".format(name))
+                    v = varpat.sub(lambda vm: var(vm.group(1)), v)
+                    v = capturepat.sub(lambda vm: m.groupdict()[vm.group(1)], v)
+                    # Convert to a different type.
+                    if tp is str:
+                        inst = str(v)
+                    elif tp is int:
+                        inst = int(v)
+                    elif tp is float:
+                        inst = float(v)
+                    elif tp is bool:
+                        inst = bool(v)
+                    else:
+                        raise RuntimeError("Cannot handle type {0}".format(tp))
+                datapoint[key] = inst
+            datapoints.append(datapoint)
+        return datapoints
+
+
+class StdOutBenchmarkSuite(BenchmarkSuite):
+    """Convenience suite for benchmarks that need to parse standard output.
+
+    The standard output benchmark proceeds in the following steps:
+
+    1. Run the benchmark.
+    2. Terminate if there was a non-zero exit code.
+    3. Terminate if one of the specified failure patterns was matched.
+    4. Terminate if none of the specified success patterns was matched.
+    5. Use the parse rules on the standard output to create data points.
+    """
+    def run(self, benchmarks, vmargs, runargs):
+        retcode, out = self.runAndReturnStdOut(benchmarks, vmargs, runargs)
+        if not self.validateReturnCode(retcode):
+            return {}
+        for pat in self.failurePatterns():
+            if pat.match(out):
+                return {}
+        for pat in self.successPatterns():
+            if not pat.match(out):
+                return {}
+
+        datapoints = []
+        for rule in self.rules(out):
+            datapoints.extend(rule.parse(out))
+        return datapoints
+
+    def validateReturnCode(self, retcode):
+        return retcode is 0
+
+    def failurePatterns(self):
+        """List of regex patterns which fail the benchmark when matched."""
+        return []
+
+    def successPatterns(self):
+        """List of regex patterns which fail the benchmark if not matched."""
+        return []
+
+    def rules(self, output):
+        """Returns a list of rules required to parse the standard output.
+
+        Arguments:
+            output (string): Contents of the standard output.
+
+        Returns:
+            [StdOutRule]: List of parse rules.
+        """
+        raise NotImplementedError()
+
+    def runAndReturnStdOut(self, benchmarks, vmargs, runargs):
+        """Runs the benchmarks and returns a string containing standard output.
+
+        Returns:
+            tuple: The return code and a standard output string.
+        """
+        raise NotImplementedError()
+
+
+class JavaBenchmarkSuite(StdOutBenchmarkSuite):
     """Convenience suite used for benchmarks running on the JDK.
     """
-    def __init__(self, name, benchmarks, defaultVmArgs):
-        self.rawName = name
-        self.rawBenchmarks = benchmarks
-        self.defaultVmArgs = defaultVmArgs
-
-    def name(self):
-        return self.rawName
-
-    def benchmarks(self):
-        return self.rawBenchmarks
+    def defaultVmArgs(self):
+        """Default VM arguments applied after the benchmark-specific ones."""
+        raise NotImplementedError()
 
     def extraDimensions(self, benchmark, vmargs, runargs):
         return {}
 
-    def run(self, benchmarks, vmargs, runargs):
+    def runAndReturnStdOut(self, benchmarks, vmargs, runargs):
         jdk = mx.get_jdk()
         out = mx.OutputCapture()
-        jdk.run_java(vmargs + self.defaultVmArgs + runargs, out=out)
-        print(out.data)
+        exitCode = jdk.run_java(vmargs + self.defaultVmArgs() + runargs,
+            out=out, err=out, nonZeroIsFatal=False)
+        return exitCode, out.data
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
     """Example suite used for testing and as a subclassing template.
     """
-    def __init__(self):
-        super(TestBenchmarkSuite, self).__init__(
-            "test", ["simple-bench", "complex-bench"], [])
+    def name(self):
+        return "test"
 
-    def extraDimensions(self, benchmarks, vmargs, runargs):
-        return {}
+    def validateReturnCode(self, retcode):
+        return True
 
-    def run(self, benchmarks, vmargs, runargs):
-        super(TestBenchmarkSuite, self).run(benchmarks, vmargs, runargs)
+    def benchmarks(self):
+        return ["simple-bench", "complex-bench"]
+
+    def rules(self, out):
         return [
-          {
-            "metric.name": "time",
-            "metric.value": 1.1,
-            "metric.unit": "ms",
-            "metric.score-function": "id",
-            "metric.score-value": 1.1,
-            "metric.type": "numeric",
-            "metric.better": "lower",
-            "metric.iteration": 0,
-          },
+          StdOutRule("-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
+            "input": ("<flag>", int),
+            "metric.value": ("<bitnum>", int),
+          }),
         ]
+
+    def defaultVmArgs(self):
+        return []
 
 
 add_bm_suite(TestBenchmarkSuite())
