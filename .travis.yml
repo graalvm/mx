@@ -1,6 +1,10 @@
 language: python
 python:
   - "2.7"
+addons:
+  apt:
+    packages:
+      - oracle-java8-installer
 install:
   - pip install astroid==1.1.0
   - pip install pylint==1.1.0
