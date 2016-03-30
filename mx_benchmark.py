@@ -107,7 +107,7 @@ def add_bm_suite(suite):
 
 class StdOutRule(object):
     """Each rule contains a parsing pattern and a replacement template.
-  
+
     A parsing pattern is a regex that may contain any number of named groups,
     as shown in the example:
 
@@ -230,7 +230,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
-class JavaBenchmarkSuite(StdOutBenchmarkSuite):
+class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0921
     """Convenience suite used for benchmarks running on the JDK.
     """
     def defaultVmArgs(self):
@@ -262,7 +262,7 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
 
     def rules(self, out):
         return [
-          StdOutRule("-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
+          StdOutRule(r"-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
             "input": ("<flag>", int),
             "metric.value": ("<bitnum>", int),
           }),
@@ -410,7 +410,7 @@ class BenchmarkExecutor(object):
         results = self.execute(suite, benchnames, args)
         dump = json.dumps(results)
         with open(args.path, "w") as txtfile:
-          txtfile.write(dump)
+            txtfile.write(dump)
 
 
 _benchmark_executor = BenchmarkExecutor()
