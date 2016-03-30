@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 import mx
 
 
-_benchmark_suites = {}
+_bm_suites = {}
 
 
 class BenchmarkSuite(object):
@@ -79,7 +79,7 @@ class BenchmarkSuite(object):
             object: A list of measurement results.
 
             A measurement result is an object that can be converted into JSON and is
-            merged with root.
+            merged with the other dimensions of the data point.
 
             A measurement result must contain a field `metric`, which has the following
             values:
@@ -99,10 +99,10 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
 
-def add_benchmark_suite(suite):
-    if suite.name() in _benchmark_suites:
+def add_bm_suite(suite):
+    if suite.name() in _bm_suites:
         raise RuntimeError("Benchmark suite '{0}' already exists.".format(suite.name()))
-    _benchmark_suites[suite.name()] = suite
+    _bm_suites[suite.name()] = suite
 
 
 class JavaBenchmarkSuite(BenchmarkSuite):
@@ -155,7 +155,7 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
         ]
 
 
-add_benchmark_suite(TestBenchmarkSuite())
+add_bm_suite(TestBenchmarkSuite())
 
 
 class BenchmarkExecutor(object):
@@ -247,7 +247,7 @@ class BenchmarkExecutor(object):
 
     def getSuiteAndBenchNames(self, args):
         suitename, benchnames = args.benchmark.split(":")
-        suite = _benchmark_suites.get(suitename)
+        suite = _bm_suites.get(suitename)
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
         benchmarks = suite.benchmarks()
