@@ -13,7 +13,7 @@ gate : {
     ECLIPSE_EXE : "$ECLIPSE/eclipse"
   }
   run : [
-    ["mx", "--strict-compliance", "gate", "--strict-mode"]
+    ["mx", "-v", "--strict-compliance", "gate", "--strict-mode"]
   ]
   timelimit : "10:00"
 }
