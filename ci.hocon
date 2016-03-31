@@ -1,0 +1,23 @@
+gate : {
+  packages : {
+    "pip:astroid" : "==1.1.0"
+    "pip:pylint" : "==1.1.0"
+  }
+  # need pyhocon fix
+  downloads : {
+    JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
+    JDT : {name: ecj, version: "4.5.1", platformspecific: false}
+    ECLIPSE : {name: eclipse, version: "4.3.0", platformspecific: true}
+  }
+  environment : {
+    ECLIPSE_EXE : "$ECLIPSE/eclipse"
+  }
+  run : [
+    ["mx", "--strict-compliance", "gate", "--strict-mode"]
+  ]
+  timelimit : "10:00"
+}
+
+builds = [
+  ${gate} {capabilities : [linux, gate],   name: "mx-gate-linux"}
+]
