@@ -19,5 +19,5 @@ gate : {
 }
 
 builds = [
-  ${gate} {capabilities : [linux, gate],   name: "mx-gate-linux"}
+  ${gate} {capabilities : [linux, amd64, gate],   name: "gate-linux-amd64"}
 ]
