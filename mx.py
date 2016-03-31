@@ -28,7 +28,6 @@
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 """
 import sys
 from abc import ABCMeta
@@ -6809,7 +6808,7 @@ environment variables:
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
-        self.add_argument('--dynamicimport', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
+        self.add_argument('--dynamicimport', '--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
