@@ -4932,7 +4932,7 @@ class Suite:
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         self.scm = None
-        if self.name in _suites:
+        if self.name in _suites and _suites[self.name].dir != self.dir:
             abort('cannot override suite {} in {} with suite of the same name in {}'.format(self.name, _suites[self.name].dir, self.dir))
         _suites[self.name] = self
         self._outputRoot = None
