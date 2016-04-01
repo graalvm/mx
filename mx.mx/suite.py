@@ -147,5 +147,12 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.7+", # jdk7 or later
     },
-  },
+
+    "com.oracle.mxtool.checkcopy" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "javaCompliance" : "1.8",
+    },
+   },
+
 }
