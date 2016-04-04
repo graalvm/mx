@@ -28,7 +28,6 @@
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 """
 import sys
 from abc import ABCMeta
@@ -1972,9 +1971,11 @@ class Daemon:
         pass
 
 class CompilerDaemon(Daemon):
-    def __init__(self, jdk, mainClass, toolJar):
+    def __init__(self, jdk, mainClass, toolJar, buildArgs=None):
         self.jdk = jdk
-        build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
+        if not buildArgs:
+            buildArgs = []
+        build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
         cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
         # allocate a new port
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2039,7 +2040,7 @@ class CompilerDaemon(Daemon):
 
 class JavacDaemon(CompilerDaemon):
     def __init__(self, jdk):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar)
+        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar, ['--force-javac'])
 
     def name(self):
         return 'javac-daemon'
@@ -2953,6 +2954,17 @@ class VC(object):
         """
         abort(self.kind + " isDirty is not implemented")
 
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        abort(self.kind + " status is not implemented")
+
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
         Return a list of paths under vc control that match :param:`patterns`
@@ -3280,6 +3292,10 @@ class HgConfig(VC):
                 abort('failed to get status')
             else:
                 return None
+
+    def status(self, vcdir, abortOnError=True):
+        cmd = ['hg', '-R', vcdir, 'status']
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         ret = run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=False)
@@ -3820,6 +3836,17 @@ class GitConfig(VC):
             else:
                 return None
 
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        return run(['git', 'status'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         """
         Place a bookmark at a given revision
@@ -4026,6 +4053,10 @@ class BinaryVC(VC):
     def isDirty(self, abortOnError=True):
         # a binary repo can not be dirty
         return False
+
+    def status(self, abortOnError=True):
+        # a binary repo has nothing to report
+        return True
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -4901,6 +4932,8 @@ class Suite:
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         self.scm = None
+        if self.name in _suites and _suites[self.name].dir != self.dir:
+            abort('cannot override suite {} in {} with suite of the same name in {}'.format(self.name, _suites[self.name].dir, self.dir))
         _suites[self.name] = self
         self._outputRoot = None
 
@@ -6778,7 +6811,7 @@ environment variables:
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
-        self.add_argument('--dynamicimport', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
+        self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
@@ -9697,7 +9730,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             libFiles.append(path)
 
     for dep in sorted(projectDeps):
-        out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+        if not dep.isNativeProject():
+            out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
@@ -11656,15 +11690,28 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         # normal case, a specific version
         importedVersion = imported_suite.version()
         if importedVersion != suite_import_version:
+            clean = True
             if imported_suite.isDirty():
                 if is_interactive():
-                    if not ask_yes_no('WARNING: Uncommited changes in {} will be lost! Really continue'.format(imported_suite.name), default='n'):
-                        abort('aborting')
+                    retry = True
+                    while retry:
+                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge?'.format(imported_suite.name),
+                                              options='[ascm]', default='a')
+                        if answer == 'a':
+                            abort('aborting')
+                        elif answer == 's':
+                            imported_suite.vc.status(imported_suite.dir)
+                        elif answer == 'c':
+                            retry = False
+                        elif answer == 'm':
+                            clean = False
+                            retry = False
+
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=True)
+            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=clean)
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.dir, update=True)
@@ -12231,11 +12278,11 @@ def checkcopyrights(args):
             return ArgumentParser.format_help(self) + self._get_program_help()
 
         def _get_program_help(self):
-            help_output = subprocess.check_output([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--help'])
+            help_output = subprocess.check_output([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
             return '\nother argumemnts preceded with --\n' +  help_output
 
     # ensure compiled form of code is up to date
-    myDir, binDir = _compile_mx_class('CheckCopyright')
+    build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.checkcopy'])
 
     parser = CP(prog='mx checkcopyrights')
 
@@ -12254,7 +12301,7 @@ def checkcopyrights(args):
         custom_args = []
         if exists(custom_copyrights):
             custom_args = ['--custom-copyright-dir', custom_copyrights]
-        rc = run([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        rc = run([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--copyright-dir', _mx_home] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
 
@@ -12464,14 +12511,14 @@ def remove_doubledash(args):
     if '--' in args:
         args.remove('--')
 
-def ask_yes_no(question, default=None):
+def ask_question(question, options, default=None, answer=None):
     """"""
-    assert not default or default == 'y' or default == 'n'
-    questionMark = '? [yn]: '
+    assert not default or default in options
+    questionMark = '? ' + options + ': '
     if default:
         questionMark = questionMark.replace(default, default.upper())
-    if _opts.answer:
-        answer = str(_opts.answer)
+    if answer:
+        answer = str(answer)
         print question + questionMark + answer
     else:
         if is_interactive():
@@ -12483,7 +12530,11 @@ def ask_yes_no(question, default=None):
                 answer = default
             else:
                 abort("Can not answer '" + question + "?' if stdin is not a tty")
-    return answer.lower().startswith('y')
+    return answer.lower()
+
+def ask_yes_no(question, default=None):
+    """"""
+    return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
 
 def add_argument(*args, **kwargs):
     """
@@ -12934,9 +12985,6 @@ def main():
                 abort('Command timed out after ' + str(_opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(_opts.timeout)
-        # compile java resources ahead of time to avoid races in parallel tasks
-        for java_resource in ['CheckCopyright']:
-            _compile_mx_class(java_resource)
         retcode = c(command_args)
         if retcode is not None and retcode != 0:
             abort(retcode)
@@ -12944,7 +12992,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.15.3")
+version = VersionSpec("5.16.0")
 
 currentUmask = None
 
