@@ -54,29 +54,37 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
-    def extraDimensions(self, benchmark, vmargs, runargs):
-        """Returns dictionary of extra dimensions for the given benchmark and arguments.
+    def vmFlags(self, bmSuiteArgs):
+        """Parses the VM flags from the list of arguments passed to the suite.
 
         Arguments:
-            benchmark (string): Name of the benchmark.
-            vmargs (list of strings): List of VM arguments.
-            runargs (list of strings): List of benchmark arguments.
+            bmSuiteArgs (list of strings): List of arguments to the suite.
 
         Returns:
-            dict[basestring, T]: Dictionary of field-name/value pairs.
+            list of strings: A list of flags that are VM flags.
         """
         raise NotImplementedError()
 
-    def run(self, benchmarks, vmargs, runargs):
+    def runFlags(self, bmSuiteArgs):
+        """Parses the run flags from the list of arguments passed to the suite.
+
+        Arguments:
+            bmSuiteArgs (list of strings): List of arguments to the suite.
+
+        Returns:
+            list of strings: A list of flags that are run flags for the benchmark.
+        """
+        raise NotImplementedError()
+
+    def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
         Arguments:
             benchmarks (list of strings): List of benchmark names.
-            vmargs (list of strings): List of VM arguments.
-            runargs (list of strings): List of benchmark arguments.
+            bmSuiteArgs (list of strings): List of arguments to the suite.
 
         Returns:
-            object: A list of measurement results.
+            object: A dictionary of measurement results.
 
             A measurement result is an object that can be converted into JSON and is
             merged with the other dimensions of the data point.
@@ -183,8 +191,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     4. Terminate if none of the specified success patterns was matched.
     5. Use the parse rules on the standard output to create data points.
     """
-    def run(self, benchmarks, vmargs, runargs):
-        retcode, out = self.runAndReturnStdOut(benchmarks, vmargs, runargs)
+    def run(self, benchmarks, bmSuiteArgs):
+        retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
         if not self.validateReturnCode(retcode):
             return {}
         for pat in self.failurePatterns():
@@ -221,8 +229,11 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """
         raise NotImplementedError()
 
-    def runAndReturnStdOut(self, benchmarks, vmargs, runargs):
+    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         """Runs the benchmarks and returns a string containing standard output.
+
+        Arguments:
+            See `run`.
 
         Returns:
             tuple: The return code and a standard output string.
@@ -233,17 +244,19 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
     """
-    def defaultVmArgs(self):
-        """Default VM arguments applied after the benchmark-specific ones."""
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        """Creates a list of arguments for the JVM using the suite arguments.
+
+        Arguments:
+            benchmarks (list of strings): List of benchmarks from the suite to execute.
+            bmSuiteArgs (list of strings): Arguments passed to the suite.
+        """
         raise NotImplementedError()
 
-    def extraDimensions(self, benchmark, vmargs, runargs):
-        return {}
-
-    def runAndReturnStdOut(self, benchmarks, vmargs, runargs):
+    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         jdk = mx.get_jdk()
         out = mx.OutputCapture()
-        exitCode = jdk.run_java(vmargs + self.defaultVmArgs() + runargs,
+        exitCode = jdk.run_java(self.createCommandLineArgs(benchmarks, bmSuiteArgs),
             out=out, err=out, nonZeroIsFatal=False)
         return exitCode, out.data
 
@@ -257,6 +270,15 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def validateReturnCode(self, retcode):
         return True
 
+    def vmFlags(self, bmSuiteArgs):
+        return []
+
+    def runFlags(self, bmSuiteArgs):
+        return []
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        return bmSuiteArgs
+
     def benchmarks(self):
         return ["simple-bench", "complex-bench"]
 
@@ -267,9 +289,6 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
-
-    def defaultVmArgs(self):
-        return []
 
 
 add_bm_suite(TestBenchmarkSuite())
@@ -337,15 +356,15 @@ class BenchmarkExecutor(object):
     def buildNumber(self):
         return mx.get_env("BUILD_NUMBER")
 
-    def dimensions(self, suite, benchname, args):
+    def dimensions(self, suite, benchname, mxBenchmarkArgs, bmSuiteArgs):
         return {
           "metric.uuid": self.uid(),
           "group": self.group(),
           "subgroup": self.subgroup(),
           "bench-suite": suite.name(),
           "benchmark": benchname,
-          "config.vm-flags": " ".join(args.vmargs) if args.vmargs else "",
-          "config.run-flags": " ".join(args.runargs) if args.runargs else "",
+          "config.vm-flags": " ".join(suite.vmFlags(bmSuiteArgs)),
+          "config.run-flags": " ".join(suite.runFlags(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
           "machine.name": self.machineName(),
           "machine.hostname": self.machineHostname(),
@@ -375,47 +394,78 @@ class BenchmarkExecutor(object):
             benchnames = benchmarks
         else:
             benchnames = [benchnames]
-        return suite, benchnames
+        return [(suite, benchnames)]
 
-    def execute(self, suite, benchnames, args):
+    def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
             processed = []
             for result in results:
                 if not isinstance(result, dict):
                     result = result.__dict__
-                point = self.dimensions(suite, benchnames, args)
+                point = self.dimensions(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                 point.update(result)
                 processed.append(point)
             return processed
 
-        results = suite.run(benchnames, args.vmargs, args.runargs)
+        results = suite.run(benchnames, bmSuiteArgs)
         processedResults = postProcess(results)
         return processedResults
 
-    def benchmark(self, args):
+    def benchmark(self, mxBenchmarkArgs, bmSuiteArgs):
         """Run a benchmark suite."""
         parser = ArgumentParser(prog="mx benchmark", description=benchmark.__doc__)
         parser.add_argument(
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
-            "--vmargs", help="VM arguments to pass to the benchmark.", default=[])
-        parser.add_argument(
-            "--runargs", help="Run arguments to pass to the benchmark.", default=[])
-        parser.add_argument(
             "-p", "--path", help="Path to the output file.")
-        args = parser.parse_args(args)
+        mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
-        suite, benchnames = self.getSuiteAndBenchNames(args)
+        suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
-        results = self.execute(suite, benchnames, args)
-        dump = json.dumps(results)
-        with open(args.path, "w") as txtfile:
-            txtfile.write(dump)
+        for suite, benchnames in suiteBenchPairs:
+            results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+            dump = json.dumps(results)
+            with open(mxBenchmarkArgs.path, "w") as txtfile:
+                txtfile.write(dump)
 
 
 _benchmark_executor = BenchmarkExecutor()
 
 
 def benchmark(args):
-    """Run benchmark suite."""
-    _benchmark_executor.benchmark(args)
+    """Run benchmark suite.
+
+    Usage: mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [bmSuiteArgs]
+           mx benchmark --help
+
+    Arguments:
+      bmSuiteName: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
+      benchName: Name of particular benchmar within the benchmark suite
+        (e.g. `raytrace`, `deltablue`, `avrora`, ...), a wildcard indicating that all
+        the benchmarks need to be run as separate runs. If omitted, all the benchmarks
+        must be executed as part of one run.
+      mxBenchmarkArgs: Optional arguments to the `mx benchmark` command (see below).
+
+    Arguments for `mx benchmark` command:
+      -p, --path: Path to the file into which to dump the benchmark results.
+
+    Note that arguments to `mx benchmark` are separated with double dashes (`--`).
+    Everything before the first `--` is passed to the `mx benchmark` command directly.
+    Arguments after the `--` are passed to the specific benchmark suite, and they can
+    include additional, benchmark-specific `--` occurrences.
+
+    Examples:
+      mx benchmark dacapo:avrora --path ./results.json -- -jar dacapo-9.12-bach.jar
+      mx benchmark octane:richards -p ./results.json -- -XX:+PrintGC -- --iterations=10
+      mx benchmark dacapo:* --path ./results.json --
+      mx benchmark specjvm --path ./output.json
+    """
+    mxBenchmarkArgs = args
+    bmSuiteArgs = []
+    try:
+      idx = args.index("--")
+      mxBenchmarkArgs = args[:idx]
+      bmSuiteArgs = args[(idx + 1):]
+    except ValueError:
+      pass
+    _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
