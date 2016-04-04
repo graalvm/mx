@@ -6828,11 +6828,6 @@ environment variables:
             parser = ArgParser(parents=[self])
             parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
 
-            # Legacy support - these options are recognized during first parse and
-            # appended to the unknown options to be reparsed in the second parse
-            parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
-            parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
-
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
@@ -6840,9 +6835,6 @@ environment variables:
             if opts.version:
                 print 'mx version ' + str(version)
                 sys.exit(0)
-
-            if opts.vm: self.unknown += ['--vm', opts.vm]
-            if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
 
             self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
 
@@ -9854,25 +9846,32 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if files:
             files.append(join(p.dir, '.factorypath'))
 
+_ide_envvars = {
+    'MX_ALT_OUTPUT_ROOT' : None,
+    # On the mac, applications are launched with a different path than command
+    # line tools, so capture the current PATH.  In general this ensures that
+    # the eclipse builders see the same path as a working command line build.
+    'PATH' : None,
+}
+
+def add_ide_envvar(name, value=None):
+    """
+    Adds a given name to the set of environment variables that will
+    be captured in generated IDE configurations. If `value` is not
+    None, then it will be the captured value. Otherwise the result of
+    get_env(name) is not None as capturing time, it will be used.
+    Otherwise no value is captured.
+    """
+    _ide_envvars[name] = value
+
 def _get_ide_envvars():
     """
     Gets a dict of environment variables that must be captured in generated IDE configurations.
     """
     result = {'JAVA_HOME' : get_jdk().home}
-    names = [
-        # On the mac, applications are launched with a different path than command
-        # line tools, so capture the current PATH.  In general this ensures that
-        # the eclipse builders see the same path as a working command line build.
-        'PATH',
-        # The mx builders are run inside the directory of their associated suite,
-        # not the primary suite, so they might not see the env file of the primary
-        # suite.  Capture DEFAULT_VM in case it was only defined in the primary
-        # suite.
-        'DEFAULT_VM',
-        'MX_ALT_OUTPUT_ROOT',
-    ]
-    for name in names:
-        value = get_env(name)
+    for name, value in _ide_envvars.iteritems():
+        if value is None:
+            value = get_env(name)
         if value is not None:
             result[name] = value
     return result
@@ -12990,7 +12989,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.16.0")
+version = VersionSpec("5.17.0")
 
 currentUmask = None
 
