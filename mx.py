@@ -6828,6 +6828,11 @@ environment variables:
             parser = ArgParser(parents=[self])
             parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
 
+            # Legacy support - these options are recognized during first parse and
+            # appended to the unknown options to be reparsed in the second parse
+            parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
+            parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
+
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
@@ -6835,6 +6840,9 @@ environment variables:
             if opts.version:
                 print 'mx version ' + str(version)
                 sys.exit(0)
+
+            if opts.vm: self.unknown += ['--vm=' + opts.vm]
+            if opts.vmbuild: self.unknown += ['--vmbuild=' + opts.vmbuild]
 
             self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
 
@@ -12989,7 +12997,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.17.0")
+version = VersionSpec("5.17.1")
 
 currentUmask = None
 
