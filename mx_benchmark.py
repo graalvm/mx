@@ -134,7 +134,7 @@ class StdOutRule(object):
           "metric.score-function": "id",
           "metric.type": "numeric",
           "metric.better": "lower",
-          "metric.iteration": ("<:iteration>", id),
+          "metric.iteration": ("$iteration", id),
         }
 
     When `instantiate` is called, the tuples in the template shown above are
@@ -149,13 +149,13 @@ class StdOutRule(object):
     def parse(self, text):
         datapoints = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
-        varpat = re.compile(r"<:([a-zA-Z_][0-9a-zA-Z_]*)>")
+        varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(re.finditer(self.pattern, text)):
             datapoint = {}
             for key, value in self.replacement.iteritems():
                 inst = value
                 if isinstance(inst, tuple):
-                    v, tp = inst
+                    v, vtype = inst
                     # Instantiate with named captured groups.
                     def var(name):
                         if name is "iteration":
@@ -165,19 +165,18 @@ class StdOutRule(object):
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
                     v = capturepat.sub(lambda vm: m.groupdict()[vm.group(1)], v)
                     # Convert to a different type.
-                    if tp is str:
+                    if vtype is str:
                         inst = str(v)
-                    elif tp is int:
+                    elif vtype is int:
                         inst = int(v)
-                    elif tp is float:
+                    elif vtype is float:
                         inst = float(v)
-                    elif tp is bool:
+                    elif vtype is bool:
                         inst = bool(v)
                     else:
-                        raise RuntimeError("Cannot handle type {0}".format(tp))
-                occ = next(
-                    (tp for tp in [str, int, float, bool] if type(inst) is tp), None)
-                if not occ:
+                        raise RuntimeError("Cannot handle type {0}".format(vtype))
+                if not next(
+                    (t for t in [str, int, float, bool] if type(inst) is t), None):
                     raise RuntimeError("Object has unknown type: {0}".format(inst))
                 datapoint[key] = inst
             datapoints.append(datapoint)
@@ -360,6 +359,11 @@ class BenchmarkExecutor(object):
     def buildNumber(self):
         return mx.get_env("BUILD_NUMBER")
 
+    def checkEnvironmentVars(self):
+        for ev in ["BUILD_URL", "BUILD_NUMBER", "MACHINE_NAME", "GROUP"]:
+            if not mx.get_env(ev):
+                raise RuntimeError("Environment variable {0} not specified.".format(ev))
+
     def dimensions(self, suite, benchname, mxBenchmarkArgs, bmSuiteArgs):
         return {
           "metric.uuid": self.uid(),
@@ -424,6 +428,8 @@ class BenchmarkExecutor(object):
             "-p", "--path", help="Path to the output file.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
+        self.checkEnvironmentVars()
+
         suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
         for suite, benchnames in suiteBenchPairs:
@@ -459,17 +465,17 @@ def benchmark(args):
     include additional, benchmark-specific `--` occurrences.
 
     Examples:
-      mx benchmark dacapo:avrora --path ./results.json -- -jar dacapo-9.12-bach.jar
-      mx benchmark octane:richards -p ./results.json -- -XX:+PrintGC -- --iterations=10
-      mx benchmark dacapo:* --path ./results.json --
-      mx benchmark specjvm --path ./output.json
+        mx benchmark dacapo:avrora --path ./results.json -- -jar dacapo-9.12-bach.jar
+        mx benchmark octane:richards -p ./results.json -- -XX:+PrintGC -- --iters=10
+        mx benchmark dacapo:* --path ./results.json --
+        mx benchmark specjvm --path ./output.json
     """
     mxBenchmarkArgs = args
     bmSuiteArgs = []
     try:
-      idx = args.index("--")
-      mxBenchmarkArgs = args[:idx]
-      bmSuiteArgs = args[(idx + 1):]
+        idx = args.index("--")
+        mxBenchmarkArgs = args[:idx]
+        bmSuiteArgs = args[(idx + 1):]
     except ValueError:
-      pass
+        pass
     _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
