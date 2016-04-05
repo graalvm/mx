@@ -197,13 +197,22 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
         if not self.validateReturnCode(retcode):
-            return {}
-        for pat in self.failurePatterns():
-            if pat.match(out):
-                return {}
-        for pat in self.successPatterns():
-            if not pat.match(out):
-                return {}
+            raise RuntimeError("Benchmark failed.")
+        def compiled(pat):
+            if type(pat) is str:
+                return re.compile(pat)
+            return pat
+        flaky = False
+        for pat in self.flakySuccessPatterns():
+            if compiled(pat).match(out):
+                flaky = True
+        if not flaky:
+            for pat in self.failurePatterns():
+                if compiled(pat).match(out):
+                    raise RuntimeError("Benchmark failed.")
+            for pat in self.successPatterns():
+                if not compiled(pat).match(out):
+                    raise RuntimeError("Benchmark failed.")
 
         datapoints = []
         for rule in self.rules(out):
@@ -212,6 +221,17 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
     def validateReturnCode(self, retcode):
         return retcode is 0
+
+    def flakySuccessPatterns(self):
+        """List of regex pattern that can override matched failure and success patterns.
+
+        If any of the patterns in this list match, the output will not be checked for
+        failure or success patterns.
+        If none of the patterns in this list match, the output is checked normally.
+
+        This method should be overridden for suites that are known to be flaky.
+        """
+        return []
 
     def failurePatterns(self):
         """List of regex patterns which fail the benchmark when matched."""
@@ -364,13 +384,12 @@ class BenchmarkExecutor(object):
             if not mx.get_env(ev):
                 raise RuntimeError("Environment variable {0} not specified.".format(ev))
 
-    def dimensions(self, suite, benchname, mxBenchmarkArgs, bmSuiteArgs):
+    def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
         return {
           "metric.uuid": self.uid(),
           "group": self.group(),
           "subgroup": self.subgroup(),
           "bench-suite": suite.name(),
-          "benchmark": benchname,
           "config.vm-flags": " ".join(suite.vmFlags(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runFlags(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
@@ -390,19 +409,24 @@ class BenchmarkExecutor(object):
         }
 
     def getSuiteAndBenchNames(self, args):
-        suitename, benchnames = args.benchmark.split(":")
+        argparts = args.benchmark.split(":")
+        suitename = argparts[0]
+        if len(argparts) == 2:
+            benchspec = argparts[1]
+        else:
+            benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
-        benchmarks = suite.benchmarks()
-        if not benchnames in benchmarks and benchnames is not "*":
+        if benchspec is "*":
+            return [(suite, b) for b in suite.benchmarks()]
+        elif benchspec is "":
+            return [(suite, suite.benchmarks())]
+        elif not benchspec in suite.benchmarks():
             mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
-                benchnames, suitename))
-        if benchnames is "*":
-            benchnames = benchmarks
+                benchname, suitename))
         else:
-            benchnames = [benchnames]
-        return [(suite, benchnames)]
+            return [(suite, benchspec)]
 
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
@@ -410,7 +434,7 @@ class BenchmarkExecutor(object):
             for result in results:
                 if not isinstance(result, dict):
                     result = result.__dict__
-                point = self.dimensions(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+                point = self.dimensions(suite, mxBenchmarkArgs, bmSuiteArgs)
                 point.update(result)
                 processed.append(point)
             return processed
@@ -451,9 +475,9 @@ def benchmark(args):
     Arguments:
       bmSuiteName: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
       benchName: Name of particular benchmar within the benchmark suite
-        (e.g. `raytrace`, `deltablue`, `avrora`, ...), a wildcard indicating that all
-        the benchmarks need to be run as separate runs. If omitted, all the benchmarks
-        must be executed as part of one run.
+        (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that all
+        the benchmarks need to be executed as separate runs. If omitted, all the
+        benchmarks must be executed as part of one run.
       mxBenchmarkArgs: Optional arguments to the `mx benchmark` command (see below).
 
     Arguments for `mx benchmark` command:
