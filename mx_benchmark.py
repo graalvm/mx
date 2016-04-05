@@ -41,16 +41,16 @@ class BenchmarkSuite(object):
     def name(self):
         """Returns the name of the suite.
 
-        Returns:
-            basestring: Name of the suite.
+        :return: Name of the suite.
+        :rtype: str
         """
         raise NotImplementedError()
 
     def benchmarks(self):
         """Returns the list of the benchmarks provided by this suite.
 
-        Returns:
-            list of strings: List of benchmarks.
+        :return: List of benchmark string names.
+        :rtype: list
         """
         raise NotImplementedError()
 
@@ -62,37 +62,31 @@ class BenchmarkSuite(object):
         """
         pass
 
-    def vmFlags(self, bmSuiteArgs):
-        """Parses the VM flags from the list of arguments passed to the suite.
+    def vmArgs(self, bmSuiteArgs):
+        """Extracts the VM flags from the list of arguments passed to the suite.
 
-        Arguments:
-            bmSuiteArgs (list of strings): List of arguments to the suite.
-
-        Returns:
-            list of strings: A list of flags that are VM flags.
+        :param list bmSuiteArgs: List of string arguments to the suite.
+        :return: A list of string flags that are VM flags.
+        :rtype: list
         """
         raise NotImplementedError()
 
-    def runFlags(self, bmSuiteArgs):
-        """Parses the run flags from the list of arguments passed to the suite.
+    def runArgs(self, bmSuiteArgs):
+        """Extracts the run flags from the list of arguments passed to the suite.
 
-        Arguments:
-            bmSuiteArgs (list of strings): List of arguments to the suite.
-
-        Returns:
-            list of strings: A list of flags that are run flags for the benchmark.
+        :param list bmSuiteArgs: List of string arguments to the suite.
+        :return: A list of string flags that are arguments for the suite.
+        :rtype: list
         """
         raise NotImplementedError()
 
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
-        Arguments:
-            benchmarks (list of strings): List of benchmark names.
-            bmSuiteArgs (list of strings): List of arguments to the suite.
-
-        Returns:
-            object: A dictionary of measurement results.
+        :param list benchmarks: List of benchmark string names.
+        :param list bmSuiteArgs: List of string arguments to the suite.
+        :return:
+            A dictionary of measurement results.
 
             A measurement result is an object that can be converted into JSON and is
             merged with the other dimensions of the data point.
@@ -111,6 +105,7 @@ class BenchmarkSuite(object):
                   (e.g. `"numeric"`)
                 - `metric.better` -- `"higher"` if higher is better, `"lower"` otherwise
                 - `metric.iteration` -- iteration number of the measurement (e.g. `0`)
+        :rtype: object
         """
         raise NotImplementedError()
 
@@ -208,7 +203,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
         if not self.validateReturnCode(retcode):
-            raise RuntimeError("Benchmark failed.")
+            raise RuntimeError("Benchmark failed")
         def compiled(pat):
             if type(pat) is str:
                 return re.compile(pat)
@@ -220,10 +215,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         if not flaky:
             for pat in self.failurePatterns():
                 if compiled(pat).match(out):
-                    raise RuntimeError("Benchmark failed.")
+                    raise RuntimeError("Benchmark failed")
+            success = False
             for pat in self.successPatterns():
                 if not compiled(pat).match(out):
-                    raise RuntimeError("Benchmark failed.")
+                    success = True
+            if not success:
+                raise RuntimeError("Benchmark failed")
 
         datapoints = []
         for rule in self.rules(out):
@@ -255,22 +253,19 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     def rules(self, output):
         """Returns a list of rules required to parse the standard output.
 
-        Arguments:
-            output (string): Contents of the standard output.
-
-        Returns:
-            [StdOutRule]: List of parse rules.
+        :param string output: Contents of the standard output.
+        :return: List of StdOutRule parse rules.
+        :rtype: list
         """
         raise NotImplementedError()
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         """Runs the benchmarks and returns a string containing standard output.
 
-        Arguments:
-            See `run`.
+        See arguments `run`.
 
-        Returns:
-            tuple: The return code and a standard output string.
+        :return: The return code and a standard output string.
+        :rtype: tuple
         """
         raise NotImplementedError()
 
@@ -281,18 +276,18 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
-        Arguments:
-            benchmarks (list of strings): List of benchmarks from the suite to execute.
-            bmSuiteArgs (list of strings): Arguments passed to the suite.
+        :param list benchmarks: List of benchmarks from the suite to execute.
+        :param list bmSuiteArgs: Arguments passed to the suite.
         """
         raise NotImplementedError()
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         jdk = mx.get_jdk()
-        out = mx.OutputCapture()
-        exitCode = jdk.run_java(self.createCommandLineArgs(benchmarks, bmSuiteArgs),
-            out=out, err=out, nonZeroIsFatal=False)
-        return exitCode, out.data
+        out = mx.TeeOutputCapture(mx.OutputCapture())
+        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        mx.logv("Running JVM with args: {0}.".format(args))
+        exitCode = jdk.run_java(args, out=out, err=out, nonZeroIsFatal=False)
+        return exitCode, out.underlying.data
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
@@ -304,10 +299,10 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def validateReturnCode(self, retcode):
         return True
 
-    def vmFlags(self, bmSuiteArgs):
+    def vmArgs(self, bmSuiteArgs):
         return []
 
-    def runFlags(self, bmSuiteArgs):
+    def runArgs(self, bmSuiteArgs):
         return []
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
@@ -365,24 +360,28 @@ class BenchmarkExecutor(object):
         return url.strip()
 
     def commitAuthor(self):
-        url = subprocess.check_output(["git", "show", "--format=%aN", "HEAD"])
-        return url.strip()
+        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
+            "--format=%an", "HEAD"])
+        return out.strip()
 
     def commitAuthorTimestamp(self):
-        url = subprocess.check_output(["git", "show", "--format=%at", "HEAD"])
-        return int(url.strip())
+        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
+            "--format=%at", "HEAD"])
+        return int(out.strip())
 
     def commitCommitter(self):
-        url = subprocess.check_output(["git", "show", "--format=%aN", "HEAD"])
-        return url.strip()
+        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
+            "--format=%cn", "HEAD"])
+        return out.strip()
 
     def commitCommitTimestamp(self):
-        url = subprocess.check_output(["git", "show", "--format=%at", "HEAD"])
-        return int(url.strip())
+        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
+            "--format=%ct", "HEAD"])
+        return int(out.strip())
 
     def branch(self):
-        url = subprocess.check_output(["git", "name-rev", "--name-only", "HEAD"])
-        return url.strip()
+        out = subprocess.check_output(["git", "name-rev", "--name-only", "HEAD"])
+        return out.strip()
 
     def buildUrl(self):
         return mx.get_env("BUILD_URL")
@@ -401,8 +400,8 @@ class BenchmarkExecutor(object):
           "group": self.group(),
           "subgroup": self.subgroup(),
           "bench-suite": suite.name(),
-          "config.vm-flags": " ".join(suite.vmFlags(bmSuiteArgs)),
-          "config.run-flags": " ".join(suite.runFlags(bmSuiteArgs)),
+          "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
+          "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
           "machine.name": self.machineName(),
           "machine.hostname": self.machineHostname(),
@@ -430,14 +429,14 @@ class BenchmarkExecutor(object):
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
         if benchspec is "*":
-            return [(suite, b) for b in suite.benchmarks()]
+            return [(suite, [b]) for b in suite.benchmarks()]
         elif benchspec is "":
             return [(suite, suite.benchmarks())]
         elif not benchspec in suite.benchmarks():
             mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
-                benchname, suitename))
+                benchspec, suitename))
         else:
-            return [(suite, benchspec)]
+            return [(suite, [benchspec])]
 
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
@@ -478,22 +477,44 @@ class BenchmarkExecutor(object):
 _benchmark_executor = BenchmarkExecutor()
 
 
+def splitArgs(args, separator):
+    """Splits the list of string arguments at the first separator argument.
+
+    :param list args: List of arguments.
+    :param str separator: Argument that is considered a separator.
+    :return: A tuple with the list of arguments before and a list after the separator.
+    :rtype: tuple
+    """
+    before = args
+    after = []
+    try:
+        idx = args.index("--")
+        before = args[:idx]
+        after = args[(idx + 1):]
+    except ValueError:
+        pass
+    return before, after
+
+
 def benchmark(args):
     """Run benchmark suite.
 
-    Usage: mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [bmSuiteArgs]
-           mx benchmark --help
+    :Example:
 
-    Arguments:
-      bmSuiteName: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
-      benchName: Name of particular benchmar within the benchmark suite
-        (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that all
-        the benchmarks need to be executed as separate runs. If omitted, all the
-        benchmarks must be executed as part of one run.
-      mxBenchmarkArgs: Optional arguments to the `mx benchmark` command (see below).
+        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [bmSuiteArgs]
+        mx benchmark --help
 
-    Arguments for `mx benchmark` command:
-      -p, --path: Path to the file into which to dump the benchmark results.
+    :param list args:
+        List of arguments (see below).
+
+        `bmSuiteName`: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
+        `benchName`: Name of particular benchmar within the benchmark suite
+            (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that
+            all the benchmarks need to be executed as separate runs. If omitted, all the
+            benchmarks must be executed as part of one run.
+         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
+
+              -p, --path: Path to the file into which to dump the benchmark results.
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
@@ -506,12 +527,5 @@ def benchmark(args):
         mx benchmark dacapo:* --path ./results.json --
         mx benchmark specjvm --path ./output.json
     """
-    mxBenchmarkArgs = args
-    bmSuiteArgs = []
-    try:
-        idx = args.index("--")
-        mxBenchmarkArgs = args[:idx]
-        bmSuiteArgs = args[(idx + 1):]
-    except ValueError:
-        pass
+    mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
     _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)

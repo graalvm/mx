@@ -3029,6 +3029,13 @@ class LinesOutputCapture:
     def __call__(self, data):
         self.lines.append(data.rstrip())
 
+class TeeOutputCapture:
+    def __init__(self, underlying):
+        self.underlying = underlying
+    def __call__(self, data):
+        print data
+        self.underlying(data)
+
 class HgConfig(VC):
     """
     Encapsulates access to Mercurial (hg)

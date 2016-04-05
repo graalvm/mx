@@ -6,7 +6,6 @@
 /mxbuild
 ecj.jar
 /diagrams
-/docs
 /java/*/nbproject/
 /java/*/build.xml
 /java/*/.settings
