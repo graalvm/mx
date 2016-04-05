@@ -54,6 +54,14 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
+    def validateEnvironment(self):
+        """Validates the environment and raises exceptions if validation fails.
+
+        Can be overridden to check for existence of required environment variables
+        before the benchmark suite executed.
+        """
+        pass
+
     def vmFlags(self, bmSuiteArgs):
         """Parses the VM flags from the list of arguments passed to the suite.
 
@@ -140,6 +148,10 @@ class StdOutRule(object):
     When `instantiate` is called, the tuples in the template shown above are
     replaced with the corresponding named groups from the parsing pattern, and converted
     to the specified type.
+
+    Tuples can contain one of the following special variables, prefixed with a `$` sign:
+        - `iteration` -- ordinal number of the match that produced the datapoint, among
+          all the matches for that parsing rule.
     """
 
     def __init__(self, pattern, replacement):
@@ -175,8 +187,7 @@ class StdOutRule(object):
                         inst = bool(v)
                     else:
                         raise RuntimeError("Cannot handle type {0}".format(vtype))
-                if not next(
-                    (t for t in [str, int, float, bool] if type(inst) is t), None):
+                if type(inst) not in [str, int, float, bool]:
                     raise RuntimeError("Object has unknown type: {0}".format(inst))
                 datapoint[key] = inst
             datapoints.append(datapoint)
@@ -457,6 +468,7 @@ class BenchmarkExecutor(object):
         suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
         for suite, benchnames in suiteBenchPairs:
+            suite.validateEnvironment()
             results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
             dump = json.dumps(results)
             with open(mxBenchmarkArgs.path, "w") as txtfile:
