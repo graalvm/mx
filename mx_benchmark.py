@@ -175,6 +175,10 @@ class StdOutRule(object):
                         inst = bool(v)
                     else:
                         raise RuntimeError("Cannot handle type {0}".format(tp))
+                occ = next(
+                    (tp for tp in [str, int, float, bool] if type(inst) is tp), None)
+                if not occ:
+                    raise RuntimeError("Object has unknown type: {0}".format(inst))
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
