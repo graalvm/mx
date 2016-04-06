@@ -83,7 +83,16 @@ class BenchmarkSuite(object):
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
-        :param list benchmarks: List of benchmark string names.
+        More precisely, if `benchmarks` is a list, runs the list of the benchmarks from
+        the suite in one run (typically, one VM invocations). If `benchmarks` is None,
+        then it runs all the benchmarks from the suite.
+
+        .. note:: A benchmark suite may not support running multiple benchmarks,
+                  or None, but it must at least run with a single benchmark in the
+                  `benchmarks` list.
+
+        :param benchmarks: List of benchmark string names, or a None.
+        :type benchmarks: list or None
         :param list bmSuiteArgs: List of string arguments to the suite.
         :return:
             A dictionary of measurement results.
@@ -431,7 +440,7 @@ class BenchmarkExecutor(object):
         if benchspec is "*":
             return [(suite, [b]) for b in suite.benchmarks()]
         elif benchspec is "":
-            return [(suite, suite.benchmarks())]
+            return [(suite, None)]
         elif not benchspec in suite.benchmarks():
             mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
                 benchspec, suitename))
