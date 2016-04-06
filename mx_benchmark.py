@@ -174,8 +174,8 @@ class StdOutRule(object):
                     v, vtype = inst
                     # Instantiate with named captured groups.
                     def var(name):
-                        if name is "iteration":
-                            return iteration
+                        if name == "iteration":
+                            return str(iteration)
                         else:
                             raise RuntimeError("Unknown var {0}".format(name))
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
