@@ -68,6 +68,7 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 import mx_microbench
+import mx_benchmark
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -3027,6 +3028,13 @@ class LinesOutputCapture:
         self.lines = []
     def __call__(self, data):
         self.lines.append(data.rstrip())
+
+class TeeOutputCapture:
+    def __init__(self, underlying):
+        self.underlying = underlying
+    def __call__(self, data):
+        print data
+        self.underlying(data)
 
 class HgConfig(VC):
     """
@@ -12664,6 +12672,7 @@ _commands = {
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'minheap' : [run_java_min_heap, ''],
     'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
+    'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
 }
 _commandsToSuite = {}
 
