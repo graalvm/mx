@@ -475,12 +475,17 @@ class BenchmarkExecutor(object):
 
         suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
+        results = []
         for suite, benchnames in suiteBenchPairs:
             suite.validateEnvironment()
-            results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
-            dump = json.dumps(results)
-            with open(mxBenchmarkArgs.path, "w") as txtfile:
-                txtfile.write(dump)
+            results.extend(
+                self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs))
+        topLevelJson = {
+          "queries": results
+        }
+        dump = json.dumps(topLevelJson)
+        with open(mxBenchmarkArgs.path, "w") as txtfile:
+            txtfile.write(dump)
 
 
 _benchmark_executor = BenchmarkExecutor()
