@@ -174,8 +174,8 @@ class StdOutRule(object):
                     v, vtype = inst
                     # Instantiate with named captured groups.
                     def var(name):
-                        if name is "iteration":
-                            return iteration
+                        if name == "iteration":
+                            return str(iteration)
                         else:
                             raise RuntimeError("Unknown var {0}".format(name))
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
@@ -211,8 +211,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     """
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        if not self.validateReturnCode(retcode):
-            raise RuntimeError("Benchmark failed")
         def compiled(pat):
             if type(pat) is str:
                 return re.compile(pat)
@@ -222,6 +220,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if compiled(pat).match(out):
                 flaky = True
         if not flaky:
+            if not self.validateReturnCode(retcode):
+                raise RuntimeError("Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
                 if compiled(pat).match(out):
                     raise RuntimeError("Benchmark failed")
@@ -475,12 +475,17 @@ class BenchmarkExecutor(object):
 
         suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
+        results = []
         for suite, benchnames in suiteBenchPairs:
             suite.validateEnvironment()
-            results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
-            dump = json.dumps(results)
-            with open(mxBenchmarkArgs.path, "w") as txtfile:
-                txtfile.write(dump)
+            results.extend(
+                self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs))
+        topLevelJson = {
+          "queries": results
+        }
+        dump = json.dumps(topLevelJson)
+        with open(mxBenchmarkArgs.path, "w") as txtfile:
+            txtfile.write(dump)
 
 
 _benchmark_executor = BenchmarkExecutor()
