@@ -3033,7 +3033,7 @@ class TeeOutputCapture:
     def __init__(self, underlying):
         self.underlying = underlying
     def __call__(self, data):
-        print data
+        log(data.rstrip())
         self.underlying(data)
 
 class HgConfig(VC):
