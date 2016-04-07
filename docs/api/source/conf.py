@@ -14,7 +14,6 @@
 
 import sys
 import os
-import shlex
 
 sys.path.append(os.path.abspath("../../../"))
 
@@ -57,7 +56,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'mx'
-copyright = u'2016, Mx Developers'
+copyright = u'2016, Mx Developers' #pylint: disable=redefined-builtin
 author = u'Mx Developers'
 
 # The version info for the project you're documenting, acts as replacement for

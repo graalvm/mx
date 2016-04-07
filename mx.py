@@ -3933,7 +3933,7 @@ class BinaryVC(VC):
         the suite distributions. The actual version downloaded is written to the file
         `mx-suitename.jar.<version>`.
 
-        :param \**extra_args: Additional args that must include `suite_name` which is a string
+        :param extra_args: Additional args that must include `suite_name` which is a string
               denoting the suite name and `result` which is a dict for output values. If this
               method returns True, then there will be a `adj_version` entry in this dict
               containing the actual (adjusted) version
