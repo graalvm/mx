@@ -2618,7 +2618,11 @@ class NativeBuildTask(ProjectBuildTask):
         return 'Building {} with GNU Make'.format(self.subject.name)
 
     def build(self):
-        run([gmake_cmd()], cwd=self.subject.dir)
+        env = os.environ.copy()
+        javaDeps = [d for d in self.subject.canonical_deps() if isinstance(d, JavaProject)]
+        if len(javaDeps) > 0:
+            env['MX_CLASSPATH'] = classpath(javaDeps)
+        run([gmake_cmd()], cwd=self.subject.dir, env=env)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
