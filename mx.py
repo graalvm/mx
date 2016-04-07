@@ -8016,7 +8016,7 @@ class JDKConfig:
         Gets the lint warnings supported by this JDK.
         '''
         if self._knownJavacLints is None:
-            out = subprocess.check_output([self.javac, '-X', '-J-Xms8M', '-J-Xint'], stderr=subprocess.STDOUT)
+            out = subprocess.check_output([self.javac, '-X', '-J-Xms16M', '-J-Xint'], stderr=subprocess.STDOUT)
             if self.javaCompliance < JavaCompliance('1.9'):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
@@ -13013,7 +13013,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.17.1")
+version = VersionSpec("5.18.0")
 
 currentUmask = None
 
