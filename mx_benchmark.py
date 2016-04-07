@@ -46,6 +46,16 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
+    def group(self):
+        """The group that this benchmark suite belongs to, for example, `graal`.
+
+        This is the name of the overall group of closely related projects.
+
+        :return: Name of the group.
+        :rtype: str
+        """
+        raise NotImplementedError()
+
     def benchmarks(self):
         """Returns the list of the benchmarks provided by this suite.
 
@@ -336,8 +346,8 @@ class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
 
-    def group(self):
-        return mx.get_env("GROUP")
+    def group(self, suite):
+        return suite.group()
 
     def subgroup(self):
         return mx.primary_suite().name
@@ -354,8 +364,10 @@ class BenchmarkExecutor(object):
     def machineHostname(self):
         return socket.gethostname()
 
-    def machineName(self):
-        return mx.get_env("MACHINE_NAME")
+    def machineName(self, mxBenchmarkArgs):
+        if mxBenchmarkArgs.machine_name:
+            return mxBenchmarkArgs.machine_name
+        return mx.get_env("MACHINE_NAME", default="")
 
     def machineOs(self):
         return mx.get_os()
@@ -393,26 +405,24 @@ class BenchmarkExecutor(object):
         return out.strip()
 
     def buildUrl(self):
-        return mx.get_env("BUILD_URL")
+        return mx.get_env("BUILD_URL", default="")
 
     def buildNumber(self):
-        return mx.get_env("BUILD_NUMBER")
+        return mx.get_env("BUILD_NUMBER", default="")
 
     def checkEnvironmentVars(self):
-        for ev in ["BUILD_URL", "BUILD_NUMBER", "MACHINE_NAME", "GROUP"]:
-            if not mx.get_env(ev):
-                raise RuntimeError("Environment variable {0} not specified.".format(ev))
+        pass
 
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
         return {
           "metric.uuid": self.uid(),
-          "group": self.group(),
+          "group": self.group(suite),
           "subgroup": self.subgroup(),
           "bench-suite": suite.name(),
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
-          "machine.name": self.machineName(),
+          "machine.name": self.machineName(mxBenchmarkArgs),
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
           "machine.cpu-cores": self.machineCpuCores(),
@@ -469,6 +479,8 @@ class BenchmarkExecutor(object):
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
             "-p", "--path", help="Path to the output file.")
+        parser.add_argument(
+            "--machine_name", default=None, help="Path to the output file.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         self.checkEnvironmentVars()
@@ -529,6 +541,8 @@ def benchmark(args):
          `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
               -p, --path: Path to the file into which to dump the benchmark results.
+              --machine_name: Abstract name of a machine with specific capabilities
+                              (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
