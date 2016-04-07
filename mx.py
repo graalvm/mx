@@ -2702,7 +2702,7 @@ class VC(object):
     @staticmethod
     def get_vc(vcdir, abortOnError=True):
         """
-        Given that :param:`vcdir` is a repository directory, attempt to determine
+        Given that `vcdir` is a repository directory, attempt to determine
         what kind of VCS is it managed by. Return None if it cannot be determined.
 
         :param str vcdir: a valid path to a version controlled directory
@@ -2759,24 +2759,24 @@ class VC(object):
 
     def tip(self, vcdir, abortOnError=True):
         """
-        Get the most recent changeset for repo at :param:`vcdir`.
+        Get the most recent changeset for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         abort(self.kind + " tip is not implemented")
 
     def parent(self, vcdir, abortOnError=True):
         """
-        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+        Get the parent changeset of the working directory for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         abort(self.kind + " id is not implemented")
@@ -2797,7 +2797,7 @@ class VC(object):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+        Clone the repo at `url` to `dest` using `rev`
 
         :param str url: the repository url
         :param str dest: the path to destination, if None the destination is
@@ -2845,7 +2845,7 @@ class VC(object):
 
     def can_push(self, vcdir, strict=True):
         """
-        Check if :param:`vcdir` can be pushed.
+        Check if `vcdir` can be pushed.
 
         :param str vcdir: a valid repository path
         :param bool strict: if set no uncommitted changes or unadded are allowed
@@ -2882,7 +2882,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
@@ -2894,15 +2894,15 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         """
-        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
-        is None, else push to :param:`dest`.
+        Push `vcdir` at rev `rev` to default if `dest`
+        is None, else push to `dest`.
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -2927,11 +2927,11 @@ class VC(object):
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         """
-        update the :param:`vcdir` working directory.
-        If :param:`rev` is not specified, update to the tip of the current branch.
-        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
-        :param:`rev` can not be found locally.
-        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
+        update the `vcdir` working directory.
+        If `rev` is not specified, update to the tip of the current branch.
+        If `rev` is specified, `mayPull` controls whether a pull will be attempted if
+        `rev` can not be found locally.
+        If `clean` is True, uncommitted changes will be discarded (no backup!).
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -2967,7 +2967,7 @@ class VC(object):
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
-        Return a list of paths under vc control that match :param:`patterns`
+        Return a list of paths under vc control that match `patterns`
 
         :param str vcdir: a valid repository path
         :param patterns: a list of patterns
@@ -3406,12 +3406,12 @@ class GitConfig(VC):
 
     def tip(self, vcdir, abortOnError=True):
         """
-        Get the most recent changeset for repo at :param:`vcdir`.
+        Get the most recent changeset for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         self.check_for_git()
@@ -3426,12 +3426,12 @@ class GitConfig(VC):
 
     def parent(self, vcdir, abortOnError=True):
         """
-        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+        Get the parent changeset of the working directory for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         self.check_for_git()
@@ -3451,7 +3451,7 @@ class GitConfig(VC):
 
     def _tags(self, vcdir, prefix, abortOnError=True):
         """
-        Get the list of tags starting with :param:`prefix` in the repository at :param:`vcdir` that are ancestors
+        Get the list of tags starting with `prefix` in the repository at `vcdir` that are ancestors
         of the current HEAD.
 
         :param str vcdir: a valid repository path
@@ -3556,7 +3556,7 @@ class GitConfig(VC):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+        Clone the repo at `url` to `dest` using `rev`
 
         :param str url: the repository url
         :param str dest: the path to destination, if None the destination is
@@ -3625,7 +3625,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3643,7 +3643,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError`=False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3687,7 +3687,7 @@ class GitConfig(VC):
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         """
-        Check if :param:`vcdir` can be pushed.
+        Check if `vcdir` can be pushed.
 
         :param str vcdir: a valid repository path
         :param bool strict: if set no uncommitted changes or unadded are allowed
@@ -3749,8 +3749,8 @@ class GitConfig(VC):
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         """
-        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
-        is None, else push to :param:`dest`.
+        Push `vcdir` at rev `rev` to default if `dest`
+        is None, else push to `dest`.
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -3770,11 +3770,11 @@ class GitConfig(VC):
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         """
-        update the :param:`vcdir` working directory.
-        If :param:`rev` is not specified, update to the tip of the current branch.
-        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
-        :param:`rev` can not be found locally.
-        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
+        update the `vcdir` working directory.
+        If `rev` is not specified, update to the tip of the current branch.
+        If `rev` is specified, `mayPull` controls whether a pull will be attempted if
+        `rev` can not be found locally.
+        If `clean` is True, uncommitted changes will be discarded (no backup!).
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -3801,7 +3801,7 @@ class GitConfig(VC):
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
-        Return a list of paths under vc control that match :param:`patterns`
+        Return a list of paths under vc control that match `patterns`
 
         :param str vcdir: a valid repository path
         :param patterns: a list of patterns
