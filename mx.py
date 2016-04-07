@@ -8011,7 +8011,12 @@ class JDKConfig:
         Gets the lint warnings supported by this JDK.
         '''
         if self._knownJavacLints is None:
-            out = subprocess.check_output([self.javac, '-X', '-J-Xms16M', '-J-Xint'], stderr=subprocess.STDOUT)
+            try:
+                out = subprocess.check_output([self.javac, '-X', '-J-Xms64M', '-J-Xint'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                if e.output:
+                    log(e.output)
+                raise e
             if self.javaCompliance < JavaCompliance('1.9'):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
