@@ -208,18 +208,18 @@ def _debug_walk_deps_helper(dep, edge, ignoredEdges):
             print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
         DEBUG_WALK_DEPS_LINE += 1
 
-'''
+"""
 Represents an edge traversed while visiting a spanning tree of the dependency graph.
-'''
+"""
 class DepEdge:
     def __init__(self, src, kind, prev):
-        '''
+        """
         src - the source of this dependency edge
         kind - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
                of graph edge from 'src' to the dependency targeted by this edge
         prev - the dependency edge traversed to reach 'src' or None if 'src' is a root of a dependency
                graph traversal
-        '''
+        """
         self.src = src
         self.kind = kind
         self.prev = prev
@@ -266,10 +266,10 @@ class SuiteConstituent(object):
                             candidate = None
 
     def __abort_context__(self):
-        '''
+        """
         Gets a description of where this constituent was defined in terms of source file
         and line number. If no such description can be generated, None is returned.
-        '''
+        """
         loc = self.origin()
         if loc:
             path, lineNo = loc
@@ -380,25 +380,25 @@ class Dependency(SuiteConstituent):
         nyi('getBuildTask', self)
 
     def abort(self, msg):
-        '''
+        """
         Aborts with given message prefixed by the origin of this dependency.
-        '''
+        """
         abort(msg, context=self)
 
     def warn(self, msg):
-        '''
+        """
         Warns with given message prefixed by the origin of this dependency.
-        '''
+        """
         warn(msg, context=self)
 
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
 
     def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None, visitEdge=None):
-        '''
+        """
         Walk the dependency graph rooted at this object.
         See documentation for mx.walk_deps for more info.
-        '''
+        """
         if visited is not None:
             if self in visited:
                 return
@@ -422,10 +422,10 @@ class Dependency(SuiteConstituent):
         nyi('_walk_deps_visit_edges', self)
 
     def contains_dep(self, dep, includeAnnotationProcessors=False):
-        '''
+        """
         Determines if the dependency graph rooted at this object contains 'dep'.
         Returns the path from this object to 'dep' if so, otherwise returns None.
-        '''
+        """
         if dep == self:
             return [self]
         class FoundPath(StopIteration):
@@ -442,15 +442,15 @@ class Dependency(SuiteConstituent):
             return e.path
         return None
 
-    '''Only JavaProjects define Java packages'''
+    """Only JavaProjects define Java packages"""
     def defined_java_packages(self):
         return []
 
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
-        '''
+        """
         Resolves any string entries in 'deps' to the Dependency objects named
         by the strings. The 'deps' list is updated in place.
-        '''
+        """
         if deps:
             if isinstance(deps[0], str):
                 resolvedDeps = []
@@ -476,12 +476,12 @@ class ClasspathDependency(Dependency):
         pass
 
     def classpath_repr(self, resolve=True):
-        '''
+        """
         Gets this dependency as an element on a class path.
 
         If 'resolve' is True, then this method aborts if the file or directory
         denoted by the class path element does not exist.
-        '''
+        """
         nyi('classpath_repr', self)
 
     def isJar(self):
@@ -526,12 +526,12 @@ class BuildTask(object):
         self._builtBox = None
 
     def _persistDeps(self):
-        '''
+        """
         Saves the dependencies for this task's subject to a file. This can be used to
         determine whether the ordered set of dependencies for this task have changed
         since the last time it was built.
         Returns True if file already existed and did not reflect the current dependencies.
-        '''
+        """
         savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', self.subject.name)
         currentDeps = [d.subject.name for d in self.deps]
         outOfDate = False
@@ -749,7 +749,7 @@ class Distribution(Dependency):
         nyi('make_archive', self)
 
     def archived_deps(self):
-        '''
+        """
         Gets the projects and libraries whose artifacts are the contents of the archive
         created by self.make_archive().
 
@@ -758,7 +758,7 @@ class Distribution(Dependency):
         libraries listed in "excludedLibs" will also not be included.
         Otherwise, archived_deps will contain everything this distribution depends on (including
         indirect distribution dependencies and libraries).
-        '''
+        """
         if not hasattr(self, '_archived_deps'):
             excluded = set(self.excludedLibs)
             def _visitDists(dep, edges):
@@ -797,11 +797,11 @@ class Distribution(Dependency):
         return f
 
     def needsUpdate(self, newestInput):
-        '''
+        """
         Determines if this distribution needs updating taking into account the
         'newestInput' TimeStampFile if 'newestInput' is not None. Returns the
         reason this distribution needs updating or None if it doesn't need updating.
-        '''
+        """
         nyi('needsUpdate', self)
 
     def maven_artifact_id(self):
@@ -1210,19 +1210,19 @@ class Project(Dependency):
         map(ensure_dir_exists, self.source_dirs())
 
     def resolveDeps(self):
-        '''
+        """
         Resolves symbolic dependency references to be Dependency objects.
-        '''
+        """
         self._resolveDepsHelper(self.deps)
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
     def get_output_root(self):
-        '''
+        """
         Gets the root of the directory hierarchy under which generated artifacts for this
         project such as class files and annotation generated sources should be placed.
-        '''
+        """
         if not self.subDir:
             return join(self.suite.get_output_root(), self.name)
         names = self.subDir.split(os.sep)
@@ -2268,9 +2268,9 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
     return join(cacheDir, name + '_' + sha1 + ext)
 
 def download_file_exists(urls):
-    '''
+    """
     Returns true if one of the given urls denotes an existing resource.
-    '''
+    """
     for url in urls:
         try:
             urllib2.urlopen(url, timeout=0.5).close()
@@ -2280,12 +2280,12 @@ def download_file_exists(urls):
     return False
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
-    '''
+    """
     Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
     checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
     Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
     in which case it copies the cache entry.
-    '''
+    """
     sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
 
@@ -2575,9 +2575,9 @@ class Library(BaseLibrary, ClasspathDependency):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
     def resolveDeps(self):
-        '''
+        """
         Resolves symbolic dependency references to be Dependency objects.
-        '''
+        """
         BaseLibrary.resolveDeps(self)
         self._resolveDepsHelper(self.deps)
 
@@ -2662,7 +2662,7 @@ class LibraryDownloadTask(BuildTask):
     def cleanForbidden(self):
         return True
 
-'''
+"""
 Abstracts the operations of the version control systems
 Most operations take a vcdir as the dir in which to execute the operation
 Most operations abort on error unless abortOnError=False, and return True
@@ -2671,7 +2671,7 @@ or False for success/failure.
 Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
-'''
+"""
 class VC(object):
     __metaclass__ = ABCMeta
     """
@@ -2720,41 +2720,41 @@ class VC(object):
             return None
 
     def check(self, abortOnError=True):
-        '''
+        """
         Lazily check whether a particular VC system is available.
         Return None if fails and abortOnError=False
-        '''
+        """
         abort("VC.check is not implemented")
 
     def init(self, vcdir, abortOnError=True):
-        '''
+        """
         Intialize 'vcdir' for vc control
-        '''
+        """
         abort(self.kind + " init is not implemented")
 
     def is_this_vc(self, vcdir):
-        '''
+        """
         Check whether vcdir is managed by this vc.
         Return None if not, True if so
-        '''
+        """
         abort(self.kind + " is_this_vc is not implemented")
 
     def metadir(self):
-        '''
+        """
         Return name of metadata directory
-        '''
+        """
         abort(self.kind + " metadir is not implemented")
 
     def add(self, vcdir, path, abortOnError=True):
-        '''
+        """
         Add path to repo
-        '''
+        """
         abort(self.kind + " add is not implemented")
 
     def commit(self, vcdir, msg, abortOnError=True):
-        '''
+        """
         commit with msg
-        '''
+        """
         abort(self.kind + " commit is not implemented")
 
     def tip(self, vcdir, abortOnError=True):
@@ -3929,7 +3929,7 @@ class BinaryVC(VC):
             return False
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
-        '''
+        """
         clone is interpreted as downloading the mx-suitename.jar file
         caller is responsible for downloading the suite distributions
         Some additional information must be passed by caller in 'extra_args':
@@ -3938,7 +3938,7 @@ class BinaryVC(VC):
         On a successful return 'result' contains:
           adj_version: actual version (adjusted)
         The actual version downloaded is written to the file mx-suitename.jar.version
-        '''
+        """
         assert dest
         suite_name = extra_args['suite_name']
         metadata = self.Metadata(suite_name, url, None)
@@ -4803,10 +4803,10 @@ class NestedImportsSuiteModel(SuiteModel):
     def nestedsuites_dirname(self):
         return self._imported_suites_dirname()
 
-'''
+"""
 Captures the info in the {"url", "kind"} dict,
 and adds a 'vc' field.
-'''
+"""
 class SuiteImportURLInfo:
     def __init__(self, url, kind, vc):
         self.url = url
@@ -4814,8 +4814,8 @@ class SuiteImportURLInfo:
         self.vc = vc
 
     def abs_kind(self):
-        ''' Maps vc kinds to 'source'
-        '''
+        """ Maps vc kinds to 'source'
+        """
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
@@ -4856,11 +4856,11 @@ class SuiteImport:
 
     @staticmethod
     def get_source_urls(source, kind=None):
-        '''
+        """
         Returns a list of SourceImportURLInfo instances
         If source is a string (dir) determine kind, else search the list of
         urlinfos and return the values for source repos
-        '''
+        """
         if isinstance(source, str):
             if kind:
                 vc = vc_system(kind)
@@ -4910,9 +4910,9 @@ class URLRewrite(object):
                 return res
         return url
 
-'''
+"""
 Command state and methods for all suite subclasses
-'''
+"""
 class Suite:
     def __init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=False):
         self.imported_by = [] if primary else [importing_suite]
@@ -4948,9 +4948,9 @@ class Suite:
         return self.name
 
     def _load(self):
-        '''
+        """
         Calls _load_env and _load_extensions
-        '''
+        """
         # load suites depth first
         self.loading_imports = True
         self.visit_imports(self._find_and_loadsuite)
@@ -4963,10 +4963,10 @@ class Suite:
         return mx_compat.getMxCompatibility(self.requiredMxVersion)
 
     def get_output_root(self):
-        '''
+        """
         Gets the root of the directory hierarchy under which generated artifacts for this
         suite such as class files and annotation generated sources should be placed.
-        '''
+        """
         if not self._outputRoot:
             suiteDict = self.suiteDict
             outputRoot = suiteDict.get('outputRoot')
@@ -4979,9 +4979,9 @@ class Suite:
         return self._outputRoot
 
     def get_mx_output_dir(self):
-        '''
+        """
         Gets the directory into which mx bookkeeping artifacts should be placed.
-        '''
+        """
         return join(self.get_output_root(), basename(self.mxDir))
 
     def _load_suite_dict(self):
@@ -5123,10 +5123,10 @@ class Suite:
         self.suiteDict = d
 
     def _register_metadata(self):
-        '''
+        """
         Registers the metadata loaded by _load_metadata into the relevant
         global dictionaries such as _projects, _libs, _jreLibs and _dists.
-        '''
+        """
         for l in self.libs:
             existing = _libs.get(l.name)
             # Check that suites that define same library are consistent
@@ -5261,15 +5261,15 @@ class Suite:
         return self.imports_dir('source')
 
     def binary_suite_dir(self, name):
-        '''
+        """
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
-        '''
+        """
         dotMxDir = self.binary_imports_dir()
         ensure_dir_exists(dotMxDir)
         return join(dotMxDir, name)
 
     def _find_binary_suite_dir(self, name):
-        '''Attempts to locate a binary_suite directory for suite 'name', returns the mx dir or None'''
+        """Attempts to locate a binary_suite directory for suite 'name', returns the mx dir or None"""
         suite_dir = join(self.binary_imports_dir(), name)
         return _is_suite_dir(suite_dir, _mxDirName(name))
 
@@ -5327,10 +5327,10 @@ class Suite:
                     self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
 
     def re_init_imports(self):
-        '''
+        """
         If a suite is updated, e.g. by sforceimports, we must re-initialize the potentially
         stale import data from the updated suite.py file
-        '''
+        """
         self.suite_imports = []
         self._load_suite_dict()
         self._init_imports()
@@ -5554,10 +5554,10 @@ class Suite:
             return searchMode == 'binary'
 
         def _find_suite_dir():
-            '''
+            """
             Attempts to locate an existing suite in the local context
             Returns the path to the mx.name dir if found else None
-            '''
+            """
             if _is_binary_mode():
                 # binary suites are always stored relative to the importing suite in mx-private directory
                 return importing_suite._find_binary_suite_dir(suite_import.name)
@@ -5566,7 +5566,7 @@ class Suite:
                 return _src_suitemodel.find_suite_dir(suite_import.name)
 
         def _get_import_dir():
-            '''Return directory where the suite will be cloned to'''
+            """Return directory where the suite will be cloned to"""
             if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
@@ -5673,10 +5673,10 @@ class Suite:
         return self._suite_py_mtime
 
     def __abort_context__(self):
-        '''
+        """
         Returns a string describing where this suite was defined in terms its source file.
         If no such description can be generated, returns None.
-        '''
+        """
         path = self.suite_py()
         if exists(path):
             return 'In definition of suite {} in {}'.format(self.name, path)
@@ -5714,7 +5714,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
     if conflict_resolution == 'none':
         abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
 
-'''A source suite'''
+"""A source suite"""
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
@@ -5727,16 +5727,16 @@ class SourceSuite(Suite):
             self._load()
 
     def version(self, abortOnError=True):
-        '''
+        """
         Return the current head changeset of this suite.
-        '''
+        """
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir, abortOnError=abortOnError)
 
     def isDirty(self, abortOnError=True):
-        '''
+        """
         Check whether there are pending changes in the source.
-        '''
+        """
         return self.vc.isDirty(self.dir, abortOnError=abortOnError)
 
     def release_version(self, snapshotSuffix='dev'):
@@ -5767,7 +5767,7 @@ class SourceSuite(Suite):
         self._load_projects()
 
     def _load_projects(self):
-        '''projects are unique to source suites'''
+        """projects are unique to source suites"""
         projsMap = self._check_suiteDict('projects')
 
         for name, attrs in sorted(projsMap.iteritems()):
@@ -5925,13 +5925,13 @@ class SourceSuite(Suite):
         return result
 
     def mx_binary_distribution_jar_path(self):
-        '''
+        """
         returns the absolute path of the mx binary distribution jar.
-        '''
+        """
         return join(self.dir, _mx_binary_distribution_jar(self.name))
 
     def create_mx_binary_distribution_jar(self):
-        '''
+        """
         Creates a jar file named name-mx.jar that contains
         the metadata for another suite to import this suite as a BinarySuite.
         TODO check timestamps to avoid recreating this repeatedly, or would
@@ -5939,7 +5939,7 @@ class SourceSuite(Suite):
         TODO It would be cleaner for subsequent loading if we actually wrote a
         transformed suite.py file that only contained distribution info, to
         detect access to private (non-distribution) state
-        '''
+        """
         mxMetaJar = self.mx_binary_distribution_jar_path()
         pyfiles = glob.glob(join(self.mxDir, '*.py'))
         with Archiver(mxMetaJar) as arc:
@@ -5970,9 +5970,9 @@ class SourceSuite(Suite):
                 esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
         return esdict
 
-'''
+"""
 A pre-built suite downloaded from a Maven repository.
-'''
+"""
 class BinarySuite(Suite):
     def __init__(self, mxDir, importing_suite, dynamicallyImported=False):
         Suite.__init__(self, mxDir, False, False, importing_suite, dynamicallyImported=dynamicallyImported)
@@ -5985,9 +5985,9 @@ class BinarySuite(Suite):
         self._load()
 
     def version(self, abortOnError=True):
-        '''
+        """
         Return the current head changeset of this suite.
-        '''
+        """
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir)
 
@@ -5999,10 +5999,10 @@ class BinarySuite(Suite):
         return False
 
     def _load_binary_suite(self):
-        '''
+        """
         Always load the suite.py file and the distribution info defined there,
         download the jar files for a freshly cloned suite
-        '''
+        """
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
@@ -6055,7 +6055,7 @@ class PrimarySuite(SourceSuite):
         SourceSuite.__init__(self, mxDir, primary=True, load=load, importing_suite=None)
 
     def _depth_first_post_init(self):
-        '''depth first _post_init driven by imports graph'''
+        """depth first _post_init driven by imports graph"""
         self.visit_imports(self._init_metadata_visitor)
         self._init_metadata()
         self.visit_imports(self._post_init_visitor)
@@ -6073,9 +6073,9 @@ class PrimarySuite(SourceSuite):
         imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
 
     def vc_command_init(self):
-        '''A short-circuit startup for vc (s*) commands that only loads the
+        """A short-circuit startup for vc (s*) commands that only loads the
         import metadata from the suite.py file.
-        '''
+        """
         # so far we have just loaded the primary suite imports info
         PrimarySuite._fake_load(self)
         # Now visit the imports just loading import info
@@ -6163,9 +6163,9 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
-'''
+"""
 A simple timing facility.
-'''
+"""
 class Timer():
     def __init__(self, name):
         self.name = name
@@ -6200,7 +6200,7 @@ def _basic_bench_harness(args, vmArgs):
     return 0
 
 def bench(args, harness=_basic_bench_harness, parser=None):
-    '''run benchmarks (suite-specfic) after clean build (optional)'''
+    """run benchmarks (suite-specfic) after clean build (optional)"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
     args = _bench_test_common(args, parser, suppliedParser)
@@ -6210,7 +6210,7 @@ def _basic_test_harness(args, vmArgs):
     return 0
 
 def test(args, harness=_basic_test_harness, parser=None):
-    '''run tests (suite-specific) after clean build (optional)'''
+    """run tests (suite-specific) after clean build (optional)"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx test')
     args = _bench_test_common(args, parser, suppliedParser)
@@ -6650,7 +6650,7 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
                     yield zf, entryPath
 
 def read_annotation_processors(path):
-    r'''
+    r"""
     Reads the META-INF/services/javax.annotation.processing.Processor file based
     in the directory or zip file located at 'path'. Returns the list of lines
     in the file or None if the file does not exist at 'path'.
@@ -6664,7 +6664,7 @@ def read_annotation_processors(path):
     characters surrounding each name, as well as blank lines, are ignored.
     The comment character is '#' ('\u0023', NUMBER SIGN); on each line all characters
     following the first comment character are ignored. The file must be encoded in UTF-8.
-    '''
+    """
 
     def parse(fp):
         lines = []
@@ -6690,11 +6690,11 @@ def read_annotation_processors(path):
     return None
 
 def dependencies(opt_limit_to_suite=False):
-    '''
+    """
     Gets an iterable over all the registered dependencies. If changes are made to the registered
     dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
     None, only dependencies of a type in 'types
-    '''
+    """
     it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
     if opt_limit_to_suite and _opts.specific_suites:
         it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
@@ -6702,7 +6702,7 @@ def dependencies(opt_limit_to_suite=False):
     return it
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-    '''
+    """
     Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
     'preVisit' function is not None, it is applied with these arguments:
         dep - the dependency node being visited
@@ -6712,7 +6712,7 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdg
     walked. Once all the dependencies of 'dep' have been visited, and 'visit' is not None,
     it is applied with the same arguments as for 'preVisit' and the return value is ignored. Note that
     'visit' is not called if 'preVisit' returns a false condition.
-    '''
+    """
     visited = set()
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
@@ -6931,9 +6931,9 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
-'''
+"""
 A factory for creating JDKConfig objects.
-'''
+"""
 class JDKFactory(object):
     def getJDKConfig(self):
         nyi('getJDKConfig', self)
@@ -6958,17 +6958,17 @@ def _getJDKFactory(tag, compliance):
         return None
     return complianceMap[compliance]
 
-'''
+"""
 A namedtuple for the result of get_jdk_option().
-'''
+"""
 TagCompliance = namedtuple('TagCompliance', ['tag', 'compliance'])
 
 _jdk_option = None
 def get_jdk_option():
-    '''
+    """
     Gets the tag and compliance (as a TagCompliance object) derived from the --jdk option.
     If the --jdk option was not specified, both fields of the returned tuple are None.
-    '''
+    """
     global _jdk_option
     if _jdk_option is None:
         option = _opts.jdk
@@ -7101,7 +7101,7 @@ def _convert_compliance_to_version_check(requiredCompliance):
     return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
-    '''
+    """
     Selects a JDK and returns a JDKConfig object representing it.
 
     First a selection is attempted from the --java-home option, the JAVA_HOME
@@ -7127,7 +7127,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     If not running interactively, the first candidate is returned or None if there are no
     candidates.
-    '''
+    """
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
         versionCheck = lambda v: True
@@ -7948,10 +7948,10 @@ class JDKConfig:
         raise TypeError()
 
     def processArgs(self, args, addDefaultArgs=True):
-        '''
+        """
         Return a list composed of the arguments specified by the -P, -J and -A options (in that order)
         prepended to 'args' if 'addDefaultArgs' is true otherwise just return 'args'.
-        '''
+        """
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + self.java_args_sfx + args
         return args
@@ -8007,9 +8007,9 @@ class JDKConfig:
         return False
 
     def getKnownJavacLints(self):
-        '''
+        """
         Gets the lint warnings supported by this JDK.
-        '''
+        """
         if self._knownJavacLints is None:
             out = subprocess.check_output([self.javac, '-X', '-J-Xms8M', '-J-Xint'], stderr=subprocess.STDOUT)
             if self.javaCompliance < JavaCompliance('1.9'):
@@ -8074,10 +8074,10 @@ def log(msg=None):
         print msg
 
 def expand_project_in_class_path_arg(cpArg):
-    '''
+    """
     Replaces each "@" prefixed element in the class path 'cpArg' with
     the class path for the dependency named by the element without the "@" prefix.
-    '''
+    """
     if '@' not in cpArg:
         return cpArg
     cp = []
@@ -8089,12 +8089,12 @@ def expand_project_in_class_path_arg(cpArg):
     return os.pathsep.join(cp)
 
 def expand_project_in_args(args, insitu=True):
-    '''
+    """
     Looks for the first -cp or -classpath argument in 'args' and
     calls expand_project_in_class_path_arg on it. If 'insitu' is true,
     then 'args' is updated in place otherwise a copy of 'args' is modified.
     The updated object is returned.
-    '''
+    """
     for i in range(len(args)):
         if args[i] == '-cp' or args[i] == '-classpath':
             if i + 1 < len(args):
@@ -8556,7 +8556,7 @@ def build(args, parser=None):
     return None
 
 def build_suite(s):
-    '''build all projects in suite (for dynamic import)'''
+    """build all projects in suite (for dynamic import)"""
     # Note we must use the "build" method in "s" and not the one
     # in the dict. If there isn't one we use mx.build
     project_names = [p.name for p in s.projects]
@@ -9242,12 +9242,12 @@ def checkstyle(args):
     return totalErrors
 
 def _safe_path(path):
-    '''
+    """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
     This is works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
-    '''
+    """
     if get_os() == 'windows':
         if isabs(path):
             if path.startswith('\\\\'):
@@ -9262,9 +9262,9 @@ def _safe_path(path):
     return path
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
-    '''
+    """
     Wrapper for builtin open function that handles long path names on Windows.
-    '''
+    """
     if get_os() == 'windows':
         name = _safe_path(name)
     return __builtin__.open(name, mode=mode)
@@ -11738,7 +11738,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
     imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
 
 def sforceimports(args):
-    '''force working directory revision of imported suites to match primary suite imports'''
+    """force working directory revision of imported suites to match primary suite imports"""
     parser = ArgumentParser(prog='mx sforceimports')
     parser.add_argument('--strict-versions', action='store_true', help='strict version checking')
     args = parser.parse_args(args)
@@ -11807,7 +11807,7 @@ def _sincoming(s, suite_import):
         print output
 
 def sincoming(args):
-    '''check incoming for primary suite and all imports'''
+    """check incoming for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
     s = _check_primary_suite()
@@ -11825,7 +11825,7 @@ def _hg_command(s, suite_import, **extra_args):
         print out
 
 def hg_command(args):
-    '''Run a Mercurial command in every suite'''
+    """Run a Mercurial command in every suite"""
     s = _check_primary_suite()
     _hg_command(s, None, args=args)
 
@@ -11842,7 +11842,7 @@ def _soutgoing(s, suite_import, dest):
         print output
 
 def soutgoing(args):
-    '''check outgoing for primary suite and all imports'''
+    """check outgoing for primary suite and all imports"""
     parser = ArgumentParser(prog='mx soutgoing')
     parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
@@ -11867,7 +11867,7 @@ def _stip(s, suite_import):
     print 'tip of ' + s.name + ': ' + s.vc.tip(s.dir)
 
 def stip(args):
-    '''check tip for primary suite and all imports'''
+    """check tip for primary suite and all imports"""
     parser = ArgumentParser(prog='mx stip')
     args = parser.parse_args(args)
     s = _check_primary_suite()
@@ -11882,7 +11882,7 @@ def _sversions_rev(rev, isdirty, with_color):
     return color_on + rev[0:12] + color_off + rev[12:] + ' +'[int(isdirty)]
 
 def sversions(args):
-    '''print working directory revision for primary suite and all imports'''
+    """print working directory revision for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sversions')
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
@@ -12182,7 +12182,7 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
     return (myDir, binDir)
 
 def assessannotationprocessors(args):
-    '''apply heuristics to determine if projects declare exactly the
+    """apply heuristics to determine if projects declare exactly the
     annotation processors they need
 
     This process automatically analyzes annotation processors annotated
@@ -12192,7 +12192,7 @@ def assessannotationprocessors(args):
     incorrect suggestions. For example, two different annotations that have
     the same unqualified name (e.g. @NodeInfo) will cause misleading suggestions
     about missing annotation processors.
-    '''
+    """
     parser = ArgumentParser(prog='mx assesaps')
     parser.add_argument('apspecs', help='annotation processor spec with the format <name>:<ap>,... where <name> is a ' +
                         'substring matching the name of a unique dependency defining one or more annotation processors ' +
@@ -12208,9 +12208,9 @@ def assessannotationprocessors(args):
             packageToProject[pkg] = p
 
     def pkgAndClass(fqn):
-        '''Partitions a fully qualified class name into a package name and class name.
+        """Partitions a fully qualified class name into a package name and class name.
         Assumes package components always start with a lower case letter and class names
-        start with an upper case letter.'''
+        start with an upper case letter."""
         m = re.search(r'\.[A-Z]', fqn)
         assert m, fqn
         return fqn[0:m.start()], fqn[m.start() + 1:]
@@ -12288,7 +12288,7 @@ def _add_command_primary_option(parser):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
 
 def checkcopyrights(args):
-    '''run copyright check on the sources'''
+    """run copyright check on the sources"""
     class CP(ArgumentParser):
         def format_help(self):
             return ArgumentParser.format_help(self) + self._get_program_help()
@@ -12342,7 +12342,7 @@ def split_j_args(extraVmArgsList):
     return extraVmArgs
 
 def junit(args, harness=_basic_junit_harness, parser=None):
-    '''run Junit tests'''
+    """run Junit tests"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
     parser.add_argument('--tests', action='store', help='pattern to match test classes')
@@ -12416,10 +12416,10 @@ def mvn_local_install(suite_name, dist_name, path, version):
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
 
 def maven_install(args):
-    '''
+    """
     Install the primary suite in a maven repository, mainly for testing as it
     only actually does the install if --local is set.
-    '''
+    """
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
@@ -12474,10 +12474,10 @@ def ensure_dir_exists(path, mode=None):
     return path
 
 def show_envs(args):
-    '''print environment variables and their values
+    """print environment variables and their values
 
     By default only variables starting with "MX" are shown.
-    The --all option forces all variables to be printed'''
+    The --all option forces all variables to be printed"""
     parser = ArgumentParser(prog='mx envs')
     parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
@@ -12487,7 +12487,7 @@ def show_envs(args):
             print '{0}: {1}'.format(key, value)
 
 def show_version(args):
-    '''print mx version'''
+    """print mx version"""
 
     parser = ArgumentParser(prog='mx version')
     parser.add_argument('--oneline', action='store_true', help='show mx revision and version in one line')
@@ -12509,7 +12509,7 @@ def show_version(args):
 
 @suite_context_free
 def update(args):
-    '''update mx to the latest version'''
+    """update mx to the latest version"""
     parser = ArgumentParser(prog='mx update')
     parser.add_argument('-n', '--dry-run', action='store_true', help='show incoming changes without applying them')
     args = parser.parse_args(args)
@@ -12586,10 +12586,10 @@ def update_commands(suite, new_commands):
         _commandsToSuite[key] = suite
 
 def command_function(name, fatalIfMissing=True):
-    '''
+    """
     Return the function for the (possibly overridden) command named name.
     If no such command, abort if FatalIsMissing=True, else return None
-    '''
+    """
     if _commands.has_key(name):
         return _commands[name][0]
     else:
@@ -12687,11 +12687,11 @@ def _mx_binary_distribution_root(name):
     return name + '-mx'
 
 def _mx_binary_distribution_jar(name):
-    '''the (relative) path to the location of the mx binary distribution jar'''
+    """the (relative) path to the location of the mx binary distribution jar"""
     return join('dists', _mx_binary_distribution_root(name) + '.jar')
 
 def _mx_binary_distribution_version(name):
-    '''the (relative) path to the location of the mx binary distribution version file'''
+    """the (relative) path to the location of the mx binary distribution version file"""
     return join('dists', _mx_binary_distribution_root(name) + '.version')
 
 def _suitename(mxDir):
@@ -12739,7 +12739,7 @@ def _needs_primary_suite_check(args):
     return True
 
 def _check_vc_command():
-    '''check for a vc command after the initial parse'''
+    """check for a vc command after the initial parse"""
     for command in _argParser.initialCommandAndArgs:
         if command and not command.startswith('-'):
             hits = [c for c in _vc_commands if c.startswith(command)]
@@ -12776,9 +12776,9 @@ def _findPrimarySuiteMxDir():
     return None
 
 def _check_dependency_cycles():
-    '''
+    """
     Checks for cycles in the dependency graph.
-    '''
+    """
     path = []
     def _visitEdge(src, edgeType, dst):
         if dst in path:
@@ -12792,7 +12792,7 @@ def _check_dependency_cycles():
     walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
 
 def _remove_unsatisfied_deps():
-    '''
+    """
     Remove projects and libraries that (recursively) depend on an optional library
     whose artifact does not exist or on a JRE library that is not present in the
     JDK for a project. Also remove projects whose Java compliance requirement
@@ -12800,7 +12800,7 @@ def _remove_unsatisfied_deps():
     also removed from distributions in which they are listed as dependencies.
     Returns a map from the name of a removed dependency to the reason it was removed.
     A reason may be the name of another removed dependency.
-    '''
+    """
     removedDeps = {}
     def visit(dep, edge):
         if dep.isLibrary():
