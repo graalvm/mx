@@ -5318,7 +5318,12 @@ class Suite:
                 self.suite_imports.append(suite_import)
         if self.primary:
             dynamicImports = _opts.dynamic_imports
-            if not dynamicImports:
+            if dynamicImports:
+                expandedDynamicImports = []
+                for dynamicImport in dynamicImports:
+                    expandedDynamicImports += [name for name in dynamicImport.split(',')]
+                dynamicImports = expandedDynamicImports
+            else:
                 envDynamicImports = os.environ.get('DEFAULT_DYNAMIC_IMPORTS')
                 if envDynamicImports:
                     dynamicImports = envDynamicImports.split(',')
@@ -13008,7 +13013,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.17.1")
+version = VersionSpec("5.18.0")
 
 currentUmask = None
 
