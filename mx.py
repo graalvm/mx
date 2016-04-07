@@ -8732,6 +8732,8 @@ def eclipseformat(args):
             run([args.eclipse_exe,
                 '-nosplash',
                 '-application',
+                '-consolelog',
+                '-vm', get_jdk(tag=DEFAULT_JDK_TAG).java,
                 'org.eclipse.jdt.core.JavaCodeFormatter',
                 '-config', batch.path]
                 + [f.path for f in chunk])
