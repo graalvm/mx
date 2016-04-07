@@ -1888,7 +1888,7 @@ class JavacLikeCompiler(JavaCompiler):
 
     def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
         """
-        *hybridCrossCompilation* is true if the -source compilation option denotes a different JDK version than
+        `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
         """
         nyi('buildJavacLike', self)
@@ -2706,7 +2706,7 @@ class VC(object):
         what kind of VCS is it managed by. Return None if it cannot be determined.
 
         :param str vcdir: a valid path to a version controlled directory
-        :param boo abortOnError: if an error occurs, abort mx operations
+        :param bool abortOnError: if an error occurs, abort mx operations
         :return: an instance of VC or None if it cannot be determined
         :rtype: :class:`VC`
         """
@@ -2764,7 +2764,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + " tip is not implemented")
@@ -2776,7 +2776,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + " id is not implemented")
@@ -2882,7 +2882,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
@@ -2894,7 +2894,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
@@ -3411,7 +3411,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         self.check_for_git()
@@ -3431,7 +3431,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         self.check_for_git()
@@ -3624,8 +3624,7 @@ class GitConfig(VC):
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
-        :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+        :return: most recent changeset for specified repository, None if failure and `abortOnError` is False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3643,7 +3642,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and `abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3930,14 +3929,16 @@ class BinaryVC(VC):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        clone is interpreted as downloading the mx-suitename.jar file
-        caller is responsible for downloading the suite distributions
-        Some additional information must be passed by caller in 'extra_args':
-          suite_name: the suite name
-          result: an empty dict for output values
-        On a successful return 'result' contains:
-          adj_version: actual version (adjusted)
-        The actual version downloaded is written to the file mx-suitename.jar.version
+        Downloads the `mx-suitename.jar` file. The caller is responsible for downloading
+        the suite distributions. The actual version downloaded is written to the file
+        `mx-suitename.jar.<version>`.
+
+        :param \**extra_args: Additional args that must include `suite_name` which is a string
+              denoting the suite name and `result` which is a dict for output values. If this
+              method returns True, then there will be a `adj_version` entry in this dict
+              containing the actual (adjusted) version
+        :return: True if the clone was successful, Fazlse otherwise
+        :rtype: bool
         """
         assert dest
         suite_name = extra_args['suite_name']
@@ -4436,30 +4437,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository.
 
-    All binaries must be built first using 'mx build'.
-
-    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY]
-                            [--platform-dependent] [--all-suites]
-                            [--skip-existing]
-                            repository-id [repository-url]
-
-    positional arguments:
-      repository-id         Repository ID used for binary deploy
-      repository-url        Repository URL used for binary deploy, if no url is
-                            given, the repository-id is looked up in suite.py
-
-    optional arguments:
-      -h, --help            show this help message and exit
-      -s SETTINGS, --settings SETTINGS
-                            Path to settings.mxl file used for Maven
-      -n, --dry-run         Dry run that only prints the action a normal run would
-                            perform without actually deploying anything
-      --only ONLY           Limit deployment to these distributions
-      --platform-dependent  Limit deployment to platform dependent distributions
-                            only
-      --all-suites          Deploy suite and the distributions it depends on in
-                            other suites
-      --skip-existing       Do not deploy distributions if already in repository
+    All binaries must be built first using `mx build`.
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -4601,29 +4579,6 @@ def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository.
 
     All binaries must be built first using 'mx build'.
-
-    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
-                           [--validate {none,compat,full}] [--licenses LICENSES]
-                           repository-id [repository-url]
-
-    positional arguments:
-      repository-id         Repository ID used for Maven deploy
-      repository-url        Repository URL used for Maven deploy, if no url is
-                            given, the repository-id is looked up in suite.py
-
-    optional arguments:
-      -h, --help            show this help message and exit
-      -s SETTINGS, --settings SETTINGS
-                            Path to settings.mxl file used for Maven
-      -n, --dry-run         Dry run that only prints the action a normal run would
-                            perform without actually deploying anything
-      --only ONLY           Limit deployment to these distributions
-      --validate {none,compat,full}
-                            Validate that maven metadata is complete enough for
-                            publication
-      --licenses LICENSES   Comma-separated list of licenses that are cleared for
-                            upload. Only used if no url is given. Otherwise
-                        licenses are looked up in suite.py
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -6478,8 +6433,8 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
 
 def _get_reasons_dep_was_removed(name):
     """
-    Gets the causality chain for the dependency named *name* being removed.
-    Returns None if no dependency named *name* was removed.
+    Gets the causality chain for the dependency named `name` being removed.
+    Returns None if no dependency named `name` was removed.
     """
     reason = _removedDeps.get(name)
     if reason:
@@ -6704,14 +6659,13 @@ def dependencies(opt_limit_to_suite=False):
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     """
     Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
-    'preVisit' function is not None, it is applied with these arguments:
-        dep - the dependency node being visited
-        edge - a DepEdge object representing last element in the path of dependencies walked to arrive
-               at 'dep' or None if 'dep' is a leaf
-    If 'preVisit' is None or returns a true condition, then the unvisited dependencies of 'dep' are
-    walked. Once all the dependencies of 'dep' have been visited, and 'visit' is not None,
-    it is applied with the same arguments as for 'preVisit' and the return value is ignored. Note that
-    'visit' is not called if 'preVisit' returns a false condition.
+    `preVisit` function is not None, it is called with two arguments. The first is a :class:`Dependency`
+    object representing the node being visited. The second is a :class:`DepEdge` object representing the
+    last element in the path of dependencies walked to arrive at `dep` or None if `dep` is a leaf.
+    If `preVisit` is None or returns a true condition, then the unvisited dependencies of `dep` are
+    walked. Once all the dependencies of `dep` have been visited, if `visit` is not None,
+    it is applied with the same arguments as for `preVisit` and the return value is ignored. Note that
+    `visit` is not called if `preVisit` returns a false condition.
     """
     visited = set()
     for dep in dependencies() if not roots else roots:
@@ -6737,9 +6691,9 @@ def sorted_dists():
 
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
-    Partitions 'args' into a leading sequence of HotSpot VM options and the rest. If
-    'useDoubleDash' then 'args' is partititioned by the first instance of "--". If
-    not 'allowClasspath' then mx aborts if "-cp" or "-classpath" is in 'args'.
+    Partitions `args` into a leading sequence of HotSpot VM options and the rest. If
+    `useDoubleDash` then `args` is partititioned by the first instance of "--". If
+    not `allowClasspath` then mx aborts if "-cp" or "-classpath" is in `args`.
 
    """
     for i in range(len(args)):
@@ -7110,19 +7064,19 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     If that produces no valid JDK, then a set of candidate JDKs is built by searching
     the OS-specific locations in which JDKs are normally installed. These candidates
-    are filtered by the 'versionCheck' predicate function. The predicate is described
-    by the string in 'versionDescription' (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
-    If 'versionCheck' is None, no filtering is performed.
+    are filtered by the `versionCheck` predicate function. The predicate is described
+    by the string in `versionDescription` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
+    If `versionCheck` is None, no filtering is performed.
 
     If running interactively, the user is prompted to select from one of the candidates
-    or "<other>". The selection prompt message includes the value of 'purpose' if it is not None.
-    If 'cancel' is not None, the user is also given a choice to make no selection,
-    the consequences of which are described by 'cancel'. If a JDK is selected, it is returned.
+    or "<other>". The selection prompt message includes the value of `purpose` if it is not None.
+    If `cancel` is not None, the user is also given a choice to make no selection,
+    the consequences of which are described by `cancel`. If a JDK is selected, it is returned.
     If the user cancels, then None is returned. If "<other>" is chosen, the user is repeatedly
     prompted for a path to a JDK until a valid path is provided at which point a corresponding
     JDKConfig object is returned. Before returning the user is given the option to persist
     the selected JDK in file "env" in the primary suite's mx directory. The choice will be
-    saved as the value for JAVA_HOME if 'isDefaultJdk' is true, otherwise it is set or
+    saved as the value for JAVA_HOME if `isDefaultJdk` is true, otherwise it is set or
     appended to the value for EXTRA_JAVA_HOMES.
 
     If not running interactively, the first candidate is returned or None if there are no
@@ -7731,9 +7685,9 @@ Utility for filtering duplicate lines.
 """
 class DuplicateSuppressingStream:
     """
-    Creates an object that will suppress duplicate lines sent to 'out'.
+    Creates an object that will suppress duplicate lines sent to `out`.
     The lines considered for suppression are those that contain one of the
-    strings in 'restrictTo' if it is not None.
+    strings in `restrictTo` if it is not None.
     """
     def __init__(self, restrictTo=None, out=sys.stdout):
         self.restrictTo = restrictTo
@@ -7950,7 +7904,7 @@ class JDKConfig:
     def processArgs(self, args, addDefaultArgs=True):
         """
         Return a list composed of the arguments specified by the -P, -J and -A options (in that order)
-        prepended to 'args' if 'addDefaultArgs' is true otherwise just return 'args'.
+        prepended to `args` if `addDefaultArgs` is true otherwise just return `args`.
         """
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + self.java_args_sfx + args
@@ -8075,7 +8029,7 @@ def log(msg=None):
 
 def expand_project_in_class_path_arg(cpArg):
     """
-    Replaces each "@" prefixed element in the class path 'cpArg' with
+    Replaces each "@" prefixed element in the class path `cpArg` with
     the class path for the dependency named by the element without the "@" prefix.
     """
     if '@' not in cpArg:
@@ -8090,9 +8044,9 @@ def expand_project_in_class_path_arg(cpArg):
 
 def expand_project_in_args(args, insitu=True):
     """
-    Looks for the first -cp or -classpath argument in 'args' and
-    calls expand_project_in_class_path_arg on it. If 'insitu' is true,
-    then 'args' is updated in place otherwise a copy of 'args' is modified.
+    Looks for the first -cp or -classpath argument in `args` and
+    calls expand_project_in_class_path_arg on it. If `insitu` is true,
+    then `args` is updated in place otherwise a copy of `args` is modified.
     The updated object is returned.
     """
     for i in range(len(args)):
@@ -8140,13 +8094,13 @@ def _send_sigquit():
 def abort(codeOrMessage, context=None):
     """
     Aborts the program with a SystemExit exception.
-    If 'codeOrMessage' is a plain integer, it specifies the system exit status;
+    If `codeOrMessage` is a plain integer, it specifies the system exit status;
     if it is None, the exit status is zero; if it has another type (such as a string),
     the object's value is printed and the exit status is 1.
 
-    The 'context' argument can provide extra context for an error message.
-    If 'context' is callable, it is called and the returned value is printed.
-    If 'context' defines a __abort_context__ method, the latter is called and
+    The `context` argument can provide extra context for an error message.
+    If `context` is callable, it is called and the returned value is printed.
+    If `context` defines a __abort_context__ method, the latter is called and
     its return value is printed. Otherwise str(context) is printed.
     """
 
@@ -8210,7 +8164,7 @@ def download(path, urls, verbose=False, abortOnError=True):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
-    The downloaded content is written to the file indicated by 'path'.
+    The downloaded content is written to the file indicated by `path`.
     """
     d = dirname(path)
     if d != '':
@@ -9048,8 +9002,8 @@ class TimeStampFile:
     @staticmethod
     def newest(paths):
         """
-        Creates a TimeStampFile for the file in 'paths' with the most recent modification time.
-        Entries in 'paths' that do not correspond to an existing file are ignored.
+        Creates a TimeStampFile for the file in `paths` with the most recent modification time.
+        Entries in `paths` that do not correspond to an existing file are ignored.
         """
         ts = None
         for path in paths:
@@ -9584,8 +9538,8 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=F
 
 def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
     """
-    Returns True if and only if suite.py for *suite*, all *configZip* related resources in
-    *suite* and mx itself are older than *configZip*.
+    Returns True if and only if suite.py for `suite`, all `configZip` related resources in
+    `suite` and mx itself are older than `configZip`.
     """
     suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e == 'suite.py']
     if configZip.isOlderThan(suitePyFiles):
@@ -9610,7 +9564,7 @@ def _eclipse_linked_resource(name, tp, location):
 def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
     """
     Gets the URI for a resource relative to an Eclipse project directory (i.e.,
-    the directory containing the ```.project``` file for the project). The URI
+    the directory containing the `.project` file for the project). The URI
     returned is based on the builtin PROJECT_LOC Eclipse variable.
     See http://stackoverflow.com/a/7585095
     """
@@ -12323,7 +12277,7 @@ def checkcopyrights(args):
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
-    Scan the sources of project 'p' for Java source files containing a line starting with 'annotation'
+    Scan the sources of project `p` for Java source files containing a line starting with `annotation`
     (ignoring preceding whitespace) and return the fully qualified class name for each Java
     source file matched in a list.
     """
@@ -12587,8 +12541,8 @@ def update_commands(suite, new_commands):
 
 def command_function(name, fatalIfMissing=True):
     """
-    Return the function for the (possibly overridden) command named name.
-    If no such command, abort if FatalIsMissing=True, else return None
+    Return the function for the (possibly overridden) command named `name`.
+    If no such command, abort if `fatalIsMissing` is True, else return None
     """
     if _commands.has_key(name):
         return _commands[name][0]
@@ -12708,7 +12662,7 @@ def _suitename(mxDir):
 def _is_suite_dir(d, mxDirName=None):
     """
     Checks if d contains a suite.
-    If mxDirName is None, matches any suite name, otherwise checks for exactly *mxDirName* or '.' + *mxDirName*.
+    If mxDirName is None, matches any suite name, otherwise checks for exactly `mxDirName` or '.' + `mxDirName`.
     """
     if os.path.isdir(d):
         for f in [mxDirName, '.' + mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.') or e.startswith('.mx.')]:
