@@ -176,7 +176,7 @@ class StdOutRule(object):
         datapoints = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
-        for iteration, m in enumerate(re.finditer(self.pattern, text)):
+        for iteration, m in enumerate(re.finditer(self.pattern, text, re.MULTILINE)):
             datapoint = {}
             for key, value in self.replacement.iteritems():
                 inst = value
