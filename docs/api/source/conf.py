@@ -16,7 +16,7 @@ import sys
 import os
 import shlex
 
-sys.path.append(os.path.abspath("../../"))
+sys.path.append(os.path.abspath("../../../"))
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -35,7 +35,11 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx'
 ]
+
+intersphinx_mapping = {'python': ('https://docs.python.org/2.7', None)}
+nitpick_ignore = [('py:obj', 'str'), ('py:obj', 'None')]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
