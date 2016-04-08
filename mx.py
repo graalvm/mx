@@ -159,6 +159,7 @@ _binary_suites = None # source suites only if None, [] means all binary, otherwi
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 _urlrewrites = [] # list of URLRewrite objects
 _original_environ = dict(os.environ)
+_jdkProvidedSuites = set()
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
@@ -457,6 +458,9 @@ class Dependency(SuiteConstituent):
                 resolvedDeps = []
                 for name in deps:
                     s, _ = splitqualname(name)
+                    if s and s in _jdkProvidedSuites:
+                        logv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
+                        continue
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
                     if not dep:
                         continue
@@ -1349,6 +1353,11 @@ class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
 
+"""
+A namedtuple describing a package in a `module <http://openjdk.java.net/projects/jigsaw/spec/sotms/#module-declarations>`_.
+"""
+JavaModulePackage = namedtuple('JavaModulePackage', ['module', 'package'])
+
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
@@ -1636,13 +1645,52 @@ class JavaProject(Project, ClasspathDependency):
             jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
         if hasattr(args, "jdt") and args.jdt and not args.force_javac:
-            ec = _convert_to_eclipse_supported_compliance(max(jdk.javaCompliance, requiredCompliance))
-            if ec < jdk.javaCompliance:
-                jdk = get_jdk(tag=DEFAULT_JDK_TAG, versionCheck=ec.exactMatch, versionDescription=str(ec))
-            if ec < requiredCompliance:
-                requiredCompliance = ec
+            if not _is_supported_by_jdt(jdk):
+                # TODO: Test JDT version against those known to support JDK9
+                abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
 
         return JavaBuildTask(args, self, jdk, requiredCompliance)
+
+    def required_module_packages(self):
+        """
+        Gets the packages defined in modules required by this Java project.
+
+        :return: a list of `JavaModulePackage` objects describing the module packages required by this project.
+        """
+        if getattr(self, '.requiredModulePackages', None) is None:
+            required = set()
+            if get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= '9':
+                # Handle explicit "requires" attribute first
+                requires = getattr(self, 'requires', None)
+                if requires:
+                    qualifiedName = r'(?:[a-zA-Z_$][a-zA-Z\d_$]*\.)*[a-zA-Z_$][a-zA-Z\d_$]*'
+                    modulePackageRe = re.compile('(' + qualifiedName + ')/(' + qualifiedName + ')')
+                    if not isinstance(requires, list):
+                        abort('Attribute "requires" for ' + str(self) + ' must be a list', context=self)
+                    for req in requires:
+                        m = modulePackageRe.match(req)
+                        if not m:
+                            abort('Element in "requires" attribute does not match the pattern <source-module>/<package>: ' + req, context=self)
+                        required.add(JavaModulePackage(m.group(1), m.group(2)))
+
+                # Handle JVMCI imports if on JDK9 or later
+                if get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= '9':
+                    # All JVMCI classes start with capital letter
+                    jvmciImportRe = re.compile(r'import\s+(?:static\s+)?(jdk.vm.ci(?:\.[a-z][a-zA-Z\d_$]*)+)\.[^;]+;')
+                    for sourceDir in self.source_dirs():
+                        for root, _, files in os.walk(sourceDir):
+                            javaSources = [name for name in files if name.endswith('.java')]
+                            if len(javaSources) != 0:
+                                for n in javaSources:
+                                    with open(join(root, n)) as fp:
+                                        content = fp.read()
+                                        for pkg in jvmciImportRe.findall(content):
+                                            required.add(JavaModulePackage('jdk.vm.ci', pkg))
+            else:
+                # Nothing to do if on a pre-9 jdk
+                pass
+            setattr(self, '.requiredModulePackages', sorted(required))
+        return getattr(self, '.requiredModulePackages')
 
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk, requiredCompliance):
@@ -1978,7 +2026,51 @@ class JavacCompiler(JavacLikeCompiler):
             abort('Showing task tags is not currently supported for javac')
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
-        return javacArgs
+
+        if jdk.javaCompliance >= '1.9':
+            def addExportArgs(dep, alreadyAdded=None, prefix=''):
+                """
+                Adds ``-XaddExports:`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
+                `javacArgs` for the non-public JDK modules required by `dep`.
+
+                :param :class:`mx.JavaProject` dep: a Java project that may dependent on private JDK modules
+                :param alreadyAdded: either None or a set of module exports for which ``-XaddExports`` args
+                   have already been added to `javacArgs`
+                :type alreadyAdded: None or set
+                :param string prefix: the prefix to be added the ``X-addExports`` arg(s)
+                """
+                required = dep.required_module_packages()
+                for modulePackage in required:
+                    if alreadyAdded is None or modulePackage not in alreadyAdded:
+                        if alreadyAdded is not None:
+                            alreadyAdded.add(modulePackage)
+                        exportArg = prefix + '-XaddExports:' + modulePackage.module + '/' + modulePackage.package + '=ALL-UNNAMED'
+                        javacArgs.append(exportArg)
+
+            aps = project.annotation_processors()
+            if aps:
+                alreadyAdded = set()
+                for dep in classpath_entries(aps, preferProjects=True):
+                    if dep.isJavaProject():
+                        addExportArgs(dep, alreadyAdded, '-J')
+            addExportArgs(project)
+
+            # If jdk.vm.ci is exported (i.e., it's used by an annotation processor) then
+            # we need to make jdk.vm.ci a boot module (since -XaddExports can only be used
+            # for boot modules) and add the flags that enable JVMCI.
+            if [a for a in javacArgs if a.startswith('-J-XaddExports:jdk.vm.ci')]:
+                for a in ['-J-XX:+UnlockExperimentalVMOptions', '-J-XX:+EnableJVMCI']:
+                    if a not in javacArgs:
+                        javacArgs.append(a)
+
+                # TODO: Will be unnecessary once this change is integrated:
+                # http://hg.openjdk.java.net/jigsaw/jake/hotspot/rev/7356066f452f
+                addmodsArgs = ['-J-addmods', '-Jjdk.vm.ci']
+                if ' '.join(addmodsArgs) not in ' '.join(javacArgs):
+                    javacArgs.extend(addmodsArgs)
+
+        jvmArgs += jdk.java_args
+        self.run(jdk, jvmArgs, javacArgs)
 
     def compile(self, jdk, args):
         javac = self.altJavac if self.altJavac else jdk.javac
@@ -2026,6 +2118,8 @@ class CompilerDaemon(Daemon):
         verbose = ['-v'] if _opts.verbose else []
         args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + [str(self.port)]
         preexec_fn, creationflags = _get_new_progress_group_args()
+        if _opts.verbose:
+            log(' '.join(map(pipes.quote, args)))
         p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags)
         # Ensure the process is cleaned up when mx exits
         _addSubprocess(p, args)
@@ -2095,10 +2189,7 @@ class ECJCompiler(JavacLikeCompiler):
         jdk = get_jdk(compliance)
         esc = _convert_to_eclipse_supported_compliance(jdk.javaCompliance)
         if esc < jdk.javaCompliance:
-            # We need to emulate strict compliance here so that the right boot
-            # class path is selected when compiling with a JDT that does not
-            # support a JDK9 boot class path
-            jdk = get_jdk(versionCheck=esc.exactMatch, versionDescription=str(esc))
+            abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
         return jdk
 
     def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
@@ -3968,9 +4059,9 @@ class BinaryVC(VC):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        Downloads the `mx-suitename.jar` file. The caller is responsible for downloading
+        Downloads the ``mx-suitename.jar`` file. The caller is responsible for downloading
         the suite distributions. The actual version downloaded is written to the file
-        `mx-suitename.jar.<version>`.
+        ``mx-suitename.jar.<version>``.
 
         :param extra_args: Additional args that must include `suite_name` which is a string
               denoting the suite name and `result` which is a dict for output values. If this
@@ -4476,7 +4567,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository.
 
-    All binaries must be built first using `mx build`.
+    All binaries must be built first using ``mx build``.
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -5275,8 +5366,14 @@ class Suite:
             for entry in suiteImports:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
-                suite_import = SuiteImport.parse_specification(entry, context=self, dynamicImport=self.dynamicallyImported)
-                self.suite_imports.append(suite_import)
+
+                import_dict = entry
+                suite_import = SuiteImport.parse_specification(import_dict, context=self, dynamicImport=self.dynamicallyImported)
+                jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
+                if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
+                    _jdkProvidedSuites.add(suite_import.name)
+                else:
+                    self.suite_imports.append(suite_import)
         if self.primary:
             dynamicImports = _opts.dynamic_imports
             if dynamicImports:
@@ -6505,6 +6602,19 @@ def library(name, fatalIfMissing=True, context=None):
     return l
 
 def classpath_entries(names=None, includeSelf=True, preferProjects=False):
+    """
+    Gets the transitive set of dependencies that need to be on the class path
+    given the root set of projects and distributions in `names`.
+
+    :param names: a Dependency, str or list containing Dependency/str objects
+    :type names: list or Dependency or str
+    :param bool includeSelf: whether to include any of the dependencies in `names` in the returned list
+    :param bool preferProjects: for a JARDistribution dependency, specifies whether to include
+            it in the returned list (False) or to instead put its constituent dependencies on the
+            the return list (True)
+    :return: a lits of Dependency objects representing the transitive set of dependencies that should
+            be on the class path for something depending on `names`
+    """
     if names is None:
         roots = set(dependencies())
     else:
@@ -6948,6 +7058,20 @@ def get_jdk_option():
 _canceled_java_requests = set()
 
 DEFAULT_JDK_TAG = 'default'
+
+def _is_supported_by_jdt(jdk):
+    """
+    Determines if a specified JDK is supported by the Eclipse JDT compiler.
+
+    :param jdk: a :class:`mx.JDKConfig` object or a tag that can be used to get a JDKConfig object from :method:`get_jdk`
+    :type jdk: :class:`mx.JDKConfig` or string
+    :rtype: bool
+    """
+    if isinstance(jdk, basestring):
+        jdk = get_jdk(tag=jdk)
+    else:
+        assert isinstance(jdk, JDKConfig)
+    return jdk.javaCompliance < '9'
 
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPerference=None, **kwargs):
     """
@@ -8368,7 +8492,7 @@ def build(args, parser=None):
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
 
-    if _opts.verbose:
+    if _opts.very_verbose:
         log("++ Serialized build plan ++")
         for task in sortedTasks:
             if task.deps:
@@ -9584,6 +9708,70 @@ def _get_eclipse_output_path(p, linkedResources=None):
     else:
         return outputDirRel
 
+def _get_jdk_module_jar(module, suite, jdk):
+    """
+    Gets the path to a jar containing the class files in a specified JDK9 module, creating it first
+    if it doesn't exist by extracting the class files from the given jdk using the
+    JRT FileSystem provider (introduced by `JEP 220 <http://openjdk.java.net/jeps/220>`_).
+
+    :param str module: the name of a module for which a jar is being requested
+    :param :class:`Suite` suite: suite whose output root is used for the created jar
+    :param :class:`JDKConfig` jdk: the JDK containing the module
+
+    """
+    assert jdk.javaCompliance >= '9'
+    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
+    jarName = module + '.jar'
+    jarPath = join(jdkOutputDir, jarName)
+    if not exists(jarPath) or TimeStampFile(jdk.java).isNewerThan(jarPath):
+        javaSourceDir = ensure_dir_exists(join(jdkOutputDir, module.replace('.', os.sep)))
+        javaSource = join(javaSourceDir, 'ExtractJar.java')
+        with open(javaSource, 'w') as fp:
+            print >> fp, 'package ' + module + ';'
+            print >> fp, """
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.stream.Stream;
+
+public class ExtractJar {
+    public static void main(String[] args) throws Exception {
+        FileSystem fs = FileSystems.getFileSystem(URI.create("jrt:/"));
+        String jarPath = args[0];
+        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath))) {
+            Path dir = fs.getPath("/modules/%(module)s");
+            assert Files.isDirectory(dir) : dir;
+            try (Stream<Path> stream = Files.walk(dir)) {
+                stream.forEach(p -> {
+                    String path = p.toString();
+                    if (path.endsWith(".class") && !path.endsWith("module-info.class")) {
+                        String prefix = "/modules/%(module)s/";
+                        String name = path.substring(prefix.length(), path.length());
+                        JarEntry je = new JarEntry(name);
+                        try {
+                            jos.putNextEntry(je);
+                            jos.write(Files.readAllBytes(p));
+                            jos.closeEntry();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+            }
+        }
+    }
+}
+""" % {"module" : module}
+        run([jdk.javac, '-d', jdkOutputDir, javaSource])
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, module + '.ExtractJar', jarPath])
+    return jarPath
+
 def _eclipseinit_project(p, files=None, libFiles=None):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
 
@@ -9628,6 +9816,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
+    moduleDeps = set([mp.module for mp in p.required_module_packages()])
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -9642,6 +9831,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
+            if dep.isJavaProject():
+                moduleDeps.update([mp.module for mp in dep.required_module_packages()])
         elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
             distributionDeps.add(dep)
         elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
@@ -9681,6 +9872,10 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if not dep.isNativeProject():
             out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
+    if moduleDeps:
+        for module in sorted(moduleDeps):
+            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(tag=DEFAULT_JDK_TAG))
+            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
     out.close('classpath')
@@ -9798,6 +9993,15 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+
+        moduleAPDeps = set()
+        for dep in classpath_entries(names=processors, preferProjects=True):
+            if dep.isJavaProject():
+                moduleAPDeps.update([mp.module for mp in dep.required_module_packages()])
+        for module in sorted(moduleAPDeps):
+            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(tag=DEFAULT_JDK_TAG))
+            out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+
         out.close('factorypath')
         update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
         if files:
@@ -12672,7 +12876,7 @@ def _suitename(mxDir):
 def _is_suite_dir(d, mxDirName=None):
     """
     Checks if d contains a suite.
-    If mxDirName is None, matches any suite name, otherwise checks for exactly `mxDirName` or '.' + `mxDirName`.
+    If mxDirName is None, matches any suite name, otherwise checks for exactly `mxDirName` or `mxDirName` with a ``.`` prefix.
     """
     if os.path.isdir(d):
         for f in [mxDirName, '.' + mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.') or e.startswith('.mx.')]:
@@ -12970,7 +13174,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.6")
+version = VersionSpec("5.20.0")
 
 currentUmask = None
 
