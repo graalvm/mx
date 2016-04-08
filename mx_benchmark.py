@@ -538,11 +538,11 @@ def benchmark(args):
             (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that
             all the benchmarks need to be executed as separate runs. If omitted, all the
             benchmarks must be executed as part of one run.
-         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
+        `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
-              -p, --path: Path to the file into which to dump the benchmark results.
-              --machine_name: Abstract name of a machine with specific capabilities
-                              (e.g. `x52`).
+            -p, --path: Path to the file into which to dump the benchmark results.
+            --machine_name: Abstract name of a machine with specific capabilities
+                            (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
