@@ -221,7 +221,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     """
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return self.validateStdout(out, retcode)
+        return self.validateStdout(out, retcode=retcode)
 
     def validateStdout(self, out, retcode=None):
         """Validate out against the parse rules and create data points.
