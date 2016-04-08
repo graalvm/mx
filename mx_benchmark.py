@@ -221,6 +221,12 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     """
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+        return self.validateStdout(out, retcode=retcode)
+
+    def validateStdout(self, out, retcode=None):
+        """Validate out against the parse rules and create data points.
+        Subclass may override to customize validation.
+        """
         def compiled(pat):
             if type(pat) is str:
                 return re.compile(pat)
@@ -230,8 +236,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if compiled(pat).match(out):
                 flaky = True
         if not flaky:
-            if not self.validateReturnCode(retcode):
-                raise RuntimeError("Benchmark failed, exit code: {0}".format(retcode))
+            if retcode:
+                if not self.validateReturnCode(retcode):
+                    raise RuntimeError("Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
                 if compiled(pat).match(out):
                     raise RuntimeError("Benchmark failed")
