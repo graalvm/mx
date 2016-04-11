@@ -485,9 +485,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
-            "-p", "--path", help="Path to the output file.")
+            "--results-file", help="Path to JSON output file with benchmark results.")
         parser.add_argument(
-            "--machine_name", default=None, help="Path to the output file.")
+            "--machine-name", default=None, help="Abstract name of the target machine.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         self.checkEnvironmentVars()
@@ -503,7 +503,7 @@ class BenchmarkExecutor(object):
           "queries": results
         }
         dump = json.dumps(topLevelJson)
-        with open(mxBenchmarkArgs.path, "w") as txtfile:
+        with open(mxBenchmarkArgs.results_file, "w") as txtfile:
             txtfile.write(dump)
 
 
@@ -545,11 +545,11 @@ def benchmark(args):
             (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that
             all the benchmarks need to be executed as separate runs. If omitted, all the
             benchmarks must be executed as part of one run.
-         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
+        `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
-              -p, --path: Path to the file into which to dump the benchmark results.
-              --machine_name: Abstract name of a machine with specific capabilities
-                              (e.g. `x52`).
+            --results-file: Path to the file into which to dump the benchmark results.
+            --machine-name: Abstract name of a machine with specific capabilities
+                            (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
@@ -557,10 +557,11 @@ def benchmark(args):
     include additional, benchmark-specific `--` occurrences.
 
     Examples:
-        mx benchmark dacapo:avrora --path ./results.json -- -jar dacapo-9.12-bach.jar
+        mx benchmark dacapo:avrora --results-file ./results.json -- \\
+          -jar dacapo-9.12-bach.jar
         mx benchmark octane:richards -p ./results.json -- -XX:+PrintGC -- --iters=10
-        mx benchmark dacapo:* --path ./results.json --
-        mx benchmark specjvm --path ./output.json
+        mx benchmark dacapo:* --results-file ./results.json --
+        mx benchmark specjvm --results-file ./output.json
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
     _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
