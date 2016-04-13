@@ -90,6 +90,15 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
+    def before(self, bmSuiteArgs):
+        """Called exactly once before any benchmark invocations begin.
+
+        Useful for outputting information such as platform version, OS, etc.
+
+        Arguments: see `run`.
+        """
+        pass
+
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
@@ -307,11 +316,15 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         raise NotImplementedError()
 
+    def before(self, bmSuiteArgs):
+        mx.log("Running on JVM with -version:")
+        mx.get_jdk().run_java(["-version"], nonZeroIsFatal=False)
+
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         jdk = mx.get_jdk()
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        mx.logv("Running JVM with args: {0}.".format(args))
+        mx.log("Running JVM with args: {0}.".format(args))
         exitCode = jdk.run_java(args, out=out, err=out, nonZeroIsFatal=False)
         return exitCode, out.underlying.data
 
@@ -455,14 +468,14 @@ class BenchmarkExecutor(object):
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
         if benchspec is "*":
-            return [(suite, [b]) for b in suite.benchmarks()]
+            return (suite, [[b] for b in suite.benchmarks()])
         elif benchspec is "":
-            return [(suite, None)]
+            return (suite, [None])
         elif not benchspec in suite.benchmarks():
             mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
                 benchspec, suitename))
         else:
-            return [(suite, [benchspec])]
+            return (suite, [[benchspec]])
 
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
@@ -492,10 +505,12 @@ class BenchmarkExecutor(object):
 
         self.checkEnvironmentVars()
 
-        suiteBenchPairs = self.getSuiteAndBenchNames(mxBenchmarkArgs)
+        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs)
 
         results = []
-        for suite, benchnames in suiteBenchPairs:
+
+        suite.before(bmSuiteArgs)
+        for benchnames in benchNamesList:
             suite.validateEnvironment()
             results.extend(
                 self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs))
