@@ -470,6 +470,10 @@ class Dependency(SuiteConstituent):
                         abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
+                    selfJC = getattr(self, 'javaCompliance', None)
+                    depJC = getattr(dep, 'javaCompliance', None)
+                    if selfJC and depJC and selfJC < depJC:
+                        abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
@@ -1659,36 +1663,39 @@ class JavaProject(Project, ClasspathDependency):
         """
         if getattr(self, '.requiredModulePackages', None) is None:
             required = set()
-            if get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= '9':
-                # Handle explicit "requires" attribute first
-                requires = getattr(self, 'requires', None)
-                if requires:
-                    qualifiedName = r'(?:[a-zA-Z_$][a-zA-Z\d_$]*\.)*[a-zA-Z_$][a-zA-Z\d_$]*'
-                    modulePackageRe = re.compile('(' + qualifiedName + ')/(' + qualifiedName + ')')
-                    if not isinstance(requires, list):
-                        abort('Attribute "requires" for ' + str(self) + ' must be a list', context=self)
-                    for req in requires:
-                        m = modulePackageRe.match(req)
-                        if not m:
-                            abort('Element in "requires" attribute does not match the pattern <source-module>/<package>: ' + req, context=self)
-                        required.add(JavaModulePackage(m.group(1), m.group(2)))
+            requires = getattr(self, 'requires', None)
+            if requires:
+                qualifiedName = r'(?:[a-zA-Z_$][a-zA-Z\d_$]*\.)*[a-zA-Z_$][a-zA-Z\d_$]*'
+                modulePackageRe = re.compile('(' + qualifiedName + ')/(' + qualifiedName + ')')
+                if not isinstance(requires, list):
+                    abort('Attribute "requires" for ' + str(self) + ' must be a list', context=self)
+                for req in requires:
+                    m = modulePackageRe.match(req)
+                    if not m:
+                        abort('Element in "requires" attribute does not match the pattern <source-module>/<package>: ' + req, context=self)
+                    required.add(JavaModulePackage(m.group(1), m.group(2)))
 
-                # Handle JVMCI imports if on JDK9 or later
-                if get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= '9':
-                    # All JVMCI classes start with capital letter
-                    jvmciImportRe = re.compile(r'import\s+(?:static\s+)?(jdk.vm.ci(?:\.[a-z][a-zA-Z\d_$]*)+)\.[^;]+;')
-                    for sourceDir in self.source_dirs():
-                        for root, _, files in os.walk(sourceDir):
-                            javaSources = [name for name in files if name.endswith('.java')]
-                            if len(javaSources) != 0:
-                                for n in javaSources:
-                                    with open(join(root, n)) as fp:
-                                        content = fp.read()
-                                        for pkg in jvmciImportRe.findall(content):
-                                            required.add(JavaModulePackage('jdk.vm.ci', pkg))
+            if get_jdk(self.javaCompliance).javaCompliance >= '9':
+                # Add imported JVMCI classes automatically since they are
+                # also available in jvmci-8 without exports
+                jvmciImportRe = re.compile(r'import\s+(?:static\s+)?(jdk.vm.ci(?:\.[a-z][a-zA-Z\d_$]*)+)\.[^;]+;')
+                for sourceDir in self.source_dirs():
+                    for root, _, files in os.walk(sourceDir):
+                        pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                        if pkg.startswith('jdk.vm.ci'):
+                            continue
+                        javaSources = [name for name in files if name.endswith('.java')]
+                        if len(javaSources) != 0:
+                            for n in javaSources:
+                                with open(join(root, n)) as fp:
+                                    content = fp.read()
+                                    for pkg in jvmciImportRe.findall(content):
+                                        required.add(JavaModulePackage('jdk.vm.ci', pkg))
             else:
-                # Nothing to do if on a pre-9 jdk
-                pass
+                for require in required:
+                    if require.module != 'jdk.vm.ci':
+                        abort('Cannot require modules other than jdk.vm.ci in a project with Java compliance < 9', context=self)
+                required = set()
             setattr(self, '.requiredModulePackages', sorted(required))
         return getattr(self, '.requiredModulePackages')
 
@@ -9724,10 +9731,9 @@ def _get_jdk_module_jar(module, suite, jdk):
     jarName = module + '.jar'
     jarPath = join(jdkOutputDir, jarName)
     if not exists(jarPath) or TimeStampFile(jdk.java).isNewerThan(jarPath):
-        javaSourceDir = ensure_dir_exists(join(jdkOutputDir, module.replace('.', os.sep)))
-        javaSource = join(javaSourceDir, 'ExtractJar.java')
+        className = module.replace('.', '_') + '_ExtractJar'
+        javaSource = join(jdkOutputDir, className + '.java')
         with open(javaSource, 'w') as fp:
-            print >> fp, 'package ' + module + ';'
             print >> fp, """
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -9740,7 +9746,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 
-public class ExtractJar {
+public class %(className)s {
     public static void main(String[] args) throws Exception {
         FileSystem fs = FileSystems.getFileSystem(URI.create("jrt:/"));
         String jarPath = args[0];
@@ -9767,9 +9773,9 @@ public class ExtractJar {
         }
     }
 }
-""" % {"module" : module}
+""" % {"module" : module, "className" : className}
         run([jdk.javac, '-d', jdkOutputDir, javaSource])
-        run([jdk.java, '-ea', '-cp', jdkOutputDir, module + '.ExtractJar', jarPath])
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath])
     return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None):
@@ -9874,7 +9880,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
 
     if moduleDeps:
         for module in sorted(moduleDeps):
-            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(tag=DEFAULT_JDK_TAG))
+            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(p.javaCompliance))
             out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
