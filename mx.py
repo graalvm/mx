@@ -1596,19 +1596,19 @@ class JavaProject(Project, ClasspathDependency):
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
         if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
-            jdk = get_jdk() # build using default JDK
+            jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
             if jdk.javaCompliance < requiredCompliance:
-                jdk = get_jdk(requiredCompliance)
+                jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
             if hasattr(args, 'parallelize') and args.parallelize:
                 # Best to initialize class paths on main process
-                get_jdk(requiredCompliance).bootclasspath()
+                get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG).bootclasspath()
         else:
-            jdk = get_jdk(requiredCompliance)
+            jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
         if hasattr(args, "jdt") and args.jdt and not args.force_javac:
             ec = _convert_to_eclipse_supported_compliance(max(jdk.javaCompliance, requiredCompliance))
             if ec < jdk.javaCompliance:
-                jdk = get_jdk(versionCheck=ec.exactMatch, versionDescription=str(ec))
+                jdk = get_jdk(tag=DEFAULT_JDK_TAG, versionCheck=ec.exactMatch, versionDescription=str(ec))
             if ec < requiredCompliance:
                 requiredCompliance = ec
 
