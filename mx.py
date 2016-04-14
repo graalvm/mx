@@ -5471,6 +5471,10 @@ class Suite:
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        if searchMode == 'source' and all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
+            logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
+            searchMode = 'binary'
+
         version = suite_import.version
         # experimental code to ignore versions, aka pull the tip
         if _suites_ignore_versions:
@@ -5546,7 +5550,7 @@ class Suite:
 
         importMxDir = _try_clone()
 
-        if  _is_binary_mode() and importMxDir is None:
+        if _is_binary_mode() and importMxDir is None:
             log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
             searchMode = "source"
             importMxDir = _try_clone()
@@ -12940,7 +12944,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.0")
+version = VersionSpec("5.19.1")
 
 currentUmask = None
 
