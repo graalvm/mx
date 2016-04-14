@@ -9604,6 +9604,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
+        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
+            distributionDeps.add(dep)
         elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
             pass
         else:
@@ -12905,7 +12907,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.3")
+version = VersionSpec("5.19.4")
 
 currentUmask = None
 
