@@ -68,6 +68,7 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 import mx_microbench
+import mx_urlrewrites
 import mx_benchmark
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
@@ -1595,19 +1596,19 @@ class JavaProject(Project, ClasspathDependency):
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
         if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
-            jdk = get_jdk() # build using default JDK
+            jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
             if jdk.javaCompliance < requiredCompliance:
-                jdk = get_jdk(requiredCompliance)
+                jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
             if hasattr(args, 'parallelize') and args.parallelize:
                 # Best to initialize class paths on main process
-                get_jdk(requiredCompliance).bootclasspath()
+                get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG).bootclasspath()
         else:
-            jdk = get_jdk(requiredCompliance)
+            jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
         if hasattr(args, "jdt") and args.jdt and not args.force_javac:
             ec = _convert_to_eclipse_supported_compliance(max(jdk.javaCompliance, requiredCompliance))
             if ec < jdk.javaCompliance:
-                jdk = get_jdk(versionCheck=ec.exactMatch, versionDescription=str(ec))
+                jdk = get_jdk(tag=DEFAULT_JDK_TAG, versionCheck=ec.exactMatch, versionDescription=str(ec))
             if ec < requiredCompliance:
                 requiredCompliance = ec
 
@@ -4805,7 +4806,7 @@ class SuiteImport:
             if kind != 'binary':
                 assert not mainKind or mainKind == kind, "Only expecting one non-binary kind"
                 mainKind = kind
-            url = URLRewrite._apply_rewrites(urlinfo.get('url'))
+            url = mx_urlrewrites.rewriteurl(urlinfo.get('url'))
             urlinfos.append(SuiteImportURLInfo(url, kind, vc))
         return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
 
@@ -4822,7 +4823,7 @@ class SuiteImport:
             else:
                 assert not source.startswith("http:")
                 vc = VC.get_vc(source)
-            return [SuiteImportURLInfo(URLRewrite._apply_rewrites(source), 'source', vc)]
+            return [SuiteImportURLInfo(mx_urlrewrites.rewriteurl(source), 'source', vc)]
         elif isinstance(source, list):
             result = [s for s in source if s.kind != 'binary']
             return result
@@ -4840,30 +4841,6 @@ class SCMMetadata(object):
         self.url = url
         self.read = read
         self.write = write
-
-"""
-Represents a regular expression based rewrite rule that
-can be applied to a URL.
-"""
-class URLRewrite(object):
-    def __init__(self, pattern, replacement):
-        self.pattern = pattern
-        self.replacement = replacement
-
-    def _apply(self, url):
-        match = self.pattern.match(url)
-        if match:
-            return self.pattern.sub(self.replacement, url)
-        else:
-            return None
-
-    @staticmethod
-    def _apply_rewrites(url):
-        for urlrewrite in _urlrewrites:
-            res = urlrewrite._apply(url)
-            if res:
-                return res
-        return url
 
 """
 Command state and methods for all suite subclasses
@@ -5045,19 +5022,10 @@ class Suite:
             urlrewrites = d.get('urlrewrites')
             if urlrewrites:
                 for urlrewrite in urlrewrites:
-                    if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
-                        abort('Each element in the "urlrewrites" array must be a dictionary with a single entry', context=self)
-                    for pattern, attrs in urlrewrite.iteritems():
-                        replacement = attrs.pop('replacement', None)
-                        if replacement is None:
-                            abort('URL rewrite for pattern "' + pattern + '" is missing replacement attribute', context=self)
-                        if len(attrs) != 0:
-                            abort('Unsupported attributes found for URL rewrite "' + pattern + '": ' + str(attrs), context=self)
-                        try:
-                            pattern = re.compile(pattern)
-                        except Exception as e: # pylint: disable=broad-except
-                            abort('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e), context=self)
-                        _urlrewrites.append(URLRewrite(pattern, replacement))
+                    def _error(msg):
+                        abort(msg, context=self)
+                    mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
+            mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
@@ -5503,6 +5471,10 @@ class Suite:
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        if searchMode == 'source' and all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
+            logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
+            searchMode = 'binary'
+
         version = suite_import.version
         # experimental code to ignore versions, aka pull the tip
         if _suites_ignore_versions:
@@ -5578,7 +5550,7 @@ class Suite:
 
         importMxDir = _try_clone()
 
-        if  _is_binary_mode() and importMxDir is None:
+        if _is_binary_mode() and importMxDir is None:
             log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
             searchMode = "source"
             importMxDir = _try_clone()
@@ -12931,7 +12903,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.0")
+version = VersionSpec("5.19.2")
 
 currentUmask = None
 
