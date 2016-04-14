@@ -99,16 +99,12 @@ def register_urlrewrites_from_env(name):
             except ValueError as e:
                 raise Exception('Error parsing JSON object denoted by ' + name + ' environment variable:\n' + str(e))
 
-        # Is it a JSON object or array?
-        if jsonValue[0] == '{':
-            urlrewrite = loadJson(jsonValue)
-            register_urlrewrite(urlrewrite, raiseError)
-        elif jsonValue[1] == '[':
-            urlrewrites = loadJson(jsonValue)
-            for urlrewrite in urlrewrites:
-                register_urlrewrite(urlrewrite, raiseError)
-        else:
-            raise Exception('Value of ' + name + ' does not denote a JSON object: ' + jsonValue)
+        if jsonValue:
+            rewrites = loadJson(jsonValue) # JSON root is always either list or dict
+            if isinstance(rewrites, dict):
+                rewrites = [rewrites]
+            for rewrite in rewrites:
+                register_urlrewrite(rewrite, raiseError)
 
 def rewriteurl(url):
     """
