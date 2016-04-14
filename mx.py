@@ -6109,45 +6109,6 @@ class Timer():
         print '{} took {} seconds'.format(self.name, elapsed)
         return None
 
-def _bench_test_common(args, parser, suppliedParser):
-    parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-    mx_gate.add_omit_clean_args(parser)
-    if suppliedParser:
-        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
-    args = parser.parse_args(args)
-
-    cleanArgs = mx_gate.check_gate_noclean_arg(args)
-
-    command_function('clean')(cleanArgs)
-
-    if args.cleanIDE:
-        command_function('ideclean')([])
-        command_function('ideinit')([])
-
-    command_function('build')([])
-    return args
-
-
-def _basic_bench_harness(args, vmArgs):
-    return 0
-
-def bench(args, harness=_basic_bench_harness, parser=None):
-    """run benchmarks (suite-specfic) after clean build (optional)"""
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
-    args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, split_j_args(args.vm_args))
-
-def _basic_test_harness(args, vmArgs):
-    return 0
-
-def test(args, harness=_basic_test_harness, parser=None):
-    """run tests (suite-specific) after clean build (optional)"""
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx test')
-    args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, split_j_args(args.vm_args))
-
 def get_jython_os():
     from java.lang import System as System
     os_name = System.getProperty('os.name').lower()
@@ -12554,7 +12515,6 @@ def warn(msg, context=None):
 _commands = {
     'about': [about, ''],
     'assessaps': [assessannotationprocessors, '[options]'],
-    'bench': [bench, ''],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -12606,7 +12566,6 @@ _commands = {
     'update': [update, ''],
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
-    'test': [test, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'minheap' : [run_java_min_heap, ''],
     'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
@@ -12944,7 +12903,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.1")
+version = VersionSpec("5.19.2")
 
 currentUmask = None
 
