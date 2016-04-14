@@ -10703,11 +10703,12 @@ def _intellij_suite(args, suite, refreshOnly=False):
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version' : '4'})
 
-    sources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
-    if sources:
+    corePrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
+    uiPrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
+    if corePrefsSources:
         out = StringIO.StringIO()
         print >> out, '# GENERATED -- DO NOT EDIT'
-        for source in sources:
+        for source in corePrefsSources:
             print >> out, '# Source:', source
             with open(source) as f:
                 for line in f:
@@ -10715,12 +10716,29 @@ def _intellij_suite(args, suite, refreshOnly=False):
                         print >> out, line.strip()
         formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
         update_file(formatterConfigFile, out.getvalue())
+        if uiPrefsSources:
+            out = StringIO.StringIO()
+            print >> out, '# GENERATED -- DO NOT EDIT'
+            for source in uiPrefsSources:
+                print >> out, '# Source:', source
+                with open(source) as f:
+                    for line in f:
+                        if line.startswith('org.eclipse.jdt.ui.importorder') \
+                            or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
+                            or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold') :
+                            print >> out, line.strip()
+            importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
+            update_file(importConfigFile, out.getvalue())
         miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
         miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
         miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
         miscXml.element('option', attributes={'name' : 'name', 'value' : suite.name})
         miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
         miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
+        if importConfigFile:
+            miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
+            miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
+
         miscXml.close('component')
     mainJdk = get_jdk()
     miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
