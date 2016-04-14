@@ -2064,14 +2064,8 @@ class JavacCompiler(JavacLikeCompiler):
 
             # If jdk.vm.ci is exported (i.e., it's used by an annotation processor) then
             # we need to make jdk.vm.ci a boot module (since -XaddExports can only be used
-            # for boot modules) and add the flags that enable JVMCI.
+            # for boot modules).
             if [a for a in javacArgs if a.startswith('-J-XaddExports:jdk.vm.ci')]:
-                for a in ['-J-XX:+UnlockExperimentalVMOptions', '-J-XX:+EnableJVMCI']:
-                    if a not in javacArgs:
-                        javacArgs.append(a)
-
-                # TODO: Will be unnecessary once this change is integrated:
-                # http://hg.openjdk.java.net/jigsaw/jake/hotspot/rev/7356066f452f
                 addmodsArgs = ['-J-addmods', '-Jjdk.vm.ci']
                 if ' '.join(addmodsArgs) not in ' '.join(javacArgs):
                     javacArgs.extend(addmodsArgs)
