@@ -10722,7 +10722,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
         miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
         miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
         miscXml.close('component')
-    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    mainJdk = get_jdk()
+    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
