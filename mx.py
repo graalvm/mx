@@ -5846,7 +5846,8 @@ class SourceSuite(Suite):
 
     @staticmethod
     def _projects_recursive_visitor(importing_suite, suite_import, projects, visitmap, **extra_args):
-        importing_suite._projects_recursive(importing_suite, suite(suite_import.name), projects, visitmap)
+        if isinstance(importing_suite, SourceSuite):
+            importing_suite._projects_recursive(importing_suite, suite(suite_import.name), projects, visitmap)
 
     def projects_recursive(self):
         """return all projects including those in imported suites"""
@@ -12903,7 +12904,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.2")
+version = VersionSpec("5.19.3")
 
 currentUmask = None
 
