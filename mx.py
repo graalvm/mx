@@ -10593,7 +10593,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
             genDir = p.source_gen_dir()
             ensure_dir_exists(genDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false'})
+            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false', 'generated': 'true'})
             for name in [basename(p.output_dir()), basename(p.jasmin_output_dir())]:
                 _intellij_exclude_if_exists(moduleXml, p, name, output=True)
             moduleXml.close('content')
