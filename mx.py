@@ -827,7 +827,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.subDir = subDir
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
-        self.archiveparticipant = None
+        self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
@@ -852,24 +852,31 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def set_archiveparticipant(self, archiveparticipant):
         """
-        Adds an object that participates in the make_archive method of this distribution by defining the following methods:
+        Adds an object that participates in the `make_archive` method of this distribution.
 
-        __opened__(arc, srcArc, services)
-            Called when archiving starts. The 'arc' and 'srcArc' Archiver objects are for writing to the
-            binary and source jars for the distribution. The 'services' dict is for collating the files
-            that will be written to META-INF/services in the binary jar. It's a map from service names
-            to a list of providers for the named service.
-        __add__(arcname, contents)
-            Submits an entry for addition to the binary archive (via the 'zf' ZipFile field of the 'arc' object).
-            Returns True if this object writes to the archive or wants to exclude the entry from the archive,
-            False if the caller should add the entry.
-        __addsrc__(arcname, contents)
-            Same as __add__ except if targets the source archive.
-        __closing__()
-            Called just before the 'services' are written to the binary archive and both archives are
-            written to their underlying files.
+        :param archiveparticipant: an object for which the following methods, if defined, will be called by `make_archive`:
+
+            __opened__(arc, srcArc, services)
+                Called when archiving starts. The `arc` and `srcArc` Archiver objects are for writing to the
+                binary and source jars for the distribution. The `services` dict is for collating the files
+                that will be written to ``META-INF/services`` in the binary jar. It is a map from service names
+                to a list of providers for the named service.
+            __add__(arcname, contents)
+                Submits an entry for addition to the binary archive (via the `zf` ZipFile field of the `arc` object).
+                Returns True if this object claims responsibility for adding/eliding `contents` to/from the archive,
+                False otherwise (i.e., the caller must take responsibility for the entry).
+            __addsrc__(arcname, contents)
+                Same as `__add__` except that it targets the source archive.
+            __closing__()
+                Called just before the `services` are written to the binary archive and both archives are
+                written to their underlying files.
         """
-        self.archiveparticipant = archiveparticipant
+        if not archiveparticipant in self.archiveparticipants:
+            if not hasattr(archiveparticipant, '__opened__'):
+                abort(str(archiveparticipant) + ' must define __opened__')
+            self.archiveparticipants.append(archiveparticipant)
+        else:
+            warn('registering archive participant ' + str(archiveparticipant) + ' for ' + str(self) + ' twice')
 
     def origin(self):
         return Dependency.origin(self)
@@ -879,16 +886,19 @@ class JARDistribution(Distribution, ClasspathDependency):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
         return self.path
 
-    """
-    Gets the directory in which the IDE project configuration for this distribution is generated.
-    """
     def get_ide_project_dir(self):
+        """
+        Gets the directory in which the IDE project configuration for this distribution is generated.
+        """
         if self.subDir:
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
             return join(self.suite.dir, self.name + '.dist')
 
     def make_archive(self):
+        """
+        Creates the jar file(s) defined by this JARDistribution.
+        """
         # are sources combined into main archive?
         unified = self.path == self.sourcesPath
         snippetsPattern = None
@@ -900,8 +910,28 @@ class JARDistribution(Distribution, ClasspathDependency):
                 srcArc = arc if unified else srcArcRaw
                 services = {}
 
-                if self.archiveparticipant:
-                    self.archiveparticipant.__opened__(arc, srcArc, services)
+                for a in self.archiveparticipants:
+                    a.__opened__(arc, srcArc, services)
+
+                def participants__add__(arcname, contents, addsrc=False):
+                    """
+                    Calls the __add__ or __addsrc__ method on `self.archiveparticipants`, ensuring at most one participant claims
+                    responsibility for adding/omitting `contents` under the name `arcname` to/from the archive.
+
+                    :param str arcname: name in archive for `contents`
+                    :params str contents: byte array to write to the archive under `arcname`
+                    :return: True if a participant claimed responsibility, False otherwise
+                    """
+                    claimer = None
+                    for a in self.archiveparticipants:
+                        method = getattr(a, '__add__' if not addsrc else '__addsrc__', None)
+                        if method:
+                            if method(arcname, contents):
+                                if claimer:
+                                    abort('Archive participant ' + str(a) + ' cannot claim responsibility for ' + arcname + ' in ' +
+                                          arc.path + ' as it was already claimed by ' + str(claimer))
+                                claimer = a
+                    return claimer is not None
 
                 def overwriteCheck(zf, arcname, source):
                     if os.path.basename(arcname).startswith('.'):
@@ -957,14 +987,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         else:
                                             if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
                                                 contents = lp.read(arcname)
-                                                if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                                if not participants__add__(arcname, contents):
                                                     arc.zf.writestr(arcname, contents)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
                                     if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname):
                                         contents = lp.read(arcname)
-                                        if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                        if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
                     elif dep.isProject():
                         p = dep
@@ -988,7 +1018,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     arcname = join(relpath, f).replace(os.sep, '/')
                                     with open(join(root, f), 'rb') as fp:
                                         contents = fp.read()
-                                    if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                    if not participants__add__(arcname, contents):
                                         arc.zf.writestr(arcname, contents)
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
@@ -1003,13 +1033,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
                                                 with open(join(root, f), 'r') as fp:
                                                     contents = fp.read()
-                                                if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                                if not participants__add__(arcname, contents, addsrc=True):
                                                     srcArc.zf.writestr(arcname, contents)
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
-                if self.archiveparticipant:
-                    self.archiveparticipant.__closing__()
+                for a in self.archiveparticipants:
+                    if hasattr(a, '__closing__'):
+                        a.__closing__()
 
                 for service, providers in services.iteritems():
                     arcname = 'META-INF/services/' + service
