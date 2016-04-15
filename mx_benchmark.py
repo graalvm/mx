@@ -28,6 +28,7 @@ import json
 import re
 import socket
 import subprocess
+import traceback
 import uuid
 from argparse import ArgumentParser
 
@@ -324,6 +325,8 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         jdk = mx.get_jdk()
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        if args is None:
+            return 0, ""
         mx.log("Running JVM with args: {0}.".format(args))
         exitCode = jdk.run_java(args, out=out, err=out, nonZeroIsFatal=False)
         return exitCode, out.underlying.data
@@ -512,8 +515,13 @@ class BenchmarkExecutor(object):
         suite.before(bmSuiteArgs)
         for benchnames in benchNamesList:
             suite.validateEnvironment()
-            results.extend(
-                self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs))
+            try:
+                partialResults = self.execute(
+                    suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+                results.extend(partialResults)
+            except RuntimeError:
+                mx.log(traceback.format_exc())
+
         topLevelJson = {
           "queries": results
         }
