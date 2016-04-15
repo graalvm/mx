@@ -1227,7 +1227,7 @@ class Project(Dependency):
         if not self.subDir:
             return join(self.suite.get_output_root(), self.name)
         names = self.subDir.split(os.sep)
-        parents = len([n for n in names if n == '..'])
+        parents = len([n for n in names if n == os.pardir])
         if parents != 0:
             return os.sep.join([self.suite.get_output_root(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
         return join(self.suite.get_output_root(), self.subDir, self.name)
@@ -10547,10 +10547,13 @@ def _intellij_suite(args, suite, refreshOnly=False):
     modulesXml.open('modules')
 
 
-    def _intellij_exclude_if_exists(xml, p, name):
-        path = join(p.dir, name)
+    def _intellij_exclude_if_exists(xml, p, name, output=False):
+        root = p.get_output_root() if output else p.dir
+        path = join(root, name)
         if exists(path):
-            xml.element('excludeFolder', attributes={'url':'file://$MODULE_DIR$/' + name})
+            excludeRoot = p.get_output_root() if output else '$MODULE_DIR$'
+            excludePath = join(excludeRoot, name)
+            xml.element('excludeFolder', attributes={'url':'file://' + excludePath})
 
     annotationProcessorProfiles = {}
 
@@ -10569,7 +10572,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         processors = p.annotation_processors()
         if processors:
-            annotationProcessorProfiles.setdefault(tuple(processors), []).append(p)
+            annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
         intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
 
@@ -10584,15 +10587,18 @@ def _intellij_suite(args, suite, refreshOnly=False):
             srcDir = join(p.dir, src)
             ensure_dir_exists(srcDir)
             moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': 'false'})
-
-        if processors:
-            genDir = p.source_gen_dir()
-            ensure_dir_exists(genDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + p.source_gen_dir_name(), 'isTestSource': 'false'})
-
         for name in ['.externalToolBuilders', '.settings', 'nbproject']:
             _intellij_exclude_if_exists(moduleXml, p, name)
         moduleXml.close('content')
+
+        if processors:
+            moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
+            genDir = p.source_gen_dir()
+            ensure_dir_exists(genDir)
+            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false', 'generated': 'true'})
+            for name in [basename(p.output_dir()), basename(p.jasmin_output_dir())]:
+                _intellij_exclude_if_exists(moduleXml, p, name, output=True)
+            moduleXml.close('content')
 
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
@@ -10677,10 +10683,11 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     if annotationProcessorProfiles:
         compilerXml.open('annotationProcessing')
-        for processors, modules in sorted(annotationProcessorProfiles.iteritems()):
-            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]), 'enabled': 'true'})
-            compilerXml.element('sourceOutputDir', attributes={'name': 'src_gen'})  # TODO use p.source_gen_dir() ?
-            compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
+        for t, modules in sorted(annotationProcessorProfiles.iteritems()):
+            source_gen_dir = t[0]
+            processors = t[1:]
+            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]) + "-" + source_gen_dir, 'enabled': 'true'})
+            compilerXml.element('sourceOutputDir', attributes={'name': join(os.pardir, source_gen_dir)})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
 
             # IntelliJ supports both directories and jars on the annotation processor path whereas
@@ -10707,11 +10714,12 @@ def _intellij_suite(args, suite, refreshOnly=False):
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version' : '4'})
 
-    sources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
-    if sources:
+    corePrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
+    uiPrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
+    if corePrefsSources:
         out = StringIO.StringIO()
         print >> out, '# GENERATED -- DO NOT EDIT'
-        for source in sources:
+        for source in corePrefsSources:
             print >> out, '# Source:', source
             with open(source) as f:
                 for line in f:
@@ -10719,14 +10727,32 @@ def _intellij_suite(args, suite, refreshOnly=False):
                         print >> out, line.strip()
         formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
         update_file(formatterConfigFile, out.getvalue())
+        if uiPrefsSources:
+            out = StringIO.StringIO()
+            print >> out, '# GENERATED -- DO NOT EDIT'
+            for source in uiPrefsSources:
+                print >> out, '# Source:', source
+                with open(source) as f:
+                    for line in f:
+                        if line.startswith('org.eclipse.jdt.ui.importorder') \
+                                or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
+                                or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
+                            print >> out, line.strip()
+            importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
+            update_file(importConfigFile, out.getvalue())
         miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
         miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
         miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
         miscXml.element('option', attributes={'name' : 'name', 'value' : suite.name})
         miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
         miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
+        if importConfigFile:
+            miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
+            miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
+
         miscXml.close('component')
-    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    mainJdk = get_jdk()
+    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
