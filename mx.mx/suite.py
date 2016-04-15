@@ -109,6 +109,7 @@ suite = {
       "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2.jar"],
       "sourceSha1" : "12a67f0dcdfe7e43218bf38c1d7fd766122a3dc7",
       "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2-sources.jar"],
+      "licence" : "GPLv2-CPE",
     },
   },
 
