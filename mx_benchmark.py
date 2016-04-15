@@ -231,9 +231,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     """
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return self.validateStdout(out, retcode=retcode)
+        return self.validateStdout(out, bmSuiteArgs, retcode=retcode)
 
-    def validateStdout(self, out, retcode=None):
+    def validateStdout(self, out, bmSuiteArgs, retcode=None):
         """Validate out against the parse rules and create data points.
         Subclass may override to customize validation.
         """
@@ -260,7 +260,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 raise RuntimeError("Benchmark failed")
 
         datapoints = []
-        for rule in self.rules(out):
+        for rule in self.rules(out, bmSuiteArgs):
             datapoints.extend(rule.parse(out))
         return datapoints
 
@@ -286,10 +286,11 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex patterns which fail the benchmark if not matched."""
         return []
 
-    def rules(self, output):
+    def rules(self, output, bmSuiteArgs):
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
+        :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
         :rtype: list
         """
@@ -300,7 +301,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         See arguments `run`.
 
-        :return: The return code and a standard output string.
+        :return: The return code, and a standard output string
         :rtype: tuple
         """
         raise NotImplementedError()
