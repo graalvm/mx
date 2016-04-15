@@ -10568,9 +10568,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         processors = p.annotation_processors()
         if processors:
-            def t(*args):
-                return tuple(args)
-            annotationProcessorProfiles.setdefault(t(p.source_gen_dir_name(), *processors), []).append(p)
+            annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
         intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
 
@@ -10733,8 +10731,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
                 with open(source) as f:
                     for line in f:
                         if line.startswith('org.eclipse.jdt.ui.importorder') \
-                            or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
-                            or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold') :
+                                or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
+                                or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
                             print >> out, line.strip()
             importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
             update_file(importConfigFile, out.getvalue())
