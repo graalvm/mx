@@ -231,9 +231,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     """
     def run(self, benchmarks, bmSuiteArgs):
         retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return self.validateStdout(out, bmSuiteArgs, retcode=retcode)
+        return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
 
-    def validateStdout(self, out, bmSuiteArgs, retcode=None):
+    def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
         """Validate out against the parse rules and create data points.
         Subclass may override to customize validation.
         """
@@ -248,7 +248,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         if not flaky:
             if retcode:
                 if not self.validateReturnCode(retcode):
-                    raise RuntimeError("Benchmark failed, exit code: {0}".format(retcode))
+                    raise RuntimeError(
+                        "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
                 if compiled(pat).match(out):
                     raise RuntimeError("Benchmark failed")
@@ -260,7 +261,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 raise RuntimeError("Benchmark failed")
 
         datapoints = []
-        for rule in self.rules(out, bmSuiteArgs):
+        for rule in self.rules(out, benchmarks, bmSuiteArgs):
             datapoints.extend(rule.parse(out))
         return datapoints
 
@@ -286,10 +287,11 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex patterns which fail the benchmark if not matched."""
         return []
 
-    def rules(self, output, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs):
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
+        :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
         :rtype: list
@@ -354,7 +356,7 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def benchmarks(self):
         return ["simple-bench", "complex-bench"]
 
-    def rules(self, out):
+    def rules(self, out, benchmarks, bmSuiteArgs):
         return [
           StdOutRule(r"-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
             "input": ("<flag>", int),
