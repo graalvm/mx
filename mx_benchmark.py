@@ -512,6 +512,7 @@ class BenchmarkExecutor(object):
 
         results = []
 
+        failures_seen = False
         suite.before(bmSuiteArgs)
         for benchnames in benchNamesList:
             suite.validateEnvironment()
@@ -520,6 +521,7 @@ class BenchmarkExecutor(object):
                     suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                 results.extend(partialResults)
             except RuntimeError:
+                failures_seen = True
                 mx.log(traceback.format_exc())
 
         topLevelJson = {
@@ -528,6 +530,9 @@ class BenchmarkExecutor(object):
         dump = json.dumps(topLevelJson)
         with open(mxBenchmarkArgs.results_file, "w") as txtfile:
             txtfile.write(dump)
+        if failures_seen:
+            return 1
+        return 0
 
 
 _benchmark_executor = BenchmarkExecutor()
@@ -587,4 +592,4 @@ def benchmark(args):
         mx benchmark specjvm --results-file ./output.json
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
-    _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
+    return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
