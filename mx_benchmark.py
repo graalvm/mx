@@ -320,6 +320,14 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         raise NotImplementedError()
 
+    def workingDirectory(self, benchmarks, bmSuiteArgs):
+        """Returns the desired working directory for running the benchmark.
+
+        By default it returns `None`, meaning that the working directory is not be
+        changed. It is meant to be overridden in subclasses when necessary.
+        """
+        return None
+
     def before(self, bmSuiteArgs):
         mx.log("Running on JVM with -version:")
         mx.get_jdk().run_java(["-version"], nonZeroIsFatal=False)
@@ -327,11 +335,12 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         jdk = mx.get_jdk()
         out = mx.TeeOutputCapture(mx.OutputCapture())
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if args is None:
             return 0, ""
         mx.log("Running JVM with args: {0}.".format(args))
-        exitCode = jdk.run_java(args, out=out, err=out, nonZeroIsFatal=False)
+        exitCode = jdk.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
         return exitCode, out.underlying.data
 
 
