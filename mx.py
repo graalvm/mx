@@ -12444,6 +12444,7 @@ def show_envs(args):
         if args.all or key.startswith('MX'):
             print '{0}: {1}'.format(key, value)
 
+_primary_suite_exempt.append('version')
 def show_version(args):
     """print mx version"""
 
@@ -12900,8 +12901,6 @@ def main():
         if primarySuiteMxDir is None:
             if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
                 abort(primary_suite_error)
-            else:
-                warn(primary_suite_error)
         else:
             os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
     else:
@@ -12964,7 +12963,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.4")
+version = VersionSpec("5.19.5")
 
 currentUmask = None
 
