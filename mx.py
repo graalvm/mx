@@ -9724,7 +9724,9 @@ def _get_jdk_module_jar(module, suite, jdk):
     jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
     jarName = module + '.jar'
     jarPath = join(jdkOutputDir, jarName)
-    if not exists(jarPath) or TimeStampFile(jdk.java).isNewerThan(jarPath):
+    jdkExplodedModule = join(jdk.home, 'modules', module)
+    jdkModules = join(jdk.home, 'lib', 'modules')
+    if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
         className = module.replace('.', '_') + '_ExtractJar'
         javaSource = join(jdkOutputDir, className + '.java')
         with open(javaSource, 'w') as fp:
