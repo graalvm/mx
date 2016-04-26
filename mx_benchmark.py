@@ -414,6 +414,15 @@ class BenchmarkExecutor(object):
     def machineOs(self):
         return mx.get_os()
 
+    def machineCpuClock(self):
+        return -1
+
+    def machineCpuFamily(self):
+        return "unknown"
+
+    def machineRam(self):
+        return -1
+
     def commitRev(self):
         sha1 = subprocess.check_output(["git", "rev-parse", "HEAD"])
         return sha1.strip()
@@ -468,6 +477,9 @@ class BenchmarkExecutor(object):
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
           "machine.cpu-cores": self.machineCpuCores(),
+          "machine.cpu-clock": self.machineCpuClock(),
+          "machine.cpu-family": self.machineCpuFamily(),
+          "machine.ram": self.machineRam(),
           "commit.rev": self.commitRev(),
           "commit.repo-url": self.commitRepoUrl(),
           "commit.author": self.commitAuthor(),
