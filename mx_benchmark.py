@@ -414,6 +414,15 @@ class BenchmarkExecutor(object):
     def machineOs(self):
         return mx.get_os()
 
+    def machineCpuClock(self):
+        return -1
+
+    def machineCpuFamily(self):
+        return "unknown"
+
+    def machineRam(self):
+        return -1
+
     def commitRev(self):
         sha1 = subprocess.check_output(["git", "rev-parse", "HEAD"])
         return sha1.strip()
@@ -450,7 +459,10 @@ class BenchmarkExecutor(object):
         return mx.get_env("BUILD_URL", default="")
 
     def buildNumber(self):
-        return mx.get_env("BUILD_NUMBER", default="")
+        build_num = mx.get_env("BUILD_NUMBER", default="")
+        if not build_num:
+            return -1
+        return int(build_num)
 
     def checkEnvironmentVars(self):
         pass
@@ -468,6 +480,9 @@ class BenchmarkExecutor(object):
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
           "machine.cpu-cores": self.machineCpuCores(),
+          "machine.cpu-clock": self.machineCpuClock(),
+          "machine.cpu-family": self.machineCpuFamily(),
+          "machine.ram": self.machineRam(),
           "commit.rev": self.commitRev(),
           "commit.repo-url": self.commitRepoUrl(),
           "commit.author": self.commitAuthor(),
@@ -520,7 +535,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
-            "--results-file", help="Path to JSON output file with benchmark results.")
+            "--results-file",
+            default="bench-results.json",
+            help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
