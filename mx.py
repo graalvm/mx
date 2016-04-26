@@ -1395,12 +1395,6 @@ class JavaProject(Project, ClasspathDependency):
             res = os.path.relpath(res, self.dir)
         return res
 
-    def jasmin_output_dir(self):
-        """
-        Get the directory in which the Jasmin assembled class files of this project are found/placed.
-        """
-        return join(self.get_output_root(), 'jasmin_classes')
-
     def classpath_repr(self, resolve=True):
         return self.output_dir()
 
@@ -1651,7 +1645,6 @@ class JavaBuildTask(ProjectBuildTask):
         self.jdk = jdk
         self.requiredCompliance = requiredCompliance
         self.javafilelist = None
-        self.jasmfilelist = None
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
         self._newestOutput = None
@@ -1702,7 +1695,7 @@ class JavaBuildTask(ProjectBuildTask):
         if self.subject.check_current_annotation_processors_file():
             return (True, 'annotation processor(s) changed')
 
-        if len(self._javaFileList()) == 0 and len(self._jasmFileList()) == 0 and self._nonJavaFileCount() == 0:
+        if len(self._javaFileList()) == 0 and self._nonJavaFileCount() == 0:
             return (False, 'no sources')
         return (False, 'all files are up to date')
 
@@ -1713,11 +1706,6 @@ class JavaBuildTask(ProjectBuildTask):
         if not self.javafilelist:
             self._collectFiles()
         return self.javafilelist
-
-    def _jasmFileList(self):
-        if not self.jasmfilelist:
-            self._collectFiles()
-        return self.jasmfilelist
 
     def _nonJavaFileTuples(self):
         if not self.nonjavafiletuples:
@@ -1731,7 +1719,6 @@ class JavaBuildTask(ProjectBuildTask):
 
     def _collectFiles(self, checkBuildReason=False, newestInput=None):
         self.javafilelist = []
-        self.jasmfilelist = []
         self.nonjavafiletuples = []
         self.nonjavafilecount = 0
         buildReason = None
@@ -1739,15 +1726,13 @@ class JavaBuildTask(ProjectBuildTask):
         for sourceDir in self.subject.source_dirs():
             for root, _, files in os.walk(sourceDir):
                 javafiles = [join(root, name) for name in files if name.endswith('.java')]
-                jasmfiles = [join(root, name) for name in files if name.endswith('.jasm')]
                 self.javafilelist += javafiles
-                self.jasmfilelist += jasmfiles
-                nonjavafiles = [join(root, name) for name in files if not name.endswith('.java') and not name.endswith('.jasm')]
+                nonjavafiles = [join(root, name) for name in files if not name.endswith('.java')]
                 self.nonjavafiletuples += [(sourceDir, nonjavafiles)]
                 self.nonjavafilecount += len(nonjavafiles)
 
                 def findBuildReason():
-                    for inputs, inputSuffix, outputSuffix in [(javafiles, 'java', 'class'), (jasmfiles, 'jasm', 'class'), (nonjavafiles, None, None)]:
+                    for inputs, inputSuffix, outputSuffix in [(javafiles, 'java', 'class'), (nonjavafiles, None, None)]:
                         for inputFile in inputs:
                             if basename(inputFile) == 'package-info.java':
                                 continue
@@ -1813,26 +1798,6 @@ class JavaBuildTask(ProjectBuildTask):
             if output:
                 key = lambda x: os.path.getmtime(_safe_path(x))
                 self._newestOutput = TimeStampFile(max(output, key=key))
-        # Jasmin build
-        for src in self._jasmFileList():
-            className = None
-            with open(src) as f:
-                for line in f:
-                    if line.lstrip().startswith('.class ') or line.lstrip().startswith('.interface '):
-                        className = line.split()[-1]
-                        break
-            if not className:
-                abort('could not file .class or .interface directive in Jasmin source: ' + src)
-            else:
-                jasminOutputDir = self.subject.jasmin_output_dir()
-                classFile = join(jasminOutputDir, className.replace('/', os.sep) + '.class')
-                if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
-                    logv('Assembling Jasmin file ' + src)
-                    run(['jasmin', '-d', jasminOutputDir, src])
-                    self._newestOutput = TimeStampFile(classFile)
-        self.subject.update_current_annotation_processors_file()
-        if self._jasmFileList():
-            logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
         # Copy other files
         for nonjavafiletuple in self._nonJavaFileTuples():
             sourceDir = nonjavafiletuple[0]
@@ -10627,7 +10592,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             genDir = p.source_gen_dir()
             ensure_dir_exists(genDir)
             moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false', 'generated': 'true'})
-            for name in [basename(p.output_dir()), basename(p.jasmin_output_dir())]:
+            for name in [basename(p.output_dir())]:
                 _intellij_exclude_if_exists(moduleXml, p, name, output=True)
             moduleXml.close('content')
 
