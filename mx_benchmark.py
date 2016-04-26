@@ -48,11 +48,21 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
     def group(self):
-        """The group that this benchmark suite belongs to, for example, `graal`.
+        """The group that this benchmark suite belongs to, for example, `Graal`.
 
         This is the name of the overall group of closely related projects.
 
         :return: Name of the group.
+        :rtype: str
+        """
+        raise NotImplementedError()
+
+    def subgroup(self):
+        """The subgroup that this suite belongs to, e.g., `fastr` or `graal-compiler`.
+
+        This is the name of the subteam project within the group.
+
+        :return: Name of the subgroup.
         :rtype: str
         """
         raise NotImplementedError()
@@ -384,9 +394,6 @@ class BenchmarkExecutor(object):
     def group(self, suite):
         return suite.group()
 
-    def subgroup(self):
-        return mx.primary_suite().name
-
     def buildFlags(self):
         return ""
 
@@ -452,7 +459,7 @@ class BenchmarkExecutor(object):
         return {
           "metric.uuid": self.uid(),
           "group": self.group(suite),
-          "subgroup": self.subgroup(),
+          "subgroup": suite.subgroup(),
           "bench-suite": suite.name(),
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
