@@ -450,7 +450,7 @@ class BenchmarkExecutor(object):
         return mx.get_env("BUILD_URL", default="")
 
     def buildNumber(self):
-        return mx.get_env("BUILD_NUMBER", default="")
+        return int(mx.get_env("BUILD_NUMBER", default=""))
 
     def checkEnvironmentVars(self):
         pass
