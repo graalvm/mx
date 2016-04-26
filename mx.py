@@ -2078,6 +2078,7 @@ class JavacCompiler(JavacLikeCompiler):
                             exportArg = prefix + '-XaddExports:' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
+            addExportArgs(project)
             aps = project.annotation_processors()
             if aps:
                 exports = {}
@@ -2089,7 +2090,7 @@ class JavacCompiler(JavacLikeCompiler):
                 # for boot modules.
                 if exports:
                     addmodsArgs = ['-J-addmods', '-J' + ','.join(exports.iterkeys())]
-            addExportArgs(project)
+                    javacArgs.extend(addmodsArgs)
 
             # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
             modulepath = jdk.get_boot_layer_modules()
@@ -2103,13 +2104,6 @@ class JavacCompiler(JavacLikeCompiler):
                     else:
                         xmodule = jmd.name
                         javacArgs.append('-Xmodule:' + jmd.name)
-
-            # If jdk.vm.ci is exported (i.e., it's used by an annotation processor) then
-            # we need to make jdk.vm.ci a boot module (since -XaddExports can only be used
-            # for boot modules).
-            if [a for a in javacArgs if a.startswith('-J-XaddExports:')]:
-                addmodsArgs = ['-J-addmods', '-Jjdk.vm.ci']
-                javacArgs.extend(addmodsArgs)
 
         jvmArgs += jdk.java_args
         self.run(jdk, jvmArgs, javacArgs)
@@ -9924,9 +9918,12 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
     def _add_jvmci_if_imported(dep, moduleDeps):
-        if p.javaCompliance >= '9':
-            # Add imported JVMCI classes automatically so that the generated Eclipse
-            # project will depend on the jdk.vm.ci.jar stub created by _get_jdk_module_jar
+        if p.javaCompliance >= '9' and eclipseJavaCompliance < '9':
+            # If `dep` imports any JVMCI packages and Eclipse does not yet
+            # support JDK9, then the generated Eclipse project needs to
+            # depend on the jdk.vm.ci module. Further down, a stub containing
+            # the classes in this module will be added as a library to
+            # generated project.
             for pkg in dep.imported_java_packages(projectDepsOnly=False):
                 if pkg.startswith('jdk.vm.ci.'):
                     moduleDeps.add('jdk.vm.ci')
