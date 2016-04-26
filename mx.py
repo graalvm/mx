@@ -1704,7 +1704,7 @@ class JavaProject(Project, ClasspathDependency):
         :return: a map from a module to its concealed packages imported by this project
         """
         if getattr(self, '.concealed_imported_packages', None) is None:
-            required = {}
+            concealed = {}
             jdk = get_jdk(self.javaCompliance)
             if jdk.javaCompliance >= '9':
                 modulepath = jdk.get_boot_layer_modules()
@@ -1712,14 +1712,14 @@ class JavaProject(Project, ClasspathDependency):
                 for pkg in imported:
                     jmd, visibility = lookup_package(modulepath, pkg, "<unnamed>")
                     if visibility == 'concealed':
-                        required.setdefault(jmd.name, set()).add(pkg)
+                        concealed.setdefault(jmd.name, set()).add(pkg)
             else:
-                for module in required:
+                for module in concealed:
                     if module != 'jdk.vm.ci':
                         abort('Cannot require modules other than jdk.vm.ci in a project with Java compliance < 9', context=self)
-                required = {}
-            required = {module : list(required[module]) for module in required}
-            setattr(self, '.concealed_imported_packages', required)
+                concealed = {}
+            concealed = {module : list(concealed[module]) for module in concealed}
+            setattr(self, '.concealed_imported_packages', concealed)
         return getattr(self, '.concealed_imported_packages')
 
 class JavaBuildTask(ProjectBuildTask):
@@ -2058,41 +2058,58 @@ class JavacCompiler(JavacLikeCompiler):
         javacArgs.append('UTF-8')
 
         if jdk.javaCompliance >= '1.9':
-            def addExportArgs(dep, alreadyAdded=None, prefix=''):
+            def addExportArgs(dep, exports=None, prefix=''):
                 """
                 Adds ``-XaddExports:`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
                 :param :class:`mx.JavaProject` dep: a Java project that may dependent on private JDK modules
-                :param alreadyAdded: either None or a set of module exports for which ``-XaddExports`` args
+                :param exports: either None or a set of exports per module for which ``-XaddExports`` args
                    have already been added to `javacArgs`
-                :type alreadyAdded: None or set
+                :type exports: None or dict
                 :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
                 """
                 for module, packages in dep.get_concealed_imported_packages().iteritems():
                     for package in packages:
-                        modulePackage = (module, package)
-                        if alreadyAdded is None or modulePackage not in alreadyAdded:
-                            if alreadyAdded is not None:
-                                alreadyAdded.add(modulePackage)
+                        exportedPackages = None if exports is None else exports.setdefault(module, set())
+                        if exportedPackages is None or package not in exportedPackages:
+                            if exportedPackages is not None:
+                                exportedPackages.add(package)
                             exportArg = prefix + '-XaddExports:' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
             aps = project.annotation_processors()
             if aps:
-                alreadyAdded = set()
+                exports = {}
                 for dep in classpath_entries(aps, preferProjects=True):
                     if dep.isJavaProject():
-                        addExportArgs(dep, alreadyAdded, '-J')
+                        addExportArgs(dep, exports, '-J')
+                # If modules are exported for use by an annotation processor then
+                # they need to be boot modules since -XaddExports can only be used
+                # for boot modules.
+                if exports:
+                    addmodsArgs = ['-J-addmods', '-J' + ','.join(exports.iterkeys())]
             addExportArgs(project)
+
+            # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
+            modulepath = jdk.get_boot_layer_modules()
+            xmodule = None
+            for package in project.defined_java_packages():
+                jmd, _ = lookup_package(modulepath, package, "<unnamed>")
+                if jmd:
+                    if xmodule:
+                        if xmodule != jmd.name:
+                            abort('Cannot compile sources for more than multiple existing modules:' + xmodule + ' and ' + jmd.name)
+                    else:
+                        xmodule = jmd.name
+                        javacArgs.append('-Xmodule:' + jmd.name)
 
             # If jdk.vm.ci is exported (i.e., it's used by an annotation processor) then
             # we need to make jdk.vm.ci a boot module (since -XaddExports can only be used
             # for boot modules).
-            if [a for a in javacArgs if a.startswith('-J-XaddExports:jdk.vm.ci')]:
+            if [a for a in javacArgs if a.startswith('-J-XaddExports:')]:
                 addmodsArgs = ['-J-addmods', '-Jjdk.vm.ci']
-                if ' '.join(addmodsArgs) not in ' '.join(javacArgs):
-                    javacArgs.extend(addmodsArgs)
+                javacArgs.extend(addmodsArgs)
 
         jvmArgs += jdk.java_args
         self.run(jdk, jvmArgs, javacArgs)
@@ -9907,11 +9924,12 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
     def _add_jvmci_if_imported(dep, moduleDeps):
-        # Add imported JVMCI classes automatically so that the generated Eclipse
-        # project will depend on the jdk.vm.ci.jar stub created by _get_jdk_module_jar
-        for pkg in dep.imported_java_packages(projectDepsOnly=False):
-            if pkg.startswith('jdk.vm.ci.'):
-                moduleDeps.add('jdk.vm.ci')
+        if p.javaCompliance >= '9':
+            # Add imported JVMCI classes automatically so that the generated Eclipse
+            # project will depend on the jdk.vm.ci.jar stub created by _get_jdk_module_jar
+            for pkg in dep.imported_java_packages(projectDepsOnly=False):
+                if pkg.startswith('jdk.vm.ci.'):
+                    moduleDeps.add('jdk.vm.ci')
 
     containerDeps = set()
     libraryDeps = set()
