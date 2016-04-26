@@ -459,7 +459,10 @@ class BenchmarkExecutor(object):
         return mx.get_env("BUILD_URL", default="")
 
     def buildNumber(self):
-        return int(mx.get_env("BUILD_NUMBER", default=""))
+        build_num = mx.get_env("BUILD_NUMBER", default="")
+        if not build_num:
+            return -1
+        return int(build_num)
 
     def checkEnvironmentVars(self):
         pass
@@ -532,7 +535,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
-            "--results-file", help="Path to JSON output file with benchmark results.")
+            "--results-file",
+            default="bench-results.json",
+            help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
