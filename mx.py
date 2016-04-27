@@ -4493,7 +4493,7 @@ def deploy_binary(args):
         suite_collector(suite(suite_import.name), suite_import)
 
     def suite_collector(s, suite_import):
-        if s in suites:
+        if s in suites or isinstance(s, BinarySuite):
             return
         suites[s] = None
         s.visit_imports(import_visitor)
