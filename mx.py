@@ -656,7 +656,7 @@ class BuildTask(object):
     def prepare(self, daemons):
         """
         Perform any task initialization that must be done in the main process.
-        This will be called just befor the task is launched.
+        This will be called just before the task is launched.
         The 'daemons' argument is a dictionary for storing any persistent state
         that might be shared between tasks.
         """
@@ -1789,15 +1789,17 @@ class JavaBuildTask(ProjectBuildTask):
                 return JavacDaemonCompiler(self.args.extra_javac_args)
 
     def prepare(self, daemons):
-        self.compiler = self._getCompiler()
-        self.compiler.prepare(self.jdk, daemons)
+        """
+        Prepares the compilation that will be performed if `build` is called.
 
-    def build(self):
-        outputDir = self.subject.output_dir()
-        ensure_dir_exists(outputDir)
-        # Java build
+        :param dict daemons: map from keys to `Daemon` objects into which any daemons
+                created to assist this task when `build` is called should be placed.
+        """
+        self.compiler = self._getCompiler()
+        outputDir = ensure_dir_exists(self.subject.output_dir())
         if self._javaFileList():
-            self.compiler.build(
+            self.postCompileActions = []
+            self.compileArgs = self.compiler.prepare(
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
@@ -1808,8 +1810,21 @@ class JavaBuildTask(ProjectBuildTask):
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
                 disableApiRestrictions=not self.args.warnAPI,
                 warningsAsErrors=self.args.warning_as_error,
-                showTasks=self.args.jdt_show_task_tags
-            )
+                showTasks=self.args.jdt_show_task_tags,
+                postCompileActions=self.postCompileActions)
+            self.compiler.prepare_daemon(self.jdk, daemons, self.compileArgs)
+        else:
+            self.compileArgs = None
+
+    def build(self):
+        outputDir = ensure_dir_exists(self.subject.output_dir())
+        # Java build
+        if self.compileArgs:
+            try:
+                self.compiler.compile(self.jdk, self.compileArgs)
+            finally:
+                for action in self.postCompileActions:
+                    action()
             logvv('Finished Java compilation for {}'.format(self.subject.name))
             output = []
             for root, _, filenames in os.walk(outputDir):
@@ -1867,29 +1882,55 @@ class JavaCompiler:
     def name(self):
         nyi('name', self)
 
-    # TODO make sure paths have been 'cygwinized' before reaching here
-    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks):
-        nyi('build', self)
-
-    def prepare(self, jdk, daemons):
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
         """
-        Perform any task initialization that must be done in the main process.
-        This will be called just befor the task is launched.
+        Prepares for a compilation with this compiler. This done in the main process.
+
+        :param list sourceFiles: list of Java source files to compile
+        :param JavaProject project: the project containing the source files
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param JavaCompliance compliance:
+        :param str outputDir: where to place generated class files
+        :param str classpath: where to find user class files
+        :param str processorPath: where to find annotation processors
+        :param str sourceGenDir: where to place generated source files
+        :param bool disableApiRestrictions: specifies if the compiler should not warning about accesses to restricted API
+        :param bool warningsAsErrors: specifies if the compiler should treat warnings as errors
+        :param bool showTasks: specifies if the compiler should show tasks tags as warnings (JDT only)
+        :param list postCompileActions: list into which callable objects can be added for performing post-compile actions
+        :return: the value to be bound to `args` when calling `compile` to perform the compilation
+        """
+        nyi('prepare', self)
+
+    def prepare_daemon(self, jdk, daemons, compileArgs):
+        """
+        Initializes any daemons used when `compile` is called with `compileArgs`.
+
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param dict daemons: map from name to `CompilerDaemon` into which new daemons should be registered
+        :param list compileArgs: the value bound to the `args` parameter when calling `compile`
         """
         pass
 
+    def compile(self, jdk, args):
+        """
+        Executes the compilation that was prepared by a previous call to `prepare`.
+
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param list args: the value returned by a call to `prepare`
+        """
+        nyi('compile', self)
+
 class JavacLikeCompiler(JavaCompiler):
     def __init__(self, extraJavacArgs):
-        self.tmpFiles = []
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
     def _get_compliance_jdk(self, compliance):
         return get_jdk(compliance)
 
-    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks):
-        jvmArgs = ['-Xmx1500m']
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
         javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
         if processorPath:
             ensure_dir_exists(sourceGenDir)
@@ -1911,37 +1952,29 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs.append('-verbose')
 
         javacArgs.extend(self.extraJavacArgs)
-        fileListFile = self.createFileListFile(sourceFiles, project.get_output_root())
-        javacArgs.append('@' + _cygpathU2W(fileListFile))
-        try:
-            self.buildJavacLike(jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation)
-        finally:
-            # Do not clean up temp files if verbose as there's
-            # a good chance the user wants to copy and paste the
-            # Java compiler command directly
-            if not _opts.verbose:
-                for n in self.tmpFiles:
-                    os.remove(n)
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+        fileList = join(project.get_output_root(), 'javafilelist.txt')
+        with open(fileList, 'w') as fp:
+            fp.write(os.linesep.join(sourceFiles))
+        javacArgs.append('@' + _cygpathU2W(fileList))
+
+        tempFiles = [fileList]
+        if not _opts.verbose:
+            # Only remove temporary files if not verbose so the user can copy and paste
+            # the Java compiler command line directly to reproduce a failure.
+            def _rm_tempFiles():
+                for f in tempFiles:
+                    os.remove(f)
+            postCompileActions.append(_rm_tempFiles)
+
+        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles)
+
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         """
         `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
         """
         nyi('buildJavacLike', self)
-
-    def createFileListFile(self, files, directory):
-        if _opts.verbose:
-            # use a single file since it will be left on disk
-            f = open(join(directory, 'javafilelist.txt'), 'w')
-            name = f.name
-        else:
-            (fd, name) = tempfile.mkstemp(prefix='javafilelist', suffix='.txt', dir=directory)
-            f = os.fdopen(fd, 'w')
-        f.write(os.linesep.join(files))
-        f.close()
-        self.tmpFiles.append(name)
-        return name
 
 class JavacCompiler(JavacLikeCompiler):
     def __init__(self, altJavac=None, extraJavacArgs=None):
@@ -1951,7 +1984,7 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -1963,7 +1996,7 @@ class JavacCompiler(JavacLikeCompiler):
             if lint != ['none'] and warningsAsErrors:
                 # disable the "bootstrap class path not set in conjunction with -source N" warning
                 # since we are not in strict compliance mode
-                assert not _opts.strict_compliance
+                assert not _opts.strict_compliance or project.name == 'com.oracle.mxtool.compilerserver'
                 lint += ['-options']
         knownLints = jdk.getKnownJavacLints()
         if knownLints:
@@ -1978,12 +2011,11 @@ class JavacCompiler(JavacLikeCompiler):
             abort('Showing task tags is not currently supported for javac')
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
-        jvmArgs += jdk.java_args
-        self.run(jdk, jvmArgs, javacArgs)
+        return javacArgs
 
-    def run(self, jdk, jvmArgs, javacArgs):
+    def compile(self, jdk, args):
         javac = self.altJavac if self.altJavac else jdk.javac
-        cmd = [javac] + ['-J' + arg for arg in jvmArgs] + javacArgs
+        cmd = [javac] + ['-J' + arg for arg in jdk.java_args] + args
         run(cmd)
 
 class JavacDaemonCompiler(JavacCompiler):
@@ -1993,22 +2025,24 @@ class JavacDaemonCompiler(JavacCompiler):
     def name(self):
         return 'javac-daemon'
 
-    def run(self, jdk, jvmArgs, compilerArgs):
-        return self.daemon.compile(jdk, compilerArgs)
+    def compile(self, jdk, args):
+        nonJvmArgs = [a for a in args if not a.startswith('-J')]
+        return self.daemon.compile(jdk, nonJvmArgs)
 
-    def prepare(self, jdk, daemons):
-        name = 'javac-daemon-' + jdk.java
-        self.daemon = daemons.get(name)
+    def prepare_daemon(self, jdk, daemons, compileArgs):
+        jvmArgs = jdk.java_args + [a[2:] for a in compileArgs if a.startswith('-J')]
+        key = 'javac-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+        self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = JavacDaemon(jdk)
-            daemons[name] = self.daemon
+            self.daemon = JavacDaemon(jdk, jvmArgs)
+            daemons[key] = self.daemon
 
 class Daemon:
     def shutdown(self):
         pass
 
 class CompilerDaemon(Daemon):
-    def __init__(self, jdk, mainClass, toolJar, buildArgs=None):
+    def __init__(self, jdk, jvmArgs, mainClass, toolJar, buildArgs=None):
         self.jdk = jdk
         if not buildArgs:
             buildArgs = []
@@ -2023,7 +2057,7 @@ class CompilerDaemon(Daemon):
 
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
-        args = [jdk.java] + ['-cp', cp, mainClass] + verbose + [str(self.port)]
+        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + [str(self.port)]
         preexec_fn, creationflags = _get_new_progress_group_args()
         p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags)
         # Ensure the process is cleaned up when mx exits
@@ -2076,8 +2110,8 @@ class CompilerDaemon(Daemon):
         return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
 
 class JavacDaemon(CompilerDaemon):
-    def __init__(self, jdk):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar, ['--force-javac'])
+    def __init__(self, jdk, jvmArgs):
+        CompilerDaemon.__init__(self, jdk, jvmArgs, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar, ['--force-javac'])
 
     def name(self):
         return 'javac-daemon'
@@ -2100,7 +2134,7 @@ class ECJCompiler(JavacLikeCompiler):
             jdk = get_jdk(versionCheck=esc.exactMatch, versionDescription=str(esc))
         return jdk
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -2128,15 +2162,15 @@ class ECJCompiler(JavacLikeCompiler):
                 jdtPropertiesTmp = jdtProperties + '.tmp'
                 with open(jdtPropertiesTmp, 'w') as fp:
                     fp.write(content)
-                self.tmpFiles.append(jdtPropertiesTmp)
+                tempFiles.append(jdtPropertiesTmp)
                 jdtArgs += ['-properties', _cygpathU2W(jdtPropertiesTmp)]
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        self.run(jdk, jvmArgs, jdtArgs)
+        return jdtArgs
 
-    def run(self, jdk, jvmArgs, jdtArgs):
-        run_java(jvmArgs + ['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
+    def compile(self, jdk, jdtArgs):
+        run_java(jdk.java_args + ['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
 
 class ECJDaemonCompiler(ECJCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
@@ -2145,19 +2179,20 @@ class ECJDaemonCompiler(ECJCompiler):
     def name(self):
         return 'ecj-daemon'
 
-    def run(self, jdk, jvmArgs, compilerArgs):
-        return self.daemon.compile(jdk, compilerArgs)
+    def compile(self, jdk, jdtArgs):
+        return self.daemon.compile(jdk, jdtArgs)
 
-    def prepare(self, jdk, daemons):
-        name = 'ecj-daemon-' + jdk.java + '-' + self.jdtJar
-        self.daemon = daemons.get(name)
+    def prepare_daemon(self, jdk, daemons, jdtArgs):
+        jvmArgs = jdk.java_args
+        key = 'ecj-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+        self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = ECJDaemon(jdk, self.jdtJar)
-            daemons[name] = self.daemon
+            self.daemon = ECJDaemon(jdk, jvmArgs, self.jdtJar)
+            daemons[key] = self.daemon
 
 class ECJDaemon(CompilerDaemon):
-    def __init__(self, jdk, jdtJar):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
+    def __init__(self, jdk, jvmArgs, jdtJar):
+        CompilerDaemon.__init__(self, jdk, jvmArgs, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
 
     def name(self):
         return 'ecj-daemon'
@@ -7942,7 +7977,7 @@ class JDKConfig:
         """
         if self._knownJavacLints is None:
             try:
-                out = subprocess.check_output([self.javac, '-X', '-J-Xms64M', '-J-Xint'], stderr=subprocess.STDOUT)
+                out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 if e.output:
                     log(e.output)
@@ -8481,7 +8516,7 @@ def build(args, parser=None):
             t.prepare(daemons)
             t.execute()
 
-    for daemon in daemons.values():
+    for daemon in daemons.itervalues():
         daemon.shutdown()
 
     # TODO check for distributions overlap (while loading suites?)
@@ -12968,7 +13003,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.19.5")
+version = VersionSpec("5.19.6")
 
 currentUmask = None
 
