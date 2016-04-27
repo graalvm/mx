@@ -1005,6 +1005,11 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                         logv('[' + self.path + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
+
+                        archivePrefix = ''
+                        if hasattr(p, 'archive_prefix'):
+                            archivePrefix = p.archive_prefix()
+
                         for root, _, files in os.walk(outputDir):
                             relpath = root[len(outputDir) + 1:]
                             if relpath == join('META-INF', 'services'):
@@ -1015,7 +1020,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 for f in files:
                                     if snippetsPattern and snippetsPattern.match(f):
                                         continue
-                                    arcname = join(relpath, f).replace(os.sep, '/')
+                                    arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
                                     with open(join(root, f), 'rb') as fp:
                                         contents = fp.read()
                                     if not participants__add__(arcname, contents):
