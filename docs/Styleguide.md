@@ -3,7 +3,7 @@
 
 This document describes the styleguide conventions in the `mx` codebase.
 
-Note that legacy `mx` code may not in all cases adher to the conventions in this doc,
+Note that legacy `mx` code may not in all cases adhere to the conventions in this doc,
 but new code submitted to `mx` should nevertheless follow the guidelines.
 
 
@@ -14,7 +14,8 @@ but new code submitted to `mx` should nevertheless follow the guidelines.
 Doc comments for modules, classes and methods should use the
 [*reStructuredText Docstring Format*](https://www.python.org/dev/peps/pep-0287/),
 and [Sphinx documentation syntax](http://www.sphinx-doc.org/en/stable/domains.html)
-for type annotations.
+for type annotations. There's also a great
+[cheat sheet](http://thomas-cokelaer.info/tutorials/sphinx/rest_syntax.html) to get started.
 
 Quick example:
 
