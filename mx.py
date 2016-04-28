@@ -9822,7 +9822,7 @@ def _get_jdk_module_jar(module, suite, jdk):
     :param :class:`JDKConfig` jdk: the JDK containing the module
 
     """
-    assert jdk.javaCompliance >= '9'
+    assert jdk.javaCompliance >= '9', module
     jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
     jarName = module + '.jar'
     jarPath = join(jdkOutputDir, jarName)
@@ -9931,6 +9931,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
+
     moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
     _add_jvmci_if_imported(p, moduleDeps)
     distributionDeps = set()
@@ -9947,9 +9948,6 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
-            if dep.isJavaProject():
-                moduleDeps.update(dep.get_concealed_imported_packages().iterkeys())
-                _add_jvmci_if_imported(dep, moduleDeps)
         elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
             distributionDeps.add(dep)
         elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
@@ -10111,12 +10109,15 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
-        moduleAPDeps = set()
+        moduleAPDeps = {}
         for dep in classpath_entries(names=processors, preferProjects=True):
             if dep.isJavaProject():
-                moduleAPDeps.update(dep.get_concealed_imported_packages().iterkeys())
+                concealed = dep.get_concealed_imported_packages()
+                if concealed:
+                    for module in concealed.iterkeys():
+                        moduleAPDeps[module] = get_jdk(dep.javaCompliance)
         for module in sorted(moduleAPDeps):
-            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(tag=DEFAULT_JDK_TAG))
+            moduleJar = _get_jdk_module_jar(module, p.suite, moduleAPDeps[module])
             out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
         out.close('factorypath')
