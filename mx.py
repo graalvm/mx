@@ -1818,6 +1818,8 @@ class JavaBuildTask(ProjectBuildTask):
             if output:
                 key = lambda x: os.path.getmtime(_safe_path(x))
                 self._newestOutput = TimeStampFile(max(output, key=key))
+        # Record current annotation processor config
+        self.subject.update_current_annotation_processors_file()
         # Copy other files
         for nonjavafiletuple in self._nonJavaFileTuples():
             sourceDir = nonjavafiletuple[0]
