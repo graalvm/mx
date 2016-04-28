@@ -476,7 +476,8 @@ class Dependency(SuiteConstituent):
                     selfJC = getattr(self, 'javaCompliance', None)
                     depJC = getattr(dep, 'javaCompliance', None)
                     if selfJC and depJC and selfJC < depJC:
-                        abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
+                        if self.suite.getMxCompatibility().checkDependencyJavaCompliance():
+                            abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
