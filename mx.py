@@ -9917,11 +9917,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
     def _add_jvmci_if_imported(dep, moduleDeps):
-        if p.javaCompliance >= '9' and eclipseJavaCompliance < '9':
-            # If `dep` imports any JVMCI packages and Eclipse does not yet
-            # support JDK9, then the generated Eclipse project needs to
-            # depend on the jdk.vm.ci module. Further down, a stub containing
-            # the classes in this module will be added as a library to
+        if eclipseJavaCompliance < '9' and dep.isJavaProject() and dep.javaCompliance >= '9':
+            # If `dep` is a JDK9 (or later) project and imports any JVMCI packages
+            # and Eclipse does not yet support JDK9, then the generated Eclipse
+            # project needs to depend on the jdk.vm.ci module. Further down, a stub
+            # containing the classes in this module will be added as a library to
             # generated project.
             for pkg in dep.imported_java_packages(projectDepsOnly=False):
                 if pkg.startswith('jdk.vm.ci.'):
