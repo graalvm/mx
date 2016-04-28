@@ -2105,8 +2105,7 @@ class JavacCompiler(JavacLikeCompiler):
                         xmodule = jmd.name
                         javacArgs.append('-Xmodule:' + jmd.name)
 
-        jvmArgs += jdk.java_args
-        self.run(jdk, jvmArgs, javacArgs)
+        return javacArgs
 
     def compile(self, jdk, args):
         javac = self.altJavac if self.altJavac else jdk.javac
