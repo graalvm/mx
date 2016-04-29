@@ -63,12 +63,13 @@ The requirement analysis reveals several main goals:
   sets of host JVMs to do benchmarking should be easy.
 - Encode more specific information into our datapoints besides just `vm` and `config`,
   and we need to be consistent about what is a host VM and what is a guest VM.
+- Encode more version information to ensure reproducibility.
 
 
 ## Proposal
 
 The proposal is three-fold -- the first part concerns changes in the schema, the second
-part concerns changes in `mx_benchmark.py`.
+part concerns changes in `mx_benchmark.py`. Third part ensures reproducibility.
 
 
 ### Schema changes
@@ -90,7 +91,8 @@ We will deprecate the following fields:
 - `config.name` -- same for `config.name` since it applies only to one VM
 
 We will not use the `-c, --configuration` flag for the `mx benchmark` command.
-Instead, suites themselves should take care to populate these fields.
+Instead, suites themselves should take care to populate these fields correctly.
+The server will apply proper validation on `host-vm` and `guest-vm`.
 
 
 ### Mx changes
@@ -182,25 +184,29 @@ potentially use them:
     _bm_suite_java_vms = {}
 
 
-## Adding suite version information to datapoints
+### Adding suite version information to datapoints
 
 All datapoints will get an extra commit revision for all the extra suites that were
 loaded to execute the benchmark.
 
+For example, a `fastr` benchmark could get:
 
-### How does this proposal achieve the above-specified goals?
+    extra.graal-core-rev = a6c875a44fed
+
+This will be ensured by the overall harness, not the specific suites.
+
+
+## Conclusion
+
+Here's a summary of how the proposal fulfills the requirements:
 
 - `expe` - It is easy to both specify extra command-line flags, and it allows suites to
            reuse parts of the infrastructure, such as the `JavaVm`.
-- `repr` - 
-- `cmp1` - Comparison between `host-vm`s and their configs across subgroups -- i.e. run
-           `fastr` benchmarks or `graal-js` benchmarks, and show time series for
-           `graal-core` and `graal-enterprise`.
-- `cmp2` - Comparison between `guest-vm`s and `host-vm`s -- i.e. show performance charts
-           for different combinations of guest VMs and host VMs.
-- `agg1` - Aggregating scores or metric values across `key=bench-suite+host-vm+guest-vm`
-- `agg2` - Aggregating the information from `agg1` across `key=subgroup`
-- `agg3` - Aggregating the information from `agg2` across `key=group`
-- `down` - Ability to test downstream dependencies. For example, `graal-core` must be
-           able to checkout a downstream repo such as `graal-js` and run its benchmarks.
-
+- `repr` - Ensured by the extra `-rev` fields.
+- `cmp1` - The new combinations of `host-vm` and `guest-vm` allow this.
+- `cmp2` - The new combinations of `host-vm` and `guest-vm` allow this.
+- `agg1` - Will be addressed by UI changes, not the concern of Mx.
+- `agg2` - Will be addressed by server and UI changes, not the concern of Mx.
+- `agg3` - Will be addressed by server and UI changes, not the concern of Mx.
+- `down` - The `ci.hocon` files can encode which downstream dependencies need to be
+           tested.
