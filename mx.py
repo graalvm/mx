@@ -1584,12 +1584,23 @@ class JavaProject(Project, ClasspathDependency):
             self._extended_java_packages = frozenset(extendedPackages)
 
             importedPackagesFromProjects = set()
-            importedPackages = set()
+            compat = self.suite.getMxCompatibility()
             for pkg in imports:
-                importedPackages.add(pkg)
-                if pkg in depPackages:
-                    importedPackagesFromProjects.add(pkg)
-            setattr(self, '.importedPackages', frozenset(importedPackages))
+                if compat.improvedImportMatching():
+                    if pkg in depPackages:
+                        importedPackagesFromProjects.add(pkg)
+                else:
+                    name = pkg
+                    while not name in depPackages and len(name) > 0:
+                        lastDot = name.rfind('.')
+                        if lastDot == -1:
+                            name = None
+                            break
+                        name = name[0:lastDot]
+                    if name is not None:
+                        importedPackagesFromProjects.add(name)
+
+            setattr(self, '.importedPackages', frozenset(imports))
             setattr(self, '.importedPackagesFromJavaProjects', frozenset(importedPackagesFromProjects))
 
     def defined_java_packages(self):
