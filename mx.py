@@ -1731,7 +1731,15 @@ class JavaProject(Project, ClasspathDependency):
             jdk = get_jdk(self.javaCompliance)
             if jdk.javaCompliance >= '9':
                 modulepath = jdk.get_boot_layer_modules()
-                imported = itertools.chain(self.imported_java_packages(projectDepsOnly=False), getattr(self, 'imports', []))
+
+                imports = getattr(self, 'imports', [])
+                if imports:
+                    packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
+                    for imported in imports:
+                        m = packageRe.match(imported)
+                        if not m:
+                            abort('"imports" contains entry that does not match expected pattern for package name: ' + imported, self)
+                imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
                 for pkg in imported:
                     jmd, visibility = lookup_package(modulepath, pkg, "<unnamed>")
                     if visibility == 'concealed':
@@ -13315,7 +13323,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.1")
+version = VersionSpec("5.20.2")
 
 currentUmask = None
 
