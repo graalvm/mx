@@ -1731,11 +1731,23 @@ class JavaProject(Project, ClasspathDependency):
             jdk = get_jdk(self.javaCompliance)
             if jdk.javaCompliance >= '9':
                 modulepath = jdk.get_boot_layer_modules()
-                imported = itertools.chain(self.imported_java_packages(projectDepsOnly=False), getattr(self, 'imports', []))
-                for pkg in imported:
-                    jmd, visibility = lookup_package(modulepath, pkg, "<unnamed>")
+
+                imports = getattr(self, 'imports', [])
+                if imports:
+                    # This regex does not detect all legal packages names. No regex can tell you if a.b.C.D is
+                    # a class D in the package a.b.C, a class C.D in the package a.b or even a class b.C.D in
+                    # the package a. As such mx uses the convention that package names start with a lowercase
+                    # letter and class names with a uppercase letter.
+                    packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
+                    for imported in imports:
+                        m = packageRe.match(imported)
+                        if not m:
+                            abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
+                imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
+                for package in imported:
+                    jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
                     if visibility == 'concealed':
-                        concealed.setdefault(jmd.name, set()).add(pkg)
+                        concealed.setdefault(jmd.name, set()).add(package)
             else:
                 for module in concealed:
                     if module != 'jdk.vm.ci':
@@ -13315,7 +13327,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.1")
+version = VersionSpec("5.20.2")
 
 currentUmask = None
 
