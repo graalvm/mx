@@ -1561,8 +1561,10 @@ class JavaProject(Project, ClasspathDependency):
                     depPackages.update(dep.defined_java_packages())
             self.walk_deps(visit=visit)
             imports = set()
-            # Assumes classes start with upper-case letter
-            importRe = re.compile(r'import\s+(?:static\s+)?((?:[a-zA-Z_$][a-zA-Z\d_$]*\.)*[a-zA-Z_$][a-zA-Z\d_$]*)\.[^;]+;')
+            # Assumes package name components start with lower case letter and
+            # classes start with upper-case letter
+            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+)\s*;\s*')
+            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.[A-Z][a-zA-Z\d_$]*')
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
@@ -1577,20 +1579,29 @@ class JavaProject(Project, ClasspathDependency):
 
                         for n in javaSources:
                             with open(join(root, n)) as fp:
-                                content = fp.read()
-                                imports.update(importRe.findall(content))
+                                lines = fp.readlines()
+                                for i in range(len(lines)):
+                                    m = importStatementRe.match(lines[i])
+                                    if m:
+                                        imported = m.group(1)
+                                        m = importedRe.match(imported)
+                                        if not m:
+                                            lineNo = i + 1
+                                            abort(join(root, n) + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + lines[i], self)
+                                        package = m.group(1)
+                                        imports.add(package)
 
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
 
             importedPackagesFromProjects = set()
             compat = self.suite.getMxCompatibility()
-            for pkg in imports:
+            for package in imports:
                 if compat.improvedImportMatching():
-                    if pkg in depPackages:
-                        importedPackagesFromProjects.add(pkg)
+                    if package in depPackages:
+                        importedPackagesFromProjects.add(package)
                 else:
-                    name = pkg
+                    name = package
                     while not name in depPackages and len(name) > 0:
                         lastDot = name.rfind('.')
                         if lastDot == -1:
@@ -13304,7 +13315,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.0")
+version = VersionSpec("5.20.1")
 
 currentUmask = None
 
