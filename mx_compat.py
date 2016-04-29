@@ -75,6 +75,9 @@ class MxCompatibility500(object):
         """
         return False
 
+    def improvedImportMatching(self):
+        return False
+
     def verifySincePresent(self):
         return []
 
@@ -163,6 +166,9 @@ class MxCompatibility5200(MxCompatibility59):#pylint: disable=too-many-ancestors
         return mx.VersionSpec("5.20.0")
 
     def checkDependencyJavaCompliance(self):
+        return True
+
+    def improvedImportMatching(self):
         return True
 
 def minVersion():
