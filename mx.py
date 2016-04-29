@@ -1563,8 +1563,8 @@ class JavaProject(Project, ClasspathDependency):
             imports = set()
             # Assumes package name components start with lower case letter and
             # classes start with upper-case letter
-            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+)\s*;\s*')
-            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.[A-Z][a-zA-Z\d_$]*')
+            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+\*?)\s*;\s*')
+            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.(?:(?:[A-Z][a-zA-Z\d_$]*)|\*)')
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
