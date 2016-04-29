@@ -9951,23 +9951,20 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
-    def _add_jvmci_if_imported(dep, moduleDeps):
-        if eclipseJavaCompliance < '9' and dep.isJavaProject() and dep.javaCompliance >= '9':
-            # If `dep` is a JDK9 (or later) project and imports any JVMCI packages
-            # and Eclipse does not yet support JDK9, then the generated Eclipse
-            # project needs to depend on the jdk.vm.ci module. Further down, a stub
-            # containing the classes in this module will be added as a library to
-            # generated project.
-            for pkg in dep.imported_java_packages(projectDepsOnly=False):
-                if pkg.startswith('jdk.vm.ci.'):
-                    moduleDeps.add('jdk.vm.ci')
-
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
 
     moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
-    _add_jvmci_if_imported(p, moduleDeps)
+    if eclipseJavaCompliance < '9' and not suite('jvmci', fatalIfMissing=False):
+        # If this project imports any JVMCI packages and JVMCI is not a suite
+        # and Eclipse does not yet support JDK9, then the generated Eclipse
+        # project needs to depend on the jdk.vm.ci module. Further down, a stub
+        # containing the classes in this module will be added as a library to
+        # generated project.
+        for pkg in p.imported_java_packages(projectDepsOnly=False):
+            if pkg.startswith('jdk.vm.ci.'):
+                moduleDeps.add('jdk.vm.ci')
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -13327,7 +13324,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.2")
+version = VersionSpec("5.20.3")
 
 currentUmask = None
 
