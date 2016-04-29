@@ -176,12 +176,15 @@ we will introduce the following class:
         """
         raise NotImplementedException()
 
-We will have one class for each pair of a `--vm` jvm-config.
+We will have one class for each pair of a `--vm` and `--jvm-config`.
 
 Objects of this type will be registered in this dictionary, so that other suites can
 potentially use them:
 
     _bm_suite_java_vms = {}
+
+The key for `JavaVm` objects will be tuples of values specified by `--vm` and
+`--jvm-config`.
 
 
 ### Adding suite version information to datapoints
