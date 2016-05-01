@@ -7745,7 +7745,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             log('Environment variables:')
             for key in sorted(env.keys()):
                 log('    ' + key + '=' + env[key])
-        log(' '.join(map(pipes.quote, args)))
+            log(' \\\n '.join(map(pipes.quote, args)))
+        else:
+            log(' '.join(map(pipes.quote, args)))
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
