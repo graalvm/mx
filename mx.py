@@ -84,6 +84,37 @@ try:
 except ImportError:
     pass
 
+
+class DynamicVar(object):
+    def __init__(self, initial_value):
+        self.value = initial_value
+
+    def get(self):
+        return self.value
+
+    def set_scoped(self, newvalue):
+        return DynamicVarScope(self, newvalue)
+
+
+class DynamicVarScope(object):
+    def __init__(self, dynvar, newvalue):
+        self.dynvar = dynvar
+        self.newvalue = newvalue
+
+    def __enter__(self):
+        assert(not hasattr(self, "oldvalue"))
+        self.oldvalue = self.dynvar.value
+        self.dynvar.value = self.newvalue
+
+    def __exit__(self, type, value, traceback):
+        self.dynvar.value = self.oldvalue
+        self.oldvalue = None
+        self.newvalue = None
+
+
+currently_loading_suite = DynamicVar(None)
+
+
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
     process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
@@ -5400,20 +5431,21 @@ class Suite:
                 abort(extensionsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[extensionsName].__file__)
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
-            mod = __import__(extensionsName)
+            with currently_loading_suite.set_scoped(self):
+                mod = __import__(extensionsName)
 
-            self.extensions = sys.modules.pop(extensionsName)
-            sys.modules[extensionsName] = self.extensions
+                self.extensions = sys.modules.pop(extensionsName)
+                sys.modules[extensionsName] = self.extensions
 
-            # revert the Python path
-            del sys.path[0]
+                # revert the Python path
+                del sys.path[0]
 
-            if hasattr(mod, 'mx_post_parse_cmd_line'):
-                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
+                if hasattr(mod, 'mx_post_parse_cmd_line'):
+                    self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
-            if hasattr(mod, 'mx_init'):
-                mod.mx_init(self)
-            self.extensions = mod
+                if hasattr(mod, 'mx_init'):
+                    mod.mx_init(self)
+                self.extensions = mod
 
     def _init_imports(self):
         importsMap = self._check_suiteDict("imports")
