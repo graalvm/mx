@@ -240,11 +240,28 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     5. Use the parse rules on the standard output to create data points.
     """
     def run(self, benchmarks, bmSuiteArgs):
-        retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
+        runretval = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+        if len(runretval) == 3:
+            retcode, out, dims = runretval
+            return self.validateStdoutWithDimensions(
+                out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+        else:
+            # TODO: Remove old-style validateStdOut after updating downstream suites.
+            retcode, out = runretval
+            return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
 
+    # TODO: Remove once all the downstream suites become up-to-date.
     def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
+        self.validateStdoutWithDimensions(
+            out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
+
+    def validateStdoutWithDimensions(
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims={}, *args, **kwargs):
         """Validate out against the parse rules and create data points.
+
+        The dimensions from the `dims` dict are added to each datapoint parsed from the
+        standard output.
+
         Subclass may override to customize validation.
         """
         def compiled(pat):
@@ -272,7 +289,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
-            datapoints.extend(rule.parse(out))
+            parsedpoints = rule.parse(out)
+            for datapoint in parsedpoints:
+                datapoint.update(dims)
+            datapoints.extend(parsedpoints)
         return datapoints
 
     def validateReturnCode(self, retcode):
@@ -321,12 +341,19 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
 class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
+
+    This suite relies on the `--jvm-config` flag to specify which JVM must be used to
+    run. The suite comes with methods `jvmConfig`, `vmArgs` and `runArgs` that know how
+    to extract the `--jvm-config` and the VM-and-run arguments to the benchmark suite
+    (see the `benchmark` method for more information).
     """
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
         :param list benchmarks: List of benchmarks from the suite to execute.
         :param list bmSuiteArgs: Arguments passed to the suite.
+        :return: A list of command-line arguments.
+        :rtype: list
         """
         raise NotImplementedError()
 
@@ -338,20 +365,100 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         return None
 
+    def vmAndRunArgs(self, bmSuiteArgs):
+        return splitArgs(bmSuiteArgs, "--")
+
+    def splitJvmConfigArg(self, bmSuiteArgs):
+        parser = ArgumentParser()
+        parser.add_argument("--jvm-config", default=None)
+        args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
+        return args.jvm_config, remainder
+
+    def jvmConfig(self, bmSuiteArgs):
+        """Returns the value of the `--jvm-config` argument or `None` if not present."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[0]
+
+    def vmArgs(self, bmSuiteArgs):
+        """Returns the VM arguments for the benchmark."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[1]
+
+    def runArgs(self, bmSuiteArgs):
+        """Returns the run arguments for the benchmark."""
+        return self.vmAndRunArgs(bmSuiteArgs)[1]
+
+    def getJavaVm(self, bmSuiteArgs):
+        config = self.jvmConfig(bmSuiteArgs)
+        if config is None:
+            config = "default"
+        return get_java_vm(mx._opts.vm, config)
+
     def before(self, bmSuiteArgs):
-        mx.log("Running on JVM with -version:")
-        mx.get_jdk().run_java(["-version"], nonZeroIsFatal=False)
+        self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
-        jdk = mx.get_jdk()
-        out = mx.TeeOutputCapture(mx.OutputCapture())
+        jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if args is None:
             return 0, ""
-        mx.log("Running JVM with args: {0}.".format(args))
-        exitCode = jdk.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
-        return exitCode, out.underlying.data
+        return jvm.run(cwd, args)
+
+
+class JavaVm(object):
+    def name(self):
+        """Returns the unique name of the Java VM."""
+        raise NotImplementedError()
+
+    def run(self, cwd, args):
+        """Runs the JVM with the specified args.
+
+        Returns an exit code, a capture of the standard output, and a dictionary of
+        extra dimensions to incorporate into the datapoints.
+
+        :param str cwd: Current working directory.
+        :param list args: List of command-line arguments for the VM.
+        :return: A tuple with an exit-code, stdout, and a dict with extra dimensions.
+        :rtype: tuple
+        """
+        raise NotImplementedError()
+
+
+class JvmciVm(JavaVm):
+    """A convenience class for running JVMCI-based VMs."""
+
+    def postProcessCommandLineArgs(self, suiteArgs):
+        """Adapts command-line arguments to run the specific JVMCI VM."""
+        raise NotImplementedError()
+
+    def dimensions(self, cwd, args, code, out):
+        """Returns a list of additional dimensions to put into every datapoint."""
+        raise NotImplementedError()
+
+    def run(self, cwd, args):
+        out = mx.TeeOutputCapture(mx.OutputCapture())
+        args = self.postProcessCommandLineArgs(args)
+        mx.log("Running JVM with args: {0}".format(args))
+        code = mx.get_jdk().run_java(
+            args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        out = out.underlying.data
+        dims = self.dimensions(cwd, args, code, out)
+        return code, out, dims
+
+
+_bm_suite_java_vms = {}
+
+
+def add_java_vm(vmflag, javavm):
+    if javavm.name() in _bm_suite_java_vms:
+        raise RuntimeError("Java VM '{0}' already exists.".format(javavm.name()))
+    _bm_suite_java_vms[(vmflag, javavm.name())] = javavm
+
+
+def get_java_vm(vmflag, jvmconfig):
+    key = (vmflag, jvmconfig)
+    if not key in _bm_suite_java_vms:
+        raise RuntimeError("Java VM '{0}' does not exist.".format(key))
+    return _bm_suite_java_vms[key]
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
@@ -362,12 +469,6 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
 
     def validateReturnCode(self, retcode):
         return True
-
-    def vmArgs(self, bmSuiteArgs):
-        return []
-
-    def runArgs(self, bmSuiteArgs):
-        return []
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         return bmSuiteArgs
