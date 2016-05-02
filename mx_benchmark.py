@@ -35,7 +35,9 @@ from argparse import ArgumentParser
 import mx
 
 
+_bm_suite_java_vms = {}
 _bm_suites = {}
+_benchmark_executor = None
 
 
 class BenchmarkSuite(object):
@@ -259,7 +261,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims={}, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, *args, **kwargs):
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -267,10 +269,14 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         Subclass may override to customize validation.
         """
+        if dims is None:
+            dims = {}
+
         def compiled(pat):
             if type(pat) is str:
                 return re.compile(pat)
             return pat
+
         flaky = False
         for pat in self.flakySuccessPatterns():
             if compiled(pat).match(out):
@@ -407,7 +413,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         return jvm.run(cwd, args)
 
 
-class JavaVm(object):
+class JavaVm(object): #pylint: disable=R0922
     def name(self):
         """Returns the unique name of the Java VM."""
         raise NotImplementedError()
@@ -426,7 +432,7 @@ class JavaVm(object):
         raise NotImplementedError()
 
 
-class JvmciVm(JavaVm):
+class JvmciVm(JavaVm): #pylint: disable=R0921
     """A convenience class for running JVMCI-based VMs."""
 
     def postProcessCommandLineArgs(self, suiteArgs):
@@ -446,9 +452,6 @@ class JvmciVm(JavaVm):
         out = out.underlying.data
         dims = self.dimensions(cwd, args, code, out)
         return code, out, dims
-
-
-_bm_suite_java_vms = {}
 
 
 def add_java_vm(vmflag, javavm):
@@ -569,7 +572,12 @@ class BenchmarkExecutor(object):
         pass
 
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
-        return {
+        revisions = {}
+        for (name, mxsuite) in mx._suites.iteritems():
+            if mxsuite.vc:
+                key = "extra." + name + ".rev"
+                revisions[key] = mxsuite.vc.parent(mxsuite.dir)
+        standard = {
           "metric.uuid": self.uid(),
           "group": self.group(suite),
           "subgroup": suite.subgroup(),
@@ -594,6 +602,8 @@ class BenchmarkExecutor(object):
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
         }
+        standard.update(revisions)
+        return standard
 
     def getSuiteAndBenchNames(self, args):
         argparts = args.benchmark.split(":")
