@@ -102,11 +102,11 @@ class DynamicVarScope(object):
         self.newvalue = newvalue
 
     def __enter__(self):
-        assert(not hasattr(self, "oldvalue"))
+        assert not hasattr(self, "oldvalue")
         self.oldvalue = self.dynvar.value
         self.dynvar.value = self.newvalue
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, tpe, value, traceback):
         self.dynvar.value = self.oldvalue
         self.oldvalue = None
         self.newvalue = None

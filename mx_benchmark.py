@@ -149,9 +149,12 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
 
-def add_bm_suite(suite):
+def add_bm_suite(suite, mxsuite=None):
+    if mxsuite is None:
+        mxsuite = mx.currently_loading_suite.get()
     if suite.name() in _bm_suites:
         raise RuntimeError("Benchmark suite '{0}' already exists.".format(suite.name()))
+    setattr(suite, ".mxsuite", mxsuite)
     _bm_suites[suite.name()] = suite
 
 
@@ -483,9 +486,6 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
-
-
-add_bm_suite(TestBenchmarkSuite())
 
 
 class BenchmarkExecutor(object):
