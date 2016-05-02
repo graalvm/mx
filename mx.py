@@ -10996,7 +10996,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             if dep is proj:
                 return
 
-            if dep.isLibrary():
+            if dep.isLibrary() or dep.isJARDistribution():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isProject():
@@ -11036,17 +11036,30 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Setup the libraries that were used above
     # TODO: setup all the libraries from the suite regardless of usage?
     for library in libraries:
+        path = ""
+        sourcePath = ""
+        if library.isLibrary():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcePath:
+                sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
+        elif library.isJARDistribution():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcesPath:
+                sourcePath = os.path.relpath(library.sourcesPath, suite.dir)
+        else:
+            abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+
         libraryXml = XMLDoc()
 
         libraryXml.open('component', attributes={'name': 'libraryTable'})
         libraryXml.open('library', attributes={'name': library.name})
         libraryXml.open('CLASSES')
-        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_path(True), suite.dir) + '!/'})
+        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
         libraryXml.close('CLASSES')
         libraryXml.element('JAVADOC')
-        if library.sourcePath:
+        if sourcePath != "":
             libraryXml.open('SOURCES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_source_path(True), suite.dir) + '!/'})
+            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + sourcePath + '!/'})
             libraryXml.close('SOURCES')
         else:
             libraryXml.element('SOURCES')
