@@ -414,6 +414,8 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
 
 
 class JavaVm(object): #pylint: disable=R0922
+    """Base class for objects that can run Java VMs."""
+
     def name(self):
         """Returns the unique name of the Java VM."""
         raise NotImplementedError()
@@ -433,7 +435,7 @@ class JavaVm(object): #pylint: disable=R0922
 
 
 class JvmciVm(JavaVm): #pylint: disable=R0921
-    """A convenience class for running JVMCI-based VMs."""
+    """A convenience class for running JVMCI-based Java VMs."""
 
     def postProcessCommandLineArgs(self, suiteArgs):
         """Adapts command-line arguments to run the specific JVMCI VM."""
@@ -527,37 +529,10 @@ class BenchmarkExecutor(object):
     def machineRam(self):
         return -1
 
-    def commitRev(self):
-        sha1 = subprocess.check_output(["git", "rev-parse", "HEAD"])
-        return sha1.strip()
-
-    def commitRepoUrl(self):
-        url = subprocess.check_output(["git", "config", "--get", "remote.origin.url"])
-        return url.strip()
-
-    def commitAuthor(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%an", "HEAD"])
-        return out.strip()
-
-    def commitAuthorTimestamp(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%at", "HEAD"])
-        return int(out.strip())
-
-    def commitCommitter(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%cn", "HEAD"])
-        return out.strip()
-
-    def commitCommitTimestamp(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%ct", "HEAD"])
-        return int(out.strip())
-
     def branch(self):
-        out = subprocess.check_output(["git", "name-rev", "--name-only", "HEAD"])
-        return out.strip()
+        mxsuite = mx.primary_suite()
+        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        return name
 
     def buildUrl(self):
         return mx.get_env("BUILD_URL", default="")
@@ -572,11 +547,6 @@ class BenchmarkExecutor(object):
         pass
 
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
-        revisions = {}
-        for (name, mxsuite) in mx._suites.iteritems():
-            if mxsuite.vc:
-                key = "extra." + name + ".rev"
-                revisions[key] = mxsuite.vc.parent(mxsuite.dir)
         standard = {
           "metric.uuid": self.uid(),
           "group": self.group(suite),
@@ -592,17 +562,28 @@ class BenchmarkExecutor(object):
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
           "machine.ram": self.machineRam(),
-          "commit.rev": self.commitRev(),
-          "commit.repo-url": self.commitRepoUrl(),
-          "commit.author": self.commitAuthor(),
-          "commit.author-ts": self.commitAuthorTimestamp(),
-          "commit.committer": self.commitCommitter(),
-          "commit.committer-ts": self.commitCommitTimestamp(),
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
         }
-        standard.update(revisions)
+
+        def commit_info(prefix, mxsuite):
+            vc = mxsuite.vc
+            if vc is None:
+                return {}
+            info = vc.parent_info(mxsuite.dir)
+            return {
+              prefix + "commit.rev": vc.parent(mxsuite.dir),
+              prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
+              prefix + "commit.author": info["author"],
+              prefix + "commit.author-ts": info["author-ts"],
+              prefix + "commit.committer": info["committer"],
+              prefix + "commit.committer-ts": info["committer-ts"],
+            }
+
+        standard.update(commit_info("", mx.primary_suite()))
+        for (name, mxsuite) in mx._suites.iteritems():
+            standard.update(commit_info("extra." + name + ".", mxsuite))
         return standard
 
     def getSuiteAndBenchNames(self, args):
