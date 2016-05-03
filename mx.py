@@ -8081,7 +8081,7 @@ class JDKConfig:
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
         cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
-        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def bootclasspath(self, filtered=True):
         self._init_classpaths()
