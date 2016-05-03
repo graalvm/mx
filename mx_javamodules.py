@@ -46,12 +46,12 @@ class JavaModuleDescriptor(object):
     :param set uses: the list of service types used by this module
     :param dict provides: dict from a service name to the set of providers of the service defined by this module
     :param set packages: the list of packages defined by this module
-    :param set conceals: the list of packages defined but not exported by this module
+    :param set conceals: the list of packages defined but not exported to everyone by this module
     :param str jarpath: path to module jar file
-    :param set moduledeps: list of `JavaModuleDescriptor` objects for the module dependencies of this module
+    :param set modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param JARDistribution dist: distribution from which this module was derived
     """
-    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, moduledeps=None):
+    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, modulepath=None):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -64,7 +64,7 @@ class JavaModuleDescriptor(object):
         self.conceals = self.packages - exportedPackages
         self.jarpath = jarpath
         self.dist = dist
-        self.moduledeps = moduledeps
+        self.modulepath = modulepath
 
     def __str__(self):
         return 'module:' + self.name
@@ -77,56 +77,53 @@ class JavaModuleDescriptor(object):
         return cmp(self.name, other.name)
 
     @staticmethod
-    def load(path, jdk):
+    def load(dist, jdk):
         """
-        Unpickles this module descriptor from a file.
+        Unpickles the module descriptor corresponding to a given distribution.
 
-        :param str path: where to read the pickled object
+        :param str dist: the distribution for which to read the pickled object
         :param JDKConfig jdk: used to resolve pickled references to JDK modules
         """
+        _, moduleDir, _ = _get_java_module_info(dist)
+        path = moduleDir + '.pickled'
+        if not exists(path):
+            mx.abort(path + ' does not exist')
         with open(path, 'rb') as fp:
             jmd = pickle.load(fp)
         jdkmodules = {m.name : m for m in jdk.get_boot_layer_modules()}
         resolved = []
-        for name in jmd.moduledeps:
+        for name in jmd.modulepath:
             if name.startswith('dist:'):
                 distName = name[len('dist:'):]
                 resolved.append(mx.distribution(distName).as_java_module(jdk))
             else:
                 resolved.append(jdkmodules[name])
-        jmd.moduledeps = resolved
+        jmd.modulepath = resolved
         jmd.dist = mx.distribution(jmd.dist)
         return jmd
 
-    def save(self, path):
+    def save(self):
         """
-        Pickles this module descriptor to a file.
+        Pickles this module descriptor to a file if it corresponds to a distribution.
+        Otherwise, does nothing.
 
-        :param str path: where to write the pickled object
+        :return: the path to which this module descriptor was pickled or None
         """
-        moduledeps = self.moduledeps
         dist = self.dist
-        self.moduledeps = [m.name if not m.dist else 'dist:' + m.dist.name for m in moduledeps]
+        if not dist:
+            # Don't pickle a JDK module
+            return None
+        _, moduleDir, _ = _get_java_module_info(dist)
+        path = moduleDir + '.pickled'
+        modulepath = self.modulepath
+        self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
         self.dist = dist.name
         try:
             with open(path, 'wb') as fp:
                 pickle.dump(self, fp)
         finally:
-            self.moduledeps = moduledeps
+            self.modulepath = modulepath
             self.dist = dist
-
-    def modulepath(self):
-        """
-        Gets the modules that must be put on the VM and javac ``-modulepath``  option when deploying or
-        compiling against this module.
-
-        :return: a list of this module's dependencies whose `jarpath` is not None
-        :rtype: list
-        """
-        mp = [jmd for jmd in self.moduledeps if jmd.jarpath]
-        if self.jarpath:
-            mp.append(self)
-        return mp
 
     def as_module_info(self):
         """
@@ -151,11 +148,8 @@ class JavaModuleDescriptor(object):
             print >> out, '    // jarpath: ' + self.jarpath
         if self.dist:
             print >> out, '    // dist: ' + self.dist.name
-        if self.moduledeps:
-            print >> out, '    // moduledeps: ' + ', '.join([jmd.name for jmd in self.moduledeps])
-        modulepath = self.modulepath()
-        if modulepath:
-            print >> out, '    // modulepath: ' + os.pathsep.join([m.jarpath for m in modulepath])
+        if self.modulepath:
+            print >> out, '    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath])
         if self.concealedRequires:
             for dependency, packages in sorted(self.concealedRequires.iteritems()):
                 for package in sorted(packages):
@@ -184,93 +178,143 @@ def lookup_package(modulepath, package, importer):
             return jmd, 'concealed'
     return (None, None)
 
-def get_java_module_info(dist):
+def get_module_deps(dist):
+    """
+    Gets the JAR distributions and their constituent Java projects whose artifacts (i.e., class files and
+    resources) are the input to the Java module jar created by `make_java_module` for a given distribution.
+
+    :return: the set of `JARDistribution` objects and their constituent `JavaProject` transitive
+             dependencies denoted by the ``moduledeps`` attribute
+    """
+    if not hasattr(dist, '.module_deps'):
+        roots = getattr(dist, 'moduledeps', [])
+        if not roots:
+            return roots
+        for root in roots:
+            if not root.isJARDistribution():
+                mx.abort('moduledeps can (currently) only include JAR distributions: ' + str(root), context=dist)
+
+        moduledeps = []
+        def _visit(dep, edges):
+            if dep is not dist:
+                if dep.isJavaProject() or dep.isJARDistribution():
+                    if dep not in moduledeps:
+                        moduledeps.append(dep)
+                else:
+                    mx.abort('modules can (currently) only include JAR distributions and Java projects: ' + str(dep), context=dist)
+        def _preVisit(dst, edge):
+            return not dst.isJreLibrary()
+        mx.walk_deps(roots, preVisit=_preVisit, visit=_visit)
+        setattr(dist, '.module_deps', moduledeps)
+    return getattr(dist, '.module_deps')
+
+def as_java_module(dist, jdk):
+    """
+    Gets the Java module created from a given distribution.
+
+    :param JARDistribution dist: a distribution that defines a Java module
+    :param JDKConfig jdk: a JDK with a version >= 9 that can be used to resolve references to JDK modules
+    :return: the descriptor for the module
+    :rtype: `JavaModuleDescriptor`
+    """
+    if not hasattr(dist, '.javaModule'):
+        jmd = JavaModuleDescriptor.load(dist, jdk)
+        setattr(dist, '.javaModule', jmd)
+    return getattr(dist, '.javaModule')
+
+def _get_java_module_info(dist):
+    assert len(get_module_deps(dist)) != 0
     modulesDir = mx.ensure_dir_exists(join(dist.suite.get_output_root(), 'modules'))
     moduleName = dist.name.replace('_', '.').lower()
     moduleDir = mx.ensure_dir_exists(join(modulesDir, moduleName))
     moduleJar = join(modulesDir, moduleName + '.jar')
     return moduleName, moduleDir, moduleJar
 
-def make_java_module(dist, jdk, services, javaprojects):
+def make_java_module(dist, jdk):
     """
     Creates a Java module from a distribution.
 
     :param JARDistribution dist: the distribution from which to create a module
     :param JDKConfig jdk: a JDK with a version >= 9 that can be used to compile the module-info class
-    :param dict services: dict from a service name to the set of providers of the service defined by the module
     :param list projects: the `JavaProject`s in the dist/module
+    :return: the `JavaModuleDescriptor` for the created Java module
     """
-    moduleName, moduleDir, moduleJar = get_java_module_info(dist)
+    moduledeps = get_module_deps(dist)
+    if not moduledeps:
+        return None
 
-    modulepath = jdk.get_boot_layer_modules()
-    moduledeps = set()
+    moduleName, moduleDir, moduleJar = _get_java_module_info(dist)
+    mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
     exports = {}
     requires = {}
     concealedRequires = {}
     addExports = set()
     uses = set()
 
+
+    # Prepend JDK modules to module path
+    modulepath = list(jdk.get_boot_layer_modules())
+    usedModules = set()
+
+    javaprojects = [d for d in moduledeps if d.isJavaProject()]
+    packages = []
     for dep in javaprojects:
         uses.update(getattr(dep, 'uses', []))
-
-    def _visitDep(dep, edges):
-        if dep is not dist and dep.isJARDistribution():
-            jmd = dep.as_java_module(jdk)
-            modulepath.append(jmd)
-            moduledeps.add(jmd)
-    dist.walk_deps(visit=_visitDep)
-
-    for dep in javaprojects:
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
             depModule, visibility = lookup_package(modulepath, pkg, moduleName)
             if depModule:
                 if visibility == 'exported':
                     # A distribution based module re-exports all its imported packages
-                    requires.setdefault(depModule.name, set()).add('public')
-                    moduledeps.add(depModule)
+                    requires.setdefault(depModule.name, set())
+                    usedModules.add(depModule)
                 else:
                     assert visibility == 'concealed'
                     concealedRequires.setdefault(depModule.name, set()).add(pkg)
-                    moduledeps.add(depModule)
+                    usedModules.add(depModule)
                     addExports.add('-XaddExports:' + depModule.name + '/' + pkg + '=' + moduleName)
 
-        for pkg in dep.defined_java_packages():
-            # A distribution based module exports all its packages to the world
+        for pkg in getattr(dep, 'exports', []):
             exports.setdefault(pkg, [])
+        packages.extend(dep.defined_java_packages())
 
-    with zipfile.ZipFile(dist.path, 'r') as zf:
-        zf.extractall(path=moduleDir)
-        names = frozenset(zf.namelist())
-        for service in services:
-            serviceClass = service.replace('.', '/') + '.class'
-            if serviceClass in names:
-                uses.add(service)
+    provides = {}
+    for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+        if d.isJARDistribution():
+            with zipfile.ZipFile(d.path, 'r') as zf:
+                # To compile module-info.java, all classes it references must either be given
+                # as Java source files or already exist as class files in the output directory.
+                # As such, the jar file for each constituent distribution must be unpacked
+                # in the output directory.
+                zf.extractall(path=moduleDir)
+                names = frozenset(zf.namelist())
+                for arcname in names:
+                    if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                        service = arcname[len('META-INF/services/'):]
+                        assert '/' not in service
+                        provides.setdefault(service, set()).update(zf.read(arcname).splitlines())
+                        # Service types defined in the module are assumed to be used by the module
+                        serviceClass = service.replace('.', '/') + '.class'
+                        if serviceClass in names:
+                            uses.add(service)
 
-    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, services, concealedRequires=concealedRequires,
-                               jarpath=moduleJar, dist=dist, moduledeps=moduledeps)
+    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
+                               jarpath=moduleJar, dist=dist, modulepath=modulepath)
 
     # Compile module-info.class
     moduleInfo = join(moduleDir, 'module-info.java')
     with open(moduleInfo, 'w') as fp:
         print >> fp, jmd.as_module_info()
-    modulepath = [m for m in jmd.modulepath() if m != jmd]
-    mp = ['-mp', os.pathsep.join([m.jarpath for m in modulepath])] if modulepath else []
-    mx.run([jdk.javac, '-d', moduleDir] + mp + list(addExports) + [moduleInfo])
+    javacCmd = [jdk.javac, '-d', moduleDir]
+    modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath]
+    if modulepathJars:
+        javacCmd.append('-mp')
+        javacCmd.append(os.pathsep.join(modulepathJars))
+    javacCmd.extend(addExports)
+    javacCmd.append(moduleInfo)
+    mx.run(javacCmd)
 
     # Create the module jar
     shutil.make_archive(moduleJar, 'zip', moduleDir)
     os.rename(moduleJar + '.zip', moduleJar)
-
+    jmd.save()
     return jmd
-
-def get_empty_module():
-    """
-    Gets an empty module represented by an empty module jar.
-    """
-    modulesDir = mx.ensure_dir_exists(join(mx._mx_suite.get_output_root(), 'modules'))
-    moduleName = 'empty.app'
-    moduleJar = join(modulesDir, moduleName + '.jar')
-    if not exists(moduleJar):
-        with zipfile.ZipFile(moduleJar, 'w'):
-            pass
-    return moduleName, moduleJar

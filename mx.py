@@ -72,7 +72,7 @@ import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package
+from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -493,7 +493,7 @@ class Dependency(SuiteConstituent):
                 for name in deps:
                     s, _ = splitqualname(name)
                     if s and s in _jdkProvidedSuites:
-                        logv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
+                        logvv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
                         continue
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
                     if not dep:
@@ -737,20 +737,19 @@ class DistributionTemplate(SuiteConstituent):
         self.attrs = attrs
         self.parameters = parameters
 
-"""
-A distribution is a file containing the output from one or more projects.
-In some sense it is the ultimate "result" of a build (there can be more than one).
-It is a Dependency because a Project or another Distribution may express a dependency on it.
-
-Attributes:
-    name: unique name
-    deps: "dependencies" that define the components that will comprise the distribution.
-        See Distribution.archived_deps for a precise description.
-        This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
-        as it defines the eventual content of the distribution
-    excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
-"""
 class Distribution(Dependency):
+    """
+    A distribution is a file containing the output of one or more dependencies.
+    It is a `Dependency` because a `Project` or another `Distribution` may express a dependency on it.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param list deps: the dependencies of the distribution. How these dependencies are consumed
+           is defined by the `Distribution` subclasses.
+    :param list excludedLibs: libraries whose contents should be excluded from this distribution's built artifact
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    """
     def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense):
         Dependency.__init__(self, suite, name, theLicense)
         self.deps = deps
@@ -768,6 +767,7 @@ class Distribution(Dependency):
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
+        self._resolveDepsHelper(getattr(self, 'moduledeps', None))
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
@@ -854,17 +854,35 @@ class Distribution(Dependency):
     def maven_group_id(self):
         return _mavenGroupId(self.suite)
 
-"""
-A JARDistribution is a distribution for JavaProjects and Java libraries.
-A Distribution always generates a jar/zip file for the built components
-and may optionally specify a zip for the sources from which the built components were generated.
-
-Attributes:
-    path: suite-local path to where the jar file will be placed
-    sourcesPath: as path but for source files (optional)
-"""
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense, javadocType="implementation", allowsJavadocWarnings=False, maven=True):
+    """
+    A distribution represents a jar file built from the class files and resources defined by a set of
+    `JavaProject`s and Java libraries plus an optional zip containing the Java source files
+    corresponding to the class files.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param str subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
+    :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
+           it is interpreted to be relative to `suite.dir`.
+    :param str sourcesPath: the path of the zip file created for the source files corresponding to the class files of this distribution.
+           If this is not an absolute path, it is interpreted to be relative to `suite.dir`.
+    :param list deps: the `JavaProject` and `Library` dependencies that are the root sources for this distribution's jar
+    :param str mainClass: the class name representing application entry point for this distribution's executable jar. This
+           value (if not None) is written to the ``Main-Class`` header in the jar's manifest.
+    :param list excludedLibs: libraries whose contents should be excluded from this distribution's jar
+    :param list distDependencies: the `JARDistribution` dependencies that must be on the class path when this distribution
+           is on the class path (at compile or run time)
+    :param str javaCompliance:
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param str javadocType: specifies if the javadoc generated for this distribution should include implementation documentation
+           or only API documentation. Accepted values are "implementation" and "API".
+    :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
+    :param bool maven:
+    """
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -949,7 +967,6 @@ class JARDistribution(Distribution, ClasspathDependency):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
 
         services = {}
-        javaprojects = []
         with Archiver(self.path) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
@@ -1042,7 +1059,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             srcArc.zf.writestr(arcname, contents)
                     elif dep.isJavaProject():
                         p = dep
-                        javaprojects.append(p)
                         if self.javaCompliance:
                             if p.javaCompliance > self.javaCompliance:
                                 abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
@@ -1099,10 +1115,9 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.notify_updated()
         jdk = get_jdk(tag='default')
         if jdk.javaCompliance >= '1.9':
-            jmd = make_java_module(self, jdk, services, javaprojects)
-            # Pickle the JavaModuleDescriptor to a file
-            _, moduleDir, _ = get_java_module_info(self)
-            jmd.save(join(moduleDir + '.pickled'))
+            jmd = make_java_module(self, jdk)
+            if jmd:
+                setattr(self, '.javaModule', jmd)
 
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
@@ -1124,39 +1139,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             res = _needsUpdate(newestInput, self.sourcesPath)
             if res:
                 return res
-        jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '1.9':
-            _, _, moduleJar = get_java_module_info(self)
-            if not exists(moduleJar):
-                return '{} does not exist'.format(moduleJar)
-            if TimeStampFile(moduleJar).isOlderThan(self.path):
-                return '{} is older than {}'.format(moduleJar, self.path)
         return None
-
-    def as_java_module(self, jdk):
-        """
-        Gets the Java module created from this distribution.
-
-        :param JDKConfig jdk: a JDK with a version >= 9 that can be used to resolve references to JDK modules
-        :return: the descriptor for the module
-        :rtype: `JavaModuleDescriptor`
-        """
-        if not hasattr(self, '.javaModule'):
-            _, moduleDir, moduleJar = get_java_module_info(self)
-            if not exists(moduleJar):
-                abort(moduleJar + ' does not exist')
-            jmd = JavaModuleDescriptor.load(moduleDir + '.pickled', jdk)
-            setattr(self, '.javaModule', jmd)
-        return getattr(self, '.javaModule')
-
-def listmodules(args, jdk=None):
-    """print the Java modules derived from distributions"""
-    jdk = jdk if jdk else get_jdk(tag=DEFAULT_JDK_TAG)
-    if jdk.javaCompliance >= '9':
-        for dep in dependencies():
-            if dep.isJARDistribution():
-                jmd = dep.as_java_module(jdk)
-                print jmd.as_module_info()
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -1210,14 +1193,23 @@ class JARArchiveTask(ArchiveTask):
             return True
         return False
 
-"""
-A NativeTARDistribution is a distribution for NativeProjects.
-It packages all the 'results' of a NativeProject.
-
-Attributes:
-    path: suite-local path to where the tar file will be placed
-"""
 class NativeTARDistribution(Distribution):
+    """
+    A distribution dependencies are only `NativeProject`s. It packages all the resources specified by
+    `NativeProject.getResults` for each constituent project.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param list deps: the `NativeProject` dependencies of the distribution
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param str relpath: specifies if the names of tar file entries should be relative to the output
+           directories of the constituent native projects' output directories.
+    :param str output: specifies where the tar file should be extracted when this distribution is
+           retrieved as a binary dependency
+    Attributes:
+        path: suite-local path to where the tar file will be placed
+    """
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
@@ -1594,8 +1586,8 @@ class JavaProject(Project, ClasspathDependency):
             imports = set()
             # Assumes package name components start with lower case letter and
             # classes start with upper-case letter
-            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+)\s*;\s*')
-            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.[A-Z][a-zA-Z\d_$]*')
+            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+\*?)\s*;\s*')
+            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.(?:(?:[A-Z][a-zA-Z\d_$]*)|\*)')
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
@@ -1762,11 +1754,23 @@ class JavaProject(Project, ClasspathDependency):
             jdk = get_jdk(self.javaCompliance)
             if jdk.javaCompliance >= '9':
                 modulepath = jdk.get_boot_layer_modules()
-                imported = itertools.chain(self.imported_java_packages(projectDepsOnly=False), getattr(self, 'imports', []))
-                for pkg in imported:
-                    jmd, visibility = lookup_package(modulepath, pkg, "<unnamed>")
+
+                imports = getattr(self, 'imports', [])
+                if imports:
+                    # This regex does not detect all legal packages names. No regex can tell you if a.b.C.D is
+                    # a class D in the package a.b.C, a class C.D in the package a.b or even a class b.C.D in
+                    # the package a. As such mx uses the convention that package names start with a lowercase
+                    # letter and class names with a uppercase letter.
+                    packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
+                    for imported in imports:
+                        m = packageRe.match(imported)
+                        if not m:
+                            abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
+                imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
+                for package in imported:
+                    jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
                     if visibility == 'concealed':
-                        concealed.setdefault(jmd.name, set()).add(pkg)
+                        concealed.setdefault(jmd.name, set()).add(package)
             else:
                 for module in concealed:
                     if module != 'jdk.vm.ci':
@@ -7223,7 +7227,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                 _canceled_java_requests.add((versionDescription, purpose))
         return _default_java_home
 
-    for java in _extra_java_homes:
+    existing_java_homes = _extra_java_homes
+    if _default_java_home:
+        existing_java_homes.append(_default_java_home)
+    for java in existing_java_homes:
         if not versionCheck or versionCheck(java.version):
             return java
 
@@ -7765,7 +7772,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             log('Environment variables:')
             for key in sorted(env.keys()):
                 log('    ' + key + '=' + env[key])
-        log(' '.join(map(pipes.quote, args)))
+            log(' \\\n '.join(map(pipes.quote, args)))
+        else:
+            log(' '.join(map(pipes.quote, args)))
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -8252,7 +8261,7 @@ class JDKConfig:
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
                 modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides)
-            setattr(self, '.boot_layer_modules', modules.values())
+            setattr(self, '.boot_layer_modules', tuple(modules.values()))
         return getattr(self, '.boot_layer_modules')
 
 def check_get_env(key):
@@ -9971,23 +9980,20 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
-    def _add_jvmci_if_imported(dep, moduleDeps):
-        if eclipseJavaCompliance < '9' and dep.isJavaProject() and dep.javaCompliance >= '9':
-            # If `dep` is a JDK9 (or later) project and imports any JVMCI packages
-            # and Eclipse does not yet support JDK9, then the generated Eclipse
-            # project needs to depend on the jdk.vm.ci module. Further down, a stub
-            # containing the classes in this module will be added as a library to
-            # generated project.
-            for pkg in dep.imported_java_packages(projectDepsOnly=False):
-                if pkg.startswith('jdk.vm.ci.'):
-                    moduleDeps.add('jdk.vm.ci')
-
     containerDeps = set()
     libraryDeps = set()
     projectDeps = set()
 
     moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
-    _add_jvmci_if_imported(p, moduleDeps)
+    if eclipseJavaCompliance < '9' and not suite('jvmci', fatalIfMissing=False):
+        # If this project imports any JVMCI packages and JVMCI is not a suite
+        # and Eclipse does not yet support JDK9, then the generated Eclipse
+        # project needs to depend on the jdk.vm.ci module. Further down, a stub
+        # containing the classes in this module will be added as a library to
+        # generated project.
+        for pkg in p.imported_java_packages(projectDepsOnly=False):
+            if pkg.startswith('jdk.vm.ci.'):
+                moduleDeps.add('jdk.vm.ci')
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -11022,7 +11028,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             if dep is proj:
                 return
 
-            if dep.isLibrary():
+            if dep.isLibrary() or dep.isJARDistribution():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isProject():
@@ -11062,17 +11068,30 @@ def _intellij_suite(args, suite, refreshOnly=False):
     # Setup the libraries that were used above
     # TODO: setup all the libraries from the suite regardless of usage?
     for library in libraries:
+        path = ""
+        sourcePath = ""
+        if library.isLibrary():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcePath:
+                sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
+        elif library.isJARDistribution():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcesPath:
+                sourcePath = os.path.relpath(library.sourcesPath, suite.dir)
+        else:
+            abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+
         libraryXml = XMLDoc()
 
         libraryXml.open('component', attributes={'name': 'libraryTable'})
         libraryXml.open('library', attributes={'name': library.name})
         libraryXml.open('CLASSES')
-        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_path(True), suite.dir) + '!/'})
+        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
         libraryXml.close('CLASSES')
         libraryXml.element('JAVADOC')
-        if library.sourcePath:
+        if sourcePath != "":
             libraryXml.open('SOURCES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_source_path(True), suite.dir) + '!/'})
+            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + sourcePath + '!/'})
             libraryXml.close('SOURCES')
         else:
             libraryXml.element('SOURCES')
@@ -12984,7 +13003,6 @@ _commands = {
     'maven-install' : [maven_install, ''],
     'maven-deploy' : [maven_deploy, ''],
     'deploy-binary' : [deploy_binary, ''],
-    'listmodules' : [listmodules, ''],
     'projectgraph': [projectgraph, ''],
     'sclone': [sclone, '[options]'],
     'sbookmarkimports': [sbookmarkimports, '[options]'],
@@ -13347,7 +13365,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.1")
+version = VersionSpec("5.20.5")
 
 currentUmask = None
 
