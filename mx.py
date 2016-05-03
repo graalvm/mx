@@ -72,7 +72,7 @@ import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package
+from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package, get_module_deps
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -10231,7 +10231,11 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             continue
         ensure_dir_exists(projectDir)
         relevantResources = []
-        for d in dist.archived_deps():
+        jdk = get_jdk(tag='default')
+        relevantResourceDeps = set(dist.archived_deps())
+        if jdk.javaCompliance >= '1.9':
+            relevantResourceDeps.update(get_module_deps(dist))
+        for d in sorted(relevantResourceDeps):
             # Eclipse does not seem to trigger a build for a distribution if the references
             # to the constituent projects are of type IRESOURCE_PROJECT.
             if d.isProject():
@@ -10240,6 +10244,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
             elif d.isDistribution():
                 relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
+
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -10250,7 +10255,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
+        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
         _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=True, async=False, logToConsole=logToConsole, appendToLogFile=False, refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
