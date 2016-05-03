@@ -27,7 +27,6 @@
 import json
 import re
 import socket
-import subprocess
 import traceback
 import uuid
 from argparse import ArgumentParser

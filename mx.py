@@ -4291,11 +4291,11 @@ class BinaryVC(VC):
         with open(join(vcdir, _mx_binary_distribution_version(suiteName))) as f:
             parts = f.read().split(',')
             if len(parts) == 2:
-              # Older versions of the persisted metadata do not contain the snapshot timestamp.
-              repourl, snapshotVersion = parts
-              snapshotTimestamp = None
+                # Older versions of the persisted metadata do not contain the snapshot timestamp.
+                repourl, snapshotVersion = parts
+                snapshotTimestamp = None
             else:
-              repourl, snapshotVersion, snapshotTimestamp = parts
+                repourl, snapshotVersion, snapshotTimestamp = parts
         return self.Metadata(suiteName, repourl, snapshotVersion, snapshotTimestamp)
 
     def getDistribution(self, vcdir, distribution):
@@ -4362,13 +4362,13 @@ class BinaryVC(VC):
         def decode(ts):
             if ts is None:
                 return 0
-            YYYY = int(ts[0:4])
-            MM = int(ts[4:6])
-            DD = int(ts[6:8])
+            yyyy = int(ts[0:4])
+            mm = int(ts[4:6])
+            dd = int(ts[6:8])
             hh = int(ts[9:11])
-            mm = int(ts[11:13])
+            mi = int(ts[11:13])
             ss = int(ts[13:15])
-            return (datetime(YYYY, MM, DD, hh, mm, ss) - datetime(1970, 1, 1)).total_seconds()
+            return (datetime(yyyy, mm, dd, hh, mi, ss) - datetime(1970, 1, 1)).total_seconds()
         metadata = self._readMetadata(vcdir)
         timestamp = decode(metadata.snapshotTimestamp)
         return {
@@ -13466,7 +13466,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.5")
+version = VersionSpec("5.20.6")
 
 currentUmask = None
 
