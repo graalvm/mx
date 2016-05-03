@@ -46,7 +46,7 @@ class JavaModuleDescriptor(object):
     :param set uses: the list of service types used by this module
     :param dict provides: dict from a service name to the set of providers of the service defined by this module
     :param set packages: the list of packages defined by this module
-    :param set conceals: the list of packages defined but not exported by this module
+    :param set conceals: the list of packages defined but not exported to everyone by this module
     :param str jarpath: path to module jar file
     :param set modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param JARDistribution dist: distribution from which this module was derived
@@ -198,15 +198,14 @@ def get_module_deps(dist):
         def _visit(dep, edges):
             if dep is not dist:
                 if dep.isJavaProject() or dep.isJARDistribution():
-                    moduledeps.append(dep)
+                    if dep not in moduledeps:
+                        moduledeps.append(dep)
                 else:
                     mx.abort('modules can (currently) only include JAR distributions and Java projects: ' + str(dep), context=dist)
         def _preVisit(dst, edge):
             return not dst.isJreLibrary()
         mx.walk_deps(roots, preVisit=_preVisit, visit=_visit)
-        dist.walk_deps(visit=_visit, preVisit=_preVisit)
-        result = moduledeps
-        setattr(dist, '.module_deps', result)
+        setattr(dist, '.module_deps', moduledeps)
     return getattr(dist, '.module_deps')
 
 def as_java_module(dist, jdk):
@@ -245,6 +244,7 @@ def make_java_module(dist, jdk):
         return None
 
     moduleName, moduleDir, moduleJar = _get_java_module_info(dist)
+    mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
     exports = {}
     requires = {}
     concealedRequires = {}
@@ -257,7 +257,7 @@ def make_java_module(dist, jdk):
     usedModules = set()
 
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
-
+    packages = []
     for dep in javaprojects:
         uses.update(getattr(dep, 'uses', []))
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
@@ -275,6 +275,7 @@ def make_java_module(dist, jdk):
 
         for pkg in getattr(dep, 'exports', []):
             exports.setdefault(pkg, [])
+        packages.extend(dep.defined_java_packages())
 
     provides = {}
     for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
@@ -296,7 +297,7 @@ def make_java_module(dist, jdk):
                         if serviceClass in names:
                             uses.add(service)
 
-    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, concealedRequires=concealedRequires,
+    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
                                jarpath=moduleJar, dist=dist, modulepath=modulepath)
 
     # Compile module-info.class

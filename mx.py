@@ -462,7 +462,7 @@ class Dependency(SuiteConstituent):
                 for name in deps:
                     s, _ = splitqualname(name)
                     if s and s in _jdkProvidedSuites:
-                        logv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
+                        logvv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
                         continue
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
                     if not dep:
@@ -13333,7 +13333,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.4")
+version = VersionSpec("5.20.5")
 
 currentUmask = None
 
