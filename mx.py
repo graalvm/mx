@@ -167,6 +167,9 @@ _jdkProvidedSuites = set()
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
 
+# List of functions to run after options have been parsed
+_opts_parsed_deferrables = []
+
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
@@ -6011,6 +6014,7 @@ class SourceSuite(Suite):
                             abort(e + ':' + str(lineNum) + ': line does not match pattern "key=value"')
                         key, value = line.split('=', 1)
                         os.environ[key.strip()] = expandvars_in_property(value.strip())
+                        logv('Setting environment variable %s=%s from %s' % (key.strip(), os.environ[key.strip()], e))
 
     def _load_env(self):
         SourceSuite._load_env_in_mxDir(self.mxDir)
@@ -6953,6 +6957,9 @@ environment variables:
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
+
+            for deferrable in _opts_parsed_deferrables:
+                deferrable()
 
             if opts.version:
                 print 'mx version ' + str(version)
@@ -8254,6 +8261,12 @@ def get_env(key, default=None):
     return value
 
 def logv(msg=None):
+    if vars(_opts).get('verbose') == None:
+        def _deferrable():
+            logv(msg)
+        _opts_parsed_deferrables.append(_deferrable)
+        return
+
     if _opts.verbose:
         log(msg)
 
