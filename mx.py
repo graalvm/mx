@@ -10985,7 +10985,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if processors:
             annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
-        intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
+        intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
 
         moduleXml = XMLDoc()
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
@@ -13361,7 +13361,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.21.1")
+version = VersionSpec("5.21.2")
 
 currentUmask = None
 
