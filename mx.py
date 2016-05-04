@@ -1739,12 +1739,11 @@ class JavaProject(Project, ClasspathDependency):
                 for package in imported:
                     jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
                     if visibility == 'concealed':
-                        concealed.setdefault(jmd.name, set()).add(package)
-            else:
-                for module in concealed:
-                    if module != 'jdk.vm.ci':
-                        abort('Cannot require modules other than jdk.vm.ci in a project with Java compliance < 9', context=self)
-                concealed = {}
+                        if self.defined_java_packages().isdisjoint(jmd.packages):
+                            concealed.setdefault(jmd.name, set()).add(package)
+                        else:
+                            # This project is part of the module defining the concealed package
+                            pass
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, '.concealed_imported_packages', concealed)
         return getattr(self, '.concealed_imported_packages')
@@ -11302,25 +11301,30 @@ def fsckprojects(args):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
 
-def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_packages=None):
-    packages = [] if packages is None else packages
-    exclude_packages = [] if exclude_packages is None else exclude_packages
+def _find_packages(project, onlyPublic=True, included=None, excluded=None):
+    """
+    Finds the set of packages defined by a project.
+
+    :param JavaProject project: the Java project to process
+    :param bool onlyPublic: specifies if only packages containing a ``package-info.java`` file are to be considered
+    :param set included: if not None or empty, only consider packages in this set
+    :param set excluded: if not None or empty, do not consider packages in this set
+    """
     sourceDirs = project.source_dirs()
     def is_visible(name):
         if onlyPublic:
             return name == 'package-info.java'
         else:
             return name.endswith('.java')
-    if pkgs is None:
-        pkgs = set()
+    packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
             if len([name for name in files if is_visible(name)]) != 0:
-                pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                if len(packages) == 0 or pkg in packages:
-                    if len(exclude_packages) == 0 or not pkg in exclude_packages:
-                        pkgs.add(pkg)
-    return pkgs
+                package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                if not included or package in included:
+                    if not excluded or package not in excluded:
+                        packages.add(package)
+    return packages
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
 
@@ -11352,13 +11356,13 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         candidates = projects_opt_limit_to_suites()
 
     # optionally restrict packages within a project
-    packages = []
+    include_packages = None
     if args.packages is not None:
-        packages = [name for name in args.packages.split(',')]
+        include_packages = frozenset(args.packages.split(','))
 
-    exclude_packages = []
+    exclude_packages = None
     if args.exclude_packages is not None:
-        exclude_packages = [name for name in args.exclude_packages.split(',')]
+        exclude_packages = frozenset(args.exclude_packages.split(','))
 
     def outDir(p):
         if args.base is None:
@@ -11426,7 +11430,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            pkgs = find_packages(p, set(), False, packages, exclude_packages)
+            pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
@@ -11497,7 +11501,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         sproots = []
         names = []
         for p in projects:
-            find_packages(p, pkgs, not args.implementation, packages, exclude_packages)
+            pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
 
@@ -13338,7 +13342,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.6")
+version = VersionSpec("5.21.1")
 
 currentUmask = None
 
