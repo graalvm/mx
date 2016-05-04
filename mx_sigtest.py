@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 def _should_test_project(p):
     if not p.isJavaProject():
         return False
-    return len(mx.find_packages(p)) > 0
+    return len(mx._find_packages(p)) > 0
 
 def sigtest(args, suite=None, projects=None):
     parser = ArgumentParser(prog='mx sigtest')
@@ -65,7 +65,7 @@ def _sigtest_generate(args, suite=None, projects=None):
             '-Static', '-FileName', sigtestResults,
             '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
         ]
-        for pkg in mx.find_packages(p):
+        for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
         if exitcode != 95:
@@ -99,7 +99,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         ]
         if checktype != 'all':
             cmd.append('-b')
-        for pkg in mx.find_packages(p):
+        for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         out = OutputCapture()
         print 'Checking ' + checktype + ' signature changes against ' + sigtestResults

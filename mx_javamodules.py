@@ -230,6 +230,19 @@ def _get_java_module_info(dist):
     moduleJar = join(modulesDir, moduleName + '.jar')
     return moduleName, moduleDir, moduleJar
 
+def _expand_package_info(dep, packages):
+    """
+    Converts a list of package names to a unique set of package names,
+    expanding any '<package-info>' entry in the list to the set of
+    packages in the project that contain a ``package-info.java`` file.
+    """
+    if '<package-info>' in packages:
+        result = set((e for e in packages if e != '<package-info>'))
+        result.update(mx._find_packages(dep, onlyPublic=True))
+    else:
+        result = set(packages)
+    return result
+
 def make_java_module(dist, jdk):
     """
     Creates a Java module from a distribution.
@@ -273,8 +286,8 @@ def make_java_module(dist, jdk):
                     usedModules.add(depModule)
                     addExports.add('-XaddExports:' + depModule.name + '/' + pkg + '=' + moduleName)
 
-        for pkg in getattr(dep, 'exports', []):
-            exports.setdefault(pkg, [])
+        for package in _expand_package_info(dep, getattr(dep, 'exports', [])):
+            exports.setdefault(package, [])
         packages.extend(dep.defined_java_packages())
 
     provides = {}
