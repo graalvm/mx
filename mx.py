@@ -2096,6 +2096,12 @@ class JavacCompiler(JavacLikeCompiler):
                 :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
                 """
                 for module, packages in dep.get_concealed_imported_packages().iteritems():
+                    if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
+                        # A JVMCI project may refer to a JVMCI API under development which
+                        # can differ with the signature of the JVMCI API in the JDK used
+                        # for compilation. As such, a normal class path reference to the
+                        # JVMCI API must be used instead of an -XaddExports option.
+                        continue
                     for package in packages:
                         exportedPackages = None if exports is None else exports.setdefault(module, set())
                         if exportedPackages is None or package not in exportedPackages:
@@ -13342,7 +13348,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.21.0")
+version = VersionSpec("5.21.1")
 
 currentUmask = None
 
