@@ -43,10 +43,10 @@ class JavaModuleDescriptor(object):
              empty list denotes an unqualified export.
     :param dict requires: dict from a module dependency to the modifiers of the dependency
     :param dict concealedRequires: dict from a module dependency to its concealed packages required by this module
-    :param set uses: the list of service types used by this module
+    :param set uses: the service types used by this module
     :param dict provides: dict from a service name to the set of providers of the service defined by this module
-    :param set packages: the list of packages defined by this module
-    :param set conceals: the list of packages defined but not exported to everyone by this module
+    :param set packages: the packages defined by this module
+    :param set conceals: the packages defined but not exported to everyone by this module
     :param str jarpath: path to module jar file
     :param set modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param JARDistribution dist: distribution from which this module was derived

@@ -1739,12 +1739,11 @@ class JavaProject(Project, ClasspathDependency):
                 for package in imported:
                     jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
                     if visibility == 'concealed':
-                        concealed.setdefault(jmd.name, set()).add(package)
-            else:
-                for module in concealed:
-                    if module != 'jdk.vm.ci':
-                        abort('Cannot require modules other than jdk.vm.ci in a project with Java compliance < 9', context=self)
-                concealed = {}
+                        if self.defined_java_packages().isdisjoint(jmd.packages):
+                            concealed.setdefault(jmd.name, set()).add(package)
+                        else:
+                            # This project is part of the module defining the concealed package
+                            pass
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, '.concealed_imported_packages', concealed)
         return getattr(self, '.concealed_imported_packages')
@@ -13338,7 +13337,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.5")
+version = VersionSpec("5.20.6")
 
 currentUmask = None
 
