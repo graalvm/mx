@@ -149,7 +149,7 @@ The suite must be able to understand the values for that config.
 
 Here is an example command line:
 
-    mx --vm=jvmci benchmark octane:* \
+    mx --dynamicimport graal-core,js-benchmarks --vm=jvmci benchmark octane:* \
       -- --jsvm=graal-js --jvm-config=noinlining -Xmx2G \
       -- --iters=10
 
