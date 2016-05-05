@@ -2792,10 +2792,8 @@ class Library(BaseLibrary, ClasspathDependency):
 
     def __eq__(self, other):
         if isinstance(other, Library):
-            if len(self.urls) == 0:
-                return self.path == other.path
-            else:
-                return self.urls == other.urls
+            # all that really matters is the sha1 value; the library can be stored at many urls and path is a suite specific location
+            return self.sha1 == other.sha1
         else:
             return NotImplemented
 
@@ -13361,7 +13359,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.21.1")
+version = VersionSpec("5.22.0")
 
 currentUmask = None
 
