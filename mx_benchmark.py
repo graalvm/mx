@@ -575,9 +575,11 @@ class BenchmarkExecutor(object):
               prefix + "commit.rev": vc.parent(mxsuite.dir),
               prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
               prefix + "commit.author": info["author"],
-              prefix + "commit.author-ts": info["author-ts"],
+              # TODO: Disabled until we enable numeric values in extra fields.
+              # prefix + "commit.author-ts": info["author-ts"],
               prefix + "commit.committer": info["committer"],
-              prefix + "commit.committer-ts": info["committer-ts"],
+              # TODO: Disabled until we enable numeric values in extra fields.
+              # prefix + "commit.committer-ts": info["committer-ts"],
             }
 
         standard.update(commit_info("", mx.primary_suite()))
