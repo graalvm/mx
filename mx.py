@@ -73,7 +73,7 @@ import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package
+from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package, get_module_deps
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -198,6 +198,9 @@ _jdkProvidedSuites = set()
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
+
+# List of functions to run after options have been parsed
+_opts_parsed_deferrables = []
 
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
@@ -1771,12 +1774,11 @@ class JavaProject(Project, ClasspathDependency):
                 for package in imported:
                     jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
                     if visibility == 'concealed':
-                        concealed.setdefault(jmd.name, set()).add(package)
-            else:
-                for module in concealed:
-                    if module != 'jdk.vm.ci':
-                        abort('Cannot require modules other than jdk.vm.ci in a project with Java compliance < 9', context=self)
-                concealed = {}
+                        if self.defined_java_packages().isdisjoint(jmd.packages):
+                            concealed.setdefault(jmd.name, set()).add(package)
+                        else:
+                            # This project is part of the module defining the concealed package
+                            pass
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, '.concealed_imported_packages', concealed)
         return getattr(self, '.concealed_imported_packages')
@@ -2129,6 +2131,12 @@ class JavacCompiler(JavacLikeCompiler):
                 :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
                 """
                 for module, packages in dep.get_concealed_imported_packages().iteritems():
+                    if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
+                        # A JVMCI project may refer to a JVMCI API under development which
+                        # can differ with the signature of the JVMCI API in the JDK used
+                        # for compilation. As such, a normal class path reference to the
+                        # JVMCI API must be used instead of an -XaddExports option.
+                        continue
                     for package in packages:
                         exportedPackages = None if exports is None else exports.setdefault(module, set())
                         if exportedPackages is None or package not in exportedPackages:
@@ -6139,6 +6147,7 @@ class SourceSuite(Suite):
                             abort(e + ':' + str(lineNum) + ': line does not match pattern "key=value"')
                         key, value = line.split('=', 1)
                         os.environ[key.strip()] = expandvars_in_property(value.strip())
+                        logv('Setting environment variable %s=%s from %s' % (key.strip(), os.environ[key.strip()], e))
 
     def _load_env(self):
         SourceSuite._load_env_in_mxDir(self.mxDir)
@@ -7081,6 +7090,9 @@ environment variables:
             # Parse the known mx global options and preserve the unknown args, command and
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
+
+            for deferrable in _opts_parsed_deferrables:
+                deferrable()
 
             if opts.version:
                 print 'mx version ' + str(version)
@@ -8214,7 +8226,7 @@ class JDKConfig:
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
         cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
-        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def bootclasspath(self, filtered=True):
         self._init_classpaths()
@@ -8382,6 +8394,12 @@ def get_env(key, default=None):
     return value
 
 def logv(msg=None):
+    if vars(_opts).get('verbose') == None:
+        def _deferrable():
+            logv(msg)
+        _opts_parsed_deferrables.append(_deferrable)
+        return
+
     if _opts.verbose:
         log(msg)
 
@@ -10364,7 +10382,11 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             continue
         ensure_dir_exists(projectDir)
         relevantResources = []
-        for d in dist.archived_deps():
+        jdk = get_jdk(tag='default')
+        relevantResourceDeps = set(dist.archived_deps())
+        if jdk.javaCompliance >= '1.9':
+            relevantResourceDeps.update(get_module_deps(dist))
+        for d in sorted(relevantResourceDeps):
             # Eclipse does not seem to trigger a build for a distribution if the references
             # to the constituent projects are of type IRESOURCE_PROJECT.
             if d.isProject():
@@ -10373,6 +10395,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
             elif d.isDistribution():
                 relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
+
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -10383,7 +10406,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
+        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
         _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=True, async=False, logToConsole=logToConsole, appendToLogFile=False, refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
@@ -11430,25 +11453,30 @@ def fsckprojects(args):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
 
-def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_packages=None):
-    packages = [] if packages is None else packages
-    exclude_packages = [] if exclude_packages is None else exclude_packages
+def _find_packages(project, onlyPublic=True, included=None, excluded=None):
+    """
+    Finds the set of packages defined by a project.
+
+    :param JavaProject project: the Java project to process
+    :param bool onlyPublic: specifies if only packages containing a ``package-info.java`` file are to be considered
+    :param set included: if not None or empty, only consider packages in this set
+    :param set excluded: if not None or empty, do not consider packages in this set
+    """
     sourceDirs = project.source_dirs()
     def is_visible(name):
         if onlyPublic:
             return name == 'package-info.java'
         else:
             return name.endswith('.java')
-    if pkgs is None:
-        pkgs = set()
+    packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
             if len([name for name in files if is_visible(name)]) != 0:
-                pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                if len(packages) == 0 or pkg in packages:
-                    if len(exclude_packages) == 0 or not pkg in exclude_packages:
-                        pkgs.add(pkg)
-    return pkgs
+                package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                if not included or package in included:
+                    if not excluded or package not in excluded:
+                        packages.add(package)
+    return packages
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
 
@@ -11480,13 +11508,13 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         candidates = projects_opt_limit_to_suites()
 
     # optionally restrict packages within a project
-    packages = []
+    include_packages = None
     if args.packages is not None:
-        packages = [name for name in args.packages.split(',')]
+        include_packages = frozenset(args.packages.split(','))
 
-    exclude_packages = []
+    exclude_packages = None
     if args.exclude_packages is not None:
-        exclude_packages = [name for name in args.exclude_packages.split(',')]
+        exclude_packages = frozenset(args.exclude_packages.split(','))
 
     def outDir(p):
         if args.base is None:
@@ -11554,7 +11582,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            pkgs = find_packages(p, set(), False, packages, exclude_packages)
+            pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
@@ -11625,7 +11653,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         sproots = []
         names = []
         for p in projects:
-            find_packages(p, pkgs, not args.implementation, packages, exclude_packages)
+            pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
 
@@ -13466,7 +13494,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.20.6")
+version = VersionSpec("5.21.2")
 
 currentUmask = None
 
