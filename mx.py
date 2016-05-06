@@ -10983,7 +10983,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if processors:
             annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
-        intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
+        intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
 
         moduleXml = XMLDoc()
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
