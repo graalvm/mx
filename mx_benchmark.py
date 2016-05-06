@@ -416,7 +416,11 @@ class JavaVm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
     def name(self):
-        """Returns the unique name of the Java VM."""
+        """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
+        raise NotImplementedError()
+
+    def config_name(self):
+        """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
 
     def run(self, cwd, args):
@@ -433,10 +437,10 @@ class JavaVm(object): #pylint: disable=R0922
         raise NotImplementedError()
 
 
-class JvmciVm(JavaVm): #pylint: disable=R0921
-    """A convenience class for running JVMCI-based Java VMs."""
+class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
+    """A convenience class for running Java VMs."""
 
-    def postProcessCommandLineArgs(self, suiteArgs):
+    def post_process_command_line_args(self, suiteArgs):
         """Adapts command-line arguments to run the specific JVMCI VM."""
         raise NotImplementedError()
 
@@ -444,27 +448,31 @@ class JvmciVm(JavaVm): #pylint: disable=R0921
         """Returns a list of additional dimensions to put into every datapoint."""
         raise NotImplementedError()
 
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        """Runs JVM with the specified arguments stdout and stderr, and working dir."""
+        raise NotImplementedError()
+
     def run(self, cwd, args):
         out = mx.TeeOutputCapture(mx.OutputCapture())
-        args = self.postProcessCommandLineArgs(args)
+        args = self.post_process_command_line_args(args)
         mx.log("Running JVM with args: {0}".format(args))
-        code = mx.get_jdk().run_java(
-            args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        code = self.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
         out = out.underlying.data
         dims = self.dimensions(cwd, args, code, out)
         return code, out, dims
 
 
-def add_java_vm(vmflag, javavm):
-    if javavm.name() in _bm_suite_java_vms:
-        raise RuntimeError("Java VM '{0}' already exists.".format(javavm.name()))
-    _bm_suite_java_vms[(vmflag, javavm.name())] = javavm
+def add_java_vm(javavm):
+    key = (javavm.name(), javavm.config_name())
+    if key in _bm_suite_java_vms:
+        raise RuntimeError("Java VM and config '{0}' already exist.".format(key))
+    _bm_suite_java_vms[key] = javavm
 
 
-def get_java_vm(vmflag, jvmconfig):
-    key = (vmflag, jvmconfig)
+def get_java_vm(vm_name, jvmconfig):
+    key = (vm_name, jvmconfig)
     if not key in _bm_suite_java_vms:
-        raise RuntimeError("Java VM '{0}' does not exist.".format(key))
+        raise RuntimeError("Java VM and config '{0}' do not exist.".format(key))
     return _bm_suite_java_vms[key]
 
 
