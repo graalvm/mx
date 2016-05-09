@@ -7926,8 +7926,14 @@ class JavaCompliance:
 
     def exactMatch(self, version):
         assert isinstance(version, VersionSpec)
-        if len(version.parts) > 1 and version.parts[0] == 1:
-            value = version.parts[1]
+        if len(version.parts) > 0:
+            if len(version.parts) > 1 and version.parts[0] == 1:
+                # First part is a '1',  e.g. '1.8.0'.
+                value = version.parts[1]
+            else:
+                # No preceding '1', e.g. '9-ea'. Used for Java 9 early access releases.
+                value = version.parts[0]
+
             if not self.isLowerBound:
                 return value == self.value
             else:
