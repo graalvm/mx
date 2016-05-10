@@ -574,12 +574,12 @@ class BenchmarkExecutor(object):
           "build.number": self.buildNumber(),
         }
 
-        def commit_info(prefix, mxsuite):
+        def commit_info(prefix, mxsuite, include_ts=False):
             vc = mxsuite.vc
             if vc is None:
                 return {}
             info = vc.parent_info(mxsuite.dir)
-            return {
+            commit_fields = {
               prefix + "commit.rev": vc.parent(mxsuite.dir),
               prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
               prefix + "commit.author": info["author"],
@@ -589,10 +589,15 @@ class BenchmarkExecutor(object):
               # TODO: Disabled until we enable numeric values in extra fields.
               # prefix + "commit.committer-ts": info["committer-ts"],
             }
+            if include_ts:
+              commit_fields[prefix + "commit.committer-ts"] = info["committer-ts"]
+              commit_fields[prefix + "commit.author-ts"] = info["author-ts"]
+            return commit_fields
 
-        standard.update(commit_info("", mx.primary_suite()))
+        standard.update(commit_info("", mx.primary_suite(), include_ts=True))
         for (name, mxsuite) in mx._suites.iteritems():
-            standard.update(commit_info("extra." + name + ".", mxsuite))
+            standard.update(commit_info("extra." + name + ".", mxsuite,
+                include_ts=False))
         return standard
 
     def getSuiteAndBenchNames(self, args):

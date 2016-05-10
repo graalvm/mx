@@ -2824,10 +2824,8 @@ class Library(BaseLibrary, ClasspathDependency):
 
     def __eq__(self, other):
         if isinstance(other, Library):
-            if len(self.urls) == 0:
-                return self.path == other.path
-            else:
-                return self.urls == other.urls
+            # all that really matters is the sha1 value; the library can be stored at many urls and path is a suite specific location
+            return self.sha1 == other.sha1
         else:
             return NotImplemented
 
@@ -8061,8 +8059,14 @@ class JavaCompliance:
 
     def exactMatch(self, version):
         assert isinstance(version, VersionSpec)
-        if len(version.parts) > 1 and version.parts[0] == 1:
-            value = version.parts[1]
+        if len(version.parts) > 0:
+            if len(version.parts) > 1 and version.parts[0] == 1:
+                # First part is a '1',  e.g. '1.8.0'.
+                value = version.parts[1]
+            else:
+                # No preceding '1', e.g. '9-ea'. Used for Java 9 early access releases.
+                value = version.parts[0]
+
             if not self.isLowerBound:
                 return value == self.value
             else:
@@ -11118,7 +11122,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         if processors:
             annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
-        intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
+        intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
 
         moduleXml = XMLDoc()
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
@@ -13494,7 +13498,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.21.2")
+version = VersionSpec("5.22.1")
 
 currentUmask = None
 
