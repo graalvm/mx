@@ -579,20 +579,14 @@ class BenchmarkExecutor(object):
             if vc is None:
                 return {}
             info = vc.parent_info(mxsuite.dir)
-            commit_fields = {
+            return {
               prefix + "commit.rev": vc.parent(mxsuite.dir),
               prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
               prefix + "commit.author": info["author"],
-              # TODO: Disabled until we enable numeric values in extra fields.
-              # prefix + "commit.author-ts": info["author-ts"],
+              prefix + "commit.author-ts": info["author-ts"],
               prefix + "commit.committer": info["committer"],
-              # TODO: Disabled until we enable numeric values in extra fields.
-              # prefix + "commit.committer-ts": info["committer-ts"],
+              prefix + "commit.committer-ts": info["committer-ts"],
             }
-            if include_ts:
-              commit_fields[prefix + "commit.committer-ts"] = info["committer-ts"]
-              commit_fields[prefix + "commit.author-ts"] = info["author-ts"]
-            return commit_fields
 
         standard.update(commit_info("", mx.primary_suite(), include_ts=True))
         for (name, mxsuite) in mx._suites.iteritems():
