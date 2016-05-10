@@ -8244,7 +8244,7 @@ class JDKConfig:
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides)
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages)
             setattr(self, '.boot_layer_modules', tuple(modules.values()))
         return getattr(self, '.boot_layer_modules')
 
