@@ -9785,13 +9785,14 @@ def eclipseinit_cli(args):
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
+    parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True) + [_mx_suite]:
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force)
 
     generate_eclipse_workingsets()
 
@@ -10217,7 +10218,7 @@ def _capture_eclipse_settings(logToConsole):
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -10231,7 +10232,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
     update_file(settingsFile, _capture_eclipse_settings(logToConsole))
-    if _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
+    if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
         logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
 
@@ -10282,7 +10283,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=True, async=False, logToConsole=logToConsole, appendToLogFile=False, refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
+        builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
+                                      relevantResources=relevantResources,
+                                      logToFile=True, refresh=True, async=False,
+                                      logToConsole=logToConsole, appendToLogFile=False,
+                                      refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
+        files = files + builders
+
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
@@ -10386,7 +10393,8 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.close('launchConfiguration')
 
     ensure_dir_exists(externalToolDir)
-    update_file(join(externalToolDir, name + '.launch'), launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
+    launchFile = join(externalToolDir, name + '.launch')
+    update_file(launchFile, launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
 
     dotProjectDoc.open('buildCommand')
     dotProjectDoc.element('name', data='org.eclipse.ui.externaltools.ExternalToolBuilder')
@@ -10402,6 +10410,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     dotProjectDoc.close('dictionary')
     dotProjectDoc.close('arguments')
     dotProjectDoc.close('buildCommand')
+    return [launchFile]
 
 def generate_eclipse_workingsets():
     """
