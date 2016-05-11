@@ -10089,7 +10089,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     out.open('projectDescription')
     out.element('name', data=p.name)
     out.element('comment', data='')
-    out.element('projects', data='')
+    out.open('projects')
+    for dep in sorted(projectDeps):
+        if not dep.isNativeProject():
+            out.element('project', data=dep.name)
+    out.close('projects')
     out.open('buildSpec')
     out.open('buildCommand')
     out.element('name', data='org.eclipse.jdt.core.javabuilder')
@@ -10264,15 +10268,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
-            elif d.isDistribution():
-                relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
 
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
         out.element('comment', data='Updates ' + dist.path + ' if a project dependency of ' + dist.name + ' is updated')
         out.open('projects')
-        for d in dist.deps:
+        for d in sorted(relevantResourceDeps):
             out.element('project', data=d.name)
         out.close('projects')
         out.open('buildSpec')
@@ -10323,7 +10325,6 @@ RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
 # http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
 IRESOURCE_FILE = 1
 IRESOURCE_FOLDER = 2
-IRESOURCE_PROJECT = 4
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
