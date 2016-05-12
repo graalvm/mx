@@ -256,7 +256,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
     # TODO: Remove once all the downstream suites become up-to-date.
     def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
-        self.validateStdoutWithDimensions(
+        return self.validateStdoutWithDimensions(
             out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
 
     def validateStdoutWithDimensions(
@@ -408,7 +408,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if args is None:
-            return 0, ""
+            return 0, "", {}
         return jvm.run(cwd, args)
 
 
