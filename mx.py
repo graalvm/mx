@@ -3681,7 +3681,7 @@ class GitConfig(VC):
         return os.path.exists(gitdir)
 
     def git_command(self, vcdir, args, abortOnError=False, quiet=True):
-        args = ['git'] + args
+        args = ['git', '--no-pager'] + args
         if not quiet:
             print '{0}'.format(" ".join(args))
         out = OutputCapture()
