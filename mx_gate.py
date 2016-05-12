@@ -30,7 +30,6 @@ from argparse import ArgumentParser
 import xml.dom.minidom
 
 import mx
-import mx_microbench
 
 """
 Predefined Task tags.
@@ -306,9 +305,6 @@ def gate(args):
         with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
-
-        with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
-            if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
 
         if exists('jacoco.exec'):
             os.unlink('jacoco.exec')
