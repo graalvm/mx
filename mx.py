@@ -8377,7 +8377,7 @@ class JDKConfig:
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides)
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages)
             setattr(self, '.boot_layer_modules', tuple(modules.values()))
         return getattr(self, '.boot_layer_modules')
 
@@ -8916,11 +8916,17 @@ def build_suite(s):
         build_command = build
     build_command(['--dependencies', ','.join(project_names)])
 
-def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
+def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction=lambda f: f):
     """
-    Returns a generator for splitting up a list of files into chunks such that the
-    size of the space separated file paths in a chunk is less than a given limit.
+    Gets a generator for splitting up a list of files into chunks such that the
+    size of the `separator` separated file paths in a chunk is less than `limit`.
     This is used to work around system command line length limits.
+
+    :param list files: list of files to chunk
+    :param int limit: the maximum number of characters in a chunk. If None, then a limit is derived from host OS limits.
+    :param str separator: the separator between each file path on the command line
+    :param pathFunction: a function for converting each entry in `files` to a path name
+    :return: a generator yielding the list of files in each chunk
     """
     chunkSize = 0
     chunkStart = 0
@@ -8941,7 +8947,7 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
             assert limit > 0
     for i in range(len(files)):
         path = pathFunction(files[i])
-        size = len(path) + 1
+        size = len(path) + len(separator)
         assert size < limit
         if chunkSize + size < limit:
             chunkSize += size
@@ -8953,6 +8959,8 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
     if chunkStart == 0:
         assert chunkSize < limit
         yield files
+    elif chunkStart < len(files):
+        yield files[chunkStart:]
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
@@ -10222,7 +10230,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     out.open('projectDescription')
     out.element('name', data=p.name)
     out.element('comment', data='')
-    out.element('projects', data='')
+    out.open('projects')
+    for dep in sorted(projectDeps):
+        if not dep.isNativeProject():
+            out.element('project', data=dep.name)
+    out.close('projects')
     out.open('buildSpec')
     out.open('buildCommand')
     out.element('name', data='org.eclipse.jdt.core.javabuilder')
@@ -10397,15 +10409,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
-            elif d.isDistribution():
-                relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
 
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
         out.element('comment', data='Updates ' + dist.path + ' if a project dependency of ' + dist.name + ' is updated')
         out.open('projects')
-        for d in dist.deps:
+        for d in sorted(relevantResourceDeps):
             out.element('project', data=d.name)
         out.close('projects')
         out.open('buildSpec')
@@ -10456,7 +10466,6 @@ RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
 # http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
 IRESOURCE_FILE = 1
 IRESOURCE_FOLDER = 2
-IRESOURCE_PROJECT = 4
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
@@ -13498,7 +13507,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.22.1")
+version = VersionSpec("5.23.1")
 
 currentUmask = None
 
