@@ -3352,8 +3352,10 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
-    def hg_command(self, vcdir, args, abortOnError=False):
+    def hg_command(self, vcdir, args, abortOnError=False, quiet=True):
         args = ['hg', '-R', vcdir] + args
+        if not quiet:
+            print '{0}'.format(" ".join(args))
         out = OutputCapture()
         rc = self.run(args, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
@@ -3678,8 +3680,10 @@ class GitConfig(VC):
         # check for existence to also cover git submodules
         return os.path.exists(gitdir)
 
-    def git_command(self, vcdir, args, abortOnError=False):
-        args = ['git', '--no-pager'] + args
+    def git_command(self, vcdir, args, abortOnError=False, quiet=True):
+        args = ['git'] + args
+        if not quiet:
+            print '{0}'.format(" ".join(args))
         out = OutputCapture()
         rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
