@@ -27,7 +27,6 @@
 import json
 import re
 import socket
-import subprocess
 import traceback
 import uuid
 from argparse import ArgumentParser
@@ -35,7 +34,9 @@ from argparse import ArgumentParser
 import mx
 
 
+_bm_suite_java_vms = {}
 _bm_suites = {}
+_benchmark_executor = None
 
 
 class BenchmarkSuite(object):
@@ -149,9 +150,12 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
 
-def add_bm_suite(suite):
+def add_bm_suite(suite, mxsuite=None):
+    if mxsuite is None:
+        mxsuite = mx.currently_loading_suite.get()
     if suite.name() in _bm_suites:
         raise RuntimeError("Benchmark suite '{0}' already exists.".format(suite.name()))
+    setattr(suite, ".mxsuite", mxsuite)
     _bm_suites[suite.name()] = suite
 
 
@@ -240,17 +244,38 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
     5. Use the parse rules on the standard output to create data points.
     """
     def run(self, benchmarks, bmSuiteArgs):
-        retcode, out = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
+        runretval = self.runAndReturnStdOut(benchmarks, bmSuiteArgs)
+        if len(runretval) == 3:
+            retcode, out, dims = runretval
+            return self.validateStdoutWithDimensions(
+                out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
+        else:
+            # TODO: Remove old-style validateStdOut after updating downstream suites.
+            retcode, out = runretval
+            return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
 
+    # TODO: Remove once all the downstream suites become up-to-date.
     def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
+        self.validateStdoutWithDimensions(
+            out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
+
+    def validateStdoutWithDimensions(
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, *args, **kwargs):
         """Validate out against the parse rules and create data points.
+
+        The dimensions from the `dims` dict are added to each datapoint parsed from the
+        standard output.
+
         Subclass may override to customize validation.
         """
+        if dims is None:
+            dims = {}
+
         def compiled(pat):
             if type(pat) is str:
                 return re.compile(pat)
             return pat
+
         flaky = False
         for pat in self.flakySuccessPatterns():
             if compiled(pat).match(out):
@@ -272,7 +297,10 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
-            datapoints.extend(rule.parse(out))
+            parsedpoints = rule.parse(out)
+            for datapoint in parsedpoints:
+                datapoint.update(dims)
+            datapoints.extend(parsedpoints)
         return datapoints
 
     def validateReturnCode(self, retcode):
@@ -321,12 +349,19 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
 class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
+
+    This suite relies on the `--jvm-config` flag to specify which JVM must be used to
+    run. The suite comes with methods `jvmConfig`, `vmArgs` and `runArgs` that know how
+    to extract the `--jvm-config` and the VM-and-run arguments to the benchmark suite
+    (see the `benchmark` method for more information).
     """
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
         :param list benchmarks: List of benchmarks from the suite to execute.
         :param list bmSuiteArgs: Arguments passed to the suite.
+        :return: A list of command-line arguments.
+        :rtype: list
         """
         raise NotImplementedError()
 
@@ -338,20 +373,107 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         return None
 
+    def vmAndRunArgs(self, bmSuiteArgs):
+        return splitArgs(bmSuiteArgs, "--")
+
+    def splitJvmConfigArg(self, bmSuiteArgs):
+        parser = ArgumentParser()
+        parser.add_argument("--jvm-config", default=None)
+        args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
+        return args.jvm_config, remainder
+
+    def jvmConfig(self, bmSuiteArgs):
+        """Returns the value of the `--jvm-config` argument or `None` if not present."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[0]
+
+    def vmArgs(self, bmSuiteArgs):
+        """Returns the VM arguments for the benchmark."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[1]
+
+    def runArgs(self, bmSuiteArgs):
+        """Returns the run arguments for the benchmark."""
+        return self.vmAndRunArgs(bmSuiteArgs)[1]
+
+    def getJavaVm(self, bmSuiteArgs):
+        config = self.jvmConfig(bmSuiteArgs)
+        if config is None:
+            config = "default"
+        return get_java_vm(mx._opts.vm, config)
+
     def before(self, bmSuiteArgs):
-        mx.log("Running on JVM with -version:")
-        mx.get_jdk().run_java(["-version"], nonZeroIsFatal=False)
+        self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
-        jdk = mx.get_jdk()
-        out = mx.TeeOutputCapture(mx.OutputCapture())
+        jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if args is None:
             return 0, ""
-        mx.log("Running JVM with args: {0}.".format(args))
-        exitCode = jdk.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
-        return exitCode, out.underlying.data
+        return jvm.run(cwd, args)
+
+
+class JavaVm(object): #pylint: disable=R0922
+    """Base class for objects that can run Java VMs."""
+
+    def name(self):
+        """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
+        raise NotImplementedError()
+
+    def config_name(self):
+        """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
+        raise NotImplementedError()
+
+    def run(self, cwd, args):
+        """Runs the JVM with the specified args.
+
+        Returns an exit code, a capture of the standard output, and a dictionary of
+        extra dimensions to incorporate into the datapoints.
+
+        :param str cwd: Current working directory.
+        :param list args: List of command-line arguments for the VM.
+        :return: A tuple with an exit-code, stdout, and a dict with extra dimensions.
+        :rtype: tuple
+        """
+        raise NotImplementedError()
+
+
+class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
+    """A convenience class for running Java VMs."""
+
+    def post_process_command_line_args(self, suiteArgs):
+        """Adapts command-line arguments to run the specific JVMCI VM."""
+        raise NotImplementedError()
+
+    def dimensions(self, cwd, args, code, out):
+        """Returns a list of additional dimensions to put into every datapoint."""
+        raise NotImplementedError()
+
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        """Runs JVM with the specified arguments stdout and stderr, and working dir."""
+        raise NotImplementedError()
+
+    def run(self, cwd, args):
+        out = mx.TeeOutputCapture(mx.OutputCapture())
+        args = self.post_process_command_line_args(args)
+        mx.log("Running JVM with args: {0}".format(args))
+        code = self.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        out = out.underlying.data
+        dims = self.dimensions(cwd, args, code, out)
+        return code, out, dims
+
+
+def add_java_vm(javavm):
+    key = (javavm.name(), javavm.config_name())
+    if key in _bm_suite_java_vms:
+        raise RuntimeError("Java VM and config '{0}' already exist.".format(key))
+    _bm_suite_java_vms[key] = javavm
+
+
+def get_java_vm(vm_name, jvmconfig):
+    key = (vm_name, jvmconfig)
+    if not key in _bm_suite_java_vms:
+        raise RuntimeError("Java VM and config '{0}' do not exist.".format(key))
+    return _bm_suite_java_vms[key]
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
@@ -362,12 +484,6 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
 
     def validateReturnCode(self, retcode):
         return True
-
-    def vmArgs(self, bmSuiteArgs):
-        return []
-
-    def runArgs(self, bmSuiteArgs):
-        return []
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         return bmSuiteArgs
@@ -382,9 +498,6 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
-
-
-add_bm_suite(TestBenchmarkSuite())
 
 
 class BenchmarkExecutor(object):
@@ -423,37 +536,10 @@ class BenchmarkExecutor(object):
     def machineRam(self):
         return -1
 
-    def commitRev(self):
-        sha1 = subprocess.check_output(["git", "rev-parse", "HEAD"])
-        return sha1.strip()
-
-    def commitRepoUrl(self):
-        url = subprocess.check_output(["git", "config", "--get", "remote.origin.url"])
-        return url.strip()
-
-    def commitAuthor(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%an", "HEAD"])
-        return out.strip()
-
-    def commitAuthorTimestamp(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%at", "HEAD"])
-        return int(out.strip())
-
-    def commitCommitter(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%cn", "HEAD"])
-        return out.strip()
-
-    def commitCommitTimestamp(self):
-        out = subprocess.check_output(["git", "--no-pager", "show", "-s",
-            "--format=%ct", "HEAD"])
-        return int(out.strip())
-
     def branch(self):
-        out = subprocess.check_output(["git", "name-rev", "--name-only", "HEAD"])
-        return out.strip()
+        mxsuite = mx.primary_suite()
+        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        return name
 
     def buildUrl(self):
         return mx.get_env("BUILD_URL", default="")
@@ -468,7 +554,7 @@ class BenchmarkExecutor(object):
         pass
 
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
-        return {
+        standard = {
           "metric.uuid": self.uid(),
           "group": self.group(suite),
           "subgroup": suite.subgroup(),
@@ -483,16 +569,30 @@ class BenchmarkExecutor(object):
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
           "machine.ram": self.machineRam(),
-          "commit.rev": self.commitRev(),
-          "commit.repo-url": self.commitRepoUrl(),
-          "commit.author": self.commitAuthor(),
-          "commit.author-ts": self.commitAuthorTimestamp(),
-          "commit.committer": self.commitCommitter(),
-          "commit.committer-ts": self.commitCommitTimestamp(),
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
         }
+
+        def commit_info(prefix, mxsuite, include_ts=False):
+            vc = mxsuite.vc
+            if vc is None:
+                return {}
+            info = vc.parent_info(mxsuite.dir)
+            return {
+              prefix + "commit.rev": vc.parent(mxsuite.dir),
+              prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
+              prefix + "commit.author": info["author"],
+              prefix + "commit.author-ts": info["author-ts"],
+              prefix + "commit.committer": info["committer"],
+              prefix + "commit.committer-ts": info["committer-ts"],
+            }
+
+        standard.update(commit_info("", mx.primary_suite(), include_ts=True))
+        for (name, mxsuite) in mx._suites.iteritems():
+            standard.update(commit_info("extra." + name + ".", mxsuite,
+                include_ts=False))
+        return standard
 
     def getSuiteAndBenchNames(self, args):
         argparts = args.benchmark.split(":")

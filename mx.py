@@ -59,6 +59,7 @@ import glob
 import urllib2, urlparse
 from collections import Callable
 from collections import OrderedDict, namedtuple
+from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
@@ -83,6 +84,37 @@ try:
     import readline #pylint: disable=unused-import
 except ImportError:
     pass
+
+
+class DynamicVar(object):
+    def __init__(self, initial_value):
+        self.value = initial_value
+
+    def get(self):
+        return self.value
+
+    def set_scoped(self, newvalue):
+        return DynamicVarScope(self, newvalue)
+
+
+class DynamicVarScope(object):
+    def __init__(self, dynvar, newvalue):
+        self.dynvar = dynvar
+        self.newvalue = newvalue
+
+    def __enter__(self):
+        assert not hasattr(self, "oldvalue")
+        self.oldvalue = self.dynvar.value
+        self.dynvar.value = self.newvalue
+
+    def __exit__(self, tpe, value, traceback):
+        self.dynvar.value = self.oldvalue
+        self.oldvalue = None
+        self.newvalue = None
+
+
+currently_loading_suite = DynamicVar(None)
+
 
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
@@ -2960,7 +2992,7 @@ class VC(object):
         Get the most recent changeset for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
-        :param bool abortOnError: if True abort on mx error
+        :param bool abortOnError: if True abort on error
         :return: most recent changeset for specified repository,
                  None if failure and `abortOnError` is False
         :rtype: str
@@ -2972,12 +3004,56 @@ class VC(object):
         Get the parent changeset of the working directory for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
-        :param bool abortOnError: if True abort on mx error
+        :param bool abortOnError: if True abort on error
         :return: most recent changeset for specified repository,
                  None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + " id is not implemented")
+
+    def parent_info(self, vcdir, abortOnError=True):
+        """
+        Get the dict with common commit information.
+
+        The following fields are provided in the dict:
+
+        - author: name <e-mail> (best-effort, might only contain a name)
+        - author-ts: unix timestamp (int)
+        - committer: name <e-mail> (best-effort, might only contain a name)
+        - committer-ts: unix timestamp (int)
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on error
+        :return: dictionary with information key-value pairs
+        :rtype: dict
+        """
+        abort(self.kind + " parent_info is not implemented")
+
+    def _sanitize_parent_info(self, info):
+        """Utility method to sanitize the parent_info dictionary.
+
+        Converts integer fields to actual ints, and strips.
+        """
+        def strip(field):
+            info[field] = info[field].strip()
+        def to_int(field):
+            info[field] = int(info[field].strip())
+        to_int("author-ts")
+        to_int("committer-ts")
+        strip("author")
+        strip("committer")
+        return info
+
+    def active_branch(self, vcdir, abortOnError=True):
+        """
+        Returns the active branch of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on error
+        :return: name of the branch
+        :rtype: str
+        """
+        abort(self.kind + " active_branch is not implemented")
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
@@ -3276,10 +3352,8 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
-    def hg_command(self, vcdir, args, abortOnError=False, quiet=False):
+    def hg_command(self, vcdir, args, abortOnError=False):
         args = ['hg', '-R', vcdir] + args
-        if not quiet:
-            print '{0}'.format(" ".join(args))
         out = OutputCapture()
         rc = self.run(args, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
@@ -3288,6 +3362,18 @@ class HgConfig(VC):
             if abortOnError:
                 abort(" ".join(args) + ' returned ' + str(rc))
             return None
+
+    def active_branch(self, vcdir, abortOnError=True):
+        out = OutputCapture()
+        cmd = ['hg', 'bookmarks']
+        rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
+        if rc == 0:
+            for line in out.data.splitlines():
+                if line.strip().startswith(' * '):
+                    return line[3:].split(" ")[0]
+        if abortOnError:
+            abort('no active hg bookmark found')
+        return None
 
     def add(self, vcdir, path, abortOnError=True):
         return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
@@ -3322,6 +3408,17 @@ class HgConfig(VC):
                 abort('hg parents failed')
             else:
                 return None
+
+    def parent_info(self, vcdir, abortOnError=True):
+        out = self.hg_command(vcdir, ["log", "-r", ".", "--template", "{author}|||{date|hgdate}"], abortOnError=abortOnError)
+        author, date = out.split("|||")
+        ts, _ = date.split(" ")
+        return self._sanitize_parent_info({
+            "author": author,
+            "author-ts": ts,
+            "committer": author,
+            "committer-ts": ts,
+        })
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
@@ -3581,10 +3678,8 @@ class GitConfig(VC):
         # check for existence to also cover git submodules
         return os.path.exists(gitdir)
 
-    def git_command(self, vcdir, args, abortOnError=False, quiet=False):
-        args = ['git'] + args
-        if not quiet:
-            print '{0}'.format(" ".join(args))
+    def git_command(self, vcdir, args, abortOnError=False):
+        args = ['git', '--no-pager'] + args
         out = OutputCapture()
         rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
@@ -3646,6 +3741,16 @@ class GitConfig(VC):
                 abort('git show failed')
             else:
                 return None
+
+    def parent_info(self, vcdir, abortOnError=True):
+        out = self.git_command(vcdir, ["show", "-s", "--format=%an <%ae>|||%at|||%cn <%ce>|||%ct", "HEAD"], abortOnError=abortOnError)
+        author, author_ts, committer, committer_ts = out.split("|||")
+        return self._sanitize_parent_info({
+            "author": author,
+            "author-ts": author_ts,
+            "committer": committer,
+            "committer-ts": committer_ts,
+        })
 
     def _tags(self, vcdir, prefix, abortOnError=True):
         """
@@ -3803,14 +3908,13 @@ class GitConfig(VC):
                         'incoming' if incoming else 'outgoing', str(rc)))
             return None
 
-    def _active_branch(self, vcdir, abortOnError=True):
+    def active_branch(self, vcdir, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', 'branch']
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
         if rc == 0:
             for line in out.data.splitlines():
                 if line.strip().startswith('*'):
-                    print line
                     return line.split()[1].strip()
         if abortOnError:
             abort('no active git branch found')
@@ -3865,7 +3969,7 @@ class GitConfig(VC):
         :rtype: bool
         """
         if update and not rev:
-            active_branch = self._active_branch(vcdir, abortOnError)
+            active_branch = self.active_branch(vcdir, abortOnError)
             cmd = ['git', 'pull', 'origin', 'HEAD:{0}'.format(active_branch)]
             self._log_pull(vcdir, rev)
             out = OutputCapture()
@@ -4140,7 +4244,7 @@ class BinaryVC(VC):
         """
         assert dest
         suite_name = extra_args['suite_name']
-        metadata = self.Metadata(suite_name, url, None)
+        metadata = self.Metadata(suite_name, url, None, None)
         if not rev:
             rev = self._tip(metadata)
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
@@ -4163,6 +4267,7 @@ class BinaryVC(VC):
                 abort('Version {} not found for {}:{}'.format(metadata.snapshotVersion, groupId, artifactId))
             return False
         build = snapshot.getCurrentSnapshotBuild()
+        metadata.snapshotTimestamp = snapshot.currentTime
         try:
             (jar_url, jar_sha_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
@@ -4177,20 +4282,27 @@ class BinaryVC(VC):
         return True
 
     class Metadata:
-        def __init__(self, suiteName, repourl, snapshotVersion):
+        def __init__(self, suiteName, repourl, snapshotVersion, snapshotTimestamp):
             self.suiteName = suiteName
             self.repourl = repourl
             self.snapshotVersion = snapshotVersion
+            self.snapshotTimestamp = snapshotTimestamp
 
     def _writeMetadata(self, vcdir, metadata):
         with open(join(vcdir, _mx_binary_distribution_version(metadata.suiteName)), 'w') as f:
-            f.write("{0},{1}".format(metadata.repourl, metadata.snapshotVersion))
+            f.write("{0},{1},{2}".format(metadata.repourl, metadata.snapshotVersion, metadata.snapshotTimestamp))
 
     def _readMetadata(self, vcdir):
         suiteName = basename(vcdir)
         with open(join(vcdir, _mx_binary_distribution_version(suiteName))) as f:
-            repourl, snapshotVersion = f.read().split(',')
-        return self.Metadata(suiteName, repourl, snapshotVersion)
+            parts = f.read().split(',')
+            if len(parts) == 2:
+                # Older versions of the persisted metadata do not contain the snapshot timestamp.
+                repourl, snapshotVersion = parts
+                snapshotTimestamp = None
+            else:
+                repourl, snapshotVersion, snapshotTimestamp = parts
+        return self.Metadata(suiteName, repourl, snapshotVersion, snapshotTimestamp)
 
     def getDistribution(self, vcdir, distribution):
         suiteName = basename(vcdir)
@@ -4251,6 +4363,26 @@ class BinaryVC(VC):
 
     def parent(self, vcdir, abortOnError=True):
         return self._id(self._readMetadata(vcdir))
+
+    def parent_info(self, vcdir, abortOnError=True):
+        def decode(ts):
+            if ts is None:
+                return 0
+            yyyy = int(ts[0:4])
+            mm = int(ts[4:6])
+            dd = int(ts[6:8])
+            hh = int(ts[9:11])
+            mi = int(ts[11:13])
+            ss = int(ts[13:15])
+            return (datetime(yyyy, mm, dd, hh, mi, ss) - datetime(1970, 1, 1)).total_seconds()
+        metadata = self._readMetadata(vcdir)
+        timestamp = decode(metadata.snapshotTimestamp)
+        return {
+            "author": "",
+            "author-ts": timestamp,
+            "committer": "",
+            "committer-ts": timestamp,
+        }
 
     def _id(self, metadata):
         assert metadata.snapshotVersion.endswith('-SNAPSHOT')
@@ -5410,20 +5542,21 @@ class Suite:
                 abort(extensionsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[extensionsName].__file__)
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
-            mod = __import__(extensionsName)
+            with currently_loading_suite.set_scoped(self):
+                mod = __import__(extensionsName)
 
-            self.extensions = sys.modules.pop(extensionsName)
-            sys.modules[extensionsName] = self.extensions
+                self.extensions = sys.modules.pop(extensionsName)
+                sys.modules[extensionsName] = self.extensions
 
-            # revert the Python path
-            del sys.path[0]
+                # revert the Python path
+                del sys.path[0]
 
-            if hasattr(mod, 'mx_post_parse_cmd_line'):
-                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
+                if hasattr(mod, 'mx_post_parse_cmd_line'):
+                    self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
-            if hasattr(mod, 'mx_init'):
-                mod.mx_init(self)
-            self.extensions = mod
+                if hasattr(mod, 'mx_init'):
+                    mod.mx_init(self)
+                self.extensions = mod
 
     def _init_imports(self):
         importsMap = self._check_suiteDict("imports")
@@ -12873,7 +13006,7 @@ def show_version(args):
     print version
     vc = VC.get_vc(_mx_home, abortOnError=False)
     if isinstance(vc, HgConfig):
-        out = vc.hg_command(_mx_home, ['id', '-i'], quiet=True, abortOnError=False)
+        out = vc.hg_command(_mx_home, ['id', '-i'], abortOnError=False)
         if out:
             print 'hg:', out
 
@@ -13374,7 +13507,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.23.0")
+version = VersionSpec("5.23.1")
 
 currentUmask = None
 
