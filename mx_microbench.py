@@ -72,13 +72,17 @@ class MicrobenchExecutor(object):
             args = ['-jar', known_args.jar]
             if not forking:
                 args += vmArgs
+            # we do not know the compliance level of the jar - assuming 1.8
+            self.javaCompliance = mx.JavaCompliance('1.8')
         else:
             # find all projects with a direct JMH dependency
             jmhProjects = []
             for p in mx.projects_opt_limit_to_suites():
                 if 'JMH' in [x.name for x in p.deps]:
-                    jmhProjects.append(p.name)
-            cp = mx.classpath(jmhProjects)
+                    jmhProjects.append(p)
+            cp = mx.classpath([p.name for p in jmhProjects])
+            # get java compliance - 1.8 is minimum since we build jmh-runner with java 8
+            self.javaCompliance = max([p.javaCompliance for p in jmhProjects] + [mx.JavaCompliance('1.8')])
 
             # execute JMH runner
             args = ['-cp', cp]
@@ -100,7 +104,7 @@ class MicrobenchExecutor(object):
         pass
 
     def run_java(self, args):
-        mx.run_java(args)
+        mx.run_java(args, jdk=mx.get_jdk(self.javaCompliance))
 
     def parseVmArgs(self, vmArgs):
         return vmArgs
