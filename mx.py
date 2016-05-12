@@ -4365,6 +4365,9 @@ class BinaryVC(VC):
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
 
+    def default_pull(self, vcdir, abortOnError=True):
+        return self._readMetadata(vcdir).repourl
+
     def parent(self, vcdir, abortOnError=True):
         return self._id(self._readMetadata(vcdir))
 
@@ -4382,9 +4385,9 @@ class BinaryVC(VC):
         metadata = self._readMetadata(vcdir)
         timestamp = decode(metadata.snapshotTimestamp)
         return {
-            "author": "",
+            "author": "<unknown>",
             "author-ts": timestamp,
-            "committer": "",
+            "committer": "<unknown>",
             "committer-ts": timestamp,
         }
 
