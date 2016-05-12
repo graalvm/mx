@@ -8783,11 +8783,17 @@ def build_suite(s):
         build_command = build
     build_command(['--dependencies', ','.join(project_names)])
 
-def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
+def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction=lambda f: f):
     """
-    Returns a generator for splitting up a list of files into chunks such that the
-    size of the space separated file paths in a chunk is less than a given limit.
+    Gets a generator for splitting up a list of files into chunks such that the
+    size of the `separator` separated file paths in a chunk is less than `limit`.
     This is used to work around system command line length limits.
+
+    :param list files: list of files to chunk
+    :param int limit: the maximum number of characters in a chunk. If None, then a limit is derived from host OS limits.
+    :param str separator: the separator between each file path on the command line
+    :param pathFunction: a function for converting each entry in `files` to a path name
+    :return: a generator yielding the list of files in each chunk
     """
     chunkSize = 0
     chunkStart = 0
@@ -8808,7 +8814,7 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
             assert limit > 0
     for i in range(len(files)):
         path = pathFunction(files[i])
-        size = len(path) + 1
+        size = len(path) + len(separator)
         assert size < limit
         if chunkSize + size < limit:
             chunkSize += size
@@ -8820,6 +8826,8 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
     if chunkStart == 0:
         assert chunkSize < limit
         yield files
+    elif chunkStart < len(files):
+        yield files[chunkStart:]
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
@@ -13366,7 +13374,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.22.0")
+version = VersionSpec("5.22.1")
 
 currentUmask = None
 
