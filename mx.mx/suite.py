@@ -105,10 +105,10 @@ suite = {
     },
 
     "JMH" : {
-      "sha1" : "7e1577cf6e1f1326b78a322d206fa9412fd41ae9",
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2.jar"],
-      "sourceSha1" : "12a67f0dcdfe7e43218bf38c1d7fd766122a3dc7",
-      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2-sources.jar"],
+      "sha1" : "df111ae8e92bfd84fe135b844c4e3a910e1b8497",
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12.jar"],
+      "sourceSha1" : "b8c0f381c83c08b36244ab116025f87841e6b251",
+      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
       "licence" : "GPLv2-CPE",
     },
   },
