@@ -134,6 +134,16 @@ suite = {
 
   "projects" : {
 
+    "com.oracle.mxtool.bench" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "dependencies" : [
+        "JMH",
+      ],
+      "javaCompliance" : "1.8",
+      "annotationProcessors" : ["JMH"],
+    },
+
     "com.oracle.mxtool.junit" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
