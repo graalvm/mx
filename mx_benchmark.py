@@ -278,7 +278,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         flaky = False
         for pat in self.flakySuccessPatterns():
-            if compiled(pat).match(out):
+            if compiled(pat).search(out):
                 flaky = True
         if not flaky:
             if retcode:
@@ -286,11 +286,11 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                     raise RuntimeError(
                         "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
-                if compiled(pat).match(out):
+                if compiled(pat).search(out):
                     raise RuntimeError("Benchmark failed")
             success = False
             for pat in self.successPatterns():
-                if not compiled(pat).match(out):
+                if compiled(pat).search(out):
                     success = True
             if not success:
                 raise RuntimeError("Benchmark failed")
