@@ -8331,9 +8331,10 @@ class JDKConfig:
         if self.javaCompliance < '9':
             return []
         if not hasattr(self, '.boot_layer_modules'):
-            _, binDir = _compile_mx_class('ListBootModules', jdk=self)
+            addExportsArg = '-XaddExports:java.base/jdk.internal.module=ALL-UNNAMED'
+            _, binDir = _compile_mx_class('ListBootModules', jdk=self, extraJavacArgs=[addExportsArg])
             out = LinesOutputCapture()
-            run([self.java, '-cp', _cygpathU2W(binDir), 'ListBootModules'], out=out)
+            run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListBootModules'], out=out)
 
             modules = {}
             name = None
@@ -12679,7 +12680,7 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
-def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
+def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None):
     myDir = _mx_home if myDir is None else myDir
     binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
@@ -12689,7 +12690,9 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
         javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
         if classpath:
-            cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
+            cmd.extend(['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)])
+        if extraJavacArgs:
+            cmd.extend(extraJavacArgs)
         cmd += [_cygpathU2W(javaSource)]
         try:
             subprocess.check_call(cmd)
@@ -13523,7 +13526,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.23.1")
+version = VersionSpec("5.23.2")
 
 currentUmask = None
 

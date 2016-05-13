@@ -23,12 +23,15 @@
 import java.lang.reflect.Module;
 import java.lang.reflect.Layer;
 import java.lang.module.ModuleDescriptor;
+import java.lang.module.ModuleReference;
+import java.lang.module.ModuleFinder;
 import java.io.PrintStream;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.HashSet;
+import jdk.internal.module.ModuleBootstrap;
 
 /**
  * Utility for listing the module-info for all the modules
@@ -58,8 +61,8 @@ public class ListBootModules {
 
     public static void main(String[] args) {
         PrintStream out = System.out;
-        for (Module module : Layer.boot().modules()) {
-            ModuleDescriptor md = module.getDescriptor();
+        for (ModuleReference moduleRef : ModuleBootstrap.finder().findAll()) {
+            ModuleDescriptor md = moduleRef.descriptor();
             if (!matches(md.name(), args)) {
                 continue;
             }
