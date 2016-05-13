@@ -291,6 +291,8 @@ def make_java_module(dist, jdk):
         packages.extend(dep.defined_java_packages())
 
     provides = {}
+    if exists(moduleDir):
+        shutil.rmtree(moduleDir)
     for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
         if d.isJARDistribution():
             with zipfile.ZipFile(d.path, 'r') as zf:
