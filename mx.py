@@ -1757,7 +1757,7 @@ class JavaProject(Project, ClasspathDependency):
             concealed = {}
             jdk = get_jdk(self.javaCompliance)
             if jdk.javaCompliance >= '9':
-                modulepath = jdk.get_boot_layer_modules()
+                modulepath = jdk.get_modules()
 
                 imports = getattr(self, 'imports', [])
                 if imports:
@@ -2160,7 +2160,7 @@ class JavacCompiler(JavacLikeCompiler):
                     javacArgs.extend(addmodsArgs)
 
             # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
-            modulepath = jdk.get_boot_layer_modules()
+            modulepath = jdk.get_modules()
             xmodule = None
             for package in project.defined_java_packages():
                 jmd, _ = lookup_package(modulepath, package, "<unnamed>")
@@ -8321,20 +8321,20 @@ class JDKConfig:
                 warn('Did not find lint warnings in output of "javac -X"')
         return self._knownJavacLints
 
-    def get_boot_layer_modules(self):
+    def get_modules(self):
         """
-        Gets the modules in the boot layer of this JDK.
+        Gets the modules in this JDK.
 
-        :return: a list of `JavaModuleDescriptor` objects for modules in the boot layer of this JDK
+        :return: a list of `JavaModuleDescriptor` objects for modules in this JDK
         :rtype: list
         """
         if self.javaCompliance < '9':
             return []
-        if not hasattr(self, '.boot_layer_modules'):
+        if not hasattr(self, '.modules'):
             addExportsArg = '-XaddExports:java.base/jdk.internal.module=ALL-UNNAMED'
-            _, binDir = _compile_mx_class('ListBootModules', jdk=self, extraJavacArgs=[addExportsArg])
+            _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
             out = LinesOutputCapture()
-            run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListBootModules'], out=out)
+            run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
 
             modules = {}
             name = None
@@ -8343,6 +8343,7 @@ class JDKConfig:
             provides = {}
             uses = set()
             packages = set()
+            boot = None
 
             for line in out.lines:
                 parts = line.strip().split()
@@ -8350,13 +8351,14 @@ class JDKConfig:
                 if len(parts) == 1:
                     if name is not None:
                         assert name not in modules, 'duplicate module: ' + name
-                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages)
+                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
                     name = parts[0]
                     requires = {}
                     exports = {}
                     provides = {}
                     uses = set()
                     packages = set()
+                    boot = None
                 else:
                     assert name, 'cannot parse module descriptor line without module name: ' + line
                     a = parts[0]
@@ -8364,6 +8366,8 @@ class JDKConfig:
                         module = parts[-1]
                         modifiers = parts[1:-2] if len(parts) > 2 else []
                         requires[module] = modifiers
+                    elif a == 'boot':
+                        boot = parts[1] == 'true'
                     elif a == 'exports':
                         source = parts[1]
                         if len(parts) > 2:
@@ -8385,9 +8389,18 @@ class JDKConfig:
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages)
-            setattr(self, '.boot_layer_modules', tuple(modules.values()))
-        return getattr(self, '.boot_layer_modules')
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+            setattr(self, '.modules', tuple(modules.values()))
+        return getattr(self, '.modules')
+
+    def get_boot_layer_modules(self):
+        """
+        Gets the modules in the boot layer of this JDK.
+
+        :return: a list of `JavaModuleDescriptor` objects for boot layer modules in this JDK
+        :rtype: list
+        """
+        return [jmd for jmd in self.get_modules() if jmd.boot]
 
 def check_get_env(key):
     """
@@ -13526,7 +13539,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.23.2")
+version = VersionSpec("5.24.0")
 
 currentUmask = None
 

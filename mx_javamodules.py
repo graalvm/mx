@@ -48,10 +48,11 @@ class JavaModuleDescriptor(object):
     :param set packages: the packages defined by this module
     :param set conceals: the packages defined but not exported to everyone by this module
     :param str jarpath: path to module jar file
-    :param set modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param JARDistribution dist: distribution from which this module was derived
+    :param set modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
+    :param bool boot: specifies if this module is in the boot layer
     """
-    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, modulepath=None):
+    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, modulepath=None, boot=False):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -65,6 +66,7 @@ class JavaModuleDescriptor(object):
         self.jarpath = jarpath
         self.dist = dist
         self.modulepath = modulepath
+        self.boot = boot
 
     def __str__(self):
         return 'module:' + self.name
@@ -90,7 +92,7 @@ class JavaModuleDescriptor(object):
             mx.abort(path + ' does not exist')
         with open(path, 'rb') as fp:
             jmd = pickle.load(fp)
-        jdkmodules = {m.name : m for m in jdk.get_boot_layer_modules()}
+        jdkmodules = {m.name : m for m in jdk.get_modules()}
         resolved = []
         for name in jmd.modulepath:
             if name.startswith('dist:'):
@@ -266,7 +268,7 @@ def make_java_module(dist, jdk):
 
 
     # Prepend JDK modules to module path
-    modulepath = list(jdk.get_boot_layer_modules())
+    modulepath = list(jdk.get_modules())
     usedModules = set()
 
     javaprojects = [d for d in moduledeps if d.isJavaProject()]

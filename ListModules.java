@@ -34,14 +34,10 @@ import java.util.HashSet;
 import jdk.internal.module.ModuleBootstrap;
 
 /**
- * Utility for listing the module-info for all the modules
- * in the boot layer. This much faster than repeated java
- * executions with the {@code -listmods} option. It also
- * allows the output format to be exactly what the
- * {@code mx.JDKConfig.get_boot_layer_modules()} method
- * expects.
+ * Utility for listing the info for all the modules in the Java runtime image.
+ * This uses the same underlying module finding mechanism as {@code java -listmods}.
  */
-public class ListBootModules {
+public class ListModules {
 
     /**
      * @returns {@code true} if {@code substrings} is empty or if {@code name}
@@ -61,12 +57,17 @@ public class ListBootModules {
 
     public static void main(String[] args) {
         PrintStream out = System.out;
+        Set<ModuleDescriptor> bootModules = new HashSet<>();
+        for (Module module : Layer.boot().modules()) {
+        	bootModules.add(module.getDescriptor());
+        }
         for (ModuleReference moduleRef : ModuleBootstrap.finder().findAll()) {
             ModuleDescriptor md = moduleRef.descriptor();
             if (!matches(md.name(), args)) {
                 continue;
             }
             out.println(md.name());
+            out.println("  boot " + bootModules.contains(md));
             for (ModuleDescriptor.Requires dependency : md.requires()) {
                 String modifiers = dependency.modifiers().isEmpty() ? "" :
                                    dependency.modifiers().stream().map(e -> e.toString().toLowerCase()).collect(Collectors.joining(" ")) + " ";
