@@ -18,6 +18,27 @@ If no options or command is specified, `mx` prints information on the available 
 
 For an example of `mx` usage, you can read the [Instructions][1] for the Graal project. 
 
+### mx environment variable processing ###
+
+Suites might require various environment variables to be defined for
+the suite to work and mx provides `env` files to cache this
+information for a suite.  Each suite can have an `env` file in
+_suite_/mx._suite_/`env` and a default env file can be provided for
+the user in ~/.mx/env.  Env files are loaded in the following order
+and override any value provided by the shell environment.
+
+1.  ~/.mx/`env` is loaded first.
+
+2.  The primary suite's `env` file is loaded before loading of the suites begins.
+
+3.  The env files of any subsuites are loaded in a depth first fashion
+    such that subsuite `env` files are loaded before their dependents.
+
+4.  The primary suite's `env` file is reloaded so that it overrides
+    any definitions provided by subsuites.
+
+The `-v` option to `mx` will show the loading of `env` files during suite parsing.
+
 ### mx versioning ###
 
 `mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if the

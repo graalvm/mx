@@ -6141,6 +6141,10 @@ class SourceSuite(Suite):
     @staticmethod
     def _load_env_in_mxDir(mxDir):
         e = join(mxDir, 'env')
+        SourceSuite._load_env_file(e)
+
+    @staticmethod
+    def _load_env_file(e):
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -6323,6 +6327,16 @@ class MXSuite(InternalSuite):
 
     def vc_command_init(self):
         pass
+
+    def _load_env(self):
+        # Only load the env file from mx when it's the primary suite.  This can only
+        # be determined when the primary suite has been set so it must be deferred but
+        # since the primary suite env should be loaded last this should be ok.
+        def _deferrable():
+            assert _primary_suite
+            if self == _primary_suite:
+                SourceSuite._load_env_in_mxDir(self.mxDir)
+        _primary_suite_deferrables.append(_deferrable)
 
 class MXTestsSuite(InternalSuite):
     def __init__(self):
@@ -13439,6 +13453,9 @@ def main():
             _init_primary_suite(_mx_suite)
         elif primarySuiteMxDir:
             _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
+            userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+            SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
+
             # We explicitly load the 'env' file of the primary suite now as it might influence
             # the suite loading logic. It will get loaded again, to ensure it overrides any
             # settings in imported suites
@@ -13539,7 +13556,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.24.0")
+version = VersionSpec("5.25.0")
 
 currentUmask = None
 
