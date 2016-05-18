@@ -32,7 +32,7 @@ _urlrewrites = [] # list of URLRewrite objects
 
 def register_urlrewrite(urlrewrite, onError=None):
     """
-    Appends a list of URL rewrite rules to the current rewrite rules.
+    Appends a URL rewrite rule to the current rewrite rules.
     A URL rewrite rule is a dict where the key is a regex for matching a URL and the value describes
     how to rewrite.
 
