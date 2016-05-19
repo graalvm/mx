@@ -2330,7 +2330,7 @@ class ECJCompiler(JavacLikeCompiler):
         return jdtArgs
 
     def compile(self, jdk, jdtArgs):
-        run_java(jdk.java_args + ['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
+        run_java(['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
 
 class ECJDaemonCompiler(ECJCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
