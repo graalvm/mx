@@ -10059,10 +10059,37 @@ def _get_jdk_module_jar(module, suite, jdk):
     jdkExplodedModule = join(jdk.home, 'modules', module)
     jdkModules = join(jdk.home, 'lib', 'modules')
     if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
+        def _classes_dir(start):
+            """
+            Searches for the directory containing the sources of `module` by traversing the
+            ancestors of `start` and looking for ``*/src/<module>/share/classes``.
+            """
+            d = start
+            while d != os.sep:
+                for subdir in os.listdir(d):
+                    classes = join(d, subdir, 'src', module, 'share', 'classes')
+                    if exists(classes):
+                        return classes
+                d = dirname(d)
+
+        # Try find the sources for `module` based on the assumption `jdk.home` is in the
+        # build/ directory of a JDK9 repo.
+        classes = _classes_dir(jdk.home)
+        sourcesDirs = []
+        if classes:
+            if module == 'jdk.vm.ci':
+                for subdir in os.listdir(classes):
+                    src = join(classes, subdir, 'src')
+                    if exists(src):
+                        sourcesDirs.append(src)
+            else:
+                sourcesDirs.append(classes)
+
         className = module.replace('.', '_') + '_ExtractJar'
         javaSource = join(jdkOutputDir, className + '.java')
         with open(javaSource, 'w') as fp:
             print >> fp, """
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -10070,6 +10097,7 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
@@ -10098,12 +10126,31 @@ public class %(className)s {
                     }
                 });
             }
+            for (int i = 1; i < args.length; i++) {
+                Path sourceDir = Paths.get(args[i]);
+                int sourceDirLength = sourceDir.toString().length();
+                try (Stream<Path> stream = Files.walk(sourceDir)) {
+                    stream.forEach(p -> {
+                        if (!p.toFile().isDirectory()) {
+                            String path = p.toString().substring(sourceDirLength + 1);
+                            JarEntry je = new JarEntry(path.replace(File.separatorChar, '/'));
+                            try {
+                                jos.putNextEntry(je);
+                                jos.write(Files.readAllBytes(p));
+                                jos.closeEntry();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    });
+                }
+            }
         }
     }
 }
 """ % {"module" : module, "className" : className}
         run([jdk.javac, '-d', jdkOutputDir, javaSource])
-        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath])
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
     return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None):
@@ -13556,7 +13603,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.25.0")
+version = VersionSpec("5.26.0")
 
 currentUmask = None
 
