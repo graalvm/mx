@@ -6877,7 +6877,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     """
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     cp = []
-    if includeBootClasspath:
+    if includeBootClasspath and get_jdk().bootclasspath():
         cp.append(get_jdk().bootclasspath())
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
@@ -7020,6 +7020,8 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
                         abort('Cannot supply explicit class path option')
                     else:
                         continue
+                if i != 0 and (args[i - 1] in ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']):
+                    continue
                 vmArgs = args[:i]
                 remainder = args[i:]
                 return vmArgs, remainder
@@ -8207,15 +8209,19 @@ class JDKConfig:
     def _init_classpaths(self):
         if not self._classpaths_initialized:
             _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
-            self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
             if self.javaCompliance <= JavaCompliance('1.8'):
+                self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
                     warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
-            self._bootclasspath_unfiltered = self._bootclasspath
-            self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
-            self._extdirs = _filter_non_existant_paths(self._extdirs)
-            self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+                self._bootclasspath_unfiltered = self._bootclasspath
+                self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
+                self._extdirs = _filter_non_existant_paths(self._extdirs)
+                self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+            else:
+                self._bootclasspath = ''
+                self._extdirs = None
+                self._endorseddirs = None
             self._classpaths_initialized = True
 
     def __repr__(self):
@@ -8242,7 +8248,7 @@ class JDKConfig:
 
     def processArgs(self, args, addDefaultArgs=True):
         """
-        Return a list composed of the arguments specified by the -P, -J and -A options (in that order)
+        Returns a list composed of the arguments specified by the -P, -J and -A options (in that order)
         prepended to `args` if `addDefaultArgs` is true otherwise just return `args`.
         """
         if addDefaultArgs:
@@ -8254,13 +8260,19 @@ class JDKConfig:
         return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def bootclasspath(self, filtered=True):
+        """
+        Gets the value of the ``sun.boot.class.path`` system property. This will be
+        the empty string if this JDK is version 9 or later.
+
+        :param bool filtered: specifies whether to exclude non-existant paths from the returned value
+        """
         self._init_classpaths()
         return _separatedCygpathU2W(self._bootclasspath if filtered else self._bootclasspath_unfiltered)
 
-    """
-    Add javadoc style options for the library paths of this JDK.
-    """
     def javadocLibOptions(self, args):
+        """
+        Adds javadoc style options for the library paths of this JDK.
+        """
         self._init_classpaths()
         if args is None:
             args = []
@@ -8272,10 +8284,10 @@ class JDKConfig:
             args.append(_separatedCygpathU2W(self._extdirs))
         return args
 
-    """
-    Add javac style options for the library paths of this JDK.
-    """
     def javacLibOptions(self, args):
+        """
+        Adds javac style options for the library paths of this JDK.
+        """
         args = self.javadocLibOptions(args)
         if self._endorseddirs:
             args.append('-endorseddirs')
@@ -9908,7 +9920,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
             mainClass = '-jar'
             appArgs = list(reversed(argsCopy))
             break
-        if a == '-cp' or a == '-classpath':
+        if a in ['-cp', '-classpath', '-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']:
             assert len(argsCopy) != 0
             cp = argsCopy.pop()
             vmArgs.append(a)
@@ -13603,7 +13615,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.26.0")
+version = VersionSpec("5.26.1")
 
 currentUmask = None
 
