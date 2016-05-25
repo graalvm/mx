@@ -126,7 +126,7 @@ class BenchmarkSuite(object):
         :type benchmarks: list or None
         :param list bmSuiteArgs: List of string arguments to the suite.
         :return:
-            A dictionary of measurement results.
+            List of measurement result dictionaries, each corresponding to a datapoint.
 
             A measurement result is an object that can be converted into JSON and is
             merged with the other dimensions of the data point.
@@ -685,7 +685,7 @@ def splitArgs(args, separator):
     before = args
     after = []
     try:
-        idx = args.index("--")
+        idx = args.index(separator)
         before = args[:idx]
         after = args[(idx + 1):]
     except ValueError:
