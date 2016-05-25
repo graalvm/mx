@@ -822,7 +822,7 @@ class Distribution(Dependency):
                 if edge and edge.src.isNativeProject():
                     # A native project dependency only denotes a build order dependency
                     return False
-                return dst not in excluded and not dst.isJreLibrary()
+                return dst not in excluded and not dst.isJreLibrary() and not dst.isJdkLibrary()
             self.walk_deps(visit=_visit, preVisit=_preVisit)
             setattr(self, '.archived_deps', deps)
         return getattr(self, '.archived_deps')
@@ -1672,7 +1672,7 @@ class JavaProject(Project, ClasspathDependency):
         """
         return self.declaredAnnotationProcessors
 
-    def annotation_processors_path(self):
+    def annotation_processors_path(self, jdk):
         """
         Gets the class path composed of this project's annotation processor jars and the jars they depend upon.
         """
@@ -1682,7 +1682,8 @@ class JavaProject(Project, ClasspathDependency):
             invalid = [e.classpath_repr(resolve=True) for e in entries if not e.isJar()]
             if invalid:
                 abort('Annotation processor path can only contain jars: ' + str(invalid), context=self)
-            return os.pathsep.join((e for e in (e.classpath_repr(resolve=True) for e in entries) if e))
+            entries = (e.classpath_repr(jdk, resolve=True) if e.isJdkLibrary() else e.classpath_repr(resolve=True) for e in entries)
+            return os.pathsep.join((e for e in entries if e))
         return None
 
     def check_current_annotation_processors_file(self):
@@ -1932,9 +1933,9 @@ class JavaBuildTask(ProjectBuildTask):
                 jdk=self.jdk,
                 compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk)),
                 sourceGenDir=self.subject.source_gen_dir(),
-                processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
+                processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
                 disableApiRestrictions=not self.args.warnAPI,
                 warningsAsErrors=self.args.warning_as_error,
                 showTasks=self.args.jdt_show_task_tags,
@@ -2621,11 +2622,11 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     return True
 
 
-"""
-A BaseLibrary is an entity that is an object that has no structure understood by mx,
-typically a jar file. It is used "as is".
-"""
 class BaseLibrary(Dependency):
+    """
+    A library that has no structure understood by mx, typically a jar file.
+    It is used "as is".
+    """
     def __init__(self, suite, name, optional, theLicense):
         Dependency.__init__(self, suite, name, theLicense)
         self.optional = optional
@@ -2645,16 +2646,16 @@ class BaseLibrary(Dependency):
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
-    """
-    Return string where references to instance variables from given text string are replaced.
-    """
     def substVars(self, text):
+        """
+        Return string where references to instance variables from given text string are replaced.
+        """
         return text.format(**vars(self))
 
-"""
-A library that is just a resource and therefore not a ClasspathDependency
-"""
 class ResourceLibrary(BaseLibrary):
+    """
+    A library that is just a resource and therefore not a `ClasspathDependency`.
+    """
     def __init__(self, suite, name, path, optional, urls, sha1):
         BaseLibrary.__init__(self, suite, name, optional, None)
         self.path = path.replace('/', os.sep)
@@ -2676,21 +2677,16 @@ class ResourceLibrary(BaseLibrary):
         sha1path = path + '.sha1'
         return not _check_file_with_sha1(path, self.sha1, sha1path)
 
-"""
-A library that will be provided by the JRE but may be absent.
-Any project or normal library that depends on a missing library
-will be removed from the global project and library dictionaries
-(i.e., _projects and _libs).
-
-The library is searched on the classpaths of the JRE.
-
-This mechanism exists primarily to be able to support code
-that may use functionality in one JRE (e.g., Oracle JRE)
-that is not present in another JRE (e.g., OpenJDK). A
-motivating example is the Java Flight Recorder library
-found in the Oracle JRE.
-"""
 class JreLibrary(BaseLibrary, ClasspathDependency):
+    """
+    A library jar provided by the Java Runtime Environment (JRE).
+
+    This mechanism exists primarily to be able to support code
+    that may use functionality in one JRE (e.g., Oracle JRE)
+    that is not present in another JRE (e.g., OpenJDK). A
+    motivating example is the Java Flight Recorder library
+    found in the Oracle JRE.
+    """
     def __init__(self, suite, name, jar, optional, theLicense):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
@@ -2702,14 +2698,35 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
-    def is_present_in_jdk(self, jdk):
+    def is_provided_by(self, jdk):
+        """
+        Determines if this library is provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        :return: whether this library is available in `jdk`
+        """
         return jdk.hasJarOnClasspath(self.jar)
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
-    def classpath_repr(self, resolve=True):
-        return None # TODO should have a jdk arg and should fail if not available
+    def classpath_repr(self, jdk, resolve=True):
+        """
+        Gets the absolute path of this library in `jdk`. This method will abort if this library is
+        not provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        :return: whether this library is available in `jdk`
+        """
+        if not jdk:
+            abort('A JDK is required to resolve ' + self.name + ' to a path')
+        path = jdk.hasJarOnClasspath(self.jar)
+        if not path:
+            abort(self.name + ' is not provided by ' + str(jdk))
+        return path
+
+    def isJar(self):
+        return True
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
@@ -2740,17 +2757,37 @@ class NoOpTask(BuildTask):
     def cleanForbidden(self):
         return True
 
-"""
-A library that will be provided by the JDK but may be absent.
-Any project or normal library that depends on a missing library
-will be removed from the global project and library dictionaries
-(i.e., _projects and _libs).
-"""
 class JdkLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional, theLicense):
+    """
+    A library that will be provided by the JDK but may be absent.
+    Any project or normal library that depends on an optional missing library
+    will be removed from the global project and library registry.
+
+    :param Suite suite: the suite defining this library
+    :param str name: the name of this library
+    :param path: path relative to a JDK home directory where the jar file for this library is located
+    :param deps: the dependencies of this library (which can only be other `JdkLibrary`s)
+    :param bool optional: a missing non-optional library will cause mx to abort when resolving a reference to this library
+    :param str theLicense: the license under which this library can be redistributed
+    :param JavaCompliance jdkStandardizedSince: the JDK version in which the resources represented by this library are automatically
+           available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
+    """
+    def __init__(self, suite, name, path, deps, optional, theLicense, jdkStandardizedSince=None):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
-        self.path = path
+        self.path = path.replace('/', os.sep)
+        self.deps = deps
+        self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance('1.2')
+
+    def resolveDeps(self):
+        """
+        Resolves symbolic dependency references to be Dependency objects.
+        """
+        BaseLibrary.resolveDeps(self)
+        self._resolveDepsHelper(self.deps)
+        for d in self.deps:
+            if not d.isJdkLibrary():
+                abort('"dependencies" attribute of a JDK library can only contain other JDK libraries: ' + d.name, context=self)
 
     def __eq__(self, other):
         if isinstance(other, JdkLibrary):
@@ -2758,25 +2795,56 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
-    def is_present_in_jdk(self, jdk):
-        return exists(join(jdk.path, self.jar))
+    def is_provided_by(self, jdk):
+        """
+        Determines if this library is provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        """
+        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(join(jdk.home, self.path))
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
-    def classpath_repr(self, resolve=True):
-        return self.path  # TODO should have a jdk arg and should fail if not available
+    def classpath_repr(self, jdk, resolve=True):
+        """
+        Gets the absolute path of this library in `jdk` or None if this library is available
+        on the default class path of `jdk`. This method will abort if this library is
+        not provided by `jdk`.
 
-"""
-A library that is provided (built) by some third-party and made available via a URL.
-A Library may have dependencies on other Library's as expressed by the "deps" field.
-A Library can only depend on another Library, and not a Project or Distribution
-Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
-A Library is effectively an "import" into the suite since, unlike a Project or Distribution
-it is not built by the Suite.
-N.B. Not obvious but a Library can be an annotationProcessor
-"""
+        :param JDKConfig jdk: the JDK to test
+        :return: whether this library is available in `jdk`
+        """
+        if not jdk:
+            abort('A JDK is required to resolve ' + self.name)
+        if jdk.javaCompliance >= self.jdkStandardizedSince:
+            return None
+        path = join(jdk.home, self.path)
+        if not exists(path):
+            abort(self.name + ' is not provided by ' + str(jdk))
+        return path
+
+    def isJar(self):
+        return True
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+
 class Library(BaseLibrary, ClasspathDependency):
+    """
+    A library that is provided (built) by some third-party and made available via a URL.
+    A Library may have dependencies on other Library's as expressed by the "deps" field.
+    A Library can only depend on another Library, and not a Project or Distribution
+    Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
+    A Library is effectively an "import" into the suite since, unlike a Project or Distribution
+    it is not built by the Suite.
+    N.B. Not obvious but a Library can be an annotationProcessor
+    """
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
@@ -2823,7 +2891,6 @@ class Library(BaseLibrary, ClasspathDependency):
                     visitEdge(self, DEP_STANDARD, d)
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
-
 
     def __eq__(self, other):
         if isinstance(other, Library):
@@ -5435,7 +5502,7 @@ class Suite:
         _dists[d.name] = d
 
     def _resolve_dependencies(self):
-        for d in self.projects + self.libs + self.dists:
+        for d in self.projects + self.libs + self.jdkLibs + self.dists:
             d.resolveDeps()
         for r in self.repositoryDefs:
             r.resolveLicenses()
@@ -5487,10 +5554,14 @@ class Suite:
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
             jar = attrs.pop('path')
+            deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            optional = attrs.pop('optional', 'true') != 'false'
-            l = JdkLibrary(self, name, jar, optional, theLicense)
+            optional = attrs.pop('optional', False)
+            if isinstance(optional, str):
+                optional = optional != 'false'
+            jdkStandardizedSince = JavaCompliance(attrs.pop('jdkStandardizedSince', '1.2'))
+            l = JdkLibrary(self, name, jar, deps, optional, theLicense, jdkStandardizedSince)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -6776,7 +6847,7 @@ def dependency(name, fatalIfMissing=True, context=None):
         # reference to a distribution or library from a suite
         referencedSuite = suite(suite_name, context=context)
         if referencedSuite:
-            d = _dists.get(name) or _libs.get(name)
+            d = _dists.get(name) or _libs.get(name) or _jdkLibs.get(name) or _jreLibs.get(name)
             if d:
                 if d.suite != referencedSuite:
                     if fatalIfMissing:
@@ -6838,7 +6909,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     :param bool preferProjects: for a JARDistribution dependency, specifies whether to include
             it in the returned list (False) or to instead put its constituent dependencies on the
             the return list (True)
-    :return: a lits of Dependency objects representing the transitive set of dependencies that should
+    :return: a list of Dependency objects representing the transitive set of dependencies that should
             be on the class path for something depending on `names`
     """
     if names is None:
@@ -6857,7 +6928,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
             return False
-        if dst in roots or dst.isLibrary():
+        if dst in roots or dst.isLibrary() or dst.isJdkLibrary():
             return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
@@ -6872,7 +6943,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
@@ -6885,7 +6956,10 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
     for dep in cpEntries:
-        cp_repr = dep.classpath_repr(resolve)
+        if dep.isJdkLibrary() or dep.isJreLibrary():
+            cp_repr = dep.classpath_repr(jdk, resolve=resolve)
+        else:
+            cp_repr = dep.classpath_repr(resolve)
         if cp_repr:
             cp.append(cp_repr)
     if _opts.cp_suffix is not None:
@@ -6893,14 +6967,14 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
 
     return os.pathsep.join(cp)
 
-def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
+def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
     Walks the resources available in a given classpath, yielding a tuple for each resource
     where the first member of the tuple is a directory path or ZipFile object for a
     classpath entry and the second member is the qualified path of the resource relative
     to the classpath entry.
     """
-    cp = classpath(names, resolve, includeSelf, includeBootClasspath)
+    cp = classpath(names, resolve, includeSelf, includeBootClasspath, jdk=jdk)
     for entry in cp.split(os.pathsep):
         if not exists(entry):
             continue
@@ -8298,21 +8372,28 @@ class JDKConfig:
         return args
 
     def hasJarOnClasspath(self, jar):
+        """
+        Determines if `jar` is available on the boot class path or in the
+        extension/endorsed directories of this JDK.
+
+        :param str jar: jar file name (without directory component)
+        :return: the absolute path to the jar file in this JDK matching `jar` or None
+        """
         self._init_classpaths()
 
         if self._bootclasspath:
             for e in self._bootclasspath.split(os.pathsep):
                 if basename(e) == jar:
-                    return True
+                    return e
         if self._extdirs:
             for d in self._extdirs.split(os.pathsep):
                 if len(d) and jar in os.listdir(d):
-                    return True
+                    return join(d, jar)
         if self._endorseddirs:
             for d in self._endorseddirs.split(os.pathsep):
                 if len(d) and jar in os.listdir(d):
-                    return True
-        return False
+                    return join(d, jar)
+        return None
 
     def getKnownJavacLints(self):
         """
@@ -10211,18 +10292,21 @@ def _eclipseinit_project(p, files=None, libFiles=None):
 
     containerDeps = set()
     libraryDeps = set()
+    jdkLibraryDeps = set()
     projectDeps = set()
+    jdk = get_jdk(p.javaCompliance)
+    moduleDeps = None
 
-    moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
-    if eclipseJavaCompliance < '9' and not suite('jvmci', fatalIfMissing=False):
-        # If this project imports any JVMCI packages and JVMCI is not a suite
-        # and Eclipse does not yet support JDK9, then the generated Eclipse
-        # project needs to depend on the jdk.vm.ci module. Further down, a stub
-        # containing the classes in this module will be added as a library to
-        # generated project.
-        for pkg in p.imported_java_packages(projectDepsOnly=False):
-            if pkg.startswith('jdk.vm.ci.'):
-                moduleDeps.add('jdk.vm.ci')
+    if jdk.javaCompliance >= '1.9':
+        moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
+        if eclipseJavaCompliance < '9':
+            # If this project imports any JVMCI packages and Eclipse does not yet
+            # support JDK9, then the generated Eclipse project needs to see the classes
+            # in the jdk.vm.ci module. Further down, a stub containing the classes
+            # in this module will be added as a library to generated project.
+            for pkg in p.imported_java_packages(projectDepsOnly=False):
+                if pkg.startswith('jdk.vm.ci.'):
+                    moduleDeps.add('jdk.vm.ci')
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -10237,9 +10321,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
+        elif dep.isJdkLibrary():
+            jdkLibraryDeps.add(dep)
         elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
             distributionDeps.add(dep)
-        elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
+        elif dep.isJreLibrary() or dep.isDistribution():
             pass
         else:
             abort('unexpected dependency: ' + str(dep))
@@ -10272,13 +10358,21 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if libFiles:
             libFiles.append(path)
 
+    for dep in sorted(jdkLibraryDeps):
+        path = dep.classpath_repr(jdk, resolve=True)
+        if path:
+            attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
+            out.element('classpathentry', attributes)
+            if libFiles:
+                libFiles.append(path)
+
     for dep in sorted(projectDeps):
         if not dep.isNativeProject():
             out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
     if moduleDeps:
         for module in sorted(moduleDeps):
-            moduleJar = _get_jdk_module_jar(module, p.suite, get_jdk(p.javaCompliance))
+            moduleJar = _get_jdk_module_jar(module, p.suite, jdk)
             out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
@@ -10399,6 +10493,10 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         for e in processorsPath:
             if e.isDistribution():
                 out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+            elif e.isJdkLibrary() or e.isJreLibrary():
+                path = e.classpath_repr(jdk, resolve=True)
+                if path:
+                    out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : path, 'enabled' : 'true', 'runInBatchMode' : 'false'})
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
@@ -11711,7 +11809,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     links.append('-link')
                     links.append(os.path.relpath(depOut, out))
             p.walk_deps(visit=visit)
-            cp = classpath(p.name, includeSelf=True)
+            cp = classpath(p.name, includeSelf=True, jdk=jdk)
             sp = os.pathsep.join(p.source_dirs())
             overviewFile = join(p.dir, 'overview.html')
             delOverviewFile = False
@@ -11781,7 +11879,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
-        cp = classpath()
+        cp = classpath(jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
@@ -12517,7 +12615,7 @@ def sversions(args):
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
     matches = []
-    for entry, filename in classpath_walk(includeBootClasspath=True, resolve=resolve):
+    for entry, filename in classpath_walk(includeBootClasspath=True, resolve=resolve, jdk=get_jdk()):
         if filename.endswith('.class'):
             if isinstance(entry, zipfile.ZipFile):
                 classname = filename.replace('/', '.')
@@ -12691,7 +12789,8 @@ def javap(args):
 
     args = parser.parse_args(args)
 
-    javapExe = get_jdk().javap
+    jdk = get_jdk()
+    javapExe = jdk.javap
     if not exists(javapExe):
         abort('The javap executable does not exist: ' + javapExe)
     else:
@@ -12699,7 +12798,7 @@ def javap(args):
         if len(candidates) == 0:
             log('no matches')
         selection = select_items(candidates)
-        run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve)] + selection)
+        run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve, jdk=jdk)] + selection)
 
 def show_projects(args):
     """show all projects"""
@@ -13441,13 +13540,14 @@ def _remove_unsatisfied_deps():
                         removedDeps[dep] = depDep.name
                     elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
-                        if not lib.is_present_in_jdk(depJdk):
+                        if not lib.is_provided_by(depJdk):
                             if lib.optional:
                                 reason = 'project {} was removed as dependency {} is missing'.format(dep, lib)
                                 logv('[' + reason + ']')
                                 removedDeps[dep] = reason
                             else:
-                                abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
+
+                                abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
         elif dep.isDistribution():
             dist = dep
             if dist.deps:
@@ -13620,7 +13720,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.27.0")
+version = VersionSpec("5.28.0")
 
 currentUmask = None
 
