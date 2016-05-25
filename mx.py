@@ -819,6 +819,9 @@ class Distribution(Dependency):
                 if dep is not self:
                     deps.append(dep)
             def _preVisit(dst, edge):
+                if edge and edge.src.isNativeProject():
+                    # A native project dependency only denotes a build order dependency
+                    return False
                 return dst not in excluded and not dst.isJreLibrary()
             self.walk_deps(visit=_visit, preVisit=_preVisit)
             setattr(self, '.archived_deps', deps)
@@ -13615,7 +13618,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.26.1")
+version = VersionSpec("5.27.0")
 
 currentUmask = None
 
