@@ -13019,7 +13019,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     else:
         return 0
 
-def mvn_local_install(suite_name, dist_name, path, version, repo = None):
+def mvn_local_install(suite_name, dist_name, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
     repoArgs = ['-Dmaven.repo.local=' + repo] if repo else []
