@@ -13034,7 +13034,7 @@ def maven_install(args):
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
-    parser.add_argument('--repo', action='store', help='part to local Maven repository to install to')
+    parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
     args = parser.parse_args(args)
 
     _mvn.check()
