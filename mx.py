@@ -13019,11 +13019,12 @@ def junit(args, harness=_basic_junit_harness, parser=None):
     else:
         return 0
 
-def mvn_local_install(suite_name, dist_name, path, version):
+def mvn_local_install(suite_name, dist_name, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
+    repoArgs = ['-Dmaven.repo.local=' + repo] if repo else []
     run_maven(['install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
-            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
+            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
     """
@@ -13033,6 +13034,7 @@ def maven_install(args):
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
+    parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
     args = parser.parse_args(args)
 
     _mvn.check()
@@ -13051,14 +13053,14 @@ def maven_install(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
+            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion)
+        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
-            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion)
+                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version, args.repo)
+            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion, args.repo)
     else:
         print 'jars to deploy manually for version: ' + version
         print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
