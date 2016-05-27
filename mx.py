@@ -4403,12 +4403,11 @@ class BinaryVC(VC):
         if not rev:
             rev = self._tip(metadata)
 
-        artifactId = metadata.suiteName
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
-        if not self._pull_artifact(metadata, artifactId, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
             shutil.rmtree(tmpdir)
             return False
 
@@ -4417,7 +4416,7 @@ class BinaryVC(VC):
         shutil.rmtree(vcdir)
 
         mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
-        os.mkdir(dirname(mx_jar_path))
+        ensure_dir_exists(dirname(mx_jar_path))
 
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
@@ -4425,6 +4424,9 @@ class BinaryVC(VC):
 
         self._writeMetadata(vcdir, metadata)
         return True
+
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        return self.pull(vcdir=vcdir, rev=rev, update=True, abortOnError=abortOnError)
 
     def tip(self, vcdir, abortOnError=True):
         self._tip(self._readMetadata(vcdir))
@@ -13726,7 +13728,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.28.1")
+version = VersionSpec("5.28.2")
 
 currentUmask = None
 
