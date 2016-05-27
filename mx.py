@@ -5214,7 +5214,12 @@ class SuiteImport:
                 mainKind = kind
             url = mx_urlrewrites.rewriteurl(urlinfo.get('url'))
             urlinfos.append(SuiteImportURLInfo(url, kind, vc))
-        return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
+        vc_kind = None
+        if mainKind:
+            vc_kind = mainKind
+        elif urlinfos:
+            vc_kind = 'binary'
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport)
 
     @staticmethod
     def get_source_urls(source, kind=None):
