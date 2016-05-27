@@ -12132,6 +12132,7 @@ def sclone(args):
             abort('--dest required when --source is not given')
         source = _primary_suite.dir
     else:
+        mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
         source = args.source
 
     if args.dest is not None:
