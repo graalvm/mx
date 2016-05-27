@@ -61,9 +61,10 @@ def _sigtest_generate(args, suite=None, projects=None):
 
     for p in nonTestProjects:
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
+        jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.Setup',
             '-Static', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
         for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
@@ -93,9 +94,10 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         if not os.path.exists(sigtestResults):
             continue
+        jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.SignatureTest',
             '-Static', '-Mode', 'bin', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
         if checktype != 'all':
             cmd.append('-b')

@@ -205,7 +205,7 @@ def get_module_deps(dist):
                 else:
                     mx.abort('modules can (currently) only include JAR distributions and Java projects: ' + str(dep), context=dist)
         def _preVisit(dst, edge):
-            return not dst.isJreLibrary()
+            return not dst.isJreLibrary() and not dst.isJdkLibrary()
         mx.walk_deps(roots, preVisit=_preVisit, visit=_visit)
         setattr(dist, '.module_deps', moduledeps)
     return getattr(dist, '.module_deps')
