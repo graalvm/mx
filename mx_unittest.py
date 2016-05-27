@@ -148,7 +148,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 if not found:
                     mx.log('warning: no tests matched by substring "' + t)
 
-    unittestCp = mx.classpath(depsContainingTests, jdk=_vm_launcher.jdk())
+    unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
 
@@ -246,7 +246,7 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         jdk = mx.get_jdk()
         def _run_vm(vmArgs, mainClass, mainClassArgs):
             mx.run_java(vmArgs + [mainClass] + mainClassArgs, jdk=jdk)
-        vmLauncher = _VMLauncher('default VM launcher', jdk, _run_vm)
+        vmLauncher = _VMLauncher('default VM launcher', _run_vm, jdk)
 
     try:
         _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, mx.suite(suite) if suite else None)
