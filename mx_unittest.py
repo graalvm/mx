@@ -188,7 +188,7 @@ def set_vm_launcher(name, launcher, jdk=None):
         def _jdk():
             jdk = mx.get_jdk()
             mx.warn('Assuming ' + str(jdk) + ' contains JVM executed by ' + name)
-        return _jdk
+            return _jdk
     _vm_launcher = _VMLauncher(name, launcher, jdk)
 
 def add_config_participant(p):
