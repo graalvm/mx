@@ -4403,12 +4403,11 @@ class BinaryVC(VC):
         if not rev:
             rev = self._tip(metadata)
 
-        artifactId = metadata.suiteName
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
-        if not self._pull_artifact(metadata, artifactId, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
             shutil.rmtree(tmpdir)
             return False
 
@@ -4417,7 +4416,7 @@ class BinaryVC(VC):
         shutil.rmtree(vcdir)
 
         mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
-        os.mkdir(dirname(mx_jar_path))
+        ensure_dir_exists(dirname(mx_jar_path))
 
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
@@ -4425,6 +4424,9 @@ class BinaryVC(VC):
 
         self._writeMetadata(vcdir, metadata)
         return True
+
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        return self.pull(vcdir=vcdir, rev=rev, update=True, abortOnError=abortOnError)
 
     def tip(self, vcdir, abortOnError=True):
         self._tip(self._readMetadata(vcdir))
@@ -5214,7 +5216,12 @@ class SuiteImport:
                 mainKind = kind
             url = mx_urlrewrites.rewriteurl(urlinfo.get('url'))
             urlinfos.append(SuiteImportURLInfo(url, kind, vc))
-        return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
+        vc_kind = None
+        if mainKind:
+            vc_kind = mainKind
+        elif urlinfos:
+            vc_kind = 'binary'
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport)
 
     @staticmethod
     def get_source_urls(source, kind=None):
