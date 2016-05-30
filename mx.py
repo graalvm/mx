@@ -13058,7 +13058,7 @@ def split_j_args(extraVmArgsList):
             extraVmArgs += [x for x in shlex.split(e.lstrip('@'))]
     return extraVmArgs
 
-def junit(args, harness=_basic_junit_harness, parser=None):
+def junit(args, harness=_basic_junit_harness, parser=None, jdk=None):
     """run Junit tests"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
@@ -13079,7 +13079,8 @@ def junit(args, harness=_basic_junit_harness, parser=None):
         os.close(_)
 
     candidates = []
-    jdk = get_jdk()
+    if jdk is None:
+        jdk = get_jdk()
     for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject() or jdk.javaCompliance < p.javaCompliance:
             continue
@@ -13099,7 +13100,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t + '"')
 
-    projectscp = classpath([pcp.name for pcp in projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance], jdk=jdk)
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
@@ -13728,7 +13729,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.28.2")
+version = VersionSpec("5.28.3")
 
 currentUmask = None
 
