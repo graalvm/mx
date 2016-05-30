@@ -2769,13 +2769,15 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     :param deps: the dependencies of this library (which can only be other `JdkLibrary`s)
     :param bool optional: a missing non-optional library will cause mx to abort when resolving a reference to this library
     :param str theLicense: the license under which this library can be redistributed
+    :param sourcePath: a path where the sources for this library are located. A relative path is resolved against a JDK.
     :param JavaCompliance jdkStandardizedSince: the JDK version in which the resources represented by this library are automatically
            available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
     """
-    def __init__(self, suite, name, path, deps, optional, theLicense, jdkStandardizedSince=None):
+    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
         self.path = path.replace('/', os.sep)
+        self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.deps = deps
         self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance('1.2')
 
@@ -2812,8 +2814,8 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         on the default class path of `jdk`. This method will abort if this library is
         not provided by `jdk`.
 
-        :param JDKConfig jdk: the JDK to test
-        :return: whether this library is available in `jdk`
+        :param JDKConfig jdk: the JDK from which to retrieve this library's jar file
+        :return: the absolute path of this library's jar file in `jdk`
         """
         if not jdk:
             abort('A JDK is required to resolve ' + self.name)
@@ -2823,6 +2825,17 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         if not exists(path):
             abort(self.name + ' is not provided by ' + str(jdk))
         return path
+
+    def get_source_path(self, jdk):
+        """
+        Gets the path where the sources for this library are located.
+
+        :param JDKConfig jdk: the JDK against which a relative path is resolved
+        :return: the absolute path where the sources of this library are located
+        """
+        if self.sourcePath is None:
+            return None
+        return self.sourcePath if isabs(self.sourcePath) else join(jdk.home, self.sourcePath)
 
     def isJar(self):
         return True
@@ -5560,7 +5573,8 @@ class Suite:
             self.jreLibs.append(l)
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
-            jar = attrs.pop('path')
+            path = attrs.pop('path')
+            sourcePath = attrs.pop('sourcePath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
@@ -5568,7 +5582,7 @@ class Suite:
             if isinstance(optional, str):
                 optional = optional != 'false'
             jdkStandardizedSince = JavaCompliance(attrs.pop('jdkStandardizedSince', '1.2'))
-            l = JdkLibrary(self, name, jar, deps, optional, theLicense, jdkStandardizedSince)
+            l = JdkLibrary(self, name, path, deps, optional, theLicense, sourcePath=sourcePath, jdkStandardizedSince=jdkStandardizedSince)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -9928,7 +9942,7 @@ def projectgraph(args, suite=None):
                 print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 
-def _source_locator_memento(deps):
+def _source_locator_memento(deps, jdk=None):
     slm = XMLDoc()
     slm.open('sourceLookupDirector')
     slm.open('sourceContainers', {'duplicates' : 'false'})
@@ -9943,6 +9957,17 @@ def _source_locator_memento(deps):
             elif dep.get_source_path(resolve=True):
                 memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
                 slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
+        elif dep.isJdkLibrary():
+            if jdk is None:
+                jdk = get_jdk(tag='default')
+            path = dep.get_source_path(jdk)
+            if path:
+                if os.path.isdir(path):
+                    memento = XMLDoc().element('directory', {'nest' : 'false', 'path' : path}).xml(standalone='no')
+                    slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.directory'})
+                else:
+                    memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : path}).xml(standalone='no')
+                    slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
         elif dep.isProject():
             if not dep.isJavaProject():
                 continue
@@ -9962,13 +9987,13 @@ def _source_locator_memento(deps):
     slm.close('sourceLookupDirector')
     return slm
 
-def make_eclipse_attach(suite, hostname, port, name=None, deps=None):
+def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
     Creates an Eclipse launch configuration file for attaching to a Java process.
     """
     if deps is None:
         deps = []
-    slm = _source_locator_memento(deps)
+    slm = _source_locator_memento(deps, jdk=jdk)
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_id', 'value' : 'org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector'})
@@ -10369,6 +10394,9 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         path = dep.classpath_repr(jdk, resolve=True)
         if path:
             attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
+            sourcePath = dep.get_source_path(jdk)
+            if sourcePath is not None:
+                attributes['sourcepath'] = sourcePath
             out.element('classpathentry', attributes)
             if libFiles:
                 libFiles.append(path)
@@ -10587,7 +10615,8 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
     for p in suite.projects:
         p._eclipseinit(files, libFiles)
 
-    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies())
+    jdk = get_jdk(tag='default')
+    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
     files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
@@ -10601,7 +10630,6 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             continue
         ensure_dir_exists(projectDir)
         relevantResources = []
-        jdk = get_jdk(tag='default')
         relevantResourceDeps = set(dist.archived_deps())
         if jdk.javaCompliance >= '1.9':
             relevantResourceDeps.update(get_module_deps(dist))
@@ -13729,7 +13757,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.28.3")
+version = VersionSpec("5.28.4")
 
 currentUmask = None
 
