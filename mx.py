@@ -12453,8 +12453,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                 if is_interactive():
                     retry = True
                     while retry:
-                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge?'.format(imported_suite.name),
-                                              options='[ascm]', default='a')
+                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge, (i)gnore?'.format(imported_suite.name),
+                                              options='[ascmi]', default='a')
                         if answer == 'a':
                             abort('aborting')
                         elif answer == 's':
@@ -12464,6 +12464,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                         elif answer == 'm':
                             clean = False
                             retry = False
+                        elif answer == 'i':
+                            return
 
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
