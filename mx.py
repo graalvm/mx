@@ -13086,12 +13086,13 @@ def split_j_args(extraVmArgsList):
             extraVmArgs += [x for x in shlex.split(e.lstrip('@'))]
     return extraVmArgs
 
-def junit(args, harness=_basic_junit_harness, parser=None, jdk=None):
+def junit(args, harness=_basic_junit_harness, parser=None):
     """run Junit tests"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
     parser.add_argument('--tests', action='store', help='pattern to match test classes')
     parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    parser.add_argument('--jdk', action='store', help='jdk to use')
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -13107,8 +13108,11 @@ def junit(args, harness=_basic_junit_harness, parser=None, jdk=None):
         os.close(_)
 
     candidates = []
-    if jdk is None:
+    if args.jdk:
+        jdk = get_jdk(tag=args.jdk)
+    else:
         jdk = get_jdk()
+
     for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject() or jdk.javaCompliance < p.javaCompliance:
             continue
@@ -13150,7 +13154,7 @@ def junit(args, harness=_basic_junit_harness, parser=None, jdk=None):
                     f.write(c + '\n')
             testClassArgs = ['--testsfile', testfile]
         junitArgs = ['-cp', _separatedCygpathU2W(binDir + os.pathsep + projectscp), 'MX2JUnitWrapper'] + testClassArgs
-        rc = harness(args, vmArgs, junitArgs)
+        rc = harness(args, vmArgs, jdk, junitArgs)
         return rc
     else:
         return 0
@@ -13757,7 +13761,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.28.4")
+version = VersionSpec("5.29.4")
 
 currentUmask = None
 
