@@ -13076,8 +13076,8 @@ def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=
     matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
     return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
 
-def _basic_junit_harness(args, vmArgs, jdk, junitArgs):
-    return run_java(junitArgs, jdk=jdk)
+def _basic_junit_harness(args, vmArgs, junitArgs):
+    return run_java(junitArgs)
 
 def split_j_args(extraVmArgsList):
     extraVmArgs = []
