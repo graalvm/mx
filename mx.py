@@ -61,7 +61,7 @@ from collections import Callable
 from collections import OrderedDict, namedtuple
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace
+from argparse import ArgumentParser, REMAINDER, Namespace, FileType
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
 
 import mx_unittest
@@ -9124,6 +9124,7 @@ def eclipseformat(args):
     parser.add_argument('-C', '--no-backup', action='store_false', dest='backup', help='do not save backup of modified files')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -9202,7 +9203,8 @@ def eclipseformat(args):
                             fp.write(content)
 
                 if self.content != content:
-                    self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1))
+                    rpath = os.path.relpath(self.path, _primary_suite.dir)
+                    self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
                     self.content = content
                     return True
 
@@ -9259,16 +9261,22 @@ def eclipseformat(args):
             backup = os.path.abspath('eclipseformat.backup.zip')
             zf = zipfile.ZipFile(backup, 'w', zipfile.ZIP_DEFLATED)
         for fi in modified:
+            diffs = ''.join(fi.diff)
+            if args.patchfile:
+                args.patchfile.write(diffs)
             name = os.path.relpath(fi.path, arcbase)
             log(' - {0}'.format(name))
             log('Changes:')
-            log(''.join(fi.diff))
+            log(diffs)
             if args.backup:
                 arcname = name.replace(os.sep, '/')
                 zf.writestr(arcname, fi.content)
         if args.backup:
             zf.close()
             log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
+        if args.patchfile:
+            log('Wrote patches to {0}'.format(args.patchfile.name))
+            args.patchfile.close()
         return 1
     return 0
 
@@ -13759,7 +13767,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.28.4")
+version = VersionSpec("5.29.0")
 
 currentUmask = None
 
