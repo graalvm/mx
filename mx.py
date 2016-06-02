@@ -7558,7 +7558,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(version ' + versionDescription + ')'
+                msg += '(version ' + str(versionDescription) + ')'
             selected = configs[0]
             msg += ". Selecting " + str(selected)
             log(msg)
@@ -7571,7 +7571,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(version ' + versionDescription + ')'
+                msg += '(version ' + str(versionDescription) + ')'
             log(msg)
             choices = configs + ['<other>']
             if cancel:
@@ -7590,7 +7590,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg += 'default '
         msg += 'JDK'
         if versionDescription:
-            msg = msg + ' ' + versionDescription
+            msg = msg + ' ' + str(versionDescription)
         if purpose:
             msg += ' for ' + purpose
         log(msg)
@@ -7600,7 +7600,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg += ' for ' + purpose
         msg += ' '
         if versionDescription:
-            msg = msg + '(version ' + versionDescription + ')'
+            msg = msg + '(version ' + str(versionDescription) + ')'
         log(msg)
         selected = None
 
@@ -7611,7 +7611,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
-            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + versionDescription)
+            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
