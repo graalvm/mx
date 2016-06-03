@@ -10344,6 +10344,8 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             # support JDK9, then the generated Eclipse project needs to see the classes
             # in the jdk.vm.ci module. Further down, a stub containing the classes
             # in this module will be added as a library to generated project.
+            # Fortunately this works even when the class files are at version 53 (JDK9)
+            # even though Eclipse can only run on class files with verison 52 (JDK8).
             for pkg in p.imported_java_packages(projectDepsOnly=False):
                 if pkg.startswith('jdk.vm.ci.'):
                     moduleDeps.add('jdk.vm.ci')
@@ -10543,16 +10545,18 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
-        moduleAPDeps = {}
-        for dep in classpath_entries(names=processors, preferProjects=True):
-            if dep.isJavaProject():
-                concealed = dep.get_concealed_imported_packages()
-                if concealed:
-                    for module in concealed.iterkeys():
-                        moduleAPDeps[module] = get_jdk(dep.javaCompliance)
-        for module in sorted(moduleAPDeps):
-            moduleJar = _get_jdk_module_jar(module, p.suite, moduleAPDeps[module])
-            out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+        if eclipseJavaCompliance >= '9':
+            # Annotation processors can only use JDK9 classes once Eclipse supports JDK9.
+            moduleAPDeps = {}
+            for dep in classpath_entries(names=processors, preferProjects=True):
+                if dep.isJavaProject():
+                    concealed = dep.get_concealed_imported_packages()
+                    if concealed:
+                        for module in concealed.iterkeys():
+                            moduleAPDeps[module] = get_jdk(dep.javaCompliance)
+            for module in sorted(moduleAPDeps):
+                moduleJar = _get_jdk_module_jar(module, p.suite, moduleAPDeps[module])
+                out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
         out.close('factorypath')
         update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
@@ -13776,7 +13780,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.30.0")
+version = VersionSpec("5.30.1")
 
 currentUmask = None
 
