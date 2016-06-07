@@ -1872,7 +1872,7 @@ class JavaBuildTask(ProjectBuildTask):
         buildReason = None
         outputDir = self.subject.output_dir()
         for sourceDir in self.subject.source_dirs():
-            for root, _, files in os.walk(sourceDir):
+            for root, _, files in os.walk(sourceDir, followlinks=True):
                 javafiles = [join(root, name) for name in files if name.endswith('.java')]
                 self.javafilelist += javafiles
                 nonjavafiles = [join(root, name) for name in files if not name.endswith('.java')]
