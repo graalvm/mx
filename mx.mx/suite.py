@@ -42,7 +42,6 @@ suite = {
         "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11.jar",
       ],
       "sha1" : "4e031bb61df09069aeb2bffb4019e7a5034a4ee0",
-      "eclipse.container" : "org.eclipse.jdt.junit.JUNIT_CONTAINER/4",
       "sourceUrls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.11-sources.jar",
         "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11-sources.jar",
