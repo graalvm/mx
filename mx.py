@@ -6403,7 +6403,7 @@ class BinarySuite(Suite):
         Suite._register_metadata(self)
 
     def _resolve_dependencies(self):
-        for d in self.libs + self.dists:
+        for d in self.libs + self.jdkLibs + self.dists:
             d.resolveDeps()
         for d in self.dists:
             d.deps = [dep for dep in d.deps if dep and dep.isDistribution()]
@@ -13781,7 +13781,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.30.1")
+version = VersionSpec("5.30.2")
 
 currentUmask = None
 
