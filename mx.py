@@ -12674,9 +12674,10 @@ def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, clas
             classname = classname[:-len('.class')]
             for a in args:
                 if matcher(a, classname):
-                    matches.append(classname)
-                    if logToConsole:
-                        log(classname)
+                    if classname not in matches:
+                        matches.append(classname)
+                        if logToConsole:
+                            log(classname)
     return matches
 
 def select_items(items, descriptions=None, allowMultiple=True):
