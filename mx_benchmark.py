@@ -378,27 +378,43 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
 
     def splitJvmConfigArg(self, bmSuiteArgs):
         parser = ArgumentParser()
-        parser.add_argument("--jvm-config", default=None)
+        parser.add_argument("--jvm", default=None,
+            help="JVM to run the benchmark with, for example 'server' or 'client'.")
+        parser.add_argument("--jvm-config", default=None,
+            help="JVM configuration for the selected JVM, for example 'graal-core'.")
         args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
-        return args.jvm_config, remainder
+        return args.jvm, args.jvm_config, remainder
+
+    def jvm(self, bmSuiteArgs):
+        """Returns the value of the `--jvm` argument or `None` if not present."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[0]
 
     def jvmConfig(self, bmSuiteArgs):
         """Returns the value of the `--jvm-config` argument or `None` if not present."""
-        return self.splitJvmConfigArg(bmSuiteArgs)[0]
+        return self.splitJvmConfigArg(bmSuiteArgs)[1]
 
     def vmArgs(self, bmSuiteArgs):
         """Returns the VM arguments for the benchmark."""
-        return self.splitJvmConfigArg(bmSuiteArgs)[1]
+        return self.splitJvmConfigArg(bmSuiteArgs)[2]
 
     def runArgs(self, bmSuiteArgs):
         """Returns the run arguments for the benchmark."""
         return self.vmAndRunArgs(bmSuiteArgs)[1]
 
     def getJavaVm(self, bmSuiteArgs):
-        config = self.jvmConfig(bmSuiteArgs)
-        if config is None:
-            config = "default"
-        return get_java_vm(mx._opts.vm, config)
+        jvm = self.jvm(bmSuiteArgs)
+        jvmConfig = self.jvmConfig(bmSuiteArgs)
+        if jvm is None:
+            if mx.get_opts().vm is not None:
+                mx.log("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
+                jvm = mx.get_opts().vm
+            else:
+                mx.log("Defaulting the JVM to 'server'.")
+                jvm = "server"
+        if jvmConfig is None:
+            mx.log("Defaulting --jvm-config to 'default'. Consider adding --jvm-config.")
+            jvmConfig = "default"
+        return get_java_vm(jvm, jvmConfig)
 
     def before(self, bmSuiteArgs):
         self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
