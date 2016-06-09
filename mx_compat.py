@@ -68,6 +68,16 @@ class MxCompatibility500(object):
     def checkstyleVersion(self):
         return '6.0'
 
+    def checkDependencyJavaCompliance(self):
+        """
+        Determines if a project must have a higher or equal Java compliance level
+        than a project it depends upon.
+        """
+        return False
+
+    def improvedImportMatching(self):
+        return False
+
     def verifySincePresent(self):
         return []
 
@@ -149,6 +159,17 @@ class MxCompatibility59(MxCompatibility5616):#pylint: disable=too-many-ancestors
 
     def verifySincePresent(self):
         return ['-verifysincepresent']
+
+class MxCompatibility5200(MxCompatibility59):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.20.0")
+
+    def checkDependencyJavaCompliance(self):
+        return True
+
+    def improvedImportMatching(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()

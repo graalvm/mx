@@ -42,7 +42,6 @@ suite = {
         "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11.jar",
       ],
       "sha1" : "4e031bb61df09069aeb2bffb4019e7a5034a4ee0",
-      "eclipse.container" : "org.eclipse.jdt.junit.JUNIT_CONTAINER/4",
       "sourceUrls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.11-sources.jar",
         "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11-sources.jar",
@@ -105,10 +104,11 @@ suite = {
     },
 
     "JMH" : {
-      "sha1" : "7e1577cf6e1f1326b78a322d206fa9412fd41ae9",
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2.jar"],
-      "sourceSha1" : "12a67f0dcdfe7e43218bf38c1d7fd766122a3dc7",
-      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.11.2-sources.jar"],
+      "sha1" : "df111ae8e92bfd84fe135b844c4e3a910e1b8497",
+      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12.jar"],
+      "sourceSha1" : "b8c0f381c83c08b36244ab116025f87841e6b251",
+      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
+      "licence" : "GPLv2-CPE",
     },
   },
 
@@ -133,6 +133,16 @@ suite = {
 
   "projects" : {
 
+    "com.oracle.mxtool.bench" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "dependencies" : [
+        "JMH",
+      ],
+      "javaCompliance" : "1.8",
+      "annotationProcessors" : ["JMH"],
+    },
+
     "com.oracle.mxtool.junit" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
@@ -147,5 +157,12 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.7+", # jdk7 or later
     },
-  },
+
+    "com.oracle.mxtool.checkcopy" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "javaCompliance" : "1.8",
+    },
+   },
+
 }

@@ -16,7 +16,53 @@ mx [global options] [command] [command-specific options]
 
 If no options or command is specified, `mx` prints information on the available options and commands, which will include any suite-specfic options and commands. Help for a specific command is obtained via `mx help <command>`. Global options are expected to have wide applicability to many commands and as such precede the command to be executed.
 
-For an example of `mx` usage, you can read the [Instructions][1] for the Graal project. 
+For an example of `mx` usage, you can read the [Instructions][1] for the Graal project.
+
+### URL rewriting ###
+
+Mx includes support for the primary suite to be able to override the source URLs of imported suites.
+The suite level `urlrewrites` attribute allows regular expression URL rewriting. For example:
+```
+  "urlrewrites" : [
+    {
+      "https://git.acme.com/(.*).git" : {
+        "replacement" : r”https://my.company.com/foo-git-cache/\1.git",
+      }
+    },
+    {
+      "https://hg.acme.com/(.*)" : {
+        "replacement" : r”https://my.company.com/foo-hg-cache/\1",
+      }
+    }
+  ],
+```
+The rules are applied in definition order. Only rewrite rules from the primary suite are used meaning a suite may have to replicate the rewrite rules of its suite dependencies.
+This allows the primary suite to retain full control over where its dependencies are sourced from.
+
+Rewrite rules can also be specified by the `MX_URLREWRITES` environment variable.
+The value of this variable must either be a JSON object describing a single rewrite rule, a JSON array describing a list of rewrite rules or a file containing one of these JSON values.
+Rewrites rules specified by `MX_URLREWRITES` are applied after rules specified by the primary suite.
+
+### Environment variable processing ###
+
+Suites might require various environment variables to be defined for
+the suite to work and mx provides `env` files to cache this
+information for a suite.  Each suite can have an `env` file in
+_suite_/mx._suite_/`env` and a default env file can be provided for
+the user in ~/.mx/env.  Env files are loaded in the following order
+and override any value provided by the shell environment.
+
+1.  ~/.mx/`env` is loaded first.
+
+2.  The primary suite's `env` file is loaded before loading of the suites begins.
+
+3.  The env files of any subsuites are loaded in a depth first fashion
+    such that subsuite `env` files are loaded before their dependents.
+
+4.  The primary suite's `env` file is reloaded so that it overrides
+    any definitions provided by subsuites.
+
+The `-v` option to `mx` will show the loading of `env` files during suite parsing.
 
 ### mx versioning ###
 
