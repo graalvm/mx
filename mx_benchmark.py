@@ -235,7 +235,6 @@ class BaseRule(object):
         return datapoints
 
 
-
 class StdOutRule(BaseRule):
     """Each rule contains a parsing pattern and a replacement template.
 
@@ -254,6 +253,74 @@ class StdOutRule(BaseRule):
 
     def parseResults(self, text):
         return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class CSVBaseRule(BaseRule):
+    """Parses a CSV file and creates a measurement result using the replacement."""
+
+    def __init__(self, colnames, replacement, filter_fn=None, **kwargs):
+        """
+        :param colnames: list of column names of the CSV file. These names are used to
+                         instantiate the replacement template.
+        :type colnames: list
+        :param filter_fn: function for filtering and transforming raw results
+        :type filter_fn: function
+        """
+        super(CSVBaseRule, self).__init__(replacement)
+        self.colnames = colnames
+        self.kwargs = kwargs
+        self.filter_fn = filter_fn if filter_fn else self.filterResult
+
+    def filterResult(self, r):
+        """Filters and transforms a raw result
+
+        :return: Dictionary of variables or None if the result should be omitted.
+        :rtype: dict or None
+        """
+        return r
+
+    def getCSVFiles(self, text):
+        """Get the CSV files which should be parsed.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: List of file names
+        :rtype: list
+        """
+        raise NotImplementedError()
+
+    def parseResults(self, text):
+        import csv
+        l = []
+        files = self.getCSVFiles(text)
+        for filename in files:
+            with open(filename, 'rb') as csvfile:
+                csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
+                l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
+        return l
+
+
+class CSVFixedFileRule(CSVBaseRule):
+    """CSV rule that parses a file with a predefined name."""
+
+    def __init__(self, filename, *args, **kwargs):
+        super(CSVFixedFileRule, self).__init__(*args, **kwargs)
+        self.filename = filename
+
+    def getCSVFiles(self, text):
+        return [self.filename]
+
+
+class CSVStdOutFileRule(CSVBaseRule):
+    """CSV rule that looks for CSV file names in the output of the benchmark."""
+
+    def __init__(self, pattern, match_name, *args, **kwargs):
+        super(CSVStdOutFileRule, self).__init__(*args, **kwargs)
+        self.pattern = pattern
+        self.match_name = match_name
+
+    def getCSVFiles(self, text):
+        return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
 
 
 class StdOutBenchmarkSuite(BenchmarkSuite):
