@@ -159,16 +159,9 @@ def add_bm_suite(suite, mxsuite=None):
     _bm_suites[suite.name()] = suite
 
 
-class StdOutRule(object):
-    """Each rule contains a parsing pattern and a replacement template.
-
-    A parsing pattern is a regex that may contain any number of named groups,
-    as shown in the example:
-
-        r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
-
-    The above parsing regex captures the benchmark name into a variable `benchmark`
-    and the elapsed number of milliseconds into a variable called `value`.
+class BaseRule(object):
+    """A rule parses a raw result and a prepares a structured measurement using a replacement
+    template.
 
     A replacement template is a dictionary that describes how to create a measurement:
 
@@ -192,15 +185,25 @@ class StdOutRule(object):
           all the matches for that parsing rule.
     """
 
-    def __init__(self, pattern, replacement):
-        self.pattern = pattern
+    def __init__(self, replacement):
         self.replacement = replacement
+
+    def parseResults(self, text):
+        """Parses the raw result of a benchmark and create a dictionary of variables
+        for every measurment.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: Iterable of dictionaries with the matched variables.
+        :rtype: iterable
+        """
+        raise NotImplementedError()
 
     def parse(self, text):
         datapoints = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
-        for iteration, m in enumerate(re.finditer(self.pattern, text, re.MULTILINE)):
+        for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
             for key, value in self.replacement.iteritems():
                 inst = value
@@ -213,7 +216,7 @@ class StdOutRule(object):
                         else:
                             raise RuntimeError("Unknown var {0}".format(name))
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
-                    v = capturepat.sub(lambda vm: m.groupdict()[vm.group(1)], v)
+                    v = capturepat.sub(lambda vm: m[vm.group(1)], v)
                     # Convert to a different type.
                     if vtype is str:
                         inst = str(v)
@@ -230,6 +233,27 @@ class StdOutRule(object):
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
+
+
+
+class StdOutRule(BaseRule):
+    """Each rule contains a parsing pattern and a replacement template.
+
+    A parsing pattern is a regex that may contain any number of named groups,
+    as shown in the example:
+
+        r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
+
+    The above parsing regex captures the benchmark name into a variable `benchmark`
+    and the elapsed number of milliseconds into a variable called `value`.
+    """
+
+    def __init__(self, pattern, replacement):
+        super(StdOutRule, self).__init__(replacement)
+        self.pattern = pattern
+
+    def parseResults(self, text):
+        return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
 
 
 class StdOutBenchmarkSuite(BenchmarkSuite):
