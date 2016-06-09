@@ -633,10 +633,11 @@ class BenchmarkExecutor(object):
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
             processed = []
+            dim = self.dimensions(suite, mxBenchmarkArgs, bmSuiteArgs)
             for result in results:
                 if not isinstance(result, dict):
                     result = result.__dict__
-                point = self.dimensions(suite, mxBenchmarkArgs, bmSuiteArgs)
+                point = dim.copy()
                 point.update(result)
                 processed.append(point)
             return processed
