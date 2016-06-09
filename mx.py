@@ -11156,7 +11156,7 @@ application.vendor=mx
 build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
-build.dir=bin
+build.dir=""" + p.output_dir() + """
 build.generated.sources.dir=${build.dir}/generated-sources
 # Only compile against the classpath explicitly listed here:
 build.sysclasspath=ignore
