@@ -11035,6 +11035,23 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('arg', {'value' : '--no-daemon'})
     out.close('exec')
     out.close('target')
+    out.open('target', {'name' : 'package'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : 'build'})
+    buildOnly = ''
+    sep = ''
+    for d in dists:
+        buildOnly = buildOnly + sep + d.name
+        sep = ','
+    out.element('arg', {'value' : '--only'})
+    out.element('arg', {'value' : buildOnly})
+    out.element('arg', {'value' : '--force-javac'})
+    out.element('arg', {'value' : '--no-native'})
+    out.element('arg', {'value' : '--no-daemon'})
+    out.close('exec')
+    out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
     out.element('target', {'name' : 'test', 'depends' : 'run'})
@@ -11157,6 +11174,7 @@ build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
 build.dir=""" + p.output_dir() + """
+$cos.update=package
 build.generated.sources.dir=${build.dir}/generated-sources
 # Only compile against the classpath explicitly listed here:
 build.sysclasspath=ignore
