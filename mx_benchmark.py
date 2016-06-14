@@ -27,6 +27,7 @@
 import json
 import re
 import socket
+import time
 import traceback
 import uuid
 from argparse import ArgumentParser
@@ -758,6 +759,7 @@ class BenchmarkExecutor(object):
 
         failures_seen = False
         suite.before(bmSuiteArgs)
+        start_time = time.time()
         for benchnames in benchNamesList:
             suite.validateEnvironment()
             try:
@@ -767,6 +769,11 @@ class BenchmarkExecutor(object):
             except RuntimeError:
                 failures_seen = True
                 mx.log(traceback.format_exc())
+        end_time = time.time()
+
+        for result in results:
+            result["extra.benchmarking.start-ts"] = int(start_time)
+            result["extra.benchmarking.end-ts"] = int(end_time)
 
         topLevelJson = {
           "queries": results
