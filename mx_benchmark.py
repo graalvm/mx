@@ -379,13 +379,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                         "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
                 if compiled(pat).search(out):
-                    raise RuntimeError("Benchmark failed")
+                    raise RuntimeError("Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
                     success = True
             if not success:
-                raise RuntimeError("Benchmark failed")
+                raise RuntimeError("Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
