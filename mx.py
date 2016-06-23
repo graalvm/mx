@@ -11343,6 +11343,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         return
 
     libraries = set()
+    jdk_libraries = set()
 
     ideaProjectDirectory = join(suite.dir, '.idea')
 
@@ -11415,12 +11416,16 @@ def _intellij_suite(args, suite, refreshOnly=False):
         def processDep(dep, edge):
             if dep is proj:
                 return
-
             if dep.isLibrary() or dep.isJARDistribution():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isProject():
                 moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
+            elif dep.isJdkLibrary():
+                jdk_libraries.add(dep)
+                moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+            else:
+                abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
         p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
         moduleXml.close('component')
@@ -11453,11 +11458,29 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     ensure_dir_exists(librariesDirectory)
 
+    def make_library(name, path, source_path):
+        libraryXml = XMLDoc()
+
+        libraryXml.open('component', attributes={'name': 'libraryTable'})
+        libraryXml.open('library', attributes={'name': name})
+        libraryXml.open('CLASSES')
+        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
+        libraryXml.close('CLASSES')
+        libraryXml.element('JAVADOC')
+        if sourcePath != "":
+            libraryXml.open('SOURCES')
+            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
+            libraryXml.close('SOURCES')
+        else:
+            libraryXml.element('SOURCES')
+        libraryXml.close('library')
+        libraryXml.close('component')
+
+        libraryFile = join(librariesDirectory, name + '.xml')
+        update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
+
     # Setup the libraries that were used above
-    # TODO: setup all the libraries from the suite regardless of usage?
     for library in libraries:
-        path = ""
-        sourcePath = ""
         if library.isLibrary():
             path = os.path.relpath(library.path, suite.dir)
             if library.sourcePath:
@@ -11468,28 +11491,13 @@ def _intellij_suite(args, suite, refreshOnly=False):
                 sourcePath = os.path.relpath(library.sourcesPath, suite.dir)
         else:
             abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+        make_library(library.name, path, sourcePath)
 
-        libraryXml = XMLDoc()
-
-        libraryXml.open('component', attributes={'name': 'libraryTable'})
-        libraryXml.open('library', attributes={'name': library.name})
-        libraryXml.open('CLASSES')
-        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
-        libraryXml.close('CLASSES')
-        libraryXml.element('JAVADOC')
-        if sourcePath != "":
-            libraryXml.open('SOURCES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + sourcePath + '!/'})
-            libraryXml.close('SOURCES')
-        else:
-            libraryXml.element('SOURCES')
-        libraryXml.close('library')
-        libraryXml.close('component')
-
-        libraryFile = join(librariesDirectory, library.name + '.xml')
-        update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
-
-
+    jdk = get_jdk()
+    if jdk_libraries:
+        log("Setting up JDK libraries using {0}".format(jdk))
+    for library in jdk_libraries:
+        make_library(library.name, os.path.relpath(library.classpath_repr(jdk), suite.dir), os.path.relpath(library.get_source_path(jdk), suite.dir))
 
     # Set annotation processor profiles up, and link them to modules in compiler.xml
     compilerXml = XMLDoc()
@@ -11706,7 +11714,7 @@ def fsckprojects(args):
                 # don't traverse subdirs of an existing distributions in this suite
                 dirnames[:] = []
             else:
-                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject'])
+                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
                     indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
@@ -11716,6 +11724,26 @@ def fsckprojects(args):
                         if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
+        ideaProjectDirectory = join(suite.dir, '.idea')
+        librariesDirectory = join(ideaProjectDirectory, 'libraries')
+        if exists(librariesDirectory):
+            neededLibraries = set()
+            for p in suite.projects_recursive():
+                def processDep(dep, edge):
+                    if dep is p:
+                        return
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
+                        neededLibraries.add(dep)
+                p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+            neededLibraryFiles = frozenset([l.name + '.xml' for l in neededLibraries])
+            existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
+            for library_file in existingLibraryFiles - neededLibraryFiles:
+                file_path = join(librariesDirectory, library_file)
+                relative_file_path = os.path.relpath(file_path, os.curdir)
+                if ask_yes_no(relative_file_path + ' looks like a removed library -- delete it', 'n'):
+                    os.remove(file_path)
+                    log('Deleted ' + relative_file_path)
+
 
 def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     """
@@ -13781,7 +13809,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.31.0")
+version = VersionSpec("5.31.1")
 
 currentUmask = None
 
