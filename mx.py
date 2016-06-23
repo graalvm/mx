@@ -6089,7 +6089,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc = None if internal else VC.get_vc(self.dir)
+        self.vc = None if internal else VC.get_vc(self.dir, abortOnError=False)
         self.projects = []
         self._load_suite_dict()
         self._init_imports()
@@ -13781,7 +13781,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.31.0")
+version = VersionSpec("5.31.1")
 
 currentUmask = None
 
