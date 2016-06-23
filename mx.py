@@ -11416,7 +11416,6 @@ def _intellij_suite(args, suite, refreshOnly=False):
         def processDep(dep, edge):
             if dep is proj:
                 return
-
             if dep.isLibrary() or dep.isJARDistribution():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
@@ -11715,7 +11714,7 @@ def fsckprojects(args):
                 # don't traverse subdirs of an existing distributions in this suite
                 dirnames[:] = []
             else:
-                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject'])
+                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
                     indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
@@ -11725,6 +11724,26 @@ def fsckprojects(args):
                         if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
+        ideaProjectDirectory = join(suite.dir, '.idea')
+        librariesDirectory = join(ideaProjectDirectory, 'libraries')
+        if exists(librariesDirectory):
+            neededLibraries = set()
+            for p in suite.projects_recursive():
+                def processDep(dep, edge):
+                    if dep is p:
+                        return
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
+                        neededLibraries.add(dep)
+                p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+            neededLibraryFiles = frozenset([l.name + '.xml' for l in neededLibraries])
+            existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
+            for library_file in existingLibraryFiles - neededLibraryFiles:
+                file_path = join(librariesDirectory, library_file)
+                relative_file_path = os.path.relpath(file_path, os.curdir)
+                if ask_yes_no(relative_file_path + ' looks like a removed library -- delete it', 'n'):
+                    os.remove(file_path)
+                    log('Deleted ' + relative_file_path)
+
 
 def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     """
