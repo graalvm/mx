@@ -711,14 +711,14 @@ class BenchmarkExecutor(object):
             benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
+            mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, _bm_suites.keys()))
         if benchspec is "*":
             return (suite, [[b] for b in suite.benchmarks()])
         elif benchspec is "":
             return (suite, [None])
         elif not benchspec in suite.benchmarks():
-            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
-                benchspec, suitename))
+            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
+                benchspec, suitename, suite.benchmarks()))
         else:
             return (suite, [[benchspec]])
 
