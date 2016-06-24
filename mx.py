@@ -11467,7 +11467,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
         libraryXml.close('CLASSES')
         libraryXml.element('JAVADOC')
-        if sourcePath != "":
+        if sourcePath:
             libraryXml.open('SOURCES')
             libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
             libraryXml.close('SOURCES')
@@ -11481,6 +11481,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     # Setup the libraries that were used above
     for library in libraries:
+        sourcePath = None
         if library.isLibrary():
             path = os.path.relpath(library.path, suite.dir)
             if library.sourcePath:
