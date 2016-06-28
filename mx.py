@@ -6405,8 +6405,9 @@ class BinarySuite(Suite):
     def _resolve_dependencies(self):
         for d in self.libs + self.jdkLibs + self.dists:
             d.resolveDeps()
+        # Remove projects from dist dependencies
         for d in self.dists:
-            d.deps = [dep for dep in d.deps if dep and dep.isDistribution()]
+            d.deps = [dep for dep in d.deps if dep and not dep.isJavaProject()]
 
 class InternalSuite(SourceSuite):
     def __init__(self, mxDir):
@@ -13810,7 +13811,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.31.1")
+version = VersionSpec("5.31.2")
 
 currentUmask = None
 
