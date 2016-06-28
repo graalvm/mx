@@ -13235,6 +13235,7 @@ def maven_install(args):
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
     parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
+    parser.add_argument('--only', action='store', help='comma separated set of distributions to deploy')
     args = parser.parse_args(args)
 
     _mvn.check()
@@ -13243,10 +13244,12 @@ def maven_install(args):
     version = s.vc.parent(s.dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
+    only = args.only.split(',')
     for dist in s.dists:
         # ignore non-exported dists
         if not dist.internal and not dist.name.startswith('COM_ORACLE') and dist.maven:
-            arcdists.append(dist)
+            if len(only) is 0 or dist.name in only: 
+                arcdists.append(dist)
 
     mxMetaName = _mx_binary_distribution_root(s.name)
     s.create_mx_binary_distribution_jar()
@@ -13830,7 +13833,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.31.2")
+version = VersionSpec("5.31.4")
 
 currentUmask = None
 
