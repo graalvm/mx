@@ -174,6 +174,10 @@ _removedDeps = {}
 
 _suites = dict()
 _loadedSuites = []
+"""
+Map of the environment variables loaded by parsing the suites.
+"""
+_loadedEnv = dict()
 
 _jdkFactories = {}
 
@@ -5307,13 +5311,13 @@ class Suite:
 
     def _load(self):
         """
-        Calls _load_env and _load_extensions
+        Calls _parse_env and _load_extensions
         """
         # load suites depth first
         self.loading_imports = True
         self.visit_imports(self._find_and_loadsuite)
         self.loading_imports = False
-        self._load_env()
+        self._parse_env()
         self._load_extensions()
         _loadedSuites.append(self)
 
@@ -6234,12 +6238,12 @@ class SourceSuite(Suite):
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
-    def _load_env_in_mxDir(mxDir):
+    def _load_env_in_mxDir(mxDir, env=None):
         e = join(mxDir, 'env')
-        SourceSuite._load_env_file(e)
+        SourceSuite._load_env_file(e, env)
 
     @staticmethod
-    def _load_env_file(e):
+    def _load_env_file(e, env=None):
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -6250,11 +6254,17 @@ class SourceSuite(Suite):
                         if not '=' in line:
                             abort(e + ':' + str(lineNum) + ': line does not match pattern "key=value"')
                         key, value = line.split('=', 1)
-                        os.environ[key.strip()] = expandvars_in_property(value.strip())
-                        logv('Setting environment variable %s=%s from %s' % (key.strip(), os.environ[key.strip()], e))
+                        key = key.strip()
+                        value = expandvars_in_property(value.strip())
+                        if env is None:
+                            os.environ[key] = value
+                            logv('Setting environment variable %s=%s from %s' % (key, value, e))
+                        else:
+                            env[key] = value
+                            logv('Read variable %s=%s from %s' % (key, value, e))
 
-    def _load_env(self):
-        SourceSuite._load_env_in_mxDir(self.mxDir)
+    def _parse_env(self):
+        SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
 
     def _register_metadata(self):
         Suite._register_metadata(self)
@@ -6383,7 +6393,7 @@ class BinarySuite(Suite):
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
-    def _load_env(self):
+    def _parse_env(self):
         pass
 
     def _load_distributions(self, distsMap):
@@ -6424,7 +6434,7 @@ class MXSuite(InternalSuite):
     def vc_command_init(self):
         pass
 
-    def _load_env(self):
+    def _parse_env(self):
         # Only load the env file from mx when it's the primary suite.  This can only
         # be determined when the primary suite has been set so it must be deferred but
         # since the primary suite env should be loaded last this should be ok.
@@ -13711,9 +13721,12 @@ def main():
             userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
             SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
 
-            # We explicitly load the 'env' file of the primary suite now as it might influence
-            # the suite loading logic. It will get loaded again, to ensure it overrides any
-            # settings in imported suites
+            # We explicitly load the 'env' file of the primary suite now as it might
+            # influence the suite loading logic.  During loading of the subsuites their
+            # environment variable definitions are collected and will be placed into the
+            # os.environ all at once.  This ensures that a consistent set of definitions
+            # are seen.  The PrimarySuite must have everything required for loading
+            # defined.
             PrimarySuite.load_env(primarySuiteMxDir)
             global _binary_suites
             bs = os.environ.get('MX_BINARY_SUITES')
@@ -13743,6 +13756,12 @@ def main():
             # but not otherwise, as we can't be sure the string isn't in a value for some other option.
             if _needs_primary_suite_check(_argParser.initialCommandAndArgs):
                 abort(primary_suite_error)
+
+        for envVar in _loadedEnv.keys():
+            value = _loadedEnv[envVar]
+            if os.environ.get(envVar) != value:
+                logv('Setting environment variable %s=%s' % (envVar, value))
+                os.environ[envVar] = value
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
