@@ -241,6 +241,8 @@ class BaseRule(Rule):
                         inst = float(v)
                     elif vtype is bool:
                         inst = bool(v)
+                    elif hasattr(vtype, '__call__'):
+                        inst = vtype(v)
                     else:
                         raise RuntimeError("Cannot handle type {0}".format(vtype))
                 if type(inst) not in [str, int, float, bool]:
