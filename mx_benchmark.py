@@ -712,6 +712,17 @@ class DefaultJavaVm(OutputCapturingJavaVm):
         mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
 
 
+class DummyJavaVm(OutputCapturingJavaVm):
+    """
+    Dummy VM to work around: "pylint #111138 disabling R0921 does'nt work"
+    https://www.logilab.org/ticket/111138
+
+    Note that the warning R0921 (abstract-class-little-used) has been removed
+    from pylint 1.4.3.
+    """
+    pass
+
+
 def add_java_vm(javavm):
     key = (javavm.name(), javavm.config_name())
     if key in _bm_suite_java_vms:
