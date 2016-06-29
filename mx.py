@@ -13719,6 +13719,7 @@ def main():
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
             _init_primary_suite(_mx_suite)
+            mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
             _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
             userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')

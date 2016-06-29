@@ -688,6 +688,30 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         return code, out, dims
 
 
+class DefaultJavaVm(OutputCapturingJavaVm):
+    def __init__(self, raw_name, raw_config_name):
+        self.raw_name = raw_name
+        self.raw_config_name = raw_config_name
+
+    def name(self):
+        return self.raw_name
+
+    def config_name(self):
+        return self.raw_config_name
+
+    def post_process_command_line_args(self, args):
+        return args
+
+    def dimensions(self, cwd, args, code, out):
+        return {
+            "host-vm": self.name(),
+            "host-vm-config": self.config_name(),
+        }
+
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+
+
 def add_java_vm(javavm):
     key = (javavm.name(), javavm.config_name())
     if key in _bm_suite_java_vms:
@@ -827,6 +851,17 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         return jmh_jar
 
 
+class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
+    def name(self):
+        return "jmh-mx"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -865,7 +900,7 @@ class BenchmarkExecutor(object):
 
     def branch(self):
         mxsuite = mx.primary_suite()
-        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        name = mxsuite.vc and mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
         return name
 
     def buildUrl(self):
@@ -1006,6 +1041,12 @@ class BenchmarkExecutor(object):
 
 
 _benchmark_executor = BenchmarkExecutor()
+
+
+def init_benchmark_suites():
+    """Called after mx initialization if mx is the primary suite."""
+    add_java_vm(DefaultJavaVm("server", "default"))
+    add_bm_suite(JMHRunnerMxBenchmarkSuite())
 
 
 def splitArgs(args, separator):
