@@ -31,6 +31,7 @@ import time
 import traceback
 import uuid
 from argparse import ArgumentParser
+import os.path
 
 import mx
 
@@ -160,7 +161,20 @@ def add_bm_suite(suite, mxsuite=None):
     _bm_suites[suite.name()] = suite
 
 
-class BaseRule(object):
+class Rule(object):
+
+    def parse(self, text):
+        """Create a dictionary of variables for every measurment.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: Iterable of dictionaries with the matched variables.
+        :rtype: iterable
+        """
+        raise NotImplementedError()
+
+
+class BaseRule(Rule):
     """A rule parses a raw result and a prepares a structured measurement using a replacement
     template.
 
@@ -322,6 +336,110 @@ class CSVStdOutFileRule(CSVBaseRule):
 
     def getCSVFiles(self, text):
         return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class JMHJsonRule(Rule):
+    """Parses a JSON file produced by JMH and creates a measurement result."""
+
+    extra_jmh_keys = [
+        "mode",
+        "threads",
+        "forks",
+        "warmupIterations",
+        "warmupTime",
+        "warmupBatchSize",
+        "measurementIterations",
+        "measurementTime",
+        "measurementBatchSize",
+        ]
+
+    def __init__(self, filename, suiteName):
+        self.filename = filename
+        self.suiteName = suiteName
+
+    def shortenPackageName(self, benchmark):
+        """
+        Returns an abbreviated name for the benchmark.
+        Example: com.example.benchmark.Bench -> c.e.b.Bench
+        The full name is stored in the `extra.jmh.benchmark` property.
+        """
+        s = benchmark.split(".")
+        # class and method
+        clazz = s[-2:]
+        package = [str(x[0]) for x in s[:-2]]
+        return ".".join(package + clazz)
+
+    def benchSuiteName(self):
+        return self.suiteName
+
+    def getExtraJmhKeys(self):
+        return JMHJsonRule.extra_jmh_keys
+
+    def parse(self, text):
+        r = []
+        with open(self.filename) as fp:
+            for result in json.load(fp):
+
+                benchmark = result["benchmark"]
+                mode = result["mode"]
+
+                pm = result["primaryMetric"]
+                unit = pm["scoreUnit"]
+                unit_parts = unit.split("/")
+
+                if mode == "thrpt":
+                    # Throughput, ops/time
+                    metricName = "throughput"
+                    better = "higher"
+                    if len(unit_parts) == 2:
+                        metricUnit = "op/" + unit_parts[1]
+                    else:
+                        metricUnit = unit
+                elif mode in ["avgt", "sample", "ss"]:
+                    # Average time, Sampling time, Single shot invocation time
+                    metricName = "time"
+                    better = "lower"
+                    if len(unit_parts) == 2:
+                        metricUnit = unit_parts[0]
+                    else:
+                        metricUnit = unit
+                else:
+                    raise RuntimeError("Unknown benchmark mode {0}".format(mode))
+
+
+                d = {
+                    "bench-suite" : self.benchSuiteName(),
+                    "benchmark" : self.shortenPackageName(benchmark),
+                    "metric.name": metricName,
+                    "metric.unit": metricUnit,
+                    "metric.score-function": "id",
+                    "metric.better": better,
+                    "metric.type": "numeric",
+                    # full name
+                    "extra.jmh.benchmark" : benchmark,
+                }
+
+                if "params" in result:
+                    # add all parameter as a single string
+                    d["extra.jmh.params"] = ", ".join(["=".join(kv) for kv in result["params"].iteritems()])
+                    # and also the individual values
+                    for k, v in result["params"].iteritems():
+                        d["extra.jmh.param." + k] = str(v)
+
+                for k in self.getExtraJmhKeys():
+                    if k in result:
+                        d["extra.jmh." + k] = str(result[k])
+
+                for jmhFork, rawData in enumerate(pm["rawData"]):
+                    for iteration, data in enumerate(rawData):
+                        d2 = d.copy()
+                        d2.update({
+                          "metric.value": float(data),
+                          "metric.iteration": int(iteration),
+                          "extra.jmh.fork": str(jmhFork),
+                        })
+                        r.append(d2)
+        return r
 
 
 class StdOutBenchmarkSuite(BenchmarkSuite):
@@ -570,6 +688,41 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         return code, out, dims
 
 
+class DefaultJavaVm(OutputCapturingJavaVm):
+    def __init__(self, raw_name, raw_config_name):
+        self.raw_name = raw_name
+        self.raw_config_name = raw_config_name
+
+    def name(self):
+        return self.raw_name
+
+    def config_name(self):
+        return self.raw_config_name
+
+    def post_process_command_line_args(self, args):
+        return args
+
+    def dimensions(self, cwd, args, code, out):
+        return {
+            "host-vm": self.name(),
+            "host-vm-config": self.config_name(),
+        }
+
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+
+
+class DummyJavaVm(OutputCapturingJavaVm):
+    """
+    Dummy VM to work around: "pylint #111138 disabling R0921 does'nt work"
+    https://www.logilab.org/ticket/111138
+
+    Note that the warning R0921 (abstract-class-little-used) has been removed
+    from pylint 1.4.3.
+    """
+    pass
+
+
 def add_java_vm(javavm):
     key = (javavm.name(), javavm.config_name())
     if key in _bm_suite_java_vms:
@@ -606,6 +759,118 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
+
+
+class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
+    """Base class for JMH based benchmark suites."""
+
+    jmh_result_file = "jmh_result.json"
+
+    def extraRunArgs(self):
+        return ["-rff", JMHBenchmarkSuiteBase.jmh_result_file, "-rf", "json"]
+
+    def extraVmArgs(self):
+        return []
+
+    def getJMHEntry(self):
+        raise NotImplementedError()
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if benchmarks is not None:
+            mx.abort("No benchmark should be specified for the selected suite. (Use JMH specific filtering instead.)")
+        vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
+        runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
+        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs
+
+    def benchmarks(self):
+        return ["default"]
+
+    def successPatterns(self):
+        return [
+            re.compile(
+                r"# Run complete.",
+                re.MULTILINE)
+        ]
+
+    def benchSuiteName(self):
+        return self.name()
+
+    def failurePatterns(self):
+        return [re.compile(r"<failure>")]
+
+    def flakySuccessPatterns(self):
+        return []
+
+    def rules(self, out, benchmarks, bmSuiteArgs):
+        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName())]
+
+
+class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
+
+    def extraVmArgs(self):
+        # find all projects with a direct JMH dependency
+        jmhProjects = []
+        for p in mx.projects_opt_limit_to_suites():
+            if 'JMH' in [x.name for x in p.deps]:
+                jmhProjects.append(p)
+        cp = mx.classpath([p.name for p in jmhProjects], jdk=mx.get_jdk())
+
+        return ['-cp', cp]
+
+    def getJMHEntry(self):
+        return ["org.openjdk.jmh.Main"]
+
+
+
+class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """
+    JMH benchmark suite that executes microbenchmarks in a JMH jar.
+
+    This suite relies on the `--jmh-jar` and `--jmh-name` to be set. The former
+    specifies the path to the JMH jar files. The later is the name suffix that is use
+    for the bench-suite property.
+    """
+
+    def benchSuiteName(self):
+        return "jmh-" + self.jmhName()
+
+    def vmArgs(self, bmSuiteArgs):
+        vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
+        parser = ArgumentParser(add_help=False)
+        parser.add_argument("--jmh-jar", default=None)
+        parser.add_argument("--jmh-name", default=None)
+        args, remaining = parser.parse_known_args(vmArgs)
+        self.jmh_jar = args.jmh_jar
+        self.jmh_name = args.jmh_name
+        return remaining
+
+    def getJMHEntry(self):
+        return ["-jar", self.jmhJAR()]
+
+    def jmhName(self):
+        if self.jmh_name is None:
+            mx.abort("Please use the --jmh-name benchmark suite argument to set the name of the JMH suite.")
+        return self.jmh_name
+
+    def jmhJAR(self):
+        if self.jmh_jar is None:
+            mx.abort("Please use the --jmh-jar benchmark suite argument to set the JMH jar file.")
+        jmh_jar = os.path.expanduser(self.jmh_jar)
+        if not os.path.exists(jmh_jar):
+            mx.abort("The --jmh-jar argument points to a non-existing file: " + jmh_jar)
+        return jmh_jar
+
+
+class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
+    def name(self):
+        return "jmh-mx"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
 
 
 class BenchmarkExecutor(object):
@@ -646,7 +911,7 @@ class BenchmarkExecutor(object):
 
     def branch(self):
         mxsuite = mx.primary_suite()
-        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        name = mxsuite.vc and mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
         return name
 
     def buildUrl(self):
@@ -787,6 +1052,12 @@ class BenchmarkExecutor(object):
 
 
 _benchmark_executor = BenchmarkExecutor()
+
+
+def init_benchmark_suites():
+    """Called after mx initialization if mx is the primary suite."""
+    add_java_vm(DefaultJavaVm("server", "default"))
+    add_bm_suite(JMHRunnerMxBenchmarkSuite())
 
 
 def splitArgs(args, separator):
