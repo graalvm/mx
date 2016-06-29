@@ -162,6 +162,28 @@ def add_bm_suite(suite, mxsuite=None):
 
 
 class Rule(object):
+    # the maximum size of a string field
+    max_string_field_length = 255
+
+    @staticmethod
+    def crop_front(prefix=""):
+        """Returns a function that truncates a string at the start."""
+        assert len(prefix) < Rule.max_string_field_length
+        def _crop(path):
+            if len(path) < Rule.max_string_field_length:
+                return str(path)
+            return str(prefix + path[-(Rule.max_string_field_length-len(prefix)):])
+        return _crop
+
+    @staticmethod
+    def crop_back(suffix=""):
+        """Returns a function that truncates a string at the end."""
+        assert len(suffix) < Rule.max_string_field_length
+        def _crop(path):
+            if len(path) < Rule.max_string_field_length:
+                return str(path)
+            return str(path[:Rule.max_string_field_length-len(suffix)] + suffix)
+        return _crop
 
     def parse(self, text):
         """Create a dictionary of variables for every measurment.
