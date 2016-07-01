@@ -13246,7 +13246,9 @@ def maven_install(args):
     version = s.vc.parent(s.dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
-    only = args.only.split(',')
+    only = []
+    if args.only is not None:
+        only = args.only.split(',')
     for dist in s.dists:
         # ignore non-exported dists
         if not dist.internal and not dist.name.startswith('COM_ORACLE') and dist.maven:
