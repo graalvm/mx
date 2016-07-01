@@ -11435,6 +11435,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
             elif dep.isJdkLibrary():
                 jdk_libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+            elif dep.isJreLibrary():
+                pass
             else:
                 abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
         p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
@@ -13834,7 +13836,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.33.0")
+version = VersionSpec("5.33.1")
 
 currentUmask = None
 
