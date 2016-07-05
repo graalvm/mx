@@ -806,14 +806,21 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
-        if benchmarks is not None:
-            mx.abort("No benchmark should be specified for the selected suite. (Use JMH specific filtering instead.)")
+        if benchmarks is None:
+            benchmarks = []
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs
+        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
 
-    def benchmarks(self):
-        return ["default"]
+    def benchmarkList(self, bmSuiteArgs):
+        benchmarks = None
+        jvm = self.getJavaVm(bmSuiteArgs)
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
+        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        _, out, _ = jvm.run(cwd, args +  ["-l"])
+        benchs = out.splitlines()
+        assert benchs[0].startswith("Benchmarks:")
+        return benchs[1:]
 
     def successPatterns(self):
         return [
