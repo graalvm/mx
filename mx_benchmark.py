@@ -70,12 +70,18 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
-    def benchmarks(self):
+    def benchmarkList(self, bmSuiteArgs):
         """Returns the list of the benchmarks provided by this suite.
 
+        :param list bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
         :rtype: list
         """
+        # TODO: Remove old-style benchmarks after updating downstream suites.
+        return self.benchmarks()
+
+    def benchmarks(self):
+        # Deprecated, consider using `benchmarkList` instead!
         raise NotImplementedError()
 
     def validateEnvironment(self):
@@ -991,7 +997,7 @@ class BenchmarkExecutor(object):
                 include_ts=False))
         return standard
 
-    def getSuiteAndBenchNames(self, args):
+    def getSuiteAndBenchNames(self, args, bmSuiteArgs):
         argparts = args.benchmark.split(":")
         suitename = argparts[0]
         if len(argparts) == 2:
@@ -1002,12 +1008,12 @@ class BenchmarkExecutor(object):
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, _bm_suites.keys()))
         if benchspec is "*":
-            return (suite, [[b] for b in suite.benchmarks()])
+            return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec is "":
             return (suite, [None])
-        elif not benchspec in suite.benchmarks():
+        elif not benchspec in suite.benchmarkList(bmSuiteArgs):
             mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
-                benchspec, suitename, suite.benchmarks()))
+                benchspec, suitename, suite.benchmarkList(bmSuiteArgs)))
         else:
             return (suite, [[benchspec]])
 
@@ -1042,7 +1048,7 @@ class BenchmarkExecutor(object):
 
         self.checkEnvironmentVars()
 
-        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs)
+        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         results = []
 
