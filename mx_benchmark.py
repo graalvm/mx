@@ -42,6 +42,9 @@ _benchmark_executor = None
 
 
 class BenchmarkSuite(object):
+    """
+    A harness for a benchmark suite.
+    """
     def name(self):
         """Returns the name of the suite.
 
