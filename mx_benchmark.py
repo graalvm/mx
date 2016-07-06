@@ -44,6 +44,8 @@ _benchmark_executor = None
 class BenchmarkSuite(object):
     """
     A harness for a benchmark suite.
+
+    A suite needs to be registered with mx_benchmarks.add_bm_suite.
     """
     def name(self):
         """Returns the name of the suite.
