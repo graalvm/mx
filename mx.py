@@ -1755,15 +1755,17 @@ class JavaProject(Project, ClasspathDependency):
 
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
-    def get_concealed_imported_packages(self):
+    def get_concealed_imported_packages(self, jdk=None):
         """
         Gets the concealed packages imported by this Java project.
 
         :return: a map from a module to its concealed packages imported by this project
         """
-        if getattr(self, '.concealed_imported_packages', None) is None:
-            concealed = {}
+        if jdk is None:
             jdk = get_jdk(self.javaCompliance)
+        cache = '.concealed_imported_packages' + str(jdk.version)
+        if getattr(self, cache, None) is None:
+            concealed = {}
             if jdk.javaCompliance >= '9':
                 modulepath = jdk.get_modules()
 
@@ -1788,8 +1790,8 @@ class JavaProject(Project, ClasspathDependency):
                             # This project is part of the module defining the concealed package
                             pass
             concealed = {module : list(concealed[module]) for module in concealed}
-            setattr(self, '.concealed_imported_packages', concealed)
-        return getattr(self, '.concealed_imported_packages')
+            setattr(self, cache, concealed)
+        return getattr(self, cache)
 
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk, requiredCompliance):
@@ -1937,7 +1939,7 @@ class JavaBuildTask(ProjectBuildTask):
                 jdk=self.jdk,
                 compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance))),
                 sourceGenDir=self.subject.source_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
                 disableApiRestrictions=not self.args.warnAPI,
@@ -2127,7 +2129,7 @@ class JavacCompiler(JavacLikeCompiler):
         javacArgs.append('UTF-8')
 
         if jdk.javaCompliance >= '1.9':
-            def addExportArgs(dep, exports=None, prefix=''):
+            def addExportArgs(dep, exports=None, prefix='', jdk=None):
                 """
                 Adds ``-XaddExports:`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
@@ -2138,7 +2140,7 @@ class JavacCompiler(JavacLikeCompiler):
                 :type exports: None or dict
                 :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
                 """
-                for module, packages in dep.get_concealed_imported_packages().iteritems():
+                for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
                     if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
                         # A JVMCI project may refer to a JVMCI API under development which
                         # can differ with the signature of the JVMCI API in the JDK used
@@ -2159,7 +2161,7 @@ class JavacCompiler(JavacLikeCompiler):
                 exports = {}
                 for dep in classpath_entries(aps, preferProjects=True):
                     if dep.isJavaProject():
-                        addExportArgs(dep, exports, '-J')
+                        addExportArgs(dep, exports, '-J', jdk)
                 # If modules are exported for use by an annotation processor then
                 # they need to be boot modules since -XaddExports can only be used
                 # for boot modules.
@@ -13838,7 +13840,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.0")
+version = VersionSpec("5.34.1")
 
 currentUmask = None
 
