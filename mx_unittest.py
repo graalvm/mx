@@ -58,10 +58,14 @@ def _find_classes_by_annotated_methods(annotations, suite):
 
         # Create map from jar file to the binary suite distribution defining it
         jars = {d.classpath_repr() : d for d in binarySuiteDists}
+        snippetsPatterns = []
+        for binarySuite in frozenset([d.suite for d in binarySuiteDists]):
+            if hasattr(binarySuite, 'snippetsPattern'):
+                snippetsPatterns.append('snippetsPattern:' + binarySuite.snippetsPattern)
 
         cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in binarySuiteDists])
         out = mx.OutputCapture()
-        mx.run_java(['-cp', cp] + ['com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jars.keys(), out=out)
+        mx.run_java(['-cp', cp] + ['com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + snippetsPatterns + annotations + jars.keys(), out=out)
         candidates = {}
         for line in out.data.strip().split('\n'):
             name, jar = line.split(' ')
