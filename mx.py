@@ -10979,7 +10979,7 @@ def _workingset_element(wsdoc, p):
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
-    for suite in suites(True):
+    for suite in suites(True) + [_mx_suite]:
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
     if doFsckProjects and not refreshOnly:
@@ -11345,7 +11345,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True):
     # has to be complete and contain information that is repeated
     # in dependent suites.
 
-    for suite in suites(True):
+    for suite in suites(True) + [_mx_suite]:
         _intellij_suite(args, suite, refreshOnly)
 
     if doFsckProjects and not refreshOnly:
@@ -13840,7 +13840,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.1")
+version = VersionSpec("5.34.2")
 
 currentUmask = None
 
