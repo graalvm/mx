@@ -55,6 +55,7 @@ public class MxJUnitWrapper {
         String methodName = null;
         List<Failure> missingClasses = new ArrayList<>();
         boolean verbose = false;
+        boolean veryVerbose = false;
         boolean enableTiming = false;
         boolean failFast = false;
         boolean color = false;
@@ -68,6 +69,8 @@ public class MxJUnitWrapper {
                 // command line arguments
                 if (each.contentEquals("-JUnitVerbose")) {
                     verbose = true;
+                } else if (each.contentEquals("-JUnitVeryVerbose")) {
+                    veryVerbose = true;
                 } else if (each.contentEquals("-JUnitFailFast")) {
                     failFast = true;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
@@ -118,10 +121,12 @@ public class MxJUnitWrapper {
             }
         }
         final TextRunListener textListener;
-        if (!verbose) {
-            textListener = new TextRunListener(system);
-        } else {
+        if (veryVerbose) {
+            textListener = new VerboseTextListener(system, VerboseTextListener.SHOW_ALL_TESTS);
+        } else if (verbose) {
             textListener = new VerboseTextListener(system);
+        } else {
+            textListener = new TextRunListener(system);
         }
         MxRunListener mxListener = textListener;
         if (enableTiming) {

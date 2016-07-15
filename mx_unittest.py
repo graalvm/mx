@@ -198,7 +198,7 @@ def set_vm_launcher(name, launcher, jdk=None):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None):
+def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -210,7 +210,9 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
     coreCp = mx.classpath(['com.oracle.mxtool.junit'])
 
     coreArgs = []
-    if verbose:
+    if very_verbose:
+        coreArgs.append('-JUnitVeryVerbose')
+    elif verbose:
         coreArgs.append('-JUnitVerbose')
     if fail_fast:
         coreArgs.append('-JUnitFailFast')
@@ -311,6 +313,7 @@ def unittest(args):
     parser.add_argument('--blacklist', help='run all testcases not specified in <file>', metavar='<file>')
     parser.add_argument('--whitelist', help='run testcases specified in <file> only', metavar='<file>')
     parser.add_argument('--verbose', help='enable verbose JUnit output', action='store_true')
+    parser.add_argument('--very-verbose', help='enable very verbose JUnit output', action='store_true')
     parser.add_argument('--fail-fast', help='stop after first JUnit test class that has a failure', action='store_true')
     parser.add_argument('--enable-timing', help='enable JUnit test timing', action='store_true')
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
