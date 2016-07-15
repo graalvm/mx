@@ -785,7 +785,7 @@ class Distribution(Dependency):
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps + getattr(self, 'moduledeps', []):
+            for d in self.deps:
                 if visitEdge:
                     visitEdge(self, DEP_STANDARD, d)
                 if d not in visited:
@@ -13840,7 +13840,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.4")
+version = VersionSpec("5.34.3")
 
 currentUmask = None
 
