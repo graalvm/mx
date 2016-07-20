@@ -2219,38 +2219,54 @@ class CompilerDaemon(Daemon):
             buildArgs = []
         build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
         cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
-        # allocate a new port
-        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        serversocket.bind(('127.0.0.1', 0))
-        self.port = serversocket.getsockname()[1]
-        serversocket.close()
+
+        self.port = None
+        self.portRegex = re.compile(r'Started server on port ([0-9]+)')
 
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
-        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + [str(self.port)]
+        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose
         preexec_fn, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
             log(' '.join(map(pipes.quote, args)))
-        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags)
+        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags, stdout=subprocess.PIPE)
+
+        # scan stdout to capture the port number
+        def redirect(stream):
+            for line in iter(stream.readline, ''):
+                self._noticePort(line)
+            stream.close()
+        t = Thread(target=redirect, args=(p.stdout,))
+        t.daemon = True
+        t.start()
+
         # Ensure the process is cleaned up when mx exits
         _addSubprocess(p, args)
 
-        # wait for Java process to finish launching
+        # wait for Java process to launch and report the port number
         retries = 0
-        while True:
-            self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                self.connection.connect(('127.0.0.1', self.port))
-                logv('[Started ' + str(self) + ']')
-                return
-            except socket.error as e:
-                retries = retries + 1
-                if retries > 5:
-                    logv('[Error starting ' + str(self) + ': ' + str(e) + ']')
-                    raise e
-                else:
-                    time.sleep(2)
+        while self.port == None:
+            retries = retries + 1
+            if retries > 5:
+                raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output]')
+            else:
+                time.sleep(2)
+
+        self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.connection.connect(('127.0.0.1', self.port))
+            logv('[Started ' + str(self) + ']')
+            return
+        except socket.error as e:
+            logv('[Error starting ' + str(self) + ': ' + str(e) + ']')
+            raise e
+
+    def _noticePort(self, data):
+        logv(data.rstrip())
+        if self.port == None:
+            m = self.portRegex.match(data)
+            if m:
+                self.port = int(m.group(1))
 
     def compile(self, jdk, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

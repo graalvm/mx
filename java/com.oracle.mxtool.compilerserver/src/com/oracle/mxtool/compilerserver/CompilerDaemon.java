@@ -25,7 +25,6 @@ package com.oracle.mxtool.compilerserver;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -48,21 +47,17 @@ public abstract class CompilerDaemon {
     private ServerSocket serverSocket;
 
     public void run(String[] args) throws Exception {
-        if (args.length == 2) {
-            if (args[0].equals("-v")) {
+        for (String arg : args) {
+            if (arg.equals("-v")) {
                 verbose = true;
             } else {
                 usage();
             }
-        } else if (args.length != 1) {
-            usage();
         }
 
         // create socket
-        int port = Integer.parseInt(args[args.length - 1]);
-        serverSocket = new ServerSocket();
-        serverSocket.setReuseAddress(true);
-        serverSocket.bind(new InetSocketAddress(port));
+        serverSocket = new ServerSocket(0);
+        int port = serverSocket.getLocalPort();
 
         // Need at least 2 threads since we dedicate one to the control
         // connection waiting for the shutdown message.
@@ -73,7 +68,7 @@ public abstract class CompilerDaemon {
             }
         });
 
-        logf("Started server on port %d [%d threads]\n", port, threadCount);
+        System.out.printf("Started server on port %d [%d threads]\n", port, threadCount);
         running = true;
         while (running) {
             try {
@@ -89,7 +84,7 @@ public abstract class CompilerDaemon {
     }
 
     private static void usage() {
-        System.err.println("Usage: [ -v ] port");
+        System.err.println("Usage: [ -v ]");
         System.exit(1);
     }
 
