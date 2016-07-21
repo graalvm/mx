@@ -2803,13 +2803,21 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
+    def get_jdk_path(self, jdk, path):
+        # Exploded JDKs don't have a jre directory.
+        if exists(join(jdk.home, 'jre')):
+            return join(jdk.home, 'jre', path)
+        else:
+            return join(jdk.home, path)
+
     def is_provided_by(self, jdk):
         """
         Determines if this library is provided by `jdk`.
 
         :param JDKConfig jdk: the JDK to test
         """
-        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(join(jdk.home, self.path))
+        path = self.get_jdk_path(jdk, self.path)
+        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(path)
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
@@ -2827,7 +2835,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
             abort('A JDK is required to resolve ' + self.name)
         if jdk.javaCompliance >= self.jdkStandardizedSince:
             return None
-        path = join(jdk.home, self.path)
+        path = self.get_jdk_path(jdk, self.path)
         if not exists(path):
             abort(self.name + ' is not provided by ' + str(jdk))
         return path
@@ -2841,7 +2849,8 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         """
         if self.sourcePath is None:
             return None
-        return self.sourcePath if isabs(self.sourcePath) else join(jdk.home, self.sourcePath)
+        path = self.get_jdk_path(jdk, self.sourcePath)
+        return self.sourcePath if isabs(self.sourcePath) else path
 
     def isJar(self):
         return True
