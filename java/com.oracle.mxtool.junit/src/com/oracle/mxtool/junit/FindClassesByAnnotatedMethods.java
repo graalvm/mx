@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.regex.Pattern;
 
 /**
  * Finds classes in given jar files that contain methods annotated by a given set of annotations.
@@ -62,18 +63,23 @@ public class FindClassesByAnnotatedMethods {
 
     /**
      * Finds classes in a given set of jar files that contain at least one method with an annotation
-     * from a given set of annotations. The qualified name and containing jar file (separated by a space)
-     * is written to {@link System#out} for each matching class.
+     * from a given set of annotations. The qualified name and containing jar file (separated by a
+     * space) is written to {@link System#out} for each matching class.
      *
-     * @param args jar file names and annotations. The latter are those starting with "@" and can be
-     *            either qualified or unqualified annotation class names.
+     * @param args jar file names, annotations and snippets patterns. Annotations are those starting
+     *            with "@" and can be either qualified or unqualified annotation class names,
+     *            snippets patterns are those starting with {@code "snippetsPattern:"} and the rest
+     *            are jar file names
      */
     public static void main(String... args) throws Throwable {
         int i = 0;
         Set<String> qualifiedAnnotations = new HashSet<>();
         Set<String> unqualifiedAnnotations = new HashSet<>();
+        List<Pattern> snippetPatterns = new ArrayList<>();
         for (String arg : args) {
-            if (arg.charAt(0) == '@') {
+            if (arg.startsWith("snippetsPattern:")) {
+                snippetPatterns.add(Pattern.compile(arg.substring("snippetsPattern:".length())));
+            } else if (arg.charAt(0) == '@') {
                 String annotation = args[i++].substring(1);
                 int lastDot = annotation.lastIndexOf('.');
                 if (lastDot != -1) {
@@ -86,8 +92,8 @@ public class FindClassesByAnnotatedMethods {
         }
 
         for (String arg : args) {
-            if (arg.charAt(0) == '@') {
-            	continue;
+            if (arg.startsWith("snippetsPattern:") || arg.charAt(0) == '@') {
+                continue;
             }
             final String jarFilePath = arg;
             JarFile jarFile = new JarFile(jarFilePath);
@@ -108,19 +114,34 @@ public class FindClassesByAnnotatedMethods {
 
             int unsupportedClasses = 0;
             for (String className : classNames) {
-            	try {
-	                Class<?> javaClass = Class.forName(className, false, loader);
-	                if (containsAnnotation(javaClass, qualifiedAnnotations, unqualifiedAnnotations)) {
-	                    System.out.println(className + " " + arg);
-	                }
-            	} catch (UnsupportedClassVersionError ucve) {
-            		unsupportedClasses++;
-            	}
+                try {
+                    Class<?> javaClass = Class.forName(className, false, loader);
+                    if (containsAnnotation(javaClass, qualifiedAnnotations, unqualifiedAnnotations)) {
+                        System.out.println(className + " " + arg);
+                    }
+                } catch (UnsupportedClassVersionError ucve) {
+                    unsupportedClasses++;
+                } catch (NoClassDefFoundError ncdfe) {
+                    if (!matches(ncdfe, snippetPatterns, className)) {
+                        throw ncdfe;
+                    }
+                }
+
             }
             if (unsupportedClasses != 0) {
-            	System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n",
-            			jarFilePath, unsupportedClasses);
+                System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n",
+                                jarFilePath, unsupportedClasses);
             }
         }
+    }
+
+    private static boolean matches(NoClassDefFoundError ncdfe, List<Pattern> snippetPatterns, String className) {
+        for (Pattern p : snippetPatterns) {
+            if (p.matcher(ncdfe.getMessage()).matches()) {
+                System.err.println("Warning: cannot resolve " + className + " due to " + ncdfe + " which is matched by snippetsPattern \"" + p + "\"");
+                return true;
+            }
+        }
+        return false;
     }
 }

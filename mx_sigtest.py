@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 def _should_test_project(p):
     if not p.isJavaProject():
         return False
-    return len(mx.find_packages(p)) > 0
+    return len(mx._find_packages(p)) > 0
 
 def sigtest(args, suite=None, projects=None):
     parser = ArgumentParser(prog='mx sigtest')
@@ -61,11 +61,12 @@ def _sigtest_generate(args, suite=None, projects=None):
 
     for p in nonTestProjects:
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
+        jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.Setup',
             '-Static', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
-        for pkg in mx.find_packages(p):
+        for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
         if exitcode != 95:
@@ -93,13 +94,14 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         if not os.path.exists(sigtestResults):
             continue
+        jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.SignatureTest',
             '-Static', '-Mode', 'bin', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p) + os.pathsep + mx.get_jdk(javaCompliance).bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
         if checktype != 'all':
             cmd.append('-b')
-        for pkg in mx.find_packages(p):
+        for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         out = OutputCapture()
         print 'Checking ' + checktype + ' signature changes against ' + sigtestResults

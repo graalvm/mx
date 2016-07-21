@@ -30,6 +30,7 @@ from argparse import ArgumentParser
 import xml.dom.minidom
 
 import mx
+import mx_microbench
 
 """
 Predefined Task tags.
@@ -267,16 +268,17 @@ def gate(args):
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
-        with Task('BuildJavaWithEcj', tasks, tags=[Tags.fullbuild]) as t:
-            if t:
-                if mx.get_env('JDT'):
-                    mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
-                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
-                else:
-                    _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
+        if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
+            with Task('BuildJavaWithEcj', tasks, tags=[Tags.fullbuild]) as t:
+                if t:
+                    if mx.get_env('JDT'):
+                        mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
+                        gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
+                    else:
+                        _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
         with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
-            if t: mx.command_function('build')(['-p', '--warning-as-error', '--no-native', '--force-javac'])
+            if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'])
 
         with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
             if t:
@@ -304,6 +306,10 @@ def gate(args):
         with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
+
+        if mx._primary_suite is mx._mx_suite:
+            with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
+                if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
 
         if exists('jacoco.exec'):
             os.unlink('jacoco.exec')

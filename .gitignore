@@ -4,9 +4,11 @@
 /workingsets.xml
 /.idea
 /mxbuild
+/docs/api/build
 ecj.jar
+savedDeps
+eclipse-launches
 /diagrams
-/docs
 /java/*/nbproject/
 /java/*/build.xml
 /java/*/.settings

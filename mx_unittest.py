@@ -58,10 +58,14 @@ def _find_classes_by_annotated_methods(annotations, suite):
 
         # Create map from jar file to the binary suite distribution defining it
         jars = {d.classpath_repr() : d for d in binarySuiteDists}
+        snippetsPatterns = []
+        for binarySuite in frozenset([d.suite for d in binarySuiteDists]):
+            if hasattr(binarySuite, 'snippetsPattern'):
+                snippetsPatterns.append('snippetsPattern:' + binarySuite.snippetsPattern)
 
         cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in binarySuiteDists])
         out = mx.OutputCapture()
-        mx.run_java(['-cp', cp] + ['com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jars.keys(), out=out)
+        mx.run_java(['-cp', cp] + ['com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + snippetsPatterns + annotations + jars.keys(), out=out)
         candidates = {}
         for line in out.data.strip().split('\n'):
             name, jar = line.split(' ')
@@ -69,6 +73,20 @@ def _find_classes_by_annotated_methods(annotations, suite):
             candidates[name] = jars[jar]
         return candidates
     return {}
+
+class _VMLauncher(object):
+    """
+    Launcher to run the unit tests. See `set_vm_launcher` for descriptions of the parameters.
+    """
+    def __init__(self, name, launcher, jdk):
+        self.name = name
+        self.launcher = launcher
+        self._jdk = jdk
+
+    def jdk(self):
+        if callable(self._jdk):
+            return self._jdk()
+        return self._jdk
 
 def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
 
@@ -134,7 +152,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 if not found:
                     mx.log('warning: no tests matched by substring "' + t)
 
-    unittestCp = mx.classpath(depsContainingTests)
+    unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
 
@@ -151,12 +169,31 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
         f_testfile.close()
         harness(unittestCp, vmLauncher, vmArgs)
 
+#: A `_VMLauncher` object.
 _vm_launcher = None
+
 _config_participants = []
-def set_vm_launcher(name, launcher):
+def set_vm_launcher(name, launcher, jdk=None):
+    """
+    Sets the details for running the JVM given the components of unit test command line.
+
+    :param str name: a descriptive name for the launcher
+    :param callable launcher: a function taking 3 positional arguments; the first is a list of the
+           arguments to go before the main class name on the JVM command line, the second is the
+           name of the main class to run run and the third is a list of the arguments to go after
+           the main class name on the JVM command line
+    :param jdk: a `JDKConfig` or no-arg callable that produces a `JDKConfig` object denoting
+           the JDK containing the JVM that will be executed. This is used to resolve JDK
+           relative dependencies (such as `JdkLibrary`s) needed by the unit tests.
+    """
     global _vm_launcher
-    assert _vm_launcher is None, 'cannot override unit test VM launcher ' + _vm_launcher[0]
-    _vm_launcher = (name, launcher)
+    assert _vm_launcher is None, 'cannot override unit test VM launcher ' + _vm_launcher.name
+    if jdk is None:
+        def _jdk():
+            jdk = mx.get_jdk()
+            mx.warn('Assuming ' + str(jdk) + ' contains JVM executed by ' + name)
+            return _jdk
+    _vm_launcher = _VMLauncher(name, launcher, jdk)
 
 def add_config_participant(p):
     _config_participants.append(p)
@@ -206,12 +243,14 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         for p in _config_participants:
             config = p(config)
 
-        _, launcher = vmLauncher
-        launcher(*config)
+        vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher
     if vmLauncher is None:
-        vmLauncher = ('default VM launcher', lambda vmArgs, mainClass, mainClassArgs: mx.run_java(vmArgs + [mainClass] + mainClassArgs))
+        jdk = mx.get_jdk()
+        def _run_vm(vmArgs, mainClass, mainClassArgs):
+            mx.run_java(vmArgs + [mainClass] + mainClassArgs, jdk=jdk)
+        vmLauncher = _VMLauncher('default VM launcher', _run_vm, jdk)
 
     try:
         _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, mx.suite(suite) if suite else None)
@@ -241,12 +280,12 @@ unittestHelpSuffix = """
 
     For example, this command line:
 
-       mx unittest -G:Dump= -G:MethodFilter=BC_aload.* -G:+PrintCFG BC_aload
+       mx unittest -Dgraal.Dump= -Dgraal.MethodFilter=BC_aload -Dgraal.PrintCFG=true BC_aload
 
     will run all JUnit test classes that contain 'BC_aload' in their
     fully qualified name and will pass these options to the VM:
 
-        -G:Dump= -G:MethodFilter=BC_aload.* -G:+PrintCFG
+        -Dgraal.Dump= -Dgraal.MethodFilter=BC_aload -Dgraal.PrintCFG=true
 
     To get around command line length limitations on some OSes, the
     JUnit class names to be executed are written to a file that a

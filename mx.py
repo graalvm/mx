@@ -25,10 +25,10 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-Full documentation can be found in the Wiki at https://bitbucket.org/allr/mxtool2/wiki/Home
 """
 import sys
 from abc import ABCMeta
@@ -59,8 +59,9 @@ import glob
 import urllib2, urlparse
 from collections import Callable
 from collections import OrderedDict, namedtuple
+from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace
+from argparse import ArgumentParser, REMAINDER, Namespace, FileType
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
 
 import mx_unittest
@@ -69,6 +70,10 @@ import mx_sigtest
 import mx_gate
 import mx_compat
 import mx_microbench
+import mx_urlrewrites
+import mx_benchmark
+
+from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package, get_module_deps
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -79,6 +84,37 @@ try:
     import readline #pylint: disable=unused-import
 except ImportError:
     pass
+
+
+class DynamicVar(object):
+    def __init__(self, initial_value):
+        self.value = initial_value
+
+    def get(self):
+        return self.value
+
+    def set_scoped(self, newvalue):
+        return DynamicVarScope(self, newvalue)
+
+
+class DynamicVarScope(object):
+    def __init__(self, dynvar, newvalue):
+        self.dynvar = dynvar
+        self.newvalue = newvalue
+
+    def __enter__(self):
+        assert not hasattr(self, "oldvalue")
+        self.oldvalue = self.dynvar.value
+        self.dynvar.value = self.newvalue
+
+    def __exit__(self, tpe, value, traceback):
+        self.dynvar.value = self.oldvalue
+        self.oldvalue = None
+        self.newvalue = None
+
+
+currently_loading_suite = DynamicVar(None)
+
 
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
@@ -138,6 +174,10 @@ _removedDeps = {}
 
 _suites = dict()
 _loadedSuites = []
+"""
+Map of the environment variables loaded by parsing the suites.
+"""
+_loadedEnv = dict()
 
 _jdkFactories = {}
 
@@ -158,9 +198,13 @@ _binary_suites = None # source suites only if None, [] means all binary, otherwi
 _suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 _urlrewrites = [] # list of URLRewrite objects
 _original_environ = dict(os.environ)
+_jdkProvidedSuites = set()
 
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
+
+# List of functions to run after options have been parsed
+_opts_parsed_deferrables = []
 
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
@@ -208,18 +252,18 @@ def _debug_walk_deps_helper(dep, edge, ignoredEdges):
             print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
         DEBUG_WALK_DEPS_LINE += 1
 
-'''
+"""
 Represents an edge traversed while visiting a spanning tree of the dependency graph.
-'''
+"""
 class DepEdge:
     def __init__(self, src, kind, prev):
-        '''
+        """
         src - the source of this dependency edge
         kind - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
                of graph edge from 'src' to the dependency targeted by this edge
         prev - the dependency edge traversed to reach 'src' or None if 'src' is a root of a dependency
                graph traversal
-        '''
+        """
         self.src = src
         self.kind = kind
         self.prev = prev
@@ -266,10 +310,10 @@ class SuiteConstituent(object):
                             candidate = None
 
     def __abort_context__(self):
-        '''
+        """
         Gets a description of where this constituent was defined in terms of source file
         and line number. If no such description can be generated, None is returned.
-        '''
+        """
         loc = self.origin()
         if loc:
             path, lineNo = loc
@@ -380,25 +424,25 @@ class Dependency(SuiteConstituent):
         nyi('getBuildTask', self)
 
     def abort(self, msg):
-        '''
+        """
         Aborts with given message prefixed by the origin of this dependency.
-        '''
+        """
         abort(msg, context=self)
 
     def warn(self, msg):
-        '''
+        """
         Warns with given message prefixed by the origin of this dependency.
-        '''
+        """
         warn(msg, context=self)
 
     def qualifiedName(self):
         return '{}:{}'.format(self.suite.name, self.name)
 
     def walk_deps(self, preVisit=None, visit=None, visited=None, ignoredEdges=None, visitEdge=None):
-        '''
+        """
         Walk the dependency graph rooted at this object.
         See documentation for mx.walk_deps for more info.
-        '''
+        """
         if visited is not None:
             if self in visited:
                 return
@@ -422,10 +466,10 @@ class Dependency(SuiteConstituent):
         nyi('_walk_deps_visit_edges', self)
 
     def contains_dep(self, dep, includeAnnotationProcessors=False):
-        '''
+        """
         Determines if the dependency graph rooted at this object contains 'dep'.
         Returns the path from this object to 'dep' if so, otherwise returns None.
-        '''
+        """
         if dep == self:
             return [self]
         class FoundPath(StopIteration):
@@ -442,20 +486,23 @@ class Dependency(SuiteConstituent):
             return e.path
         return None
 
-    '''Only JavaProjects define Java packages'''
+    """Only JavaProjects define Java packages"""
     def defined_java_packages(self):
         return []
 
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
-        '''
+        """
         Resolves any string entries in 'deps' to the Dependency objects named
         by the strings. The 'deps' list is updated in place.
-        '''
+        """
         if deps:
             if isinstance(deps[0], str):
                 resolvedDeps = []
                 for name in deps:
                     s, _ = splitqualname(name)
+                    if s and s in _jdkProvidedSuites:
+                        logvv('[{}: ignoring dependency {} as it is provided by the JDK]'.format(self, name))
+                        continue
                     dep = dependency(name, context=self, fatalIfMissing=fatalIfMissing)
                     if not dep:
                         continue
@@ -465,6 +512,11 @@ class Dependency(SuiteConstituent):
                         abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
+                    selfJC = getattr(self, 'javaCompliance', None)
+                    depJC = getattr(dep, 'javaCompliance', None)
+                    if selfJC and depJC and selfJC < depJC:
+                        if self.suite.getMxCompatibility().checkDependencyJavaCompliance():
+                            abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
             else:
@@ -476,12 +528,12 @@ class ClasspathDependency(Dependency):
         pass
 
     def classpath_repr(self, resolve=True):
-        '''
+        """
         Gets this dependency as an element on a class path.
 
         If 'resolve' is True, then this method aborts if the file or directory
         denoted by the class path element does not exist.
-        '''
+        """
         nyi('classpath_repr', self)
 
     def isJar(self):
@@ -526,12 +578,12 @@ class BuildTask(object):
         self._builtBox = None
 
     def _persistDeps(self):
-        '''
+        """
         Saves the dependencies for this task's subject to a file. This can be used to
         determine whether the ordered set of dependencies for this task have changed
         since the last time it was built.
         Returns True if file already existed and did not reflect the current dependencies.
-        '''
+        """
         savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', self.subject.name)
         currentDeps = [d.subject.name for d in self.deps]
         outOfDate = False
@@ -655,7 +707,7 @@ class BuildTask(object):
     def prepare(self, daemons):
         """
         Perform any task initialization that must be done in the main process.
-        This will be called just befor the task is launched.
+        This will be called just before the task is launched.
         The 'daemons' argument is a dictionary for storing any persistent state
         that might be shared between tasks.
         """
@@ -675,9 +727,9 @@ class BuildTask(object):
 
 def _needsUpdate(newestInput, path):
     """
-    Determines if the file denoted by 'path' does not exist or 'newestInput' is not None
-    and 'path's latest modification time is older than the 'newestInput' TimeStampFile.
-    Returns a string describing why 'path' needs updating or None if it does not need updating.
+    Determines if the file denoted by `path` does not exist or `newestInput` is not None
+    and `path`'s latest modification time is older than the `newestInput` TimeStampFile.
+    Returns a string describing why `path` needs updating or None if it does not need updating.
     """
     if not exists(path):
         return path + ' does not exist'
@@ -693,20 +745,19 @@ class DistributionTemplate(SuiteConstituent):
         self.attrs = attrs
         self.parameters = parameters
 
-"""
-A distribution is a file containing the output from one or more projects.
-In some sense it is the ultimate "result" of a build (there can be more than one).
-It is a Dependency because a Project or another Distribution may express a dependency on it.
-
-Attributes:
-    name: unique name
-    deps: "dependencies" that define the components that will comprise the distribution.
-        See Distribution.archived_deps for a precise description.
-        This is a slightly misleading name, it is more akin to the "srcdirs" attribute of a Project,
-        as it defines the eventual content of the distribution
-    excludedLibs: Libraries whose jar contents should be excluded from this distribution's jar
-"""
 class Distribution(Dependency):
+    """
+    A distribution is a file containing the output of one or more dependencies.
+    It is a `Dependency` because a `Project` or another `Distribution` may express a dependency on it.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param list deps: the dependencies of the distribution. How these dependencies are consumed
+           is defined by the `Distribution` subclasses.
+    :param list excludedLibs: libraries whose contents should be excluded from this distribution's built artifact
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    """
     def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense):
         Dependency.__init__(self, suite, name, theLicense)
         self.deps = deps
@@ -724,6 +775,7 @@ class Distribution(Dependency):
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
+        self._resolveDepsHelper(getattr(self, 'moduledeps', None))
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
@@ -749,17 +801,17 @@ class Distribution(Dependency):
         nyi('make_archive', self)
 
     def archived_deps(self):
-        '''
+        """
         Gets the projects and libraries whose artifacts are the contents of the archive
-        created by self.make_archive().
+        created by `make_archive`.
 
-        Direct distribution dependencies are considered as "distDependencies".
-        Anything contained in the distDependencies will not be included in the archived_deps.
-        libraries listed in "excludedLibs" will also not be included.
-        Otherwise, archived_deps will contain everything this distribution depends on (including
+        Direct distribution dependencies are considered as _distDependencies_.
+        Anything contained in the _distDependencies_ will not be included in the result.
+        Libraries listed in `excludedLibs` will also be excluded.
+        Otherwise, the result will contain everything this distribution depends on (including
         indirect distribution dependencies and libraries).
-        '''
-        if not hasattr(self, '_archived_deps'):
+        """
+        if not hasattr(self, '.archived_deps'):
             excluded = set(self.excludedLibs)
             def _visitDists(dep, edges):
                 if dep is not self:
@@ -771,10 +823,13 @@ class Distribution(Dependency):
                 if dep is not self:
                     deps.append(dep)
             def _preVisit(dst, edge):
-                return dst not in excluded and not dst.isJreLibrary()
+                if edge and edge.src.isNativeProject():
+                    # A native project dependency only denotes a build order dependency
+                    return False
+                return dst not in excluded and not dst.isJreLibrary() and not dst.isJdkLibrary()
             self.walk_deps(visit=_visit, preVisit=_preVisit)
-            self._archived_deps = deps
-        return self._archived_deps
+            setattr(self, '.archived_deps', deps)
+        return getattr(self, '.archived_deps')
 
     def exists(self):
         nyi('exists', self)
@@ -797,11 +852,11 @@ class Distribution(Dependency):
         return f
 
     def needsUpdate(self, newestInput):
-        '''
+        """
         Determines if this distribution needs updating taking into account the
         'newestInput' TimeStampFile if 'newestInput' is not None. Returns the
         reason this distribution needs updating or None if it doesn't need updating.
-        '''
+        """
         nyi('needsUpdate', self)
 
     def maven_artifact_id(self):
@@ -810,23 +865,41 @@ class Distribution(Dependency):
     def maven_group_id(self):
         return _mavenGroupId(self.suite)
 
-"""
-A JARDistribution is a distribution for JavaProjects and Java libraries.
-A Distribution always generates a jar/zip file for the built components
-and may optionally specify a zip for the sources from which the built components were generated.
-
-Attributes:
-    path: suite-local path to where the jar file will be placed
-    sourcesPath: as path but for source files (optional)
-"""
 class JARDistribution(Distribution, ClasspathDependency):
-    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense, javadocType="implementation", allowsJavadocWarnings=False, maven=True):
+    """
+    A distribution represents a jar file built from the class files and resources defined by a set of
+    `JavaProject`s and Java libraries plus an optional zip containing the Java source files
+    corresponding to the class files.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param str subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
+    :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
+           it is interpreted to be relative to `suite.dir`.
+    :param str sourcesPath: the path of the zip file created for the source files corresponding to the class files of this distribution.
+           If this is not an absolute path, it is interpreted to be relative to `suite.dir`.
+    :param list deps: the `JavaProject` and `Library` dependencies that are the root sources for this distribution's jar
+    :param str mainClass: the class name representing application entry point for this distribution's executable jar. This
+           value (if not None) is written to the ``Main-Class`` header in the jar's manifest.
+    :param list excludedLibs: libraries whose contents should be excluded from this distribution's jar
+    :param list distDependencies: the `JARDistribution` dependencies that must be on the class path when this distribution
+           is on the class path (at compile or run time)
+    :param str javaCompliance:
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param str javadocType: specifies if the javadoc generated for this distribution should include implementation documentation
+           or only API documentation. Accepted values are "implementation" and "API".
+    :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
+    :param bool maven:
+    """
+    def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
-        self.archiveparticipant = None
+        self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
         self.definedAnnotationProcessors = []
@@ -851,24 +924,31 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def set_archiveparticipant(self, archiveparticipant):
         """
-        Adds an object that participates in the make_archive method of this distribution by defining the following methods:
+        Adds an object that participates in the `make_archive` method of this distribution.
 
-        __opened__(arc, srcArc, services)
-            Called when archiving starts. The 'arc' and 'srcArc' Archiver objects are for writing to the
-            binary and source jars for the distribution. The 'services' dict is for collating the files
-            that will be written to META-INF/services in the binary jar. It's a map from service names
-            to a list of providers for the named service.
-        __add__(arcname, contents)
-            Submits an entry for addition to the binary archive (via the 'zf' ZipFile field of the 'arc' object).
-            Returns True if this object writes to the archive or wants to exclude the entry from the archive,
-            False if the caller should add the entry.
-        __addsrc__(arcname, contents)
-            Same as __add__ except if targets the source archive.
-        __closing__()
-            Called just before the 'services' are written to the binary archive and both archives are
-            written to their underlying files.
+        :param archiveparticipant: an object for which the following methods, if defined, will be called by `make_archive`:
+
+            __opened__(arc, srcArc, services)
+                Called when archiving starts. The `arc` and `srcArc` Archiver objects are for writing to the
+                binary and source jars for the distribution. The `services` dict is for collating the files
+                that will be written to ``META-INF/services`` in the binary jar. It is a map from service names
+                to a list of providers for the named service.
+            __add__(arcname, contents)
+                Submits an entry for addition to the binary archive (via the `zf` ZipFile field of the `arc` object).
+                Returns True if this object claims responsibility for adding/eliding `contents` to/from the archive,
+                False otherwise (i.e., the caller must take responsibility for the entry).
+            __addsrc__(arcname, contents)
+                Same as `__add__` except that it targets the source archive.
+            __closing__()
+                Called just before the `services` are written to the binary archive and both archives are
+                written to their underlying files.
         """
-        self.archiveparticipant = archiveparticipant
+        if not archiveparticipant in self.archiveparticipants:
+            if not hasattr(archiveparticipant, '__opened__'):
+                abort(str(archiveparticipant) + ' must define __opened__')
+            self.archiveparticipants.append(archiveparticipant)
+        else:
+            warn('registering archive participant ' + str(archiveparticipant) + ' for ' + str(self) + ' twice')
 
     def origin(self):
         return Dependency.origin(self)
@@ -878,29 +958,52 @@ class JARDistribution(Distribution, ClasspathDependency):
             abort('unbuilt distribution {} can not be on a class path'.format(self))
         return self.path
 
-    """
-    Gets the directory in which the IDE project configuration for this distribution is generated.
-    """
     def get_ide_project_dir(self):
+        """
+        Gets the directory in which the IDE project configuration for this distribution is generated.
+        """
         if self.subDir:
             return join(self.suite.dir, self.subDir, self.name + '.dist')
         else:
             return join(self.suite.dir, self.name + '.dist')
 
     def make_archive(self):
+        """
+        Creates the jar file(s) defined by this JARDistribution.
+        """
         # are sources combined into main archive?
         unified = self.path == self.sourcesPath
         snippetsPattern = None
         if hasattr(self.suite, 'snippetsPattern'):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
 
+        services = {}
         with Archiver(self.path) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
-                services = {}
 
-                if self.archiveparticipant:
-                    self.archiveparticipant.__opened__(arc, srcArc, services)
+                for a in self.archiveparticipants:
+                    a.__opened__(arc, srcArc, services)
+
+                def participants__add__(arcname, contents, addsrc=False):
+                    """
+                    Calls the __add__ or __addsrc__ method on `self.archiveparticipants`, ensuring at most one participant claims
+                    responsibility for adding/omitting `contents` under the name `arcname` to/from the archive.
+
+                    :param str arcname: name in archive for `contents`
+                    :params str contents: byte array to write to the archive under `arcname`
+                    :return: True if a participant claimed responsibility, False otherwise
+                    """
+                    claimer = None
+                    for a in self.archiveparticipants:
+                        method = getattr(a, '__add__' if not addsrc else '__addsrc__', None)
+                        if method:
+                            if method(arcname, contents):
+                                if claimer:
+                                    abort('Archive participant ' + str(a) + ' cannot claim responsibility for ' + arcname + ' in ' +
+                                          arc.path + ' as it was already claimed by ' + str(claimer))
+                                claimer = a
+                    return claimer is not None
 
                 def overwriteCheck(zf, arcname, source):
                     if os.path.basename(arcname).startswith('.'):
@@ -956,24 +1059,28 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         else:
                                             if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
                                                 contents = lp.read(arcname)
-                                                if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                                if not participants__add__(arcname, contents):
                                                     arc.zf.writestr(arcname, contents)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
                                     if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname):
                                         contents = lp.read(arcname)
-                                        if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                        if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
-                    elif dep.isProject():
+                    elif dep.isJavaProject():
                         p = dep
-
                         if self.javaCompliance:
                             if p.javaCompliance > self.javaCompliance:
                                 abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
 
                         logv('[' + self.path + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
+
+                        archivePrefix = ''
+                        if hasattr(p, 'archive_prefix'):
+                            archivePrefix = p.archive_prefix()
+
                         for root, _, files in os.walk(outputDir):
                             relpath = root[len(outputDir) + 1:]
                             if relpath == join('META-INF', 'services'):
@@ -984,10 +1091,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 for f in files:
                                     if snippetsPattern and snippetsPattern.match(f):
                                         continue
-                                    arcname = join(relpath, f).replace(os.sep, '/')
+                                    arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
                                     with open(join(root, f), 'rb') as fp:
                                         contents = fp.read()
-                                    if not self.archiveparticipant or not self.archiveparticipant.__add__(arcname, contents):
+                                    if not participants__add__(arcname, contents):
                                         arc.zf.writestr(arcname, contents)
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
@@ -1002,13 +1109,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
                                                 with open(join(root, f), 'r') as fp:
                                                     contents = fp.read()
-                                                if not self.archiveparticipant or not self.archiveparticipant.__addsrc__(arcname, contents):
+                                                if not participants__add__(arcname, contents, addsrc=True):
                                                     srcArc.zf.writestr(arcname, contents)
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
-                if self.archiveparticipant:
-                    self.archiveparticipant.__closing__()
+                for a in self.archiveparticipants:
+                    if hasattr(a, '__closing__'):
+                        a.__closing__()
 
                 for service, providers in services.iteritems():
                     arcname = 'META-INF/services/' + service
@@ -1016,6 +1124,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
         self.notify_updated()
+        jdk = get_jdk(tag='default')
+        if jdk.javaCompliance >= '1.9':
+            jmd = make_java_module(self, jdk)
+            if jmd:
+                setattr(self, '.javaModule', jmd)
 
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
@@ -1034,7 +1147,9 @@ class JARDistribution(Distribution, ClasspathDependency):
         if res:
             return res
         if self.sourcesPath:
-            return _needsUpdate(newestInput, self.sourcesPath)
+            res = _needsUpdate(newestInput, self.sourcesPath)
+            if res:
+                return res
         return None
 
 class ArchiveTask(BuildTask):
@@ -1089,14 +1204,23 @@ class JARArchiveTask(ArchiveTask):
             return True
         return False
 
-"""
-A NativeTARDistribution is a distribution for NativeProjects.
-It packages all the 'results' of a NativeProject.
-
-Attributes:
-    path: suite-local path to where the tar file will be placed
-"""
 class NativeTARDistribution(Distribution):
+    """
+    A distribution dependencies are only `NativeProject`s. It packages all the resources specified by
+    `NativeProject.getResults` for each constituent project.
+
+    :param Suite suite: the suite in which the distribution is defined
+    :param str name: the name of the distribution which must be unique across all suites
+    :param list deps: the `NativeProject` dependencies of the distribution
+    :param bool platformDependent: specifies if the built artifact is platform dependent
+    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param str relpath: specifies if the names of tar file entries should be relative to the output
+           directories of the constituent native projects' output directories.
+    :param str output: specifies where the tar file should be extracted when this distribution is
+           retrieved as a binary dependency
+    Attributes:
+        path: suite-local path to where the tar file will be placed
+    """
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
@@ -1210,23 +1334,23 @@ class Project(Dependency):
         map(ensure_dir_exists, self.source_dirs())
 
     def resolveDeps(self):
-        '''
+        """
         Resolves symbolic dependency references to be Dependency objects.
-        '''
+        """
         self._resolveDepsHelper(self.deps)
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
     def get_output_root(self):
-        '''
+        """
         Gets the root of the directory hierarchy under which generated artifacts for this
         project such as class files and annotation generated sources should be placed.
-        '''
+        """
         if not self.subDir:
             return join(self.suite.get_output_root(), self.name)
         names = self.subDir.split(os.sep)
-        parents = len([n for n in names if n == '..'])
+        parents = len([n for n in names if n == os.pardir])
         if parents != 0:
             return os.sep.join([self.suite.get_output_root(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
         return join(self.suite.get_output_root(), self.subDir, self.name)
@@ -1363,12 +1487,6 @@ class JavaProject(Project, ClasspathDependency):
             res = os.path.relpath(res, self.dir)
         return res
 
-    def jasmin_output_dir(self):
-        """
-        Get the directory in which the Jasmin assembled class files of this project are found/placed.
-        """
-        return join(self.get_output_root(), 'jasmin_classes')
-
     def classpath_repr(self, resolve=True):
         return self.output_dir()
 
@@ -1477,7 +1595,10 @@ class JavaProject(Project, ClasspathDependency):
                     depPackages.update(dep.defined_java_packages())
             self.walk_deps(visit=visit)
             imports = set()
-            importRe = re.compile(r'import\s+(?:static\s+)?([^;]+);')
+            # Assumes package name components start with lower case letter and
+            # classes start with upper-case letter
+            importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+\*?)\s*;\s*')
+            importedRe = re.compile(r'((?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*)\.(?:(?:[A-Z][a-zA-Z\d_$]*)|\*)')
             for sourceDir in self.source_dirs():
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
@@ -1492,23 +1613,40 @@ class JavaProject(Project, ClasspathDependency):
 
                         for n in javaSources:
                             with open(join(root, n)) as fp:
-                                content = fp.read()
-                                imports.update(importRe.findall(content))
+                                lines = fp.readlines()
+                                for i in range(len(lines)):
+                                    m = importStatementRe.match(lines[i])
+                                    if m:
+                                        imported = m.group(1)
+                                        m = importedRe.match(imported)
+                                        if not m:
+                                            lineNo = i + 1
+                                            abort(join(root, n) + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + lines[i], self)
+                                        package = m.group(1)
+                                        imports.add(package)
+
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
 
-            importedPackages = set()
-            for imp in imports:
-                name = imp
-                while not name in depPackages and len(name) > 0:
-                    lastDot = name.rfind('.')
-                    if lastDot == -1:
-                        name = None
-                        break
-                    name = name[0:lastDot]
-                if name is not None:
-                    importedPackages.add(name)
-            self._imported_java_packages = frozenset(importedPackages)
+            importedPackagesFromProjects = set()
+            compat = self.suite.getMxCompatibility()
+            for package in imports:
+                if compat.improvedImportMatching():
+                    if package in depPackages:
+                        importedPackagesFromProjects.add(package)
+                else:
+                    name = package
+                    while not name in depPackages and len(name) > 0:
+                        lastDot = name.rfind('.')
+                        if lastDot == -1:
+                            name = None
+                            break
+                        name = name[0:lastDot]
+                    if name is not None:
+                        importedPackagesFromProjects.add(name)
+
+            setattr(self, '.importedPackages', frozenset(imports))
+            setattr(self, '.importedPackagesFromJavaProjects', frozenset(importedPackagesFromProjects))
 
     def defined_java_packages(self):
         """Get the immutable set of Java packages defined by the Java sources of this project"""
@@ -1520,11 +1658,16 @@ class JavaProject(Project, ClasspathDependency):
         self._init_packages_and_imports()
         return self._extended_java_packages
 
-    def imported_java_packages(self):
-        """Get the immutable set of Java packages defined by other Java projects that are
-           imported by the Java sources of this project."""
+    def imported_java_packages(self, projectDepsOnly=True):
+        """
+        Gets the immutable set of Java packages imported by the Java sources of this project.
+
+        :param bool projectDepsOnly: only include packages defined by other Java projects in the result
+        :return: the packages imported by this Java project, filtered as per `projectDepsOnly`
+        :rtype: frozenset
+        """
         self._init_packages_and_imports()
-        return self._imported_java_packages
+        return getattr(self, '.importedPackagesFromJavaProjects') if projectDepsOnly else getattr(self, '.importedPackages')
 
     def annotation_processors(self):
         """
@@ -1533,7 +1676,7 @@ class JavaProject(Project, ClasspathDependency):
         """
         return self.declaredAnnotationProcessors
 
-    def annotation_processors_path(self):
+    def annotation_processors_path(self, jdk):
         """
         Gets the class path composed of this project's annotation processor jars and the jars they depend upon.
         """
@@ -1543,7 +1686,8 @@ class JavaProject(Project, ClasspathDependency):
             invalid = [e.classpath_repr(resolve=True) for e in entries if not e.isJar()]
             if invalid:
                 abort('Annotation processor path can only contain jars: ' + str(invalid), context=self)
-            return os.pathsep.join((e for e in (e.classpath_repr(resolve=True) for e in entries) if e))
+            entries = (e.classpath_repr(jdk, resolve=True) if e.isJdkLibrary() else e.classpath_repr(resolve=True) for e in entries)
+            return os.pathsep.join((e for e in entries if e))
         return None
 
     def check_current_annotation_processors_file(self):
@@ -1595,23 +1739,59 @@ class JavaProject(Project, ClasspathDependency):
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
         if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
-            jdk = get_jdk() # build using default JDK
+            jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
             if jdk.javaCompliance < requiredCompliance:
-                jdk = get_jdk(requiredCompliance)
+                jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
             if hasattr(args, 'parallelize') and args.parallelize:
                 # Best to initialize class paths on main process
-                get_jdk(requiredCompliance).bootclasspath()
+                get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG).bootclasspath()
         else:
-            jdk = get_jdk(requiredCompliance)
+            jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
         if hasattr(args, "jdt") and args.jdt and not args.force_javac:
-            ec = _convert_to_eclipse_supported_compliance(max(jdk.javaCompliance, requiredCompliance))
-            if ec < jdk.javaCompliance:
-                jdk = get_jdk(versionCheck=ec.exactMatch, versionDescription=str(ec))
-            if ec < requiredCompliance:
-                requiredCompliance = ec
+            if not _is_supported_by_jdt(jdk):
+                # TODO: Test JDT version against those known to support JDK9
+                abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
 
         return JavaBuildTask(args, self, jdk, requiredCompliance)
+
+    def get_concealed_imported_packages(self, jdk=None):
+        """
+        Gets the concealed packages imported by this Java project.
+
+        :return: a map from a module to its concealed packages imported by this project
+        """
+        if jdk is None:
+            jdk = get_jdk(self.javaCompliance)
+        cache = '.concealed_imported_packages' + str(jdk.version)
+        if getattr(self, cache, None) is None:
+            concealed = {}
+            if jdk.javaCompliance >= '9':
+                modulepath = jdk.get_modules()
+
+                imports = getattr(self, 'imports', [])
+                if imports:
+                    # This regex does not detect all legal packages names. No regex can tell you if a.b.C.D is
+                    # a class D in the package a.b.C, a class C.D in the package a.b or even a class b.C.D in
+                    # the package a. As such mx uses the convention that package names start with a lowercase
+                    # letter and class names with a uppercase letter.
+                    packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
+                    for imported in imports:
+                        m = packageRe.match(imported)
+                        if not m:
+                            abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
+                imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
+                for package in imported:
+                    jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
+                    if visibility == 'concealed':
+                        if self.defined_java_packages().isdisjoint(jmd.packages):
+                            concealed.setdefault(jmd.name, set()).add(package)
+                        else:
+                            # This project is part of the module defining the concealed package
+                            pass
+            concealed = {module : list(concealed[module]) for module in concealed}
+            setattr(self, cache, concealed)
+        return getattr(self, cache)
 
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk, requiredCompliance):
@@ -1619,7 +1799,6 @@ class JavaBuildTask(ProjectBuildTask):
         self.jdk = jdk
         self.requiredCompliance = requiredCompliance
         self.javafilelist = None
-        self.jasmfilelist = None
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
         self._newestOutput = None
@@ -1670,7 +1849,7 @@ class JavaBuildTask(ProjectBuildTask):
         if self.subject.check_current_annotation_processors_file():
             return (True, 'annotation processor(s) changed')
 
-        if len(self._javaFileList()) == 0 and len(self._jasmFileList()) == 0 and self._nonJavaFileCount() == 0:
+        if len(self._javaFileList()) == 0 and self._nonJavaFileCount() == 0:
             return (False, 'no sources')
         return (False, 'all files are up to date')
 
@@ -1681,11 +1860,6 @@ class JavaBuildTask(ProjectBuildTask):
         if not self.javafilelist:
             self._collectFiles()
         return self.javafilelist
-
-    def _jasmFileList(self):
-        if not self.jasmfilelist:
-            self._collectFiles()
-        return self.jasmfilelist
 
     def _nonJavaFileTuples(self):
         if not self.nonjavafiletuples:
@@ -1699,23 +1873,20 @@ class JavaBuildTask(ProjectBuildTask):
 
     def _collectFiles(self, checkBuildReason=False, newestInput=None):
         self.javafilelist = []
-        self.jasmfilelist = []
         self.nonjavafiletuples = []
         self.nonjavafilecount = 0
         buildReason = None
         outputDir = self.subject.output_dir()
         for sourceDir in self.subject.source_dirs():
-            for root, _, files in os.walk(sourceDir):
+            for root, _, files in os.walk(sourceDir, followlinks=True):
                 javafiles = [join(root, name) for name in files if name.endswith('.java')]
-                jasmfiles = [join(root, name) for name in files if name.endswith('.jasm')]
                 self.javafilelist += javafiles
-                self.jasmfilelist += jasmfiles
-                nonjavafiles = [join(root, name) for name in files if not name.endswith('.java') and not name.endswith('.jasm')]
+                nonjavafiles = [join(root, name) for name in files if not name.endswith('.java')]
                 self.nonjavafiletuples += [(sourceDir, nonjavafiles)]
                 self.nonjavafilecount += len(nonjavafiles)
 
                 def findBuildReason():
-                    for inputs, inputSuffix, outputSuffix in [(javafiles, 'java', 'class'), (jasmfiles, 'jasm', 'class'), (nonjavafiles, None, None)]:
+                    for inputs, inputSuffix, outputSuffix in [(javafiles, 'java', 'class'), (nonjavafiles, None, None)]:
                         for inputFile in inputs:
                             if basename(inputFile) == 'package-info.java':
                                 continue
@@ -1752,27 +1923,42 @@ class JavaBuildTask(ProjectBuildTask):
                 return JavacDaemonCompiler(self.args.extra_javac_args)
 
     def prepare(self, daemons):
-        self.compiler = self._getCompiler()
-        self.compiler.prepare(self.jdk, daemons)
+        """
+        Prepares the compilation that will be performed if `build` is called.
 
-    def build(self):
-        outputDir = self.subject.output_dir()
-        ensure_dir_exists(outputDir)
-        # Java build
+        :param dict daemons: map from keys to `Daemon` objects into which any daemons
+                created to assist this task when `build` is called should be placed.
+        """
+        self.compiler = self._getCompiler()
+        outputDir = ensure_dir_exists(self.subject.output_dir())
         if self._javaFileList():
-            self.compiler.build(
+            self.postCompileActions = []
+            self.compileArgs = self.compiler.prepare(
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
                 compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance))),
                 sourceGenDir=self.subject.source_gen_dir(),
-                processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path()),
+                processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
                 disableApiRestrictions=not self.args.warnAPI,
                 warningsAsErrors=self.args.warning_as_error,
-                showTasks=self.args.jdt_show_task_tags
-            )
+                showTasks=self.args.jdt_show_task_tags,
+                postCompileActions=self.postCompileActions)
+            self.compiler.prepare_daemon(self.jdk, daemons, self.compileArgs)
+        else:
+            self.compileArgs = None
+
+    def build(self):
+        outputDir = ensure_dir_exists(self.subject.output_dir())
+        # Java build
+        if self.compileArgs:
+            try:
+                self.compiler.compile(self.jdk, self.compileArgs)
+            finally:
+                for action in self.postCompileActions:
+                    action()
             logvv('Finished Java compilation for {}'.format(self.subject.name))
             output = []
             for root, _, filenames in os.walk(outputDir):
@@ -1781,26 +1967,8 @@ class JavaBuildTask(ProjectBuildTask):
             if output:
                 key = lambda x: os.path.getmtime(_safe_path(x))
                 self._newestOutput = TimeStampFile(max(output, key=key))
-        # Jasmin build
-        for src in self._jasmFileList():
-            className = None
-            with open(src) as f:
-                for line in f:
-                    if line.lstrip().startswith('.class ') or line.lstrip().startswith('.interface '):
-                        className = line.split()[-1]
-                        break
-            if not className:
-                abort('could not file .class or .interface directive in Jasmin source: ' + src)
-            else:
-                jasminOutputDir = self.subject.jasmin_output_dir()
-                classFile = join(jasminOutputDir, className.replace('/', os.sep) + '.class')
-                if exists(dirname(classFile)) and (not exists(classFile) or os.path.getmtime(classFile) < os.path.getmtime(src)):
-                    logv('Assembling Jasmin file ' + src)
-                    run(['jasmin', '-d', jasminOutputDir, src])
-                    self._newestOutput = TimeStampFile(classFile)
+        # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
-        if self._jasmFileList():
-            logvv('Finished Jasmin compilation for {}'.format(self.subject.name))
         # Copy other files
         for nonjavafiletuple in self._nonJavaFileTuples():
             sourceDir = nonjavafiletuple[0]
@@ -1830,29 +1998,55 @@ class JavaCompiler:
     def name(self):
         nyi('name', self)
 
-    # TODO make sure paths have been 'cygwinized' before reaching here
-    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks):
-        nyi('build', self)
-
-    def prepare(self, jdk, daemons):
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
         """
-        Perform any task initialization that must be done in the main process.
-        This will be called just befor the task is launched.
+        Prepares for a compilation with this compiler. This done in the main process.
+
+        :param list sourceFiles: list of Java source files to compile
+        :param JavaProject project: the project containing the source files
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param JavaCompliance compliance:
+        :param str outputDir: where to place generated class files
+        :param str classpath: where to find user class files
+        :param str processorPath: where to find annotation processors
+        :param str sourceGenDir: where to place generated source files
+        :param bool disableApiRestrictions: specifies if the compiler should not warning about accesses to restricted API
+        :param bool warningsAsErrors: specifies if the compiler should treat warnings as errors
+        :param bool showTasks: specifies if the compiler should show tasks tags as warnings (JDT only)
+        :param list postCompileActions: list into which callable objects can be added for performing post-compile actions
+        :return: the value to be bound to `args` when calling `compile` to perform the compilation
+        """
+        nyi('prepare', self)
+
+    def prepare_daemon(self, jdk, daemons, compileArgs):
+        """
+        Initializes any daemons used when `compile` is called with `compileArgs`.
+
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param dict daemons: map from name to `CompilerDaemon` into which new daemons should be registered
+        :param list compileArgs: the value bound to the `args` parameter when calling `compile`
         """
         pass
 
+    def compile(self, jdk, args):
+        """
+        Executes the compilation that was prepared by a previous call to `prepare`.
+
+        :param JDKConfig jdk: the JDK used to execute this compiler
+        :param list args: the value returned by a call to `prepare`
+        """
+        nyi('compile', self)
+
 class JavacLikeCompiler(JavaCompiler):
     def __init__(self, extraJavacArgs):
-        self.tmpFiles = []
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
     def _get_compliance_jdk(self, compliance):
         return get_jdk(compliance)
 
-    def build(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks):
-        jvmArgs = ['-Xmx1500m']
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
         javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
         if processorPath:
             ensure_dir_exists(sourceGenDir)
@@ -1874,37 +2068,29 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs.append('-verbose')
 
         javacArgs.extend(self.extraJavacArgs)
-        fileListFile = self.createFileListFile(sourceFiles, project.get_output_root())
-        javacArgs.append('@' + _cygpathU2W(fileListFile))
-        try:
-            self.buildJavacLike(jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation)
-        finally:
-            # Do not clean up temp files if verbose as there's
-            # a good chance the user wants to copy and paste the
-            # Java compiler command directly
-            if not _opts.verbose:
-                for n in self.tmpFiles:
-                    os.remove(n)
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+        fileList = join(project.get_output_root(), 'javafilelist.txt')
+        with open(fileList, 'w') as fp:
+            fp.write(os.linesep.join(sourceFiles))
+        javacArgs.append('@' + _cygpathU2W(fileList))
+
+        tempFiles = [fileList]
+        if not _opts.verbose:
+            # Only remove temporary files if not verbose so the user can copy and paste
+            # the Java compiler command line directly to reproduce a failure.
+            def _rm_tempFiles():
+                for f in tempFiles:
+                    os.remove(f)
+            postCompileActions.append(_rm_tempFiles)
+
+        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles)
+
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         """
-        *hybridCrossCompilation* is true if the -source compilation option denotes a different JDK version than
+        `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
         """
         nyi('buildJavacLike', self)
-
-    def createFileListFile(self, files, directory):
-        if _opts.verbose:
-            # use a single file since it will be left on disk
-            f = open(join(directory, 'javafilelist.txt'), 'w')
-            name = f.name
-        else:
-            (fd, name) = tempfile.mkstemp(prefix='javafilelist', suffix='.txt', dir=directory)
-            f = os.fdopen(fd, 'w')
-        f.write(os.linesep.join(files))
-        f.close()
-        self.tmpFiles.append(name)
-        return name
 
 class JavacCompiler(JavacLikeCompiler):
     def __init__(self, altJavac=None, extraJavacArgs=None):
@@ -1914,7 +2100,7 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -1926,7 +2112,7 @@ class JavacCompiler(JavacLikeCompiler):
             if lint != ['none'] and warningsAsErrors:
                 # disable the "bootstrap class path not set in conjunction with -source N" warning
                 # since we are not in strict compliance mode
-                assert not _opts.strict_compliance
+                assert not _opts.strict_compliance or project.name == 'com.oracle.mxtool.compilerserver'
                 lint += ['-options']
         knownLints = jdk.getKnownJavacLints()
         if knownLints:
@@ -1941,12 +2127,66 @@ class JavacCompiler(JavacLikeCompiler):
             abort('Showing task tags is not currently supported for javac')
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
-        jvmArgs += jdk.java_args
-        self.run(jdk, jvmArgs, javacArgs)
 
-    def run(self, jdk, jvmArgs, javacArgs):
+        if jdk.javaCompliance >= '1.9':
+            def addExportArgs(dep, exports=None, prefix='', jdk=None):
+                """
+                Adds ``-XaddExports:`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
+                `javacArgs` for the non-public JDK modules required by `dep`.
+
+                :param :class:`mx.JavaProject` dep: a Java project that may dependent on private JDK modules
+                :param exports: either None or a set of exports per module for which ``-XaddExports`` args
+                   have already been added to `javacArgs`
+                :type exports: None or dict
+                :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
+                """
+                for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
+                    if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
+                        # A JVMCI project may refer to a JVMCI API under development which
+                        # can differ with the signature of the JVMCI API in the JDK used
+                        # for compilation. As such, a normal class path reference to the
+                        # JVMCI API must be used instead of an -XaddExports option.
+                        continue
+                    for package in packages:
+                        exportedPackages = None if exports is None else exports.setdefault(module, set())
+                        if exportedPackages is None or package not in exportedPackages:
+                            if exportedPackages is not None:
+                                exportedPackages.add(package)
+                            exportArg = prefix + '-XaddExports:' + module + '/' + package + '=ALL-UNNAMED'
+                            javacArgs.append(exportArg)
+
+            addExportArgs(project)
+            aps = project.annotation_processors()
+            if aps:
+                exports = {}
+                for dep in classpath_entries(aps, preferProjects=True):
+                    if dep.isJavaProject():
+                        addExportArgs(dep, exports, '-J', jdk)
+                # If modules are exported for use by an annotation processor then
+                # they need to be boot modules since -XaddExports can only be used
+                # for boot modules.
+                if exports:
+                    addmodsArgs = ['-J-addmods', '-J' + ','.join(exports.iterkeys())]
+                    javacArgs.extend(addmodsArgs)
+
+            # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
+            modulepath = jdk.get_modules()
+            xmodule = None
+            for package in project.defined_java_packages():
+                jmd, _ = lookup_package(modulepath, package, "<unnamed>")
+                if jmd:
+                    if xmodule:
+                        if xmodule != jmd.name:
+                            abort('Cannot compile sources for more than multiple existing modules:' + xmodule + ' and ' + jmd.name)
+                    else:
+                        xmodule = jmd.name
+                        javacArgs.append('-Xmodule:' + jmd.name)
+
+        return javacArgs
+
+    def compile(self, jdk, args):
         javac = self.altJavac if self.altJavac else jdk.javac
-        cmd = [javac] + ['-J' + arg for arg in jvmArgs] + javacArgs
+        cmd = [javac] + ['-J' + arg for arg in jdk.java_args] + args
         run(cmd)
 
 class JavacDaemonCompiler(JavacCompiler):
@@ -1956,24 +2196,28 @@ class JavacDaemonCompiler(JavacCompiler):
     def name(self):
         return 'javac-daemon'
 
-    def run(self, jdk, jvmArgs, compilerArgs):
-        return self.daemon.compile(jdk, compilerArgs)
+    def compile(self, jdk, args):
+        nonJvmArgs = [a for a in args if not a.startswith('-J')]
+        return self.daemon.compile(jdk, nonJvmArgs)
 
-    def prepare(self, jdk, daemons):
-        name = 'javac-daemon-' + jdk.java
-        self.daemon = daemons.get(name)
+    def prepare_daemon(self, jdk, daemons, compileArgs):
+        jvmArgs = jdk.java_args + [a[2:] for a in compileArgs if a.startswith('-J')]
+        key = 'javac-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+        self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = JavacDaemon(jdk)
-            daemons[name] = self.daemon
+            self.daemon = JavacDaemon(jdk, jvmArgs)
+            daemons[key] = self.daemon
 
 class Daemon:
     def shutdown(self):
         pass
 
 class CompilerDaemon(Daemon):
-    def __init__(self, jdk, mainClass, toolJar):
+    def __init__(self, jdk, jvmArgs, mainClass, toolJar, buildArgs=None):
         self.jdk = jdk
-        build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
+        if not buildArgs:
+            buildArgs = []
+        build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
         cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
         # allocate a new port
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1984,8 +2228,10 @@ class CompilerDaemon(Daemon):
 
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
-        args = [jdk.java] + ['-cp', cp, mainClass] + verbose + [str(self.port)]
+        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + [str(self.port)]
         preexec_fn, creationflags = _get_new_progress_group_args()
+        if _opts.verbose:
+            log(' '.join(map(pipes.quote, args)))
         p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags)
         # Ensure the process is cleaned up when mx exits
         _addSubprocess(p, args)
@@ -2037,8 +2283,8 @@ class CompilerDaemon(Daemon):
         return self.name() + ' on port ' + str(self.port) + ' for ' + str(self.jdk)
 
 class JavacDaemon(CompilerDaemon):
-    def __init__(self, jdk):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar)
+    def __init__(self, jdk, jvmArgs):
+        CompilerDaemon.__init__(self, jdk, jvmArgs, 'com.oracle.mxtool.compilerserver.JavacDaemon', jdk.toolsjar, ['--force-javac'])
 
     def name(self):
         return 'javac-daemon'
@@ -2055,13 +2301,10 @@ class ECJCompiler(JavacLikeCompiler):
         jdk = get_jdk(compliance)
         esc = _convert_to_eclipse_supported_compliance(jdk.javaCompliance)
         if esc < jdk.javaCompliance:
-            # We need to emulate strict compliance here so that the right boot
-            # class path is selected when compiling with a JDT that does not
-            # support a JDK9 boot class path
-            jdk = get_jdk(versionCheck=esc.exactMatch, versionDescription=str(esc))
+            abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
         return jdk
 
-    def buildJavacLike(self, jdk, project, jvmArgs, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -2089,15 +2332,15 @@ class ECJCompiler(JavacLikeCompiler):
                 jdtPropertiesTmp = jdtProperties + '.tmp'
                 with open(jdtPropertiesTmp, 'w') as fp:
                     fp.write(content)
-                self.tmpFiles.append(jdtPropertiesTmp)
+                tempFiles.append(jdtPropertiesTmp)
                 jdtArgs += ['-properties', _cygpathU2W(jdtPropertiesTmp)]
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        self.run(jdk, jvmArgs, jdtArgs)
+        return jdtArgs
 
-    def run(self, jdk, jvmArgs, jdtArgs):
-        run_java(jvmArgs + ['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
+    def compile(self, jdk, jdtArgs):
+        run_java(['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
 
 class ECJDaemonCompiler(ECJCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
@@ -2106,19 +2349,20 @@ class ECJDaemonCompiler(ECJCompiler):
     def name(self):
         return 'ecj-daemon'
 
-    def run(self, jdk, jvmArgs, compilerArgs):
-        return self.daemon.compile(jdk, compilerArgs)
+    def compile(self, jdk, jdtArgs):
+        return self.daemon.compile(jdk, jdtArgs)
 
-    def prepare(self, jdk, daemons):
-        name = 'ecj-daemon-' + jdk.java + '-' + self.jdtJar
-        self.daemon = daemons.get(name)
+    def prepare_daemon(self, jdk, daemons, jdtArgs):
+        jvmArgs = jdk.java_args
+        key = 'ecj-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+        self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = ECJDaemon(jdk, self.jdtJar)
-            daemons[name] = self.daemon
+            self.daemon = ECJDaemon(jdk, jvmArgs, self.jdtJar)
+            daemons[key] = self.daemon
 
 class ECJDaemon(CompilerDaemon):
-    def __init__(self, jdk, jdtJar):
-        CompilerDaemon.__init__(self, jdk, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
+    def __init__(self, jdk, jvmArgs, jdtJar):
+        CompilerDaemon.__init__(self, jdk, jvmArgs, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
 
     def name(self):
         return 'ecj-daemon'
@@ -2266,9 +2510,9 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
     return join(cacheDir, name + '_' + sha1 + ext)
 
 def download_file_exists(urls):
-    '''
+    """
     Returns true if one of the given urls denotes an existing resource.
-    '''
+    """
     for url in urls:
         try:
             urllib2.urlopen(url, timeout=0.5).close()
@@ -2278,12 +2522,12 @@ def download_file_exists(urls):
     return False
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
-    '''
+    """
     Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
     checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
     Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
     in which case it copies the cache entry.
-    '''
+    """
     sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
 
@@ -2384,11 +2628,11 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
     return True
 
 
-"""
-A BaseLibrary is an entity that is an object that has no structure understood by mx,
-typically a jar file. It is used "as is".
-"""
 class BaseLibrary(Dependency):
+    """
+    A library that has no structure understood by mx, typically a jar file.
+    It is used "as is".
+    """
     def __init__(self, suite, name, optional, theLicense):
         Dependency.__init__(self, suite, name, theLicense)
         self.optional = optional
@@ -2408,16 +2652,16 @@ class BaseLibrary(Dependency):
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
-    """
-    Return string where references to instance variables from given text string are replaced.
-    """
     def substVars(self, text):
+        """
+        Return string where references to instance variables from given text string are replaced.
+        """
         return text.format(**vars(self))
 
-"""
-A library that is just a resource and therefore not a ClasspathDependency
-"""
 class ResourceLibrary(BaseLibrary):
+    """
+    A library that is just a resource and therefore not a `ClasspathDependency`.
+    """
     def __init__(self, suite, name, path, optional, urls, sha1):
         BaseLibrary.__init__(self, suite, name, optional, None)
         self.path = path.replace('/', os.sep)
@@ -2439,21 +2683,16 @@ class ResourceLibrary(BaseLibrary):
         sha1path = path + '.sha1'
         return not _check_file_with_sha1(path, self.sha1, sha1path)
 
-"""
-A library that will be provided by the JRE but may be absent.
-Any project or normal library that depends on a missing library
-will be removed from the global project and library dictionaries
-(i.e., _projects and _libs).
-
-The library is searched on the classpaths of the JRE.
-
-This mechanism exists primarily to be able to support code
-that may use functionality in one JRE (e.g., Oracle JRE)
-that is not present in another JRE (e.g., OpenJDK). A
-motivating example is the Java Flight Recorder library
-found in the Oracle JRE.
-"""
 class JreLibrary(BaseLibrary, ClasspathDependency):
+    """
+    A library jar provided by the Java Runtime Environment (JRE).
+
+    This mechanism exists primarily to be able to support code
+    that may use functionality in one JRE (e.g., Oracle JRE)
+    that is not present in another JRE (e.g., OpenJDK). A
+    motivating example is the Java Flight Recorder library
+    found in the Oracle JRE.
+    """
     def __init__(self, suite, name, jar, optional, theLicense):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
@@ -2465,14 +2704,35 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
-    def is_present_in_jdk(self, jdk):
+    def is_provided_by(self, jdk):
+        """
+        Determines if this library is provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        :return: whether this library is available in `jdk`
+        """
         return jdk.hasJarOnClasspath(self.jar)
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
-    def classpath_repr(self, resolve=True):
-        return None # TODO should have a jdk arg and should fail if not available
+    def classpath_repr(self, jdk, resolve=True):
+        """
+        Gets the absolute path of this library in `jdk`. This method will abort if this library is
+        not provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        :return: whether this library is available in `jdk`
+        """
+        if not jdk:
+            abort('A JDK is required to resolve ' + self.name + ' to a path')
+        path = jdk.hasJarOnClasspath(self.jar)
+        if not path:
+            abort(self.name + ' is not provided by ' + str(jdk))
+        return path
+
+    def isJar(self):
+        return True
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
@@ -2503,17 +2763,39 @@ class NoOpTask(BuildTask):
     def cleanForbidden(self):
         return True
 
-"""
-A library that will be provided by the JDK but may be absent.
-Any project or normal library that depends on a missing library
-will be removed from the global project and library dictionaries
-(i.e., _projects and _libs).
-"""
 class JdkLibrary(BaseLibrary, ClasspathDependency):
-    def __init__(self, suite, name, path, optional, theLicense):
+    """
+    A library that will be provided by the JDK but may be absent.
+    Any project or normal library that depends on an optional missing library
+    will be removed from the global project and library registry.
+
+    :param Suite suite: the suite defining this library
+    :param str name: the name of this library
+    :param path: path relative to a JDK home directory where the jar file for this library is located
+    :param deps: the dependencies of this library (which can only be other `JdkLibrary`s)
+    :param bool optional: a missing non-optional library will cause mx to abort when resolving a reference to this library
+    :param str theLicense: the license under which this library can be redistributed
+    :param sourcePath: a path where the sources for this library are located. A relative path is resolved against a JDK.
+    :param JavaCompliance jdkStandardizedSince: the JDK version in which the resources represented by this library are automatically
+           available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
+    """
+    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
-        self.path = path
+        self.path = path.replace('/', os.sep)
+        self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
+        self.deps = deps
+        self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance('1.2')
+
+    def resolveDeps(self):
+        """
+        Resolves symbolic dependency references to be Dependency objects.
+        """
+        BaseLibrary.resolveDeps(self)
+        self._resolveDepsHelper(self.deps)
+        for d in self.deps:
+            if not d.isJdkLibrary():
+                abort('"dependencies" attribute of a JDK library can only contain other JDK libraries: ' + d.name, context=self)
 
     def __eq__(self, other):
         if isinstance(other, JdkLibrary):
@@ -2521,25 +2803,67 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
-    def is_present_in_jdk(self, jdk):
-        return exists(join(jdk.path, self.jar))
+    def is_provided_by(self, jdk):
+        """
+        Determines if this library is provided by `jdk`.
+
+        :param JDKConfig jdk: the JDK to test
+        """
+        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(join(jdk.home, self.path))
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
-    def classpath_repr(self, resolve=True):
-        return self.path  # TODO should have a jdk arg and should fail if not available
+    def classpath_repr(self, jdk, resolve=True):
+        """
+        Gets the absolute path of this library in `jdk` or None if this library is available
+        on the default class path of `jdk`. This method will abort if this library is
+        not provided by `jdk`.
 
-"""
-A library that is provided (built) by some third-party and made available via a URL.
-A Library may have dependencies on other Library's as expressed by the "deps" field.
-A Library can only depend on another Library, and not a Project or Distribution
-Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
-A Library is effectively an "import" into the suite since, unlike a Project or Distribution
-it is not built by the Suite.
-N.B. Not obvious but a Library can be an annotationProcessor
-"""
+        :param JDKConfig jdk: the JDK from which to retrieve this library's jar file
+        :return: the absolute path of this library's jar file in `jdk`
+        """
+        if not jdk:
+            abort('A JDK is required to resolve ' + self.name)
+        if jdk.javaCompliance >= self.jdkStandardizedSince:
+            return None
+        path = join(jdk.home, self.path)
+        if not exists(path):
+            abort(self.name + ' is not provided by ' + str(jdk))
+        return path
+
+    def get_source_path(self, jdk):
+        """
+        Gets the path where the sources for this library are located.
+
+        :param JDKConfig jdk: the JDK against which a relative path is resolved
+        :return: the absolute path where the sources of this library are located
+        """
+        if self.sourcePath is None:
+            return None
+        return self.sourcePath if isabs(self.sourcePath) else join(jdk.home, self.sourcePath)
+
+    def isJar(self):
+        return True
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
+            for d in self.deps:
+                if visitEdge:
+                    visitEdge(self, DEP_STANDARD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+
 class Library(BaseLibrary, ClasspathDependency):
+    """
+    A library that is provided (built) by some third-party and made available via a URL.
+    A Library may have dependencies on other Library's as expressed by the "deps" field.
+    A Library can only depend on another Library, and not a Project or Distribution
+    Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
+    A Library is effectively an "import" into the suite since, unlike a Project or Distribution
+    it is not built by the Suite.
+    N.B. Not obvious but a Library can be an annotationProcessor
+    """
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
@@ -2573,9 +2897,9 @@ class Library(BaseLibrary, ClasspathDependency):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
     def resolveDeps(self):
-        '''
+        """
         Resolves symbolic dependency references to be Dependency objects.
-        '''
+        """
         BaseLibrary.resolveDeps(self)
         self._resolveDepsHelper(self.deps)
 
@@ -2587,13 +2911,10 @@ class Library(BaseLibrary, ClasspathDependency):
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
-
     def __eq__(self, other):
         if isinstance(other, Library):
-            if len(self.urls) == 0:
-                return self.path == other.path
-            else:
-                return self.urls == other.urls
+            # all that really matters is the sha1 value; the library can be stored at many urls and path is a suite specific location
+            return self.sha1 == other.sha1
         else:
             return NotImplemented
 
@@ -2660,7 +2981,7 @@ class LibraryDownloadTask(BuildTask):
     def cleanForbidden(self):
         return True
 
-'''
+"""
 Abstracts the operations of the version control systems
 Most operations take a vcdir as the dir in which to execute the operation
 Most operations abort on error unless abortOnError=False, and return True
@@ -2669,7 +2990,7 @@ or False for success/failure.
 Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
-'''
+"""
 class VC(object):
     __metaclass__ = ABCMeta
     """
@@ -2700,11 +3021,11 @@ class VC(object):
     @staticmethod
     def get_vc(vcdir, abortOnError=True):
         """
-        Given that :param:`vcdir` is a repository directory, attempt to determine
+        Given that `vcdir` is a repository directory, attempt to determine
         what kind of VCS is it managed by. Return None if it cannot be determined.
 
         :param str vcdir: a valid path to a version controlled directory
-        :param boo abortOnError: if an error occurs, abort mx operations
+        :param bool abortOnError: if an error occurs, abort mx operations
         :return: an instance of VC or None if it cannot be determined
         :rtype: :class:`VC`
         """
@@ -2718,66 +3039,110 @@ class VC(object):
             return None
 
     def check(self, abortOnError=True):
-        '''
+        """
         Lazily check whether a particular VC system is available.
         Return None if fails and abortOnError=False
-        '''
+        """
         abort("VC.check is not implemented")
 
     def init(self, vcdir, abortOnError=True):
-        '''
+        """
         Intialize 'vcdir' for vc control
-        '''
+        """
         abort(self.kind + " init is not implemented")
 
     def is_this_vc(self, vcdir):
-        '''
+        """
         Check whether vcdir is managed by this vc.
         Return None if not, True if so
-        '''
+        """
         abort(self.kind + " is_this_vc is not implemented")
 
     def metadir(self):
-        '''
+        """
         Return name of metadata directory
-        '''
+        """
         abort(self.kind + " metadir is not implemented")
 
     def add(self, vcdir, path, abortOnError=True):
-        '''
+        """
         Add path to repo
-        '''
+        """
         abort(self.kind + " add is not implemented")
 
     def commit(self, vcdir, msg, abortOnError=True):
-        '''
+        """
         commit with msg
-        '''
+        """
         abort(self.kind + " commit is not implemented")
 
     def tip(self, vcdir, abortOnError=True):
         """
-        Get the most recent changeset for repo at :param:`vcdir`.
+        Get the most recent changeset for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
-        :param bool abortOnError: if True abort on mx error
+        :param bool abortOnError: if True abort on error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + " tip is not implemented")
 
     def parent(self, vcdir, abortOnError=True):
         """
-        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+        Get the parent changeset of the working directory for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
-        :param bool abortOnError: if True abort on mx error
+        :param bool abortOnError: if True abort on error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + " id is not implemented")
+
+    def parent_info(self, vcdir, abortOnError=True):
+        """
+        Get the dict with common commit information.
+
+        The following fields are provided in the dict:
+
+        - author: name <e-mail> (best-effort, might only contain a name)
+        - author-ts: unix timestamp (int)
+        - committer: name <e-mail> (best-effort, might only contain a name)
+        - committer-ts: unix timestamp (int)
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on error
+        :return: dictionary with information key-value pairs
+        :rtype: dict
+        """
+        abort(self.kind + " parent_info is not implemented")
+
+    def _sanitize_parent_info(self, info):
+        """Utility method to sanitize the parent_info dictionary.
+
+        Converts integer fields to actual ints, and strips.
+        """
+        def strip(field):
+            info[field] = info[field].strip()
+        def to_int(field):
+            info[field] = int(info[field].strip())
+        to_int("author-ts")
+        to_int("committer-ts")
+        strip("author")
+        strip("committer")
+        return info
+
+    def active_branch(self, vcdir, abortOnError=True):
+        """
+        Returns the active branch of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on error
+        :return: name of the branch
+        :rtype: str
+        """
+        abort(self.kind + " active_branch is not implemented")
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
@@ -2795,7 +3160,7 @@ class VC(object):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+        Clone the repo at `url` to `dest` using `rev`
 
         :param str url: the repository url
         :param str dest: the path to destination, if None the destination is
@@ -2843,7 +3208,7 @@ class VC(object):
 
     def can_push(self, vcdir, strict=True):
         """
-        Check if :param:`vcdir` can be pushed.
+        Check if `vcdir` can be pushed.
 
         :param str vcdir: a valid repository path
         :param bool strict: if set no uncommitted changes or unadded are allowed
@@ -2880,7 +3245,7 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
@@ -2892,15 +3257,15 @@ class VC(object):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         abort(self.kind + ": outgoing is not implemented")
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         """
-        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
-        is None, else push to :param:`dest`.
+        Push `vcdir` at rev `rev` to default if `dest`
+        is None, else push to `dest`.
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -2925,11 +3290,11 @@ class VC(object):
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         """
-        update the :param:`vcdir` working directory.
-        If :param:`rev` is not specified, update to the tip of the current branch.
-        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
-        :param:`rev` can not be found locally.
-        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
+        update the `vcdir` working directory.
+        If `rev` is not specified, update to the tip of the current branch.
+        If `rev` is specified, `mayPull` controls whether a pull will be attempted if
+        `rev` can not be found locally.
+        If `clean` is True, uncommitted changes will be discarded (no backup!).
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -2952,9 +3317,20 @@ class VC(object):
         """
         abort(self.kind + " isDirty is not implemented")
 
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        abort(self.kind + " status is not implemented")
+
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
-        Return a list of paths under vc control that match :param:`patterns`
+        Return a list of paths under vc control that match `patterns`
 
         :param str vcdir: a valid repository path
         :param patterns: a list of patterns
@@ -3016,6 +3392,13 @@ class LinesOutputCapture:
     def __call__(self, data):
         self.lines.append(data.rstrip())
 
+class TeeOutputCapture:
+    def __init__(self, underlying):
+        self.underlying = underlying
+    def __call__(self, data):
+        log(data.rstrip())
+        self.underlying(data)
+
 class HgConfig(VC):
     """
     Encapsulates access to Mercurial (hg)
@@ -3058,7 +3441,7 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
-    def hg_command(self, vcdir, args, abortOnError=False, quiet=False):
+    def hg_command(self, vcdir, args, abortOnError=False, quiet=True):
         args = ['hg', '-R', vcdir] + args
         if not quiet:
             print '{0}'.format(" ".join(args))
@@ -3070,6 +3453,18 @@ class HgConfig(VC):
             if abortOnError:
                 abort(" ".join(args) + ' returned ' + str(rc))
             return None
+
+    def active_branch(self, vcdir, abortOnError=True):
+        out = OutputCapture()
+        cmd = ['hg', 'bookmarks']
+        rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
+        if rc == 0:
+            for line in out.data.splitlines():
+                if line.strip().startswith(' * '):
+                    return line[3:].split(" ")[0]
+        if abortOnError:
+            abort('no active hg bookmark found')
+        return None
 
     def add(self, vcdir, path, abortOnError=True):
         return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
@@ -3104,6 +3499,17 @@ class HgConfig(VC):
                 abort('hg parents failed')
             else:
                 return None
+
+    def parent_info(self, vcdir, abortOnError=True):
+        out = self.hg_command(vcdir, ["log", "-r", ".", "--template", "{author}|||{date|hgdate}"], abortOnError=abortOnError)
+        author, date = out.split("|||")
+        ts, _ = date.split(" ")
+        return self._sanitize_parent_info({
+            "author": author,
+            "author-ts": ts,
+            "committer": author,
+            "committer-ts": ts,
+        })
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
@@ -3280,6 +3686,10 @@ class HgConfig(VC):
             else:
                 return None
 
+    def status(self, vcdir, abortOnError=True):
+        cmd = ['hg', '-R', vcdir, 'status']
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
+
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         ret = run(['hg', '-R', vcdir, 'bookmark', '-r', rev, '-i', '-f', name], nonZeroIsFatal=False)
         if ret != 0:
@@ -3359,8 +3769,8 @@ class GitConfig(VC):
         # check for existence to also cover git submodules
         return os.path.exists(gitdir)
 
-    def git_command(self, vcdir, args, abortOnError=False, quiet=False):
-        args = ['git'] + args
+    def git_command(self, vcdir, args, abortOnError=False, quiet=True):
+        args = ['git', '--no-pager'] + args
         if not quiet:
             print '{0}'.format(" ".join(args))
         out = OutputCapture()
@@ -3382,12 +3792,12 @@ class GitConfig(VC):
 
     def tip(self, vcdir, abortOnError=True):
         """
-        Get the most recent changeset for repo at :param:`vcdir`.
+        Get the most recent changeset for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         self.check_for_git()
@@ -3402,12 +3812,12 @@ class GitConfig(VC):
 
     def parent(self, vcdir, abortOnError=True):
         """
-        Get the parent changeset of the working directory for repo at :param:`vcdir`.
+        Get the parent changeset of the working directory for repo at `vcdir`.
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         self.check_for_git()
@@ -3425,9 +3835,19 @@ class GitConfig(VC):
             else:
                 return None
 
+    def parent_info(self, vcdir, abortOnError=True):
+        out = self.git_command(vcdir, ["show", "-s", "--format=%an <%ae>|||%at|||%cn <%ce>|||%ct", "HEAD"], abortOnError=abortOnError)
+        author, author_ts, committer, committer_ts = out.split("|||")
+        return self._sanitize_parent_info({
+            "author": author,
+            "author-ts": author_ts,
+            "committer": committer,
+            "committer-ts": committer_ts,
+        })
+
     def _tags(self, vcdir, prefix, abortOnError=True):
         """
-        Get the list of tags starting with :param:`prefix` in the repository at :param:`vcdir` that are ancestors
+        Get the list of tags starting with `prefix` in the repository at `vcdir` that are ancestors
         of the current HEAD.
 
         :param str vcdir: a valid repository path
@@ -3532,7 +3952,7 @@ class GitConfig(VC):
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
-        Clone the repo at :param:`url` to :param:`dest` using :param:`rev`
+        Clone the repo at `url` to `dest` using `rev`
 
         :param str url: the repository url
         :param str dest: the path to destination, if None the destination is
@@ -3581,14 +4001,13 @@ class GitConfig(VC):
                         'incoming' if incoming else 'outgoing', str(rc)))
             return None
 
-    def _active_branch(self, vcdir, abortOnError=True):
+    def active_branch(self, vcdir, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', 'branch']
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
         if rc == 0:
             for line in out.data.splitlines():
                 if line.strip().startswith('*'):
-                    print line
                     return line.split()[1].strip()
         if abortOnError:
             abort('no active git branch found')
@@ -3600,8 +4019,7 @@ class GitConfig(VC):
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
-        :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+        :return: most recent changeset for specified repository, None if failure and `abortOnError` is False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3619,7 +4037,7 @@ class GitConfig(VC):
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on mx error
         :return: most recent changeset for specified repository,
-                 None if failure and :param:`abortOnError`=False
+                 None if failure and `abortOnError` is False
         :rtype: str
         """
         rc = self._fetch(vcdir, abortOnError=abortOnError)
@@ -3644,7 +4062,7 @@ class GitConfig(VC):
         :rtype: bool
         """
         if update and not rev:
-            active_branch = self._active_branch(vcdir, abortOnError)
+            active_branch = self.active_branch(vcdir, abortOnError)
             cmd = ['git', 'pull', 'origin', 'HEAD:{0}'.format(active_branch)]
             self._log_pull(vcdir, rev)
             out = OutputCapture()
@@ -3663,7 +4081,7 @@ class GitConfig(VC):
 
     def can_push(self, vcdir, strict=True, abortOnError=True):
         """
-        Check if :param:`vcdir` can be pushed.
+        Check if `vcdir` can be pushed.
 
         :param str vcdir: a valid repository path
         :param bool strict: if set no uncommitted changes or unadded are allowed
@@ -3725,8 +4143,8 @@ class GitConfig(VC):
 
     def push(self, vcdir, dest=None, rev=None, abortOnError=False):
         """
-        Push :param:`vcdir` at rev :param:`rev` to default if :param:`dest`
-        is None, else push to :param:`dest`.
+        Push `vcdir` at rev `rev` to default if `dest`
+        is None, else push to `dest`.
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -3746,11 +4164,11 @@ class GitConfig(VC):
 
     def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
         """
-        update the :param:`vcdir` working directory.
-        If :param:`rev` is not specified, update to the tip of the current branch.
-        If :param:`rev` is specified, `mayPull` controls whether a pull will be attempted if
-        :param:`rev` can not be found locally.
-        If :param:`clean` is True, uncommitted changes will be discarded (no backup!).
+        update the `vcdir` working directory.
+        If `rev` is not specified, update to the tip of the current branch.
+        If `rev` is specified, `mayPull` controls whether a pull will be attempted if
+        `rev` can not be found locally.
+        If `clean` is True, uncommitted changes will be discarded (no backup!).
 
         :param str vcdir: a valid repository path
         :param str rev: the desired revision
@@ -3777,7 +4195,7 @@ class GitConfig(VC):
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
         """
-        Return a list of paths under vc control that match :param:`patterns`
+        Return a list of paths under vc control that match `patterns`
 
         :param str vcdir: a valid repository path
         :param patterns: a list of patterns
@@ -3818,6 +4236,17 @@ class GitConfig(VC):
                 abort('failed to get status')
             else:
                 return None
+
+    def status(self, vcdir, abortOnError=True):
+        """
+        report the status of the repository
+
+        :param str vcdir: a valid repository path
+        :param bool abortOnError: if True abort on mx error
+        :return: True on success, False otherwise
+        :rtype: bool
+        """
+        return run(['git', 'status'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def bookmark(self, vcdir, name, rev, abortOnError=True):
         """
@@ -3894,19 +4323,21 @@ class BinaryVC(VC):
             return False
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
-        '''
-        clone is interpreted as downloading the mx-suitename.jar file
-        caller is responsible for downloading the suite distributions
-        Some additional information must be passed by caller in 'extra_args':
-          suite_name: the suite name
-          result: an empty dict for output values
-        On a successful return 'result' contains:
-          adj_version: actual version (adjusted)
-        The actual version downloaded is written to the file mx-suitename.jar.version
-        '''
+        """
+        Downloads the ``mx-suitename.jar`` file. The caller is responsible for downloading
+        the suite distributions. The actual version downloaded is written to the file
+        ``mx-suitename.jar.<version>``.
+
+        :param extra_args: Additional args that must include `suite_name` which is a string
+              denoting the suite name and `result` which is a dict for output values. If this
+              method returns True, then there will be a `adj_version` entry in this dict
+              containing the actual (adjusted) version
+        :return: True if the clone was successful, Fazlse otherwise
+        :rtype: bool
+        """
         assert dest
         suite_name = extra_args['suite_name']
-        metadata = self.Metadata(suite_name, url, None)
+        metadata = self.Metadata(suite_name, url, None, None)
         if not rev:
             rev = self._tip(metadata)
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
@@ -3929,6 +4360,7 @@ class BinaryVC(VC):
                 abort('Version {} not found for {}:{}'.format(metadata.snapshotVersion, groupId, artifactId))
             return False
         build = snapshot.getCurrentSnapshotBuild()
+        metadata.snapshotTimestamp = snapshot.currentTime
         try:
             (jar_url, jar_sha_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
@@ -3943,20 +4375,27 @@ class BinaryVC(VC):
         return True
 
     class Metadata:
-        def __init__(self, suiteName, repourl, snapshotVersion):
+        def __init__(self, suiteName, repourl, snapshotVersion, snapshotTimestamp):
             self.suiteName = suiteName
             self.repourl = repourl
             self.snapshotVersion = snapshotVersion
+            self.snapshotTimestamp = snapshotTimestamp
 
     def _writeMetadata(self, vcdir, metadata):
         with open(join(vcdir, _mx_binary_distribution_version(metadata.suiteName)), 'w') as f:
-            f.write("{0},{1}".format(metadata.repourl, metadata.snapshotVersion))
+            f.write("{0},{1},{2}".format(metadata.repourl, metadata.snapshotVersion, metadata.snapshotTimestamp))
 
     def _readMetadata(self, vcdir):
         suiteName = basename(vcdir)
         with open(join(vcdir, _mx_binary_distribution_version(suiteName))) as f:
-            repourl, snapshotVersion = f.read().split(',')
-        return self.Metadata(suiteName, repourl, snapshotVersion)
+            parts = f.read().split(',')
+            if len(parts) == 2:
+                # Older versions of the persisted metadata do not contain the snapshot timestamp.
+                repourl, snapshotVersion = parts
+                snapshotTimestamp = None
+            else:
+                repourl, snapshotVersion, snapshotTimestamp = parts
+        return self.Metadata(suiteName, repourl, snapshotVersion, snapshotTimestamp)
 
     def getDistribution(self, vcdir, distribution):
         suiteName = basename(vcdir)
@@ -3983,12 +4422,11 @@ class BinaryVC(VC):
         if not rev:
             rev = self._tip(metadata)
 
-        artifactId = metadata.suiteName
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
-        if not self._pull_artifact(metadata, artifactId, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
             shutil.rmtree(tmpdir)
             return False
 
@@ -3997,7 +4435,7 @@ class BinaryVC(VC):
         shutil.rmtree(vcdir)
 
         mx_jar_path = join(vcdir, _mx_binary_distribution_jar(metadata.suiteName))
-        os.mkdir(dirname(mx_jar_path))
+        ensure_dir_exists(dirname(mx_jar_path))
 
         shutil.copy2(tmpmxjar, mx_jar_path)
         shutil.rmtree(tmpdir)
@@ -4005,6 +4443,9 @@ class BinaryVC(VC):
 
         self._writeMetadata(vcdir, metadata)
         return True
+
+    def update(self, vcdir, rev=None, mayPull=False, clean=False, abortOnError=False):
+        return self.pull(vcdir=vcdir, rev=rev, update=True, abortOnError=abortOnError)
 
     def tip(self, vcdir, abortOnError=True):
         self._tip(self._readMetadata(vcdir))
@@ -4015,8 +4456,31 @@ class BinaryVC(VC):
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
 
+    def default_pull(self, vcdir, abortOnError=True):
+        return self._readMetadata(vcdir).repourl
+
     def parent(self, vcdir, abortOnError=True):
         return self._id(self._readMetadata(vcdir))
+
+    def parent_info(self, vcdir, abortOnError=True):
+        def decode(ts):
+            if ts is None:
+                return 0
+            yyyy = int(ts[0:4])
+            mm = int(ts[4:6])
+            dd = int(ts[6:8])
+            hh = int(ts[9:11])
+            mi = int(ts[11:13])
+            ss = int(ts[13:15])
+            return (datetime(yyyy, mm, dd, hh, mi, ss) - datetime(1970, 1, 1)).total_seconds()
+        metadata = self._readMetadata(vcdir)
+        timestamp = decode(metadata.snapshotTimestamp)
+        return {
+            "author": "<unknown>",
+            "author-ts": timestamp,
+            "committer": "<unknown>",
+            "committer-ts": timestamp,
+        }
 
     def _id(self, metadata):
         assert metadata.snapshotVersion.endswith('-SNAPSHOT')
@@ -4025,6 +4489,10 @@ class BinaryVC(VC):
     def isDirty(self, abortOnError=True):
         # a binary repo can not be dirty
         return False
+
+    def status(self, abortOnError=True):
+        # a binary repo has nothing to report
+        return True
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -4397,30 +4865,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository.
 
-    All binaries must be built first using 'mx build'.
-
-    usage: mx deploy-binary [-h] [-s SETTINGS] [-n] [--only ONLY]
-                            [--platform-dependent] [--all-suites]
-                            [--skip-existing]
-                            repository-id [repository-url]
-
-    positional arguments:
-      repository-id         Repository ID used for binary deploy
-      repository-url        Repository URL used for binary deploy, if no url is
-                            given, the repository-id is looked up in suite.py
-
-    optional arguments:
-      -h, --help            show this help message and exit
-      -s SETTINGS, --settings SETTINGS
-                            Path to settings.mxl file used for Maven
-      -n, --dry-run         Dry run that only prints the action a normal run would
-                            perform without actually deploying anything
-      --only ONLY           Limit deployment to these distributions
-      --platform-dependent  Limit deployment to platform dependent distributions
-                            only
-      --all-suites          Deploy suite and the distributions it depends on in
-                            other suites
-      --skip-existing       Do not deploy distributions if already in repository
+    All binaries must be built first using ``mx build``.
     """
     parser = ArgumentParser(prog='mx deploy-binary')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -4439,7 +4884,7 @@ def deploy_binary(args):
         suite_collector(suite(suite_import.name), suite_import)
 
     def suite_collector(s, suite_import):
-        if s in suites:
+        if s in suites or isinstance(s, BinarySuite):
             return
         suites[s] = None
         s.visit_imports(import_visitor)
@@ -4562,29 +5007,6 @@ def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository.
 
     All binaries must be built first using 'mx build'.
-
-    usage: mx maven-deploy [-h] [-s SETTINGS] [-n] [--only ONLY]
-                           [--validate {none,compat,full}] [--licenses LICENSES]
-                           repository-id [repository-url]
-
-    positional arguments:
-      repository-id         Repository ID used for Maven deploy
-      repository-url        Repository URL used for Maven deploy, if no url is
-                            given, the repository-id is looked up in suite.py
-
-    optional arguments:
-      -h, --help            show this help message and exit
-      -s SETTINGS, --settings SETTINGS
-                            Path to settings.mxl file used for Maven
-      -n, --dry-run         Dry run that only prints the action a normal run would
-                            perform without actually deploying anything
-      --only ONLY           Limit deployment to these distributions
-      --validate {none,compat,full}
-                            Validate that maven metadata is complete enough for
-                            publication
-      --licenses LICENSES   Comma-separated list of licenses that are cleared for
-                            upload. Only used if no url is given. Otherwise
-                        licenses are looked up in suite.py
     """
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
@@ -4764,10 +5186,10 @@ class NestedImportsSuiteModel(SuiteModel):
     def nestedsuites_dirname(self):
         return self._imported_suites_dirname()
 
-'''
+"""
 Captures the info in the {"url", "kind"} dict,
 and adds a 'vc' field.
-'''
+"""
 class SuiteImportURLInfo:
     def __init__(self, url, kind, vc):
         self.url = url
@@ -4775,8 +5197,8 @@ class SuiteImportURLInfo:
         self.vc = vc
 
     def abs_kind(self):
-        ''' Maps vc kinds to 'source'
-        '''
+        """ Maps vc kinds to 'source'
+        """
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
@@ -4811,24 +5233,29 @@ class SuiteImport:
             if kind != 'binary':
                 assert not mainKind or mainKind == kind, "Only expecting one non-binary kind"
                 mainKind = kind
-            url = URLRewrite._apply_rewrites(urlinfo.get('url'))
+            url = mx_urlrewrites.rewriteurl(urlinfo.get('url'))
             urlinfos.append(SuiteImportURLInfo(url, kind, vc))
-        return SuiteImport(name, version, urlinfos, mainKind, dynamicImport=dynamicImport)
+        vc_kind = None
+        if mainKind:
+            vc_kind = mainKind
+        elif urlinfos:
+            vc_kind = 'binary'
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport)
 
     @staticmethod
     def get_source_urls(source, kind=None):
-        '''
+        """
         Returns a list of SourceImportURLInfo instances
         If source is a string (dir) determine kind, else search the list of
         urlinfos and return the values for source repos
-        '''
+        """
         if isinstance(source, str):
             if kind:
                 vc = vc_system(kind)
             else:
                 assert not source.startswith("http:")
                 vc = VC.get_vc(source)
-            return [SuiteImportURLInfo(URLRewrite._apply_rewrites(source), 'source', vc)]
+            return [SuiteImportURLInfo(mx_urlrewrites.rewriteurl(source), 'source', vc)]
         elif isinstance(source, list):
             result = [s for s in source if s.kind != 'binary']
             return result
@@ -4848,32 +5275,8 @@ class SCMMetadata(object):
         self.write = write
 
 """
-Represents a regular expression based rewrite rule that
-can be applied to a URL.
-"""
-class URLRewrite(object):
-    def __init__(self, pattern, replacement):
-        self.pattern = pattern
-        self.replacement = replacement
-
-    def _apply(self, url):
-        match = self.pattern.match(url)
-        if match:
-            return self.pattern.sub(self.replacement, url)
-        else:
-            return None
-
-    @staticmethod
-    def _apply_rewrites(url):
-        for urlrewrite in _urlrewrites:
-            res = urlrewrite._apply(url)
-            if res:
-                return res
-        return url
-
-'''
 Command state and methods for all suite subclasses
-'''
+"""
 class Suite:
     def __init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=False):
         self.imported_by = [] if primary else [importing_suite]
@@ -4900,6 +5303,8 @@ class Suite:
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         self.scm = None
+        if self.name in _suites and _suites[self.name].dir != self.dir:
+            abort('cannot override suite {} in {} with suite of the same name in {}'.format(self.name, _suites[self.name].dir, self.dir))
         _suites[self.name] = self
         self._outputRoot = None
 
@@ -4907,14 +5312,14 @@ class Suite:
         return self.name
 
     def _load(self):
-        '''
-        Calls _load_env and _load_extensions
-        '''
+        """
+        Calls _parse_env and _load_extensions
+        """
         # load suites depth first
         self.loading_imports = True
         self.visit_imports(self._find_and_loadsuite)
         self.loading_imports = False
-        self._load_env()
+        self._parse_env()
         self._load_extensions()
         _loadedSuites.append(self)
 
@@ -4922,10 +5327,10 @@ class Suite:
         return mx_compat.getMxCompatibility(self.requiredMxVersion)
 
     def get_output_root(self):
-        '''
+        """
         Gets the root of the directory hierarchy under which generated artifacts for this
         suite such as class files and annotation generated sources should be placed.
-        '''
+        """
         if not self._outputRoot:
             suiteDict = self.suiteDict
             outputRoot = suiteDict.get('outputRoot')
@@ -4938,9 +5343,9 @@ class Suite:
         return self._outputRoot
 
     def get_mx_output_dir(self):
-        '''
+        """
         Gets the directory into which mx bookkeeping artifacts should be placed.
-        '''
+        """
         return join(self.get_output_root(), basename(self.mxDir))
 
     def _load_suite_dict(self):
@@ -5049,19 +5454,10 @@ class Suite:
             urlrewrites = d.get('urlrewrites')
             if urlrewrites:
                 for urlrewrite in urlrewrites:
-                    if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
-                        abort('Each element in the "urlrewrites" array must be a dictionary with a single entry', context=self)
-                    for pattern, attrs in urlrewrite.iteritems():
-                        replacement = attrs.pop('replacement', None)
-                        if replacement is None:
-                            abort('URL rewrite for pattern "' + pattern + '" is missing replacement attribute', context=self)
-                        if len(attrs) != 0:
-                            abort('Unsupported attributes found for URL rewrite "' + pattern + '": ' + str(attrs), context=self)
-                        try:
-                            pattern = re.compile(pattern)
-                        except Exception as e: # pylint: disable=broad-except
-                            abort('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e), context=self)
-                        _urlrewrites.append(URLRewrite(pattern, replacement))
+                    def _error(msg):
+                        abort(msg, context=self)
+                    mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
+            mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
@@ -5082,10 +5478,10 @@ class Suite:
         self.suiteDict = d
 
     def _register_metadata(self):
-        '''
+        """
         Registers the metadata loaded by _load_metadata into the relevant
         global dictionaries such as _projects, _libs, _jreLibs and _dists.
-        '''
+        """
         for l in self.libs:
             existing = _libs.get(l.name)
             # Check that suites that define same library are consistent
@@ -5132,7 +5528,7 @@ class Suite:
         _dists[d.name] = d
 
     def _resolve_dependencies(self):
-        for d in self.projects + self.libs + self.dists:
+        for d in self.projects + self.libs + self.jdkLibs + self.dists:
             d.resolveDeps()
         for r in self.repositoryDefs:
             r.resolveLicenses()
@@ -5183,11 +5579,16 @@ class Suite:
             self.jreLibs.append(l)
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
-            jar = attrs.pop('path')
+            path = attrs.pop('path')
+            sourcePath = attrs.pop('sourcePath', None)
+            deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            optional = attrs.pop('optional', 'true') != 'false'
-            l = JdkLibrary(self, name, jar, optional, theLicense)
+            optional = attrs.pop('optional', False)
+            if isinstance(optional, str):
+                optional = optional != 'false'
+            jdkStandardizedSince = JavaCompliance(attrs.pop('jdkStandardizedSince', '1.2'))
+            l = JdkLibrary(self, name, path, deps, optional, theLicense, sourcePath=sourcePath, jdkStandardizedSince=jdkStandardizedSince)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -5220,15 +5621,15 @@ class Suite:
         return self.imports_dir('source')
 
     def binary_suite_dir(self, name):
-        '''
+        """
         Returns the mxDir for an imported BinarySuite, creating the parent if necessary
-        '''
+        """
         dotMxDir = self.binary_imports_dir()
         ensure_dir_exists(dotMxDir)
         return join(dotMxDir, name)
 
     def _find_binary_suite_dir(self, name):
-        '''Attempts to locate a binary_suite directory for suite 'name', returns the mx dir or None'''
+        """Attempts to locate a binary_suite directory for suite 'name', returns the mx dir or None"""
         suite_dir = join(self.binary_imports_dir(), name)
         return _is_suite_dir(suite_dir, _mxDirName(name))
 
@@ -5249,20 +5650,21 @@ class Suite:
                 abort(extensionsName + '.py in suite ' + self.name + ' duplicates ' + sys.modules[extensionsName].__file__)
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
-            mod = __import__(extensionsName)
+            with currently_loading_suite.set_scoped(self):
+                mod = __import__(extensionsName)
 
-            self.extensions = sys.modules.pop(extensionsName)
-            sys.modules[extensionsName] = self.extensions
+                self.extensions = sys.modules.pop(extensionsName)
+                sys.modules[extensionsName] = self.extensions
 
-            # revert the Python path
-            del sys.path[0]
+                # revert the Python path
+                del sys.path[0]
 
-            if hasattr(mod, 'mx_post_parse_cmd_line'):
-                self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
+                if hasattr(mod, 'mx_post_parse_cmd_line'):
+                    self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
-            if hasattr(mod, 'mx_init'):
-                mod.mx_init(self)
-            self.extensions = mod
+                if hasattr(mod, 'mx_init'):
+                    mod.mx_init(self)
+                self.extensions = mod
 
     def _init_imports(self):
         importsMap = self._check_suiteDict("imports")
@@ -5273,11 +5675,22 @@ class Suite:
             for entry in suiteImports:
                 if not isinstance(entry, dict):
                     abort('suite import entry must be a dict')
-                suite_import = SuiteImport.parse_specification(entry, context=self, dynamicImport=self.dynamicallyImported)
-                self.suite_imports.append(suite_import)
+
+                import_dict = entry
+                suite_import = SuiteImport.parse_specification(import_dict, context=self, dynamicImport=self.dynamicallyImported)
+                jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
+                if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
+                    _jdkProvidedSuites.add(suite_import.name)
+                else:
+                    self.suite_imports.append(suite_import)
         if self.primary:
             dynamicImports = _opts.dynamic_imports
-            if not dynamicImports:
+            if dynamicImports:
+                expandedDynamicImports = []
+                for dynamicImport in dynamicImports:
+                    expandedDynamicImports += [name for name in dynamicImport.split(',')]
+                dynamicImports = expandedDynamicImports
+            else:
                 envDynamicImports = os.environ.get('DEFAULT_DYNAMIC_IMPORTS')
                 if envDynamicImports:
                     dynamicImports = envDynamicImports.split(',')
@@ -5286,10 +5699,10 @@ class Suite:
                     self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
 
     def re_init_imports(self):
-        '''
+        """
         If a suite is updated, e.g. by sforceimports, we must re-initialize the potentially
         stale import data from the updated suite.py file
-        '''
+        """
         self.suite_imports = []
         self._load_suite_dict()
         self._init_imports()
@@ -5513,10 +5926,10 @@ class Suite:
             return searchMode == 'binary'
 
         def _find_suite_dir():
-            '''
+            """
             Attempts to locate an existing suite in the local context
             Returns the path to the mx.name dir if found else None
-            '''
+            """
             if _is_binary_mode():
                 # binary suites are always stored relative to the importing suite in mx-private directory
                 return importing_suite._find_binary_suite_dir(suite_import.name)
@@ -5525,7 +5938,7 @@ class Suite:
                 return _src_suitemodel.find_suite_dir(suite_import.name)
 
         def _get_import_dir():
-            '''Return directory where the suite will be cloned to'''
+            """Return directory where the suite will be cloned to"""
             if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
@@ -5577,10 +5990,15 @@ class Suite:
 
         importMxDir = _try_clone()
 
-        if  _is_binary_mode() and importMxDir is None:
-            log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
-            searchMode = "source"
-            importMxDir = _try_clone()
+        if importMxDir is None:
+            if _is_binary_mode():
+                log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
+                searchMode = "source"
+                importMxDir = _try_clone()
+            elif all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
+                logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
+                searchMode = 'binary'
+                importMxDir = _try_clone()
 
         if importMxDir is None:
             if fatalIfMissing:
@@ -5632,10 +6050,10 @@ class Suite:
         return self._suite_py_mtime
 
     def __abort_context__(self):
-        '''
+        """
         Returns a string describing where this suite was defined in terms its source file.
         If no such description can be generated, returns None.
-        '''
+        """
         path = self.suite_py()
         if exists(path):
             return 'In definition of suite {} in {}'.format(self.name, path)
@@ -5673,11 +6091,11 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
     if conflict_resolution == 'none':
         abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
 
-'''A source suite'''
+"""A source suite"""
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc = None if internal else VC.get_vc(self.dir)
+        self.vc = None if internal else VC.get_vc(self.dir, abortOnError=False)
         self.projects = []
         self._load_suite_dict()
         self._init_imports()
@@ -5686,16 +6104,16 @@ class SourceSuite(Suite):
             self._load()
 
     def version(self, abortOnError=True):
-        '''
+        """
         Return the current head changeset of this suite.
-        '''
+        """
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir, abortOnError=abortOnError)
 
     def isDirty(self, abortOnError=True):
-        '''
+        """
         Check whether there are pending changes in the source.
-        '''
+        """
         return self.vc.isDirty(self.dir, abortOnError=abortOnError)
 
     def release_version(self, snapshotSuffix='dev'):
@@ -5726,7 +6144,7 @@ class SourceSuite(Suite):
         self._load_projects()
 
     def _load_projects(self):
-        '''projects are unique to source suites'''
+        """projects are unique to source suites"""
         projsMap = self._check_suiteDict('projects')
 
         for name, attrs in sorted(projsMap.iteritems()):
@@ -5822,8 +6240,12 @@ class SourceSuite(Suite):
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
-    def _load_env_in_mxDir(mxDir):
+    def _load_env_in_mxDir(mxDir, env=None):
         e = join(mxDir, 'env')
+        SourceSuite._load_env_file(e, env)
+
+    @staticmethod
+    def _load_env_file(e, env=None):
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -5834,10 +6256,17 @@ class SourceSuite(Suite):
                         if not '=' in line:
                             abort(e + ':' + str(lineNum) + ': line does not match pattern "key=value"')
                         key, value = line.split('=', 1)
-                        os.environ[key.strip()] = expandvars_in_property(value.strip())
+                        key = key.strip()
+                        value = expandvars_in_property(value.strip())
+                        if env is None:
+                            os.environ[key] = value
+                            logv('Setting environment variable %s=%s from %s' % (key, value, e))
+                        else:
+                            env[key] = value
+                            logv('Read variable %s=%s from %s' % (key, value, e))
 
-    def _load_env(self):
-        SourceSuite._load_env_in_mxDir(self.mxDir)
+    def _parse_env(self):
+        SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
 
     def _register_metadata(self):
         Suite._register_metadata(self)
@@ -5873,7 +6302,8 @@ class SourceSuite(Suite):
 
     @staticmethod
     def _projects_recursive_visitor(importing_suite, suite_import, projects, visitmap, **extra_args):
-        importing_suite._projects_recursive(importing_suite, suite(suite_import.name), projects, visitmap)
+        if isinstance(importing_suite, SourceSuite):
+            importing_suite._projects_recursive(importing_suite, suite(suite_import.name), projects, visitmap)
 
     def projects_recursive(self):
         """return all projects including those in imported suites"""
@@ -5884,13 +6314,13 @@ class SourceSuite(Suite):
         return result
 
     def mx_binary_distribution_jar_path(self):
-        '''
+        """
         returns the absolute path of the mx binary distribution jar.
-        '''
+        """
         return join(self.dir, _mx_binary_distribution_jar(self.name))
 
     def create_mx_binary_distribution_jar(self):
-        '''
+        """
         Creates a jar file named name-mx.jar that contains
         the metadata for another suite to import this suite as a BinarySuite.
         TODO check timestamps to avoid recreating this repeatedly, or would
@@ -5898,7 +6328,7 @@ class SourceSuite(Suite):
         TODO It would be cleaner for subsequent loading if we actually wrote a
         transformed suite.py file that only contained distribution info, to
         detect access to private (non-distribution) state
-        '''
+        """
         mxMetaJar = self.mx_binary_distribution_jar_path()
         pyfiles = glob.glob(join(self.mxDir, '*.py'))
         with Archiver(mxMetaJar) as arc:
@@ -5929,9 +6359,9 @@ class SourceSuite(Suite):
                 esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
         return esdict
 
-'''
+"""
 A pre-built suite downloaded from a Maven repository.
-'''
+"""
 class BinarySuite(Suite):
     def __init__(self, mxDir, importing_suite, dynamicallyImported=False):
         Suite.__init__(self, mxDir, False, False, importing_suite, dynamicallyImported=dynamicallyImported)
@@ -5944,9 +6374,9 @@ class BinarySuite(Suite):
         self._load()
 
     def version(self, abortOnError=True):
-        '''
+        """
         Return the current head changeset of this suite.
-        '''
+        """
         # we do not cache the version because it changes in development
         return self.vc.parent(self.dir)
 
@@ -5958,14 +6388,14 @@ class BinarySuite(Suite):
         return False
 
     def _load_binary_suite(self):
-        '''
+        """
         Always load the suite.py file and the distribution info defined there,
         download the jar files for a freshly cloned suite
-        '''
+        """
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
 
-    def _load_env(self):
+    def _parse_env(self):
         pass
 
     def _load_distributions(self, distsMap):
@@ -5985,10 +6415,11 @@ class BinarySuite(Suite):
         Suite._register_metadata(self)
 
     def _resolve_dependencies(self):
-        for d in self.libs + self.dists:
+        for d in self.libs + self.jdkLibs + self.dists:
             d.resolveDeps()
+        # Remove projects from dist dependencies
         for d in self.dists:
-            d.deps = [dep for dep in d.deps if dep and dep.isDistribution()]
+            d.deps = [dep for dep in d.deps if dep and not dep.isJavaProject()]
 
 class InternalSuite(SourceSuite):
     def __init__(self, mxDir):
@@ -6005,6 +6436,16 @@ class MXSuite(InternalSuite):
     def vc_command_init(self):
         pass
 
+    def _parse_env(self):
+        # Only load the env file from mx when it's the primary suite.  This can only
+        # be determined when the primary suite has been set so it must be deferred but
+        # since the primary suite env should be loaded last this should be ok.
+        def _deferrable():
+            assert _primary_suite
+            if self == _primary_suite:
+                SourceSuite._load_env_in_mxDir(self.mxDir)
+        _primary_suite_deferrables.append(_deferrable)
+
 class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
@@ -6014,7 +6455,7 @@ class PrimarySuite(SourceSuite):
         SourceSuite.__init__(self, mxDir, primary=True, load=load, importing_suite=None)
 
     def _depth_first_post_init(self):
-        '''depth first _post_init driven by imports graph'''
+        """depth first _post_init driven by imports graph"""
         self.visit_imports(self._init_metadata_visitor)
         self._init_metadata()
         self.visit_imports(self._post_init_visitor)
@@ -6032,9 +6473,9 @@ class PrimarySuite(SourceSuite):
         imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
 
     def vc_command_init(self):
-        '''A short-circuit startup for vc (s*) commands that only loads the
+        """A short-circuit startup for vc (s*) commands that only loads the
         import metadata from the suite.py file.
-        '''
+        """
         # so far we have just loaded the primary suite imports info
         PrimarySuite._fake_load(self)
         # Now visit the imports just loading import info
@@ -6122,9 +6563,9 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
-'''
+"""
 A simple timing facility.
-'''
+"""
 class Timer():
     def __init__(self, name):
         self.name = name
@@ -6135,45 +6576,6 @@ class Timer():
         elapsed = time.time() - self.start
         print '{} took {} seconds'.format(self.name, elapsed)
         return None
-
-def _bench_test_common(args, parser, suppliedParser):
-    parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
-    mx_gate.add_omit_clean_args(parser)
-    if suppliedParser:
-        parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
-    args = parser.parse_args(args)
-
-    cleanArgs = mx_gate.check_gate_noclean_arg(args)
-
-    command_function('clean')(cleanArgs)
-
-    if args.cleanIDE:
-        command_function('ideclean')([])
-        command_function('ideinit')([])
-
-    command_function('build')([])
-    return args
-
-
-def _basic_bench_harness(args, vmArgs):
-    return 0
-
-def bench(args, harness=_basic_bench_harness, parser=None):
-    '''run benchmarks (suite-specfic) after clean build (optional)'''
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx bench')
-    args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, split_j_args(args.vm_args))
-
-def _basic_test_harness(args, vmArgs):
-    return 0
-
-def test(args, harness=_basic_test_harness, parser=None):
-    '''run tests (suite-specific) after clean build (optional)'''
-    suppliedParser = parser is not None
-    parser = parser if suppliedParser else ArgumentParser(prog='mx test')
-    args = _bench_test_common(args, parser, suppliedParser)
-    return harness(args, split_j_args(args.vm_args))
 
 def get_jython_os():
     from java.lang import System as System
@@ -6437,8 +6839,8 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
 
 def _get_reasons_dep_was_removed(name):
     """
-    Gets the causality chain for the dependency named *name* being removed.
-    Returns None if no dependency named *name* was removed.
+    Gets the causality chain for the dependency named `name` being removed.
+    Returns None if no dependency named `name` was removed.
     """
     reason = _removedDeps.get(name)
     if reason:
@@ -6479,7 +6881,7 @@ def dependency(name, fatalIfMissing=True, context=None):
         # reference to a distribution or library from a suite
         referencedSuite = suite(suite_name, context=context)
         if referencedSuite:
-            d = _dists.get(name) or _libs.get(name)
+            d = _dists.get(name) or _libs.get(name) or _jdkLibs.get(name) or _jreLibs.get(name)
             if d:
                 if d.suite != referencedSuite:
                     if fatalIfMissing:
@@ -6531,6 +6933,19 @@ def library(name, fatalIfMissing=True, context=None):
     return l
 
 def classpath_entries(names=None, includeSelf=True, preferProjects=False):
+    """
+    Gets the transitive set of dependencies that need to be on the class path
+    given the root set of projects and distributions in `names`.
+
+    :param names: a Dependency, str or list containing Dependency/str objects
+    :type names: list or Dependency or str
+    :param bool includeSelf: whether to include any of the dependencies in `names` in the returned list
+    :param bool preferProjects: for a JARDistribution dependency, specifies whether to include
+            it in the returned list (False) or to instead put its constituent dependencies on the
+            the return list (True)
+    :return: a list of Dependency objects representing the transitive set of dependencies that should
+            be on the class path for something depending on `names`
+    """
     if names is None:
         roots = set(dependencies())
     else:
@@ -6547,7 +6962,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
             return False
-        if dst in roots or dst.isLibrary():
+        if dst in roots or dst.isLibrary() or dst.isJdkLibrary():
             return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
@@ -6562,7 +6977,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
@@ -6570,12 +6985,15 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     """
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     cp = []
-    if includeBootClasspath:
+    if includeBootClasspath and get_jdk().bootclasspath():
         cp.append(get_jdk().bootclasspath())
     if _opts.cp_prefix is not None:
         cp.append(_opts.cp_prefix)
     for dep in cpEntries:
-        cp_repr = dep.classpath_repr(resolve)
+        if dep.isJdkLibrary() or dep.isJreLibrary():
+            cp_repr = dep.classpath_repr(jdk, resolve=resolve)
+        else:
+            cp_repr = dep.classpath_repr(resolve)
         if cp_repr:
             cp.append(cp_repr)
     if _opts.cp_suffix is not None:
@@ -6583,14 +7001,14 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
 
     return os.pathsep.join(cp)
 
-def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False):
+def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
     Walks the resources available in a given classpath, yielding a tuple for each resource
     where the first member of the tuple is a directory path or ZipFile object for a
     classpath entry and the second member is the qualified path of the resource relative
     to the classpath entry.
     """
-    cp = classpath(names, resolve, includeSelf, includeBootClasspath)
+    cp = classpath(names, resolve, includeSelf, includeBootClasspath, jdk=jdk)
     for entry in cp.split(os.pathsep):
         if not exists(entry):
             continue
@@ -6609,7 +7027,7 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
                     yield zf, entryPath
 
 def read_annotation_processors(path):
-    r'''
+    r"""
     Reads the META-INF/services/javax.annotation.processing.Processor file based
     in the directory or zip file located at 'path'. Returns the list of lines
     in the file or None if the file does not exist at 'path'.
@@ -6623,7 +7041,7 @@ def read_annotation_processors(path):
     characters surrounding each name, as well as blank lines, are ignored.
     The comment character is '#' ('\u0023', NUMBER SIGN); on each line all characters
     following the first comment character are ignored. The file must be encoded in UTF-8.
-    '''
+    """
 
     def parse(fp):
         lines = []
@@ -6649,11 +7067,11 @@ def read_annotation_processors(path):
     return None
 
 def dependencies(opt_limit_to_suite=False):
-    '''
+    """
     Gets an iterable over all the registered dependencies. If changes are made to the registered
     dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
     None, only dependencies of a type in 'types
-    '''
+    """
     it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
     if opt_limit_to_suite and _opts.specific_suites:
         it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
@@ -6661,17 +7079,16 @@ def dependencies(opt_limit_to_suite=False):
     return it
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-    '''
+    """
     Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
-    'preVisit' function is not None, it is applied with these arguments:
-        dep - the dependency node being visited
-        edge - a DepEdge object representing last element in the path of dependencies walked to arrive
-               at 'dep' or None if 'dep' is a leaf
-    If 'preVisit' is None or returns a true condition, then the unvisited dependencies of 'dep' are
-    walked. Once all the dependencies of 'dep' have been visited, and 'visit' is not None,
-    it is applied with the same arguments as for 'preVisit' and the return value is ignored. Note that
-    'visit' is not called if 'preVisit' returns a false condition.
-    '''
+    `preVisit` function is not None, it is called with two arguments. The first is a :class:`Dependency`
+    object representing the node being visited. The second is a :class:`DepEdge` object representing the
+    last element in the path of dependencies walked to arrive at `dep` or None if `dep` is a leaf.
+    If `preVisit` is None or returns a true condition, then the unvisited dependencies of `dep` are
+    walked. Once all the dependencies of `dep` have been visited, if `visit` is not None,
+    it is applied with the same arguments as for `preVisit` and the return value is ignored. Note that
+    `visit` is not called if `preVisit` returns a false condition.
+    """
     visited = set()
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
@@ -6696,9 +7113,9 @@ def sorted_dists():
 
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
-    Partitions 'args' into a leading sequence of HotSpot VM options and the rest. If
-    'useDoubleDash' then 'args' is partititioned by the first instance of "--". If
-    not 'allowClasspath' then mx aborts if "-cp" or "-classpath" is in 'args'.
+    Partitions `args` into a leading sequence of HotSpot VM options and the rest. If
+    `useDoubleDash` then `args` is partititioned by the first instance of "--". If
+    not `allowClasspath` then mx aborts if "-cp" or "-classpath" is in `args`.
 
    """
     for i in range(len(args)):
@@ -6714,6 +7131,8 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
                         abort('Cannot supply explicit class path option')
                     else:
                         continue
+                if i != 0 and (args[i - 1] in ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']):
+                    continue
                 vmArgs = args[:i]
                 remainder = args[i:]
                 return vmArgs, remainder
@@ -6777,7 +7196,7 @@ environment variables:
         self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
-        self.add_argument('--dynamicimport', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
+        self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
@@ -6804,12 +7223,15 @@ environment variables:
             # command args for the second parse.
             _, self.unknown = parser.parse_known_args(namespace=opts)
 
+            for deferrable in _opts_parsed_deferrables:
+                deferrable()
+
             if opts.version:
                 print 'mx version ' + str(version)
                 sys.exit(0)
 
-            if opts.vm: self.unknown += ['--vm', opts.vm]
-            if opts.vmbuild: self.unknown += ['--vmbuild', opts.vmbuild]
+            if opts.vm: self.unknown += ['--vm=' + opts.vm]
+            if opts.vmbuild: self.unknown += ['--vmbuild=' + opts.vmbuild]
 
             self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
 
@@ -6890,9 +7312,9 @@ def _format_commands():
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
     return msg + '\n'
 
-'''
+"""
 A factory for creating JDKConfig objects.
-'''
+"""
 class JDKFactory(object):
     def getJDKConfig(self):
         nyi('getJDKConfig', self)
@@ -6917,17 +7339,17 @@ def _getJDKFactory(tag, compliance):
         return None
     return complianceMap[compliance]
 
-'''
+"""
 A namedtuple for the result of get_jdk_option().
-'''
+"""
 TagCompliance = namedtuple('TagCompliance', ['tag', 'compliance'])
 
 _jdk_option = None
 def get_jdk_option():
-    '''
+    """
     Gets the tag and compliance (as a TagCompliance object) derived from the --jdk option.
     If the --jdk option was not specified, both fields of the returned tuple are None.
-    '''
+    """
     global _jdk_option
     if _jdk_option is None:
         option = _opts.jdk
@@ -6975,6 +7397,20 @@ def get_jdk_option():
 _canceled_java_requests = set()
 
 DEFAULT_JDK_TAG = 'default'
+
+def _is_supported_by_jdt(jdk):
+    """
+    Determines if a specified JDK is supported by the Eclipse JDT compiler.
+
+    :param jdk: a :class:`mx.JDKConfig` object or a tag that can be used to get a JDKConfig object from :method:`get_jdk`
+    :type jdk: :class:`mx.JDKConfig` or string
+    :rtype: bool
+    """
+    if isinstance(jdk, basestring):
+        jdk = get_jdk(tag=jdk)
+    else:
+        assert isinstance(jdk, JDKConfig)
+    return jdk.javaCompliance < '9'
 
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPerference=None, **kwargs):
     """
@@ -7036,7 +7472,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                 _canceled_java_requests.add((versionDescription, purpose))
         return _default_java_home
 
-    for java in _extra_java_homes:
+    existing_java_homes = _extra_java_homes
+    if _default_java_home:
+        existing_java_homes.append(_default_java_home)
+    for java in existing_java_homes:
         if not versionCheck or versionCheck(java.version):
             return java
 
@@ -7060,7 +7499,7 @@ def _convert_compliance_to_version_check(requiredCompliance):
     return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
-    '''
+    """
     Selects a JDK and returns a JDKConfig object representing it.
 
     First a selection is attempted from the --java-home option, the JAVA_HOME
@@ -7069,24 +7508,24 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     If that produces no valid JDK, then a set of candidate JDKs is built by searching
     the OS-specific locations in which JDKs are normally installed. These candidates
-    are filtered by the 'versionCheck' predicate function. The predicate is described
-    by the string in 'versionDescription' (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
-    If 'versionCheck' is None, no filtering is performed.
+    are filtered by the `versionCheck` predicate function. The predicate is described
+    by the string in `versionDescription` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
+    If `versionCheck` is None, no filtering is performed.
 
     If running interactively, the user is prompted to select from one of the candidates
-    or "<other>". The selection prompt message includes the value of 'purpose' if it is not None.
-    If 'cancel' is not None, the user is also given a choice to make no selection,
-    the consequences of which are described by 'cancel'. If a JDK is selected, it is returned.
+    or "<other>". The selection prompt message includes the value of `purpose` if it is not None.
+    If `cancel` is not None, the user is also given a choice to make no selection,
+    the consequences of which are described by `cancel`. If a JDK is selected, it is returned.
     If the user cancels, then None is returned. If "<other>" is chosen, the user is repeatedly
     prompted for a path to a JDK until a valid path is provided at which point a corresponding
     JDKConfig object is returned. Before returning the user is given the option to persist
     the selected JDK in file "env" in the primary suite's mx directory. The choice will be
-    saved as the value for JAVA_HOME if 'isDefaultJdk' is true, otherwise it is set or
+    saved as the value for JAVA_HOME if `isDefaultJdk` is true, otherwise it is set or
     appended to the value for EXTRA_JAVA_HOMES.
 
     If not running interactively, the first candidate is returned or None if there are no
     candidates.
-    '''
+    """
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
         versionCheck = lambda v: True
@@ -7132,7 +7571,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(version ' + versionDescription + ')'
+                msg += '(version ' + str(versionDescription) + ')'
             selected = configs[0]
             msg += ". Selecting " + str(selected)
             log(msg)
@@ -7145,7 +7584,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += ' for ' + purpose
             msg += ': '
             if versionDescription:
-                msg += '(version ' + versionDescription + ')'
+                msg += '(version ' + str(versionDescription) + ')'
             log(msg)
             choices = configs + ['<other>']
             if cancel:
@@ -7164,7 +7603,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg += 'default '
         msg += 'JDK'
         if versionDescription:
-            msg = msg + ' ' + versionDescription
+            msg = msg + ' ' + str(versionDescription)
         if purpose:
             msg += ' for ' + purpose
         log(msg)
@@ -7174,7 +7613,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg += ' for ' + purpose
         msg += ' '
         if versionDescription:
-            msg = msg + '(version ' + versionDescription + ')'
+            msg = msg + '(version ' + str(versionDescription) + ')'
         log(msg)
         selected = None
 
@@ -7185,7 +7624,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
-            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + versionDescription)
+            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
@@ -7578,7 +8017,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             log('Environment variables:')
             for key in sorted(env.keys()):
                 log('    ' + key + '=' + env[key])
-        log(' '.join(map(pipes.quote, args)))
+            log(' \\\n '.join(map(pipes.quote, args)))
+        else:
+            log(' '.join(map(pipes.quote, args)))
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -7690,9 +8131,9 @@ Utility for filtering duplicate lines.
 """
 class DuplicateSuppressingStream:
     """
-    Creates an object that will suppress duplicate lines sent to 'out'.
+    Creates an object that will suppress duplicate lines sent to `out`.
     The lines considered for suppression are those that contain one of the
-    strings in 'restrictTo' if it is not None.
+    strings in `restrictTo` if it is not None.
     """
     def __init__(self, restrictTo=None, out=sys.stdout):
         self.restrictTo = restrictTo
@@ -7752,8 +8193,14 @@ class JavaCompliance:
 
     def exactMatch(self, version):
         assert isinstance(version, VersionSpec)
-        if len(version.parts) > 1 and version.parts[0] == 1:
-            value = version.parts[1]
+        if len(version.parts) > 0:
+            if len(version.parts) > 1 and version.parts[0] == 1:
+                # First part is a '1',  e.g. '1.8.0'.
+                value = version.parts[1]
+            else:
+                # No preceding '1', e.g. '9-ea'. Used for Java 9 early access releases.
+                value = version.parts[0]
+
             if not self.isLowerBound:
                 return value == self.value
             else:
@@ -7873,15 +8320,19 @@ class JDKConfig:
     def _init_classpaths(self):
         if not self._classpaths_initialized:
             _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
-            self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
             if self.javaCompliance <= JavaCompliance('1.8'):
+                self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
                     warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
-            self._bootclasspath_unfiltered = self._bootclasspath
-            self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
-            self._extdirs = _filter_non_existant_paths(self._extdirs)
-            self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+                self._bootclasspath_unfiltered = self._bootclasspath
+                self._bootclasspath = _filter_non_existant_paths(self._bootclasspath)
+                self._extdirs = _filter_non_existant_paths(self._extdirs)
+                self._endorseddirs = _filter_non_existant_paths(self._endorseddirs)
+            else:
+                self._bootclasspath = ''
+                self._extdirs = None
+                self._endorseddirs = None
             self._classpaths_initialized = True
 
     def __repr__(self):
@@ -7907,26 +8358,32 @@ class JDKConfig:
         raise TypeError()
 
     def processArgs(self, args, addDefaultArgs=True):
-        '''
-        Return a list composed of the arguments specified by the -P, -J and -A options (in that order)
-        prepended to 'args' if 'addDefaultArgs' is true otherwise just return 'args'.
-        '''
+        """
+        Returns a list composed of the arguments specified by the -P, -J and -A options (in that order)
+        prepended to `args` if `addDefaultArgs` is true otherwise just return `args`.
+        """
         if addDefaultArgs:
             return self.java_args_pfx + self.java_args + self.java_args_sfx + args
         return args
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
         cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
-        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def bootclasspath(self, filtered=True):
+        """
+        Gets the value of the ``sun.boot.class.path`` system property. This will be
+        the empty string if this JDK is version 9 or later.
+
+        :param bool filtered: specifies whether to exclude non-existant paths from the returned value
+        """
         self._init_classpaths()
         return _separatedCygpathU2W(self._bootclasspath if filtered else self._bootclasspath_unfiltered)
 
-    """
-    Add javadoc style options for the library paths of this JDK.
-    """
     def javadocLibOptions(self, args):
+        """
+        Adds javadoc style options for the library paths of this JDK.
+        """
         self._init_classpaths()
         if args is None:
             args = []
@@ -7938,10 +8395,10 @@ class JDKConfig:
             args.append(_separatedCygpathU2W(self._extdirs))
         return args
 
-    """
-    Add javac style options for the library paths of this JDK.
-    """
     def javacLibOptions(self, args):
+        """
+        Adds javac style options for the library paths of this JDK.
+        """
         args = self.javadocLibOptions(args)
         if self._endorseddirs:
             args.append('-endorseddirs')
@@ -7949,28 +8406,40 @@ class JDKConfig:
         return args
 
     def hasJarOnClasspath(self, jar):
+        """
+        Determines if `jar` is available on the boot class path or in the
+        extension/endorsed directories of this JDK.
+
+        :param str jar: jar file name (without directory component)
+        :return: the absolute path to the jar file in this JDK matching `jar` or None
+        """
         self._init_classpaths()
 
         if self._bootclasspath:
             for e in self._bootclasspath.split(os.pathsep):
                 if basename(e) == jar:
-                    return True
+                    return e
         if self._extdirs:
             for d in self._extdirs.split(os.pathsep):
                 if len(d) and jar in os.listdir(d):
-                    return True
+                    return join(d, jar)
         if self._endorseddirs:
             for d in self._endorseddirs.split(os.pathsep):
                 if len(d) and jar in os.listdir(d):
-                    return True
-        return False
+                    return join(d, jar)
+        return None
 
     def getKnownJavacLints(self):
-        '''
+        """
         Gets the lint warnings supported by this JDK.
-        '''
+        """
         if self._knownJavacLints is None:
-            out = subprocess.check_output([self.javac, '-X', '-J-Xms8M', '-J-Xint'], stderr=subprocess.STDOUT)
+            try:
+                out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                if e.output:
+                    log(e.output)
+                raise e
             if self.javaCompliance < JavaCompliance('1.9'):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
@@ -7996,6 +8465,87 @@ class JDKConfig:
                 warn('Did not find lint warnings in output of "javac -X"')
         return self._knownJavacLints
 
+    def get_modules(self):
+        """
+        Gets the modules in this JDK.
+
+        :return: a list of `JavaModuleDescriptor` objects for modules in this JDK
+        :rtype: list
+        """
+        if self.javaCompliance < '9':
+            return []
+        if not hasattr(self, '.modules'):
+            addExportsArg = '-XaddExports:java.base/jdk.internal.module=ALL-UNNAMED'
+            _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
+            out = LinesOutputCapture()
+            run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
+
+            modules = {}
+            name = None
+            requires = {}
+            exports = {}
+            provides = {}
+            uses = set()
+            packages = set()
+            boot = None
+
+            for line in out.lines:
+                parts = line.strip().split()
+                assert len(parts) > 0
+                if len(parts) == 1:
+                    if name is not None:
+                        assert name not in modules, 'duplicate module: ' + name
+                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+                    name = parts[0]
+                    requires = {}
+                    exports = {}
+                    provides = {}
+                    uses = set()
+                    packages = set()
+                    boot = None
+                else:
+                    assert name, 'cannot parse module descriptor line without module name: ' + line
+                    a = parts[0]
+                    if a == 'requires':
+                        module = parts[-1]
+                        modifiers = parts[1:-2] if len(parts) > 2 else []
+                        requires[module] = modifiers
+                    elif a == 'boot':
+                        boot = parts[1] == 'true'
+                    elif a == 'exports':
+                        source = parts[1]
+                        if len(parts) > 2:
+                            assert parts[2] == 'to'
+                            targets = parts[3:]
+                        else:
+                            targets = []
+                        exports[source] = targets
+                    elif a == 'uses':
+                        uses.update(parts[1:])
+                    elif a == 'package':
+                        packages.update(parts[1:])
+                    elif a == 'provides':
+                        assert len(parts) == 4 and parts[2] == 'with'
+                        service = parts[1]
+                        provider = parts[3]
+                        provides.setdefault(service, []).append(provider)
+                    else:
+                        abort('Cannot parse module descriptor line: ' + str(parts))
+            if name is not None:
+                assert name not in modules, 'duplicate module: ' + name
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+            setattr(self, '.modules', tuple(modules.values()))
+        return getattr(self, '.modules')
+
+    def get_boot_layer_modules(self):
+        """
+        Gets the modules in the boot layer of this JDK.
+
+        :return: a list of `JavaModuleDescriptor` objects for boot layer modules in this JDK
+        :rtype: list
+        """
+        return [jmd for jmd in self.get_modules() if jmd.boot]
+
 def check_get_env(key):
     """
     Gets an environment variable, aborting with a useful message if it is not set.
@@ -8013,6 +8563,12 @@ def get_env(key, default=None):
     return value
 
 def logv(msg=None):
+    if vars(_opts).get('verbose') == None:
+        def _deferrable():
+            logv(msg)
+        _opts_parsed_deferrables.append(_deferrable)
+        return
+
     if _opts.verbose:
         log(msg)
 
@@ -8033,10 +8589,10 @@ def log(msg=None):
         print msg
 
 def expand_project_in_class_path_arg(cpArg):
-    '''
-    Replaces each "@" prefixed element in the class path 'cpArg' with
+    """
+    Replaces each "@" prefixed element in the class path `cpArg` with
     the class path for the dependency named by the element without the "@" prefix.
-    '''
+    """
     if '@' not in cpArg:
         return cpArg
     cp = []
@@ -8048,12 +8604,12 @@ def expand_project_in_class_path_arg(cpArg):
     return os.pathsep.join(cp)
 
 def expand_project_in_args(args, insitu=True):
-    '''
-    Looks for the first -cp or -classpath argument in 'args' and
-    calls expand_project_in_class_path_arg on it. If 'insitu' is true,
-    then 'args' is updated in place otherwise a copy of 'args' is modified.
+    """
+    Looks for the first -cp or -classpath argument in `args` and
+    calls expand_project_in_class_path_arg on it. If `insitu` is true,
+    then `args` is updated in place otherwise a copy of `args` is modified.
     The updated object is returned.
-    '''
+    """
     for i in range(len(args)):
         if args[i] == '-cp' or args[i] == '-classpath':
             if i + 1 < len(args):
@@ -8099,13 +8655,13 @@ def _send_sigquit():
 def abort(codeOrMessage, context=None):
     """
     Aborts the program with a SystemExit exception.
-    If 'codeOrMessage' is a plain integer, it specifies the system exit status;
+    If `codeOrMessage` is a plain integer, it specifies the system exit status;
     if it is None, the exit status is zero; if it has another type (such as a string),
     the object's value is printed and the exit status is 1.
 
-    The 'context' argument can provide extra context for an error message.
-    If 'context' is callable, it is called and the returned value is printed.
-    If 'context' defines a __abort_context__ method, the latter is called and
+    The `context` argument can provide extra context for an error message.
+    If `context` is callable, it is called and the returned value is printed.
+    If `context` defines a __abort_context__ method, the latter is called and
     its return value is printed. Otherwise str(context) is printed.
     """
 
@@ -8169,7 +8725,7 @@ def download(path, urls, verbose=False, abortOnError=True):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
-    The downloaded content is written to the file indicated by 'path'.
+    The downloaded content is written to the file indicated by `path`.
     """
     d = dirname(path)
     if d != '':
@@ -8390,7 +8946,7 @@ def build(args, parser=None):
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
 
-    if _opts.verbose:
+    if _opts.very_verbose:
         log("++ Serialized build plan ++")
         for task in sortedTasks:
             if task.deps:
@@ -8505,7 +9061,7 @@ def build(args, parser=None):
             t.prepare(daemons)
             t.execute()
 
-    for daemon in daemons.values():
+    for daemon in daemons.itervalues():
         daemon.shutdown()
 
     # TODO check for distributions overlap (while loading suites?)
@@ -8515,7 +9071,7 @@ def build(args, parser=None):
     return None
 
 def build_suite(s):
-    '''build all projects in suite (for dynamic import)'''
+    """build all projects in suite (for dynamic import)"""
     # Note we must use the "build" method in "s" and not the one
     # in the dict. If there isn't one we use mx.build
     project_names = [p.name for p in s.projects]
@@ -8525,11 +9081,17 @@ def build_suite(s):
         build_command = build
     build_command(['--dependencies', ','.join(project_names)])
 
-def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
+def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction=lambda f: f):
     """
-    Returns a generator for splitting up a list of files into chunks such that the
-    size of the space separated file paths in a chunk is less than a given limit.
+    Gets a generator for splitting up a list of files into chunks such that the
+    size of the `separator` separated file paths in a chunk is less than `limit`.
     This is used to work around system command line length limits.
+
+    :param list files: list of files to chunk
+    :param int limit: the maximum number of characters in a chunk. If None, then a limit is derived from host OS limits.
+    :param str separator: the separator between each file path on the command line
+    :param pathFunction: a function for converting each entry in `files` to a path name
+    :return: a generator yielding the list of files in each chunk
     """
     chunkSize = 0
     chunkStart = 0
@@ -8550,7 +9112,7 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
             assert limit > 0
     for i in range(len(files)):
         path = pathFunction(files[i])
-        size = len(path) + 1
+        size = len(path) + len(separator)
         assert size < limit
         if chunkSize + size < limit:
             chunkSize += size
@@ -8562,6 +9124,8 @@ def _chunk_files_for_command_line(files, limit=None, pathFunction=lambda f: f):
     if chunkStart == 0:
         assert chunkSize < limit
         yield files
+    elif chunkStart < len(files):
+        yield files[chunkStart:]
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
@@ -8573,6 +9137,7 @@ def eclipseformat(args):
     parser.add_argument('-C', '--no-backup', action='store_false', dest='backup', help='do not save backup of modified files')
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -8651,7 +9216,8 @@ def eclipseformat(args):
                             fp.write(content)
 
                 if self.content != content:
-                    self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1))
+                    rpath = os.path.relpath(self.path, _primary_suite.dir)
+                    self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
                     self.content = content
                     return True
 
@@ -8691,6 +9257,8 @@ def eclipseformat(args):
             run([args.eclipse_exe,
                 '-nosplash',
                 '-application',
+                '-consolelog',
+                '-vm', get_jdk(tag=DEFAULT_JDK_TAG).java,
                 'org.eclipse.jdt.core.JavaCodeFormatter',
                 '-config', batch.path]
                 + [f.path for f in chunk])
@@ -8706,16 +9274,22 @@ def eclipseformat(args):
             backup = os.path.abspath('eclipseformat.backup.zip')
             zf = zipfile.ZipFile(backup, 'w', zipfile.ZIP_DEFLATED)
         for fi in modified:
+            diffs = ''.join(fi.diff)
+            if args.patchfile:
+                args.patchfile.write(diffs)
             name = os.path.relpath(fi.path, arcbase)
             log(' - {0}'.format(name))
             log('Changes:')
-            log(''.join(fi.diff))
+            log(diffs)
             if args.backup:
                 arcname = name.replace(os.sep, '/')
                 zf.writestr(arcname, fi.content)
         if args.backup:
             zf.close()
             log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
+        if args.patchfile:
+            log('Wrote patches to {0}'.format(args.patchfile.name))
+            args.patchfile.close()
         return 1
     return 0
 
@@ -9005,8 +9579,8 @@ class TimeStampFile:
     @staticmethod
     def newest(paths):
         """
-        Creates a TimeStampFile for the file in 'paths' with the most recent modification time.
-        Entries in 'paths' that do not correspond to an existing file are ignored.
+        Creates a TimeStampFile for the file in `paths` with the most recent modification time.
+        Entries in `paths` that do not correspond to an existing file are ignored.
         """
         ts = None
         for path in paths:
@@ -9199,12 +9773,12 @@ def checkstyle(args):
     return totalErrors
 
 def _safe_path(path):
-    '''
+    """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
     This is works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
-    '''
+    """
     if get_os() == 'windows':
         if isabs(path):
             if path.startswith('\\\\'):
@@ -9219,9 +9793,9 @@ def _safe_path(path):
     return path
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
-    '''
+    """
     Wrapper for builtin open function that handles long path names on Windows.
-    '''
+    """
     if get_os() == 'windows':
         name = _safe_path(name)
     return __builtin__.open(name, mode=mode)
@@ -9389,7 +9963,7 @@ def projectgraph(args, suite=None):
                 print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 
-def _source_locator_memento(deps):
+def _source_locator_memento(deps, jdk=None):
     slm = XMLDoc()
     slm.open('sourceLookupDirector')
     slm.open('sourceContainers', {'duplicates' : 'false'})
@@ -9404,6 +9978,17 @@ def _source_locator_memento(deps):
             elif dep.get_source_path(resolve=True):
                 memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
                 slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
+        elif dep.isJdkLibrary():
+            if jdk is None:
+                jdk = get_jdk(tag='default')
+            path = dep.get_source_path(jdk)
+            if path:
+                if os.path.isdir(path):
+                    memento = XMLDoc().element('directory', {'nest' : 'false', 'path' : path}).xml(standalone='no')
+                    slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.directory'})
+                else:
+                    memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : path}).xml(standalone='no')
+                    slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
         elif dep.isProject():
             if not dep.isJavaProject():
                 continue
@@ -9423,13 +10008,13 @@ def _source_locator_memento(deps):
     slm.close('sourceLookupDirector')
     return slm
 
-def make_eclipse_attach(suite, hostname, port, name=None, deps=None):
+def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
     Creates an Eclipse launch configuration file for attaching to a Java process.
     """
     if deps is None:
         deps = []
-    slm = _source_locator_memento(deps)
+    slm = _source_locator_memento(deps, jdk=jdk)
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_id', 'value' : 'org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector'})
@@ -9472,7 +10057,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
             mainClass = '-jar'
             appArgs = list(reversed(argsCopy))
             break
-        if a == '-cp' or a == '-classpath':
+        if a in ['-cp', '-classpath', '-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']:
             assert len(argsCopy) != 0
             cp = argsCopy.pop()
             vmArgs.append(a)
@@ -9525,13 +10110,14 @@ def eclipseinit_cli(args):
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
+    parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False):
     """(re)generate Eclipse project configurations and working sets"""
-    for s in suites(True):
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole)
+    for s in suites(True) + [_mx_suite]:
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force)
 
     generate_eclipse_workingsets()
 
@@ -9541,8 +10127,8 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=F
 
 def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
     """
-    Returns True if and only if suite.py for *suite*, all *configZip* related resources in
-    *suite* and mx itself are older than *configZip*.
+    Returns True if and only if suite.py for `suite`, all `configZip` related resources in
+    `suite` and mx itself are older than `configZip`.
     """
     suitePyFiles = [join(suite.mxDir, e) for e in os.listdir(suite.mxDir) if e == 'suite.py']
     if configZip.isOlderThan(suitePyFiles):
@@ -9567,7 +10153,7 @@ def _eclipse_linked_resource(name, tp, location):
 def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
     """
     Gets the URI for a resource relative to an Eclipse project directory (i.e.,
-    the directory containing the ```.project``` file for the project). The URI
+    the directory containing the `.project` file for the project). The URI
     returned is based on the builtin PROJECT_LOC Eclipse variable.
     See http://stackoverflow.com/a/7585095
     """
@@ -9603,6 +10189,118 @@ def _get_eclipse_output_path(p, linkedResources=None):
         return outputDirName
     else:
         return outputDirRel
+
+def _get_jdk_module_jar(module, suite, jdk):
+    """
+    Gets the path to a jar containing the class files in a specified JDK9 module, creating it first
+    if it doesn't exist by extracting the class files from the given jdk using the
+    JRT FileSystem provider (introduced by `JEP 220 <http://openjdk.java.net/jeps/220>`_).
+
+    :param str module: the name of a module for which a jar is being requested
+    :param :class:`Suite` suite: suite whose output root is used for the created jar
+    :param :class:`JDKConfig` jdk: the JDK containing the module
+
+    """
+    assert jdk.javaCompliance >= '9', module
+    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
+    jarName = module + '.jar'
+    jarPath = join(jdkOutputDir, jarName)
+    jdkExplodedModule = join(jdk.home, 'modules', module)
+    jdkModules = join(jdk.home, 'lib', 'modules')
+    if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
+        def _classes_dir(start):
+            """
+            Searches for the directory containing the sources of `module` by traversing the
+            ancestors of `start` and looking for ``*/src/<module>/share/classes``.
+            """
+            d = start
+            while d != os.sep:
+                for subdir in os.listdir(d):
+                    classes = join(d, subdir, 'src', module, 'share', 'classes')
+                    if exists(classes):
+                        return classes
+                d = dirname(d)
+
+        # Try find the sources for `module` based on the assumption `jdk.home` is in the
+        # build/ directory of a JDK9 repo.
+        classes = _classes_dir(jdk.home)
+        sourcesDirs = []
+        if classes:
+            if module == 'jdk.vm.ci':
+                for subdir in os.listdir(classes):
+                    src = join(classes, subdir, 'src')
+                    if exists(src):
+                        sourcesDirs.append(src)
+            else:
+                sourcesDirs.append(classes)
+
+        className = module.replace('.', '_') + '_ExtractJar'
+        javaSource = join(jdkOutputDir, className + '.java')
+        with open(javaSource, 'w') as fp:
+            print >> fp, """
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.stream.Stream;
+
+public class %(className)s {
+    public static void main(String[] args) throws Exception {
+        FileSystem fs = FileSystems.getFileSystem(URI.create("jrt:/"));
+        String jarPath = args[0];
+        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath))) {
+            Path dir = fs.getPath("/modules/%(module)s");
+            assert Files.isDirectory(dir) : dir;
+            try (Stream<Path> stream = Files.walk(dir)) {
+                stream.forEach(p -> {
+                    String path = p.toString();
+                    if (path.endsWith(".class") && !path.endsWith("module-info.class")) {
+                        String prefix = "/modules/%(module)s/";
+                        String name = path.substring(prefix.length(), path.length());
+                        JarEntry je = new JarEntry(name);
+                        try {
+                            jos.putNextEntry(je);
+                            jos.write(Files.readAllBytes(p));
+                            jos.closeEntry();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+            }
+            for (int i = 1; i < args.length; i++) {
+                Path sourceDir = Paths.get(args[i]);
+                int sourceDirLength = sourceDir.toString().length();
+                try (Stream<Path> stream = Files.walk(sourceDir)) {
+                    stream.forEach(p -> {
+                        if (!p.toFile().isDirectory()) {
+                            String path = p.toString().substring(sourceDirLength + 1);
+                            JarEntry je = new JarEntry(path.replace(File.separatorChar, '/'));
+                            try {
+                                jos.putNextEntry(je);
+                                jos.write(Files.readAllBytes(p));
+                                jos.closeEntry();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+}
+""" % {"module" : module, "className" : className}
+        run([jdk.javac, '-d', jdkOutputDir, javaSource])
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
+    return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
@@ -9647,7 +10345,23 @@ def _eclipseinit_project(p, files=None, libFiles=None):
 
     containerDeps = set()
     libraryDeps = set()
+    jdkLibraryDeps = set()
     projectDeps = set()
+    jdk = get_jdk(p.javaCompliance)
+    moduleDeps = None
+
+    if jdk.javaCompliance >= '1.9':
+        moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
+        if eclipseJavaCompliance < '9':
+            # If this project imports any JVMCI packages and Eclipse does not yet
+            # support JDK9, then the generated Eclipse project needs to see the classes
+            # in the jdk.vm.ci module. Further down, a stub containing the classes
+            # in this module will be added as a library to generated project.
+            # Fortunately this works even when the class files are at version 53 (JDK9)
+            # even though Eclipse can only run on class files with verison 52 (JDK8).
+            for pkg in p.imported_java_packages(projectDepsOnly=False):
+                if pkg.startswith('jdk.vm.ci.'):
+                    moduleDeps.add('jdk.vm.ci')
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -9662,7 +10376,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 libraryDeps.add(dep)
         elif dep.isProject():
             projectDeps.add(dep)
-        elif dep.isJdkLibrary() or dep.isJreLibrary() or dep.isDistribution():
+        elif dep.isJdkLibrary():
+            jdkLibraryDeps.add(dep)
+        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
+            distributionDeps.add(dep)
+        elif dep.isJreLibrary() or dep.isDistribution():
             pass
         else:
             abort('unexpected dependency: ' + str(dep))
@@ -9695,9 +10413,25 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if libFiles:
             libFiles.append(path)
 
-    for dep in sorted(projectDeps):
-        out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+    for dep in sorted(jdkLibraryDeps):
+        path = dep.classpath_repr(jdk, resolve=True)
+        if path:
+            attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
+            sourcePath = dep.get_source_path(jdk)
+            if sourcePath is not None:
+                attributes['sourcepath'] = sourcePath
+            out.element('classpathentry', attributes)
+            if libFiles:
+                libFiles.append(path)
 
+    for dep in sorted(projectDeps):
+        if not dep.isNativeProject():
+            out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+
+    if moduleDeps:
+        for module in sorted(moduleDeps):
+            moduleJar = _get_jdk_module_jar(module, p.suite, jdk)
+            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
     out.close('classpath')
@@ -9746,7 +10480,11 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     out.open('projectDescription')
     out.element('name', data=p.name)
     out.element('comment', data='')
-    out.element('projects', data='')
+    out.open('projects')
+    for dep in sorted(projectDeps):
+        if not dep.isNativeProject():
+            out.element('project', data=dep.name)
+    out.close('projects')
     out.open('buildSpec')
     out.open('buildCommand')
     out.element('name', data='org.eclipse.jdt.core.javabuilder')
@@ -9813,32 +10551,57 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         for e in processorsPath:
             if e.isDistribution():
                 out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+            elif e.isJdkLibrary() or e.isJreLibrary():
+                path = e.classpath_repr(jdk, resolve=True)
+                if path:
+                    out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : path, 'enabled' : 'true', 'runInBatchMode' : 'false'})
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
+
+        if eclipseJavaCompliance >= '9':
+            # Annotation processors can only use JDK9 classes once Eclipse supports JDK9.
+            moduleAPDeps = {}
+            for dep in classpath_entries(names=processors, preferProjects=True):
+                if dep.isJavaProject():
+                    concealed = dep.get_concealed_imported_packages()
+                    if concealed:
+                        for module in concealed.iterkeys():
+                            moduleAPDeps[module] = get_jdk(dep.javaCompliance)
+            for module in sorted(moduleAPDeps):
+                moduleJar = _get_jdk_module_jar(module, p.suite, moduleAPDeps[module])
+                out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+
         out.close('factorypath')
         update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
         if files:
             files.append(join(p.dir, '.factorypath'))
+
+_ide_envvars = {
+    'MX_ALT_OUTPUT_ROOT' : None,
+    # On the mac, applications are launched with a different path than command
+    # line tools, so capture the current PATH.  In general this ensures that
+    # the eclipse builders see the same path as a working command line build.
+    'PATH' : None,
+}
+
+def add_ide_envvar(name, value=None):
+    """
+    Adds a given name to the set of environment variables that will
+    be captured in generated IDE configurations. If `value` is not
+    None, then it will be the captured value. Otherwise the result of
+    get_env(name) is not None as capturing time, it will be used.
+    Otherwise no value is captured.
+    """
+    _ide_envvars[name] = value
 
 def _get_ide_envvars():
     """
     Gets a dict of environment variables that must be captured in generated IDE configurations.
     """
     result = {'JAVA_HOME' : get_jdk().home}
-    names = [
-        # On the mac, applications are launched with a different path than command
-        # line tools, so capture the current PATH.  In general this ensures that
-        # the eclipse builders see the same path as a working command line build.
-        'PATH',
-        # The mx builders are run inside the directory of their associated suite,
-        # not the primary suite, so they might not see the env file of the primary
-        # suite.  Capture DEFAULT_VM in case it was only defined in the primary
-        # suite.
-        'DEFAULT_VM',
-        'MX_ALT_OUTPUT_ROOT',
-    ]
-    for name in names:
-        value = get_env(name)
+    for name, value in _ide_envvars.iteritems():
+        if value is None:
+            value = get_env(name)
         if value is not None:
             result[name] = value
     return result
@@ -9851,7 +10614,7 @@ def _capture_eclipse_settings(logToConsole):
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False):
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -9865,7 +10628,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
     update_file(settingsFile, _capture_eclipse_settings(logToConsole))
-    if _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
+    if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
         logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
 
@@ -9877,7 +10640,8 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
     for p in suite.projects:
         p._eclipseinit(files, libFiles)
 
-    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies())
+    jdk = get_jdk(tag='default')
+    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
     files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
@@ -9891,29 +10655,37 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             continue
         ensure_dir_exists(projectDir)
         relevantResources = []
-        for d in dist.archived_deps():
+        relevantResourceDeps = set(dist.archived_deps())
+        if jdk.javaCompliance >= '1.9':
+            relevantResourceDeps.update(get_module_deps(dist))
+        for d in sorted(relevantResourceDeps):
             # Eclipse does not seem to trigger a build for a distribution if the references
             # to the constituent projects are of type IRESOURCE_PROJECT.
             if d.isProject():
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
-            elif d.isDistribution():
-                relevantResources.append(RelevantResource('/' +d.name, IRESOURCE_PROJECT))
+
         out = XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
         out.element('comment', data='Updates ' + dist.path + ' if a project dependency of ' + dist.name + ' is updated')
         out.open('projects')
-        for d in dist.deps:
+        for d in sorted(relevantResourceDeps):
             out.element('project', data=d.name)
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in dist.archived_deps() if p.isProject()]
+        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
-        _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name, relevantResources=relevantResources, logToFile=True, refresh=True, async=False, logToConsole=logToConsole, appendToLogFile=False, refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
+        builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
+                                      relevantResources=relevantResources,
+                                      logToFile=True, refresh=True, async=False,
+                                      logToConsole=logToConsole, appendToLogFile=False,
+                                      refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
+        files = files + builders
+
         out.close('buildSpec')
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
@@ -9956,7 +10728,6 @@ RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
 # http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
 IRESOURCE_FILE = 1
 IRESOURCE_FOLDER = 2
-IRESOURCE_PROJECT = 4
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
@@ -10018,7 +10789,8 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.close('launchConfiguration')
 
     ensure_dir_exists(externalToolDir)
-    update_file(join(externalToolDir, name + '.launch'), launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
+    launchFile = join(externalToolDir, name + '.launch')
+    update_file(launchFile, launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
 
     dotProjectDoc.open('buildCommand')
     dotProjectDoc.element('name', data='org.eclipse.ui.externaltools.ExternalToolBuilder')
@@ -10034,6 +10806,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     dotProjectDoc.close('dictionary')
     dotProjectDoc.close('arguments')
     dotProjectDoc.close('buildCommand')
+    return [launchFile]
 
 def generate_eclipse_workingsets():
     """
@@ -10206,7 +10979,7 @@ def _workingset_element(wsdoc, p):
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
-    for suite in suites(True):
+    for suite in suites(True) + [_mx_suite]:
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
     if doFsckProjects and not refreshOnly:
@@ -10396,7 +11169,7 @@ application.vendor=mx
 build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
-build.dir=bin
+build.dir=""" + p.output_dir() + """
 build.generated.sources.dir=${build.dir}/generated-sources
 # Only compile against the classpath explicitly listed here:
 build.sysclasspath=ignore
@@ -10572,7 +11345,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True):
     # has to be complete and contain information that is repeated
     # in dependent suites.
 
-    for suite in suites(True):
+    for suite in suites(True) + [_mx_suite]:
         _intellij_suite(args, suite, refreshOnly)
 
     if doFsckProjects and not refreshOnly:
@@ -10583,6 +11356,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         return
 
     libraries = set()
+    jdk_libraries = set()
 
     ideaProjectDirectory = join(suite.dir, '.idea')
 
@@ -10595,10 +11369,13 @@ def _intellij_suite(args, suite, refreshOnly=False):
     modulesXml.open('modules')
 
 
-    def _intellij_exclude_if_exists(xml, p, name):
-        path = join(p.dir, name)
+    def _intellij_exclude_if_exists(xml, p, name, output=False):
+        root = p.get_output_root() if output else p.dir
+        path = join(root, name)
         if exists(path):
-            xml.element('excludeFolder', attributes={'url':'file://$MODULE_DIR$/' + name})
+            excludeRoot = p.get_output_root() if output else '$MODULE_DIR$'
+            excludePath = join(excludeRoot, name)
+            xml.element('excludeFolder', attributes={'url':'file://' + excludePath})
 
     annotationProcessorProfiles = {}
 
@@ -10617,9 +11394,9 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
         processors = p.annotation_processors()
         if processors:
-            annotationProcessorProfiles.setdefault(tuple(processors), []).append(p)
+            annotationProcessorProfiles.setdefault((p.source_gen_dir_name(),) + tuple(processors), []).append(p)
 
-        intellijLanguageLevel = _complianceToIntellijLanguageLevel(jdk.javaCompliance)
+        intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
 
         moduleXml = XMLDoc()
         moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
@@ -10632,15 +11409,18 @@ def _intellij_suite(args, suite, refreshOnly=False):
             srcDir = join(p.dir, src)
             ensure_dir_exists(srcDir)
             moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': 'false'})
-
-        if processors:
-            genDir = p.source_gen_dir()
-            ensure_dir_exists(genDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + p.source_gen_dir_name(), 'isTestSource': 'false'})
-
         for name in ['.externalToolBuilders', '.settings', 'nbproject']:
             _intellij_exclude_if_exists(moduleXml, p, name)
         moduleXml.close('content')
+
+        if processors:
+            moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
+            genDir = p.source_gen_dir()
+            ensure_dir_exists(genDir)
+            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false', 'generated': 'true'})
+            for name in [basename(p.output_dir())]:
+                _intellij_exclude_if_exists(moduleXml, p, name, output=True)
+            moduleXml.close('content')
 
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
@@ -10649,12 +11429,18 @@ def _intellij_suite(args, suite, refreshOnly=False):
         def processDep(dep, edge):
             if dep is proj:
                 return
-
-            if dep.isLibrary():
+            if dep.isLibrary() or dep.isJARDistribution():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isProject():
                 moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
+            elif dep.isJdkLibrary():
+                jdk_libraries.add(dep)
+                moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+            elif dep.isJreLibrary():
+                pass
+            else:
+                abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
         p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
         moduleXml.close('component')
@@ -10687,30 +11473,47 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     ensure_dir_exists(librariesDirectory)
 
-    # Setup the libraries that were used above
-    # TODO: setup all the libraries from the suite regardless of usage?
-    for library in libraries:
+    def make_library(name, path, source_path):
         libraryXml = XMLDoc()
 
         libraryXml.open('component', attributes={'name': 'libraryTable'})
-        libraryXml.open('library', attributes={'name': library.name})
+        libraryXml.open('library', attributes={'name': name})
         libraryXml.open('CLASSES')
-        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_path(True), suite.dir) + '!/'})
+        libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
         libraryXml.close('CLASSES')
         libraryXml.element('JAVADOC')
-        if library.sourcePath:
+        if sourcePath:
             libraryXml.open('SOURCES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + os.path.relpath(library.get_source_path(True), suite.dir) + '!/'})
+            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
             libraryXml.close('SOURCES')
         else:
             libraryXml.element('SOURCES')
         libraryXml.close('library')
         libraryXml.close('component')
 
-        libraryFile = join(librariesDirectory, library.name + '.xml')
+        libraryFile = join(librariesDirectory, name + '.xml')
         update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
 
+    # Setup the libraries that were used above
+    for library in libraries:
+        sourcePath = None
+        if library.isLibrary():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcePath:
+                sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
+        elif library.isJARDistribution():
+            path = os.path.relpath(library.path, suite.dir)
+            if library.sourcesPath:
+                sourcePath = os.path.relpath(library.sourcesPath, suite.dir)
+        else:
+            abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+        make_library(library.name, path, sourcePath)
 
+    jdk = get_jdk()
+    if jdk_libraries:
+        log("Setting up JDK libraries using {0}".format(jdk))
+    for library in jdk_libraries:
+        make_library(library.name, os.path.relpath(library.classpath_repr(jdk), suite.dir), os.path.relpath(library.get_source_path(jdk), suite.dir))
 
     # Set annotation processor profiles up, and link them to modules in compiler.xml
     compilerXml = XMLDoc()
@@ -10725,10 +11528,11 @@ def _intellij_suite(args, suite, refreshOnly=False):
 
     if annotationProcessorProfiles:
         compilerXml.open('annotationProcessing')
-        for processors, modules in sorted(annotationProcessorProfiles.iteritems()):
-            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]), 'enabled': 'true'})
-            compilerXml.element('sourceOutputDir', attributes={'name': 'src_gen'})  # TODO use p.source_gen_dir() ?
-            compilerXml.element('outputRelativeToContentRoot', attributes={'value': 'true'})
+        for t, modules in sorted(annotationProcessorProfiles.iteritems()):
+            source_gen_dir = t[0]
+            processors = t[1:]
+            compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]) + "-" + source_gen_dir, 'enabled': 'true'})
+            compilerXml.element('sourceOutputDir', attributes={'name': join(os.pardir, source_gen_dir)})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
 
             # IntelliJ supports both directories and jars on the annotation processor path whereas
@@ -10755,11 +11559,12 @@ def _intellij_suite(args, suite, refreshOnly=False):
     miscXml = XMLDoc()
     miscXml.open('project', attributes={'version' : '4'})
 
-    sources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
-    if sources:
+    corePrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
+    uiPrefsSources = suite.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
+    if corePrefsSources:
         out = StringIO.StringIO()
         print >> out, '# GENERATED -- DO NOT EDIT'
-        for source in sources:
+        for source in corePrefsSources:
             print >> out, '# Source:', source
             with open(source) as f:
                 for line in f:
@@ -10767,14 +11572,32 @@ def _intellij_suite(args, suite, refreshOnly=False):
                         print >> out, line.strip()
         formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
         update_file(formatterConfigFile, out.getvalue())
+        if uiPrefsSources:
+            out = StringIO.StringIO()
+            print >> out, '# GENERATED -- DO NOT EDIT'
+            for source in uiPrefsSources:
+                print >> out, '# Source:', source
+                with open(source) as f:
+                    for line in f:
+                        if line.startswith('org.eclipse.jdt.ui.importorder') \
+                                or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
+                                or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
+                            print >> out, line.strip()
+            importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
+            update_file(importConfigFile, out.getvalue())
         miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
         miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
         miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
         miscXml.element('option', attributes={'name' : 'name', 'value' : suite.name})
         miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
         miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
+        if importConfigFile:
+            miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
+            miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
+
         miscXml.close('component')
-    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(jdk.javaCompliance), 'project-jdk-name': str(jdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+    mainJdk = get_jdk()
+    miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
     miscXml.close('project')
     miscFile = join(ideaProjectDirectory, 'misc.xml')
     update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
@@ -10844,12 +11667,12 @@ def ideclean(args):
         if exists(path):
             os.remove(path)
 
-    for s in suites():
+    for s in suites() + [_mx_suite]:
         rm(join(s.get_mx_output_dir(), 'eclipse-config.zip'))
         rm(join(s.get_mx_output_dir(), 'netbeans-config.zip'))
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
 
-    for p in projects():
+    for p in projects() + _mx_suite.projects:
         if not p.isJavaProject():
             continue
 
@@ -10907,7 +11730,7 @@ def fsckprojects(args):
                 # don't traverse subdirs of an existing distributions in this suite
                 dirnames[:] = []
             else:
-                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject'])
+                projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
                     indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
@@ -10917,26 +11740,51 @@ def fsckprojects(args):
                         if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                             shutil.rmtree(dirpath)
                             log('Deleted ' + dirpath)
+        ideaProjectDirectory = join(suite.dir, '.idea')
+        librariesDirectory = join(ideaProjectDirectory, 'libraries')
+        if exists(librariesDirectory):
+            neededLibraries = set()
+            for p in suite.projects_recursive():
+                def processDep(dep, edge):
+                    if dep is p:
+                        return
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
+                        neededLibraries.add(dep)
+                p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+            neededLibraryFiles = frozenset([l.name + '.xml' for l in neededLibraries])
+            existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
+            for library_file in existingLibraryFiles - neededLibraryFiles:
+                file_path = join(librariesDirectory, library_file)
+                relative_file_path = os.path.relpath(file_path, os.curdir)
+                if ask_yes_no(relative_file_path + ' looks like a removed library -- delete it', 'n'):
+                    os.remove(file_path)
+                    log('Deleted ' + relative_file_path)
 
-def find_packages(project, pkgs=None, onlyPublic=True, packages=None, exclude_packages=None):
-    packages = [] if packages is None else packages
-    exclude_packages = [] if exclude_packages is None else exclude_packages
+
+def _find_packages(project, onlyPublic=True, included=None, excluded=None):
+    """
+    Finds the set of packages defined by a project.
+
+    :param JavaProject project: the Java project to process
+    :param bool onlyPublic: specifies if only packages containing a ``package-info.java`` file are to be considered
+    :param set included: if not None or empty, only consider packages in this set
+    :param set excluded: if not None or empty, do not consider packages in this set
+    """
     sourceDirs = project.source_dirs()
     def is_visible(name):
         if onlyPublic:
             return name == 'package-info.java'
         else:
             return name.endswith('.java')
-    if pkgs is None:
-        pkgs = set()
+    packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
             if len([name for name in files if is_visible(name)]) != 0:
-                pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                if len(packages) == 0 or pkg in packages:
-                    if len(exclude_packages) == 0 or not pkg in exclude_packages:
-                        pkgs.add(pkg)
-    return pkgs
+                package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                if not included or package in included:
+                    if not excluded or package not in excluded:
+                        packages.add(package)
+    return packages
 
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
 
@@ -10968,13 +11816,13 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         candidates = projects_opt_limit_to_suites()
 
     # optionally restrict packages within a project
-    packages = []
+    include_packages = None
     if args.packages is not None:
-        packages = [name for name in args.packages.split(',')]
+        include_packages = frozenset(args.packages.split(','))
 
-    exclude_packages = []
+    exclude_packages = None
     if args.exclude_packages is not None:
-        exclude_packages = [name for name in args.exclude_packages.split(',')]
+        exclude_packages = frozenset(args.exclude_packages.split(','))
 
     def outDir(p):
         if args.base is None:
@@ -11042,7 +11890,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            pkgs = find_packages(p, set(), False, packages, exclude_packages)
+            pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
@@ -11052,7 +11900,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     links.append('-link')
                     links.append(os.path.relpath(depOut, out))
             p.walk_deps(visit=visit)
-            cp = classpath(p.name, includeSelf=True)
+            cp = classpath(p.name, includeSelf=True, jdk=jdk)
             sp = os.pathsep.join(p.source_dirs())
             overviewFile = join(p.dir, 'overview.html')
             delOverviewFile = False
@@ -11113,7 +11961,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         sproots = []
         names = []
         for p in projects:
-            find_packages(p, pkgs, not args.implementation, packages, exclude_packages)
+            pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
 
@@ -11122,7 +11970,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
-        cp = classpath()
+        cp = classpath(jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
@@ -11375,6 +12223,7 @@ def sclone(args):
             abort('--dest required when --source is not given')
         source = _primary_suite.dir
     else:
+        mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
         source = args.source
 
     if args.dest is not None:
@@ -11655,15 +12504,30 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
         # normal case, a specific version
         importedVersion = imported_suite.version()
         if importedVersion != suite_import_version:
+            clean = True
             if imported_suite.isDirty():
                 if is_interactive():
-                    if not ask_yes_no('WARNING: Uncommited changes in {} will be lost! Really continue'.format(imported_suite.name), default='n'):
-                        abort('aborting')
+                    retry = True
+                    while retry:
+                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge, (i)gnore?'.format(imported_suite.name),
+                                              options='[ascmi]', default='a')
+                        if answer == 'a':
+                            abort('aborting')
+                        elif answer == 's':
+                            imported_suite.vc.status(imported_suite.dir)
+                        elif answer == 'c':
+                            retry = False
+                        elif answer == 'm':
+                            clean = False
+                            retry = False
+                        elif answer == 'i':
+                            return
+
                 else:
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=True)
+            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=clean)
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.dir, update=True)
@@ -11674,7 +12538,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
     imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
 
 def sforceimports(args):
-    '''force working directory revision of imported suites to match primary suite imports'''
+    """force working directory revision of imported suites to match primary suite imports"""
     parser = ArgumentParser(prog='mx sforceimports')
     parser.add_argument('--strict-versions', action='store_true', help='strict version checking')
     args = parser.parse_args(args)
@@ -11743,7 +12607,7 @@ def _sincoming(s, suite_import):
         print output
 
 def sincoming(args):
-    '''check incoming for primary suite and all imports'''
+    """check incoming for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
     s = _check_primary_suite()
@@ -11761,7 +12625,7 @@ def _hg_command(s, suite_import, **extra_args):
         print out
 
 def hg_command(args):
-    '''Run a Mercurial command in every suite'''
+    """Run a Mercurial command in every suite"""
     s = _check_primary_suite()
     _hg_command(s, None, args=args)
 
@@ -11778,7 +12642,7 @@ def _soutgoing(s, suite_import, dest):
         print output
 
 def soutgoing(args):
-    '''check outgoing for primary suite and all imports'''
+    """check outgoing for primary suite and all imports"""
     parser = ArgumentParser(prog='mx soutgoing')
     parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
@@ -11803,7 +12667,7 @@ def _stip(s, suite_import):
     print 'tip of ' + s.name + ': ' + s.vc.tip(s.dir)
 
 def stip(args):
-    '''check tip for primary suite and all imports'''
+    """check tip for primary suite and all imports"""
     parser = ArgumentParser(prog='mx stip')
     args = parser.parse_args(args)
     s = _check_primary_suite()
@@ -11818,7 +12682,7 @@ def _sversions_rev(rev, isdirty, with_color):
     return color_on + rev[0:12] + color_off + rev[12:] + ' +'[int(isdirty)]
 
 def sversions(args):
-    '''print working directory revision for primary suite and all imports'''
+    """print working directory revision for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sversions')
     parser.add_argument('--color', action='store_true', help='color the short form part of the revision id')
     args = parser.parse_args(args)
@@ -11845,7 +12709,7 @@ def sversions(args):
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
     matches = []
-    for entry, filename in classpath_walk(includeBootClasspath=True, resolve=resolve):
+    for entry, filename in classpath_walk(includeBootClasspath=True, resolve=resolve, jdk=get_jdk()):
         if filename.endswith('.class'):
             if isinstance(entry, zipfile.ZipFile):
                 classname = filename.replace('/', '.')
@@ -11854,9 +12718,10 @@ def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, clas
             classname = classname[:-len('.class')]
             for a in args:
                 if matcher(a, classname):
-                    matches.append(classname)
-                    if logToConsole:
-                        log(classname)
+                    if classname not in matches:
+                        matches.append(classname)
+                        if logToConsole:
+                            log(classname)
     return matches
 
 def select_items(items, descriptions=None, allowMultiple=True):
@@ -12019,7 +12884,8 @@ def javap(args):
 
     args = parser.parse_args(args)
 
-    javapExe = get_jdk().javap
+    jdk = get_jdk()
+    javapExe = jdk.javap
     if not exists(javapExe):
         abort('The javap executable does not exist: ' + javapExe)
     else:
@@ -12027,7 +12893,7 @@ def javap(args):
         if len(candidates) == 0:
             log('no matches')
         selection = select_items(candidates)
-        run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve)] + selection)
+        run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve, jdk=jdk)] + selection)
 
 def show_projects(args):
     """show all projects"""
@@ -12097,7 +12963,7 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
-def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
+def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None):
     myDir = _mx_home if myDir is None else myDir
     binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
@@ -12107,7 +12973,9 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
         javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
         if classpath:
-            cmd += ['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)]
+            cmd.extend(['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)])
+        if extraJavacArgs:
+            cmd.extend(extraJavacArgs)
         cmd += [_cygpathU2W(javaSource)]
         try:
             subprocess.check_call(cmd)
@@ -12118,7 +12986,7 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None):
     return (myDir, binDir)
 
 def assessannotationprocessors(args):
-    '''apply heuristics to determine if projects declare exactly the
+    """apply heuristics to determine if projects declare exactly the
     annotation processors they need
 
     This process automatically analyzes annotation processors annotated
@@ -12128,7 +12996,7 @@ def assessannotationprocessors(args):
     incorrect suggestions. For example, two different annotations that have
     the same unqualified name (e.g. @NodeInfo) will cause misleading suggestions
     about missing annotation processors.
-    '''
+    """
     parser = ArgumentParser(prog='mx assesaps')
     parser.add_argument('apspecs', help='annotation processor spec with the format <name>:<ap>,... where <name> is a ' +
                         'substring matching the name of a unique dependency defining one or more annotation processors ' +
@@ -12144,9 +13012,9 @@ def assessannotationprocessors(args):
             packageToProject[pkg] = p
 
     def pkgAndClass(fqn):
-        '''Partitions a fully qualified class name into a package name and class name.
+        """Partitions a fully qualified class name into a package name and class name.
         Assumes package components always start with a lower case letter and class names
-        start with an upper case letter.'''
+        start with an upper case letter."""
         m = re.search(r'\.[A-Z]', fqn)
         assert m, fqn
         return fqn[0:m.start()], fqn[m.start() + 1:]
@@ -12224,17 +13092,17 @@ def _add_command_primary_option(parser):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
 
 def checkcopyrights(args):
-    '''run copyright check on the sources'''
+    """run copyright check on the sources"""
     class CP(ArgumentParser):
         def format_help(self):
             return ArgumentParser.format_help(self) + self._get_program_help()
 
         def _get_program_help(self):
-            help_output = subprocess.check_output([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--help'])
+            help_output = subprocess.check_output([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
             return '\nother argumemnts preceded with --\n' +  help_output
 
     # ensure compiled form of code is up to date
-    myDir, binDir = _compile_mx_class('CheckCopyright')
+    build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.checkcopy'])
 
     parser = CP(prog='mx checkcopyrights')
 
@@ -12253,22 +13121,19 @@ def checkcopyrights(args):
         custom_args = []
         if exists(custom_copyrights):
             custom_args = ['--custom-copyright-dir', custom_copyrights]
-        rc = run([get_jdk().java, '-cp', _cygpathU2W(binDir), 'CheckCopyright', '--copyright-dir', _cygpathU2W(myDir)] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
+        rc = run([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--copyright-dir', _mx_home] + custom_args + args.remainder, cwd=s.dir, nonZeroIsFatal=False)
         result = result if rc == 0 else rc
     return result
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
-    Scan the sources of project 'p' for Java source files containing a line starting with 'annotation'
+    Scan the sources of project `p` for Java source files containing a line starting with `annotation`
     (ignoring preceding whitespace) and return the fully qualified class name for each Java
     source file matched in a list.
     """
 
     matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
     return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
-
-def _basic_junit_harness(args, vmArgs, junitArgs):
-    return run_java(junitArgs)
 
 def split_j_args(extraVmArgsList):
     extraVmArgs = []
@@ -12277,12 +13142,16 @@ def split_j_args(extraVmArgsList):
             extraVmArgs += [x for x in shlex.split(e.lstrip('@'))]
     return extraVmArgs
 
-def junit(args, harness=_basic_junit_harness, parser=None):
-    '''run Junit tests'''
+def _basic_junit_harness(args, vmArgs, jdk, junitArgs):
+    return run_java(junitArgs, jdk=jdk)
+
+def junit(args, harness=_basic_junit_harness, parser=None, jdk_default=None):
+    """run Junit tests"""
     suppliedParser = parser is not None
     parser = parser if suppliedParser else ArgumentParser(prog='mx junit')
     parser.add_argument('--tests', action='store', help='pattern to match test classes')
     parser.add_argument('--J', dest='vm_args', action='append', help='target VM arguments (e.g. --J @-dsa)', metavar='@<args>')
+    parser.add_argument('--jdk', action='store', help='jdk to use')
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -12298,7 +13167,16 @@ def junit(args, harness=_basic_junit_harness, parser=None):
         os.close(_)
 
     candidates = []
-    jdk = get_jdk()
+    if args.jdk:
+        jdk = get_jdk(tag=args.jdk)
+        if not jdk:
+            abort("jdk '" + args.jdk + "' not found")
+    else:
+        if not jdk_default:
+            jdk_default = get_jdk()
+        else:
+            jdk = jdk_default
+
     for p in projects(opt_limit_to_suite=True):
         if not p.isJavaProject() or jdk.javaCompliance < p.javaCompliance:
             continue
@@ -12318,7 +13196,7 @@ def junit(args, harness=_basic_junit_harness, parser=None):
             if not found:
                 warn('no tests matched by substring "' + t + '"')
 
-    projectscp = classpath([pcp.name for pcp in projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance])
+    projectscp = classpath([pcp.name for pcp in projects(opt_limit_to_suite=True) if pcp.isJavaProject() and pcp.javaCompliance <= jdk.javaCompliance], jdk=jdk)
 
     if len(classes) != 0:
         # Compiling wrt projectscp avoids a dependency on junit.jar in mxtool itself
@@ -12340,25 +13218,28 @@ def junit(args, harness=_basic_junit_harness, parser=None):
                     f.write(c + '\n')
             testClassArgs = ['--testsfile', testfile]
         junitArgs = ['-cp', _separatedCygpathU2W(binDir + os.pathsep + projectscp), 'MX2JUnitWrapper'] + testClassArgs
-        rc = harness(args, vmArgs, junitArgs)
+        rc = harness(args, vmArgs, jdk, junitArgs)
         return rc
     else:
         return 0
 
-def mvn_local_install(suite_name, dist_name, path, version):
+def mvn_local_install(suite_name, dist_name, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
+    repoArgs = ['-Dmaven.repo.local=' + repo] if repo else []
     run_maven(['install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
-            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'])
+            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
-    '''
+    """
     Install the primary suite in a maven repository, mainly for testing as it
     only actually does the install if --local is set.
-    '''
+    """
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
+    parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
+    parser.add_argument('--only', action='store', help='comma separated set of distributions to deploy')
     args = parser.parse_args(args)
 
     _mvn.check()
@@ -12367,24 +13248,28 @@ def maven_install(args):
     version = s.vc.parent(s.dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
+    only = []
+    if args.only is not None:
+        only = args.only.split(',')
     for dist in s.dists:
         # ignore non-exported dists
-        if not dist.internal and not dist.name.startswith('COM_ORACLE'):
-            arcdists.append(dist)
+        if not dist.internal and not dist.name.startswith('COM_ORACLE') and dist.maven:
+            if len(only) is 0 or dist.name in only:
+                arcdists.append(dist)
 
     mxMetaName = _mx_binary_distribution_root(s.name)
     s.create_mx_binary_distribution_jar()
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version)
+            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion)
+        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version)
-            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion)
+                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version, args.repo)
+            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion, args.repo)
     else:
         print 'jars to deploy manually for version: ' + version
         print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
@@ -12410,10 +13295,10 @@ def ensure_dir_exists(path, mode=None):
     return path
 
 def show_envs(args):
-    '''print environment variables and their values
+    """print environment variables and their values
 
     By default only variables starting with "MX" are shown.
-    The --all option forces all variables to be printed'''
+    The --all option forces all variables to be printed"""
     parser = ArgumentParser(prog='mx envs')
     parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
@@ -12422,8 +13307,9 @@ def show_envs(args):
         if args.all or key.startswith('MX'):
             print '{0}: {1}'.format(key, value)
 
+_primary_suite_exempt.append('version')
 def show_version(args):
-    '''print mx version'''
+    """print mx version"""
 
     parser = ArgumentParser(prog='mx version')
     parser.add_argument('--oneline', action='store_true', help='show mx revision and version in one line')
@@ -12439,13 +13325,13 @@ def show_version(args):
     print version
     vc = VC.get_vc(_mx_home, abortOnError=False)
     if isinstance(vc, HgConfig):
-        out = vc.hg_command(_mx_home, ['id', '-i'], quiet=True, abortOnError=False)
+        out = vc.hg_command(_mx_home, ['id', '-i'], abortOnError=False)
         if out:
             print 'hg:', out
 
 @suite_context_free
 def update(args):
-    '''update mx to the latest version'''
+    """update mx to the latest version"""
     parser = ArgumentParser(prog='mx update')
     parser.add_argument('-n', '--dry-run', action='store_true', help='show incoming changes without applying them')
     args = parser.parse_args(args)
@@ -12463,14 +13349,14 @@ def remove_doubledash(args):
     if '--' in args:
         args.remove('--')
 
-def ask_yes_no(question, default=None):
+def ask_question(question, options, default=None, answer=None):
     """"""
-    assert not default or default == 'y' or default == 'n'
-    questionMark = '? [yn]: '
+    assert not default or default in options
+    questionMark = '? ' + options + ': '
     if default:
         questionMark = questionMark.replace(default, default.upper())
-    if _opts.answer:
-        answer = str(_opts.answer)
+    if answer:
+        answer = str(answer)
         print question + questionMark + answer
     else:
         if is_interactive():
@@ -12482,7 +13368,11 @@ def ask_yes_no(question, default=None):
                 answer = default
             else:
                 abort("Can not answer '" + question + "?' if stdin is not a tty")
-    return answer.lower().startswith('y')
+    return answer.lower()
+
+def ask_yes_no(question, default=None):
+    """"""
+    return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
 
 def add_argument(*args, **kwargs):
     """
@@ -12518,10 +13408,10 @@ def update_commands(suite, new_commands):
         _commandsToSuite[key] = suite
 
 def command_function(name, fatalIfMissing=True):
-    '''
-    Return the function for the (possibly overridden) command named name.
-    If no such command, abort if FatalIsMissing=True, else return None
-    '''
+    """
+    Return the function for the (possibly overridden) command named `name`.
+    If no such command, abort if `fatalIsMissing` is True, else return None
+    """
     if _commands.has_key(name):
         return _commands[name][0]
     else:
@@ -12550,7 +13440,6 @@ def warn(msg, context=None):
 _commands = {
     'about': [about, ''],
     'assessaps': [assessannotationprocessors, '[options]'],
-    'bench': [bench, ''],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -12602,10 +13491,10 @@ _commands = {
     'update': [update, ''],
     'projects': [show_projects, ''],
     'sha1': [sha1, ''],
-    'test': [test, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'minheap' : [run_java_min_heap, ''],
     'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
+    'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
 }
 _commandsToSuite = {}
 
@@ -12618,11 +13507,11 @@ def _mx_binary_distribution_root(name):
     return name + '-mx'
 
 def _mx_binary_distribution_jar(name):
-    '''the (relative) path to the location of the mx binary distribution jar'''
+    """the (relative) path to the location of the mx binary distribution jar"""
     return join('dists', _mx_binary_distribution_root(name) + '.jar')
 
 def _mx_binary_distribution_version(name):
-    '''the (relative) path to the location of the mx binary distribution version file'''
+    """the (relative) path to the location of the mx binary distribution version file"""
     return join('dists', _mx_binary_distribution_root(name) + '.version')
 
 def _suitename(mxDir):
@@ -12639,7 +13528,7 @@ def _suitename(mxDir):
 def _is_suite_dir(d, mxDirName=None):
     """
     Checks if d contains a suite.
-    If mxDirName is None, matches any suite name, otherwise checks for exactly *mxDirName* or '.' + *mxDirName*.
+    If mxDirName is None, matches any suite name, otherwise checks for exactly `mxDirName` or `mxDirName` with a ``.`` prefix.
     """
     if os.path.isdir(d):
         for f in [mxDirName, '.' + mxDirName] if mxDirName else [e for e in os.listdir(d) if e.startswith('mx.') or e.startswith('.mx.')]:
@@ -12670,7 +13559,7 @@ def _needs_primary_suite_check(args):
     return True
 
 def _check_vc_command():
-    '''check for a vc command after the initial parse'''
+    """check for a vc command after the initial parse"""
     for command in _argParser.initialCommandAndArgs:
         if command and not command.startswith('-'):
             hits = [c for c in _vc_commands if c.startswith(command)]
@@ -12707,9 +13596,9 @@ def _findPrimarySuiteMxDir():
     return None
 
 def _check_dependency_cycles():
-    '''
+    """
     Checks for cycles in the dependency graph.
-    '''
+    """
     path = []
     def _visitEdge(src, edgeType, dst):
         if dst in path:
@@ -12723,7 +13612,7 @@ def _check_dependency_cycles():
     walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
 
 def _remove_unsatisfied_deps():
-    '''
+    """
     Remove projects and libraries that (recursively) depend on an optional library
     whose artifact does not exist or on a JRE library that is not present in the
     JDK for a project. Also remove projects whose Java compliance requirement
@@ -12731,7 +13620,7 @@ def _remove_unsatisfied_deps():
     also removed from distributions in which they are listed as dependencies.
     Returns a map from the name of a removed dependency to the reason it was removed.
     A reason may be the name of another removed dependency.
-    '''
+    """
     removedDeps = {}
     def visit(dep, edge):
         if dep.isLibrary():
@@ -12761,13 +13650,14 @@ def _remove_unsatisfied_deps():
                         removedDeps[dep] = depDep.name
                     elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
-                        if not lib.is_present_in_jdk(depJdk):
+                        if not lib.is_provided_by(depJdk):
                             if lib.optional:
                                 reason = 'project {} was removed as dependency {} is missing'.format(dep, lib)
                                 logv('[' + reason + ']')
                                 removedDeps[dep] = reason
                             else:
-                                abort('JRE/JDK library {} required by {} not found'.format(lib, dep), context=dep)
+
+                                abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
         elif dep.isDistribution():
             dist = dep
             if dist.deps:
@@ -12835,11 +13725,18 @@ def main():
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
             _init_primary_suite(_mx_suite)
+            mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
             _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
-            # We explicitly load the 'env' file of the primary suite now as it might influence
-            # the suite loading logic. It will get loaded again, to ensure it overrides any
-            # settings in imported suites
+            userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+            SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
+
+            # We explicitly load the 'env' file of the primary suite now as it might
+            # influence the suite loading logic.  During loading of the subsuites their
+            # environment variable definitions are collected and will be placed into the
+            # os.environ all at once.  This ensures that a consistent set of definitions
+            # are seen.  The PrimarySuite must have everything required for loading
+            # defined.
             PrimarySuite.load_env(primarySuiteMxDir)
             global _binary_suites
             bs = os.environ.get('MX_BINARY_SUITES')
@@ -12870,13 +13767,17 @@ def main():
             if _needs_primary_suite_check(_argParser.initialCommandAndArgs):
                 abort(primary_suite_error)
 
+        for envVar in _loadedEnv.keys():
+            value = _loadedEnv[envVar]
+            if os.environ.get(envVar) != value:
+                logv('Setting environment variable %s=%s' % (envVar, value))
+                os.environ[envVar] = value
+
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
         if primarySuiteMxDir is None:
             if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
                 abort(primary_suite_error)
-            else:
-                warn(primary_suite_error)
         else:
             os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
     else:
@@ -12932,9 +13833,6 @@ def main():
                 abort('Command timed out after ' + str(_opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(_opts.timeout)
-        # compile java resources ahead of time to avoid races in parallel tasks
-        for java_resource in ['CheckCopyright']:
-            _compile_mx_class(java_resource)
         retcode = c(command_args)
         if retcode is not None and retcode != 0:
             abort(retcode)
@@ -12942,7 +13840,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.15.3")
+version = VersionSpec("5.34.3")
 
 currentUmask = None
 
