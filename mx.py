@@ -378,6 +378,9 @@ class Dependency(SuiteConstituent):
     def isJavaProject(self):
         return isinstance(self, JavaProject)
 
+    def isArchiveProject(self):
+        return self.isJavaProject()
+
     def isNativeProject(self):
         return isinstance(self, NativeProject)
 
@@ -1068,9 +1071,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         contents = lp.read(arcname)
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
-                    elif dep.isJavaProject():
+                    elif dep.isArchiveProject():
                         p = dep
-                        if self.javaCompliance:
+                        if p.isJavaProject() and self.javaCompliance:
                             if p.javaCompliance > self.javaCompliance:
                                 abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
 
