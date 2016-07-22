@@ -5725,13 +5725,14 @@ class Suite:
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
         deps = Suite._pop_list(attrs, 'dependencies', context)
         platformDependent = bool(os_arch)
+        ext = '.tar' if native else '.jar'
+        defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + ext)
         if native:
-            path = attrs.pop('path')
+            path = attrs.pop('path', defaultPath)
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
             d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
-            defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.jar')
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
             path = attrs.pop('path', defaultPath)
