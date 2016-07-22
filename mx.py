@@ -9587,7 +9587,7 @@ class TimeStampFile:
             if exists(path):
                 if not ts:
                     ts = TimeStampFile(path)
-                elif ts.isNewerThan(path):
+                elif ts.isOlderThan(path):
                     ts = TimeStampFile(path)
         return ts
 
