@@ -381,6 +381,9 @@ class Dependency(SuiteConstituent):
     def isNativeProject(self):
         return isinstance(self, NativeProject)
 
+    def isMavenProject(self):
+        return isinstance(self, MavenProject)
+
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -1087,6 +1090,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         contents = lp.read(arcname)
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
+                    elif dep.isMavenProject():
+                        logv('[' + self.path + ': adding jar from Maven project ' + dep.name + ']')
+                        addFromJAR(dep.jar)
+                        for srcDir in dep.source_dirs():
+                            addSrcFromDir(srcDir)
                     elif dep.isJavaProject():
                         p = dep
                         if self.javaCompliance:
@@ -1455,6 +1463,29 @@ class Project(Dependency):
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
+
+class MavenProject(Project, ClasspathDependency):
+    """
+    A project producing a single jar file.
+    Users should subclass this class and implement getBuildTask().
+    Additional attributes:
+      jar: path to the jar
+      sourceDirs: list of directories containing the sources
+    """
+    def __init__(self, suite, name, deps, workingSets, theLicense=None, **args):
+        context = 'project ' + name
+        d = suite.dir
+        srcDirs = Suite._pop_list(args, 'sourceDirs', context)
+        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense)
+        ClasspathDependency.__init__(self)
+        jar = args.pop('jar')
+        assert jar.endswith('.jar')
+        self.jar = jar
+
+    def classpath_repr(self, resolve=True):
+        if resolve and not exists(self.jar):
+            abort('unbuilt Maven project {} can not be on a class path'.format(self))
+        return self.jar
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
