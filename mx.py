@@ -5762,15 +5762,14 @@ class Suite:
         platformDependent = bool(os_arch)
         ext = '.tar' if native else '.jar'
         defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + ext)
+        path = attrs.pop('path', defaultPath)
         if native:
-            path = attrs.pop('path', defaultPath)
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
             d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path', defaultPath)
             sourcesPath = attrs.pop('sourcesPath', defaultSourcesPath)
             if sourcesPath == "<unified>":
                 sourcesPath = path
