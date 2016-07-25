@@ -1121,6 +1121,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir)
+                    elif hasattr(dep, "doNotArchive") and dep.doNotArchive:
+                        logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
