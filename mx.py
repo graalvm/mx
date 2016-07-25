@@ -1024,6 +1024,32 @@ class JARDistribution(Distribution, ClasspathDependency):
                     zf._provenance[arcname] = source
                     return isOverwrite
 
+                def addFromJAR(jarPath):
+                    with zipfile.ZipFile(jarPath, 'r') as lp:
+                        entries = lp.namelist()
+                        for arcname in entries:
+                            if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                                service = arcname[len('META-INF/services/'):]
+                                assert '/' not in service
+                                services.setdefault(service, []).extend(lp.read(arcname).splitlines())
+                            else:
+                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
+                                    contents = lp.read(arcname)
+                                    if not participants__add__(arcname, contents):
+                                        arc.zf.writestr(arcname, contents)
+
+                def addSrcFromDir(srcDir):
+                    for root, _, files in os.walk(srcDir):
+                        relpath = root[len(srcDir) + 1:]
+                        for f in files:
+                            if f.endswith('.java'):
+                                arcname = join(relpath, f).replace(os.sep, '/')
+                                if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
+                                    with open(join(root, f), 'r') as fp:
+                                        contents = fp.read()
+                                    if not participants__add__(arcname, contents, addsrc=True):
+                                        srcArc.zf.writestr(arcname, contents)
+
                 if self.mainClass:
                     manifest = "Manifest-Version: 1.0\nMain-Class: %s\n\n" % (self.mainClass)
                     if not overwriteCheck(arc.zf, "META-INF/MANIFEST.MF", "project files"):
@@ -1053,18 +1079,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
                             if dep.isJARDistribution() or not dep.optional or exists(jarPath):
-                                with zipfile.ZipFile(jarPath, 'r') as lp:
-                                    entries = lp.namelist()
-                                    for arcname in entries:
-                                        if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                                            service = arcname[len('META-INF/services/'):]
-                                            assert '/' not in service
-                                            services.setdefault(service, []).extend(lp.read(arcname).splitlines())
-                                        else:
-                                            if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
-                                                contents = lp.read(arcname)
-                                                if not participants__add__(arcname, contents):
-                                                    arc.zf.writestr(arcname, contents)
+                                addFromJAR(jarPath)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
@@ -1105,16 +1120,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
-                                for root, _, files in os.walk(srcDir):
-                                    relpath = root[len(srcDir) + 1:]
-                                    for f in files:
-                                        if f.endswith('.java'):
-                                            arcname = join(relpath, f).replace(os.sep, '/')
-                                            if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
-                                                with open(join(root, f), 'r') as fp:
-                                                    contents = fp.read()
-                                                if not participants__add__(arcname, contents, addsrc=True):
-                                                    srcArc.zf.writestr(arcname, contents)
+                                addSrcFromDir(srcDir)
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
