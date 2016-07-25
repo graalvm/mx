@@ -6202,8 +6202,11 @@ class SourceSuite(Suite):
                 p = getattr(self.extensions, className)(self, name, deps, workingSets, theLicense=theLicense, **attrs)
             else:
                 srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
+                projectDir = attrs.pop('dir', None)
                 subDir = attrs.pop('subDir', None)
-                if subDir is None:
+                if projectDir:
+                    d = join(self.dir, projectDir)
+                elif subDir is None:
                     d = join(self.dir, name)
                 else:
                     d = join(self.dir, subDir, name)
