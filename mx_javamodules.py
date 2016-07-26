@@ -301,6 +301,8 @@ def make_java_module(dist, jdk):
             if jmd:
                 modulepath.append(jmd)
                 requires[jmd.name] = set(['public'])
+            elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
+                pass
             else:
                 mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
     else:
