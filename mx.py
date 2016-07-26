@@ -1158,7 +1158,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         if jdk.javaCompliance >= '1.9':
             info = get_java_module_info(self)
             if info:
-                _, _, moduleJar = info
+                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
                 ts = TimeStampFile(moduleJar)
                 if ts.isOlderThan(self.path):
                     return '{} is older than {}'.format(ts, self.path)
