@@ -2821,10 +2821,10 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
 
     def get_jdk_path(self, jdk, path):
         # Exploded JDKs don't have a jre directory.
-        if exists(join(jdk.home, 'jre')):
-            return join(jdk.home, 'jre', path)
-        else:
+        if exists(join(jdk.home, path)):
             return join(jdk.home, path)
+        else:
+            return join(jdk.home, 'jre', path)
 
     def is_provided_by(self, jdk):
         """
