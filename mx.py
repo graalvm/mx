@@ -73,7 +73,7 @@ import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, lookup_package, get_module_deps
+from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -816,6 +816,10 @@ class Distribution(Dependency):
             def _visitDists(dep, edges):
                 if dep is not self:
                     excluded.add(dep)
+                    if hasattr(dep, 'overlaps'):
+                        overlaps = dep.overlaps
+                        for o in overlaps:
+                            excluded.add(distribution(o))
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
             deps = []
@@ -1150,6 +1154,14 @@ class JARDistribution(Distribution, ClasspathDependency):
             res = _needsUpdate(newestInput, self.sourcesPath)
             if res:
                 return res
+        jdk = get_jdk(tag='default')
+        if jdk.javaCompliance >= '1.9':
+            info = get_java_module_info(self)
+            if info:
+                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
+                ts = TimeStampFile(moduleJar)
+                if ts.isOlderThan(self.path):
+                    return '{} is older than {}'.format(ts, self.path)
         return None
 
 class ArchiveTask(BuildTask):
@@ -2832,8 +2844,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
 
         :param JDKConfig jdk: the JDK to test
         """
-        path = self.get_jdk_path(jdk, self.path)
-        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(path)
+        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(join(jdk.home, self.path))
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
@@ -2851,7 +2862,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
             abort('A JDK is required to resolve ' + self.name)
         if jdk.javaCompliance >= self.jdkStandardizedSince:
             return None
-        path = self.get_jdk_path(jdk, self.path)
+        path = join(jdk.home, self.path)
         if not exists(path):
             abort(self.name + ' is not provided by ' + str(jdk))
         return path
@@ -2865,8 +2876,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         """
         if self.sourcePath is None:
             return None
-        path = self.get_jdk_path(jdk, self.sourcePath)
-        return self.sourcePath if isabs(self.sourcePath) else path
+        return self.sourcePath if isabs(self.sourcePath) else join(jdk.home, self.sourcePath)
 
     def isJar(self):
         return True
@@ -8602,7 +8612,6 @@ def logvv(msg=None):
     if _opts.very_verbose:
         log(msg)
 
-
 def log(msg=None):
     """
     Write a message to the console.
@@ -10682,8 +10691,6 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         ensure_dir_exists(projectDir)
         relevantResources = []
         relevantResourceDeps = set(dist.archived_deps())
-        if jdk.javaCompliance >= '1.9':
-            relevantResourceDeps.update(get_module_deps(dist))
         for d in sorted(relevantResourceDeps):
             # Eclipse does not seem to trigger a build for a distribution if the references
             # to the constituent projects are of type IRESOURCE_PROJECT.
@@ -13866,7 +13873,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.3")
+version = VersionSpec("5.34.4")
 
 currentUmask = None
 
