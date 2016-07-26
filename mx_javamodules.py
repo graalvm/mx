@@ -246,7 +246,10 @@ def get_java_module_info(dist, fatalIfNotModule=False):
             return None
         assert len(moduleName) > 0, '"moduleName" attribute of distribution ' + dist.name + ' cannot be empty'
     else:
-        assert len(get_module_deps(dist)) != 0
+        if not get_module_deps(dist):
+            if fatalIfNotModule:
+                mx.abort('Module for distribution ' + dist.name + ' would be empty')
+            return None
         moduleName = dist.name.replace('_', '.').lower()
 
     modulesDir = mx.ensure_dir_exists(join(dist.suite.get_output_root(), 'modules'))
