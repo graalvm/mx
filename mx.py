@@ -1806,19 +1806,25 @@ class JavaProject(Project, ClasspathDependency):
 
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
-    def get_concealed_imported_packages(self, jdk=None):
+    def get_concealed_imported_packages(self, jdk=None, modulepath=None):
         """
         Gets the concealed packages imported by this Java project.
 
+        :param JDKConfig jdk: the JDK whose modules are to be searched for concealed packages
+        :param list modulepath: extra modules to be searched for concealed packages
         :return: a map from a module to its concealed packages imported by this project
         """
         if jdk is None:
             jdk = get_jdk(self.javaCompliance)
-        cache = '.concealed_imported_packages' + str(jdk.version)
+        if modulepath is None:
+            modulepath = []
+        else:
+            assert isinstance(modulepath, list)
+        cache = '.concealed_imported_packages@' + str(jdk.version) + '@' + ':'.join([m.name for m in modulepath])
         if getattr(self, cache, None) is None:
             concealed = {}
             if jdk.javaCompliance >= '9':
-                modulepath = jdk.get_modules()
+                modulepath = list(jdk.get_modules()) + modulepath
 
                 imports = getattr(self, 'imports', [])
                 if imports:
@@ -13916,7 +13922,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.35.1")
+version = VersionSpec("5.35.2")
 
 currentUmask = None
 
