@@ -381,6 +381,9 @@ class Dependency(SuiteConstituent):
     def isNativeProject(self):
         return isinstance(self, NativeProject)
 
+    def isMavenProject(self):
+        return isinstance(self, MavenProject)
+
     def isDistribution(self):
         return isinstance(self, Distribution)
 
@@ -1024,6 +1027,32 @@ class JARDistribution(Distribution, ClasspathDependency):
                     zf._provenance[arcname] = source
                     return isOverwrite
 
+                def addFromJAR(jarPath):
+                    with zipfile.ZipFile(jarPath, 'r') as lp:
+                        entries = lp.namelist()
+                        for arcname in entries:
+                            if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                                service = arcname[len('META-INF/services/'):]
+                                assert '/' not in service
+                                services.setdefault(service, []).extend(lp.read(arcname).splitlines())
+                            else:
+                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
+                                    contents = lp.read(arcname)
+                                    if not participants__add__(arcname, contents):
+                                        arc.zf.writestr(arcname, contents)
+
+                def addSrcFromDir(srcDir):
+                    for root, _, files in os.walk(srcDir):
+                        relpath = root[len(srcDir) + 1:]
+                        for f in files:
+                            if f.endswith('.java'):
+                                arcname = join(relpath, f).replace(os.sep, '/')
+                                if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
+                                    with open(join(root, f), 'r') as fp:
+                                        contents = fp.read()
+                                    if not participants__add__(arcname, contents, addsrc=True):
+                                        srcArc.zf.writestr(arcname, contents)
+
                 if self.mainClass:
                     manifest = "Manifest-Version: 1.0\nMain-Class: %s\n\n" % (self.mainClass)
                     if not overwriteCheck(arc.zf, "META-INF/MANIFEST.MF", "project files"):
@@ -1053,18 +1082,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
                             if dep.isJARDistribution() or not dep.optional or exists(jarPath):
-                                with zipfile.ZipFile(jarPath, 'r') as lp:
-                                    entries = lp.namelist()
-                                    for arcname in entries:
-                                        if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                                            service = arcname[len('META-INF/services/'):]
-                                            assert '/' not in service
-                                            services.setdefault(service, []).extend(lp.read(arcname).splitlines())
-                                        else:
-                                            if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
-                                                contents = lp.read(arcname)
-                                                if not participants__add__(arcname, contents):
-                                                    arc.zf.writestr(arcname, contents)
+                                addFromJAR(jarPath)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
@@ -1072,6 +1090,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         contents = lp.read(arcname)
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
+                    elif dep.isMavenProject():
+                        logv('[' + self.path + ': adding jar from Maven project ' + dep.name + ']')
+                        addFromJAR(dep.jar)
+                        for srcDir in dep.source_dirs():
+                            addSrcFromDir(srcDir)
                     elif dep.isJavaProject():
                         p = dep
                         if self.javaCompliance:
@@ -1105,16 +1128,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
-                                for root, _, files in os.walk(srcDir):
-                                    relpath = root[len(srcDir) + 1:]
-                                    for f in files:
-                                        if f.endswith('.java'):
-                                            arcname = join(relpath, f).replace(os.sep, '/')
-                                            if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
-                                                with open(join(root, f), 'r') as fp:
-                                                    contents = fp.read()
-                                                if not participants__add__(arcname, contents, addsrc=True):
-                                                    srcArc.zf.writestr(arcname, contents)
+                                addSrcFromDir(srcDir)
+                    elif hasattr(dep, "doNotArchive") and dep.doNotArchive:
+                        logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
@@ -1447,6 +1463,29 @@ class Project(Dependency):
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
+
+class MavenProject(Project, ClasspathDependency):
+    """
+    A project producing a single jar file.
+    Users should subclass this class and implement getBuildTask().
+    Additional attributes:
+      jar: path to the jar
+      sourceDirs: list of directories containing the sources
+    """
+    def __init__(self, suite, name, deps, workingSets, theLicense=None, **args):
+        context = 'project ' + name
+        d = suite.dir
+        srcDirs = Suite._pop_list(args, 'sourceDirs', context)
+        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense)
+        ClasspathDependency.__init__(self)
+        jar = args.pop('jar')
+        assert jar.endswith('.jar')
+        self.jar = jar
+
+    def classpath_repr(self, resolve=True):
+        if resolve and not exists(self.jar):
+            abort('unbuilt Maven project {} can not be on a class path'.format(self))
+        return self.jar
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
@@ -5762,15 +5801,14 @@ class Suite:
         platformDependent = bool(os_arch)
         ext = '.tar' if native else '.jar'
         defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + ext)
+        path = attrs.pop('path', defaultPath)
         if native:
-            path = attrs.pop('path', defaultPath)
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
             d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
             defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
-            path = attrs.pop('path', defaultPath)
             sourcesPath = attrs.pop('sourcesPath', defaultSourcesPath)
             if sourcesPath == "<unified>":
                 sourcesPath = path
@@ -6203,8 +6241,11 @@ class SourceSuite(Suite):
                 p = getattr(self.extensions, className)(self, name, deps, workingSets, theLicense=theLicense, **attrs)
             else:
                 srcDirs = Suite._pop_list(attrs, 'sourceDirs', context)
+                projectDir = attrs.pop('dir', None)
                 subDir = attrs.pop('subDir', None)
-                if subDir is None:
+                if projectDir:
+                    d = join(self.dir, projectDir)
+                elif subDir is None:
                     d = join(self.dir, name)
                 else:
                     d = join(self.dir, subDir, name)
@@ -13873,7 +13914,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.5")
+version = VersionSpec("5.35.0")
 
 currentUmask = None
 
