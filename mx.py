@@ -2831,6 +2831,13 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
+    def get_jdk_path(self, jdk, path):
+        # Exploded JDKs don't have a jre directory.
+        if exists(join(jdk.home, path)):
+            return join(jdk.home, path)
+        else:
+            return join(jdk.home, 'jre', path)
+
     def is_provided_by(self, jdk):
         """
         Determines if this library is provided by `jdk`.
@@ -13866,7 +13873,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.34.4")
+version = VersionSpec("5.34.5")
 
 currentUmask = None
 
