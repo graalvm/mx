@@ -1092,7 +1092,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             srcArc.zf.writestr(arcname, contents)
                     elif dep.isMavenProject():
                         logv('[' + self.path + ': adding jar from Maven project ' + dep.name + ']')
-                        addFromJAR(dep.jar)
+                        addFromJAR(dep.classpath_repr())
                         for srcDir in dep.source_dirs():
                             addSrcFromDir(srcDir)
                     elif dep.isJavaProject():
@@ -1483,9 +1483,10 @@ class MavenProject(Project, ClasspathDependency):
         self.jar = jar
 
     def classpath_repr(self, resolve=True):
-        if resolve and not exists(self.jar):
-            abort('unbuilt Maven project {} can not be on a class path'.format(self))
-        return self.jar
+        jar = join(self.suite.dir, self.jar)
+        if resolve and not exists(jar):
+            abort('unbuilt Maven project {} cannot be on a class path ({})'.format(self, jar))
+        return jar
 
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
@@ -13922,7 +13923,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.35.2")
+version = VersionSpec("5.35.3")
 
 currentUmask = None
 
