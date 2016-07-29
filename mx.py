@@ -381,6 +381,9 @@ class Dependency(SuiteConstituent):
     def isNativeProject(self):
         return isinstance(self, NativeProject)
 
+    def isArchivableProject(self):
+        return isinstance(self, ArchivableProject)
+
     def isMavenProject(self):
         return isinstance(self, MavenProject)
 
@@ -1041,6 +1044,21 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if not participants__add__(arcname, contents):
                                         arc.zf.writestr(arcname, contents)
 
+                def addFile(outputDir, relpath, archivePrefix):
+                    arcname = join(archivePrefix, relpath).replace(os.sep, '/')
+                    if relpath.startswith('META-INF/services'):
+                        service = relpath[len('META-INF/services/'):]
+                        assert '/' not in service
+                        with open(join(outputDir, relpath), 'r') as fp:
+                            services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                    else:
+                        if snippetsPattern and snippetsPattern.match(relpath):
+                            return
+                        with open(join(outputDir, relpath), 'rb') as fp:
+                            contents = fp.read()
+                        if not participants__add__(arcname, contents):
+                            arc.zf.writestr(arcname, contents)
+
                 def addSrcFromDir(srcDir):
                     for root, _, files in os.walk(srcDir):
                         relpath = root[len(srcDir) + 1:]
@@ -1109,26 +1127,24 @@ class JARDistribution(Distribution, ClasspathDependency):
                             archivePrefix = p.archive_prefix()
 
                         for root, _, files in os.walk(outputDir):
-                            relpath = root[len(outputDir) + 1:]
-                            if relpath == join('META-INF', 'services'):
-                                for service in files:
-                                    with open(join(root, service), 'r') as fp:
-                                        services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
-                            else:
-                                for f in files:
-                                    if snippetsPattern and snippetsPattern.match(f):
-                                        continue
-                                    arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
-                                    with open(join(root, f), 'rb') as fp:
-                                        contents = fp.read()
-                                    if not participants__add__(arcname, contents):
-                                        arc.zf.writestr(arcname, contents)
+                            reldir = root[len(outputDir) + 1:]
+                            for f in files:
+                                relpath = join(reldir, f)
+                                addFile(outputDir, relpath, archivePrefix)
+
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir)
+                    elif dep.isArchivableProject():
+                        logv('[' + self.path + ': adding archivable project ' + dep.name + ']')
+                        archivePrefix = dep.archive_prefix()
+                        outputDir = dep.output_dir()
+                        for f in dep.getResults():
+                            relpath = dep.get_relpath(f, outputDir)
+                            addFile(outputDir, relpath, archivePrefix)
                     elif hasattr(dep, "doNotArchive") and dep.doNotArchive:
                         logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                     else:
@@ -1261,22 +1277,33 @@ class NativeTARDistribution(Distribution):
         with Archiver(self.path, kind='tar') as arc:
             files = set()
             for d in self.archived_deps():
-                if not d.isNativeProject():
+                if d.isNativeProject():
+                    output = d.getOutput()
+                    output = join(self.suite.dir, output) if output else None
+                    for r in d.getResults():
+                        if output and self.relpath:
+                            filename = os.path.relpath(r, output)
+                        else:
+                            filename = basename(r)
+                        assert filename not in files, filename
+                        # Make debug-info files optional for distribution
+                        if is_debug_lib_file(r) and not os.path.exists(r):
+                            warn("File {} for archive {} does not exist.".format(filename, d.name))
+                        else:
+                            files.add(filename)
+                            arc.zf.add(r, arcname=filename)
+                elif d.isArchivableProject():
+                    outputDir = d.output_dir()
+                    archivePrefix = d.archive_prefix()
+                    for f in d.getResults():
+                        relpath = d.get_relpath(f, outputDir)
+                        arcname = join(archivePrefix, relpath)
+                        assert arcname not in files, arcname
+                        files.add(arcname)
+                        arc.zf.add(f, arcname=arcname)
+                else:
                     abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
-                output = d.getOutput()
-                output = join(self.suite.dir, output) if output else None
-                for r in d.getResults():
-                    if output and self.relpath:
-                        filename = os.path.relpath(r, output)
-                    else:
-                        filename = basename(r)
-                    assert filename not in files, filename
-                    # Make debug-info files optional for distribution
-                    if is_debug_lib_file(r) and not os.path.exists(r):
-                        warn("File {} for archive {} does not exist.".format(filename, d.name))
-                    else:
-                        files.add(filename)
-                        arc.zf.add(r, arcname=filename)
+
         self.notify_updated()
 
     def getBuildTask(self, args):
@@ -1463,6 +1490,63 @@ class Project(Dependency):
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
+
+class ArchivableProject(Project):
+    """
+    A project that can be part of any distribution, native or not.
+    Users should subclass this class and implement the nyi() methods.
+    The files listed by getResults(), which must be under output_dir(),
+    will be included in the archive under the prefix archive_prefix().
+    """
+    def __init__(self, suite, name, deps, workingSets, theLicense):
+        d = suite.dir
+        Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense)
+
+    def getBuildTask(self, args):
+        return ArchivableBuildTask(self, args, 1)
+
+    def output_dir(self):
+        nyi('output_dir', self)
+
+    def archive_prefix(self):
+        nyi('archive_prefix', self)
+
+    def getResults(self):
+        nyi('getResults', self)
+
+    @staticmethod
+    def walk(d):
+        """
+        Convenience method to implement getResults() by including all files under a directory.
+        """
+        assert isabs(d)
+        results = []
+        for root, _, files in os.walk(d):
+            for name in files:
+                path = join(root, name)
+                results.append(path)
+        return results
+
+    def get_relpath(self, f, outputDir):
+        d = join(outputDir, "")
+        assert f.startswith(d), f + " not in " + outputDir
+        return os.path.relpath(f, outputDir)
+
+class ArchivableBuildTask(BuildTask):
+    def __str__(self):
+        return 'Archive {}'.format(self.subject)
+
+    def needsBuild(self, newestInput):
+        return (False, 'Files are already on disk')
+
+    def newestOutput(self):
+        return TimeStampFile.newest(self.subject.getResults())
+
+    def build(self):
+        pass
+
+    def clean(self, forBuild=False):
+        pass
 
 class MavenProject(Project, ClasspathDependency):
     """
@@ -13923,7 +14007,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.35.3")
+version = VersionSpec("5.36.0")
 
 currentUmask = None
 
