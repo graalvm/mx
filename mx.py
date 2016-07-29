@@ -1301,6 +1301,8 @@ class NativeTARDistribution(Distribution):
                         assert arcname not in files, arcname
                         files.add(arcname)
                         arc.zf.add(f, arcname=arcname)
+                elif hasattr(d, 'getResults') and not d.getResults():
+                    logv("[{}: ignoring dependency {} with no results]".format(self.name, d.name))
                 else:
                     abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
 
