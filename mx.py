@@ -1574,6 +1574,13 @@ class MavenProject(Project, ClasspathDependency):
             abort('unbuilt Maven project {} cannot be on a class path ({})'.format(self, jar))
         return jar
 
+    def get_path(self, resolve):
+        return self.classpath_repr(resolve=resolve)
+
+    def get_source_path(self, resolve):
+        assert len(self.sourceDirs) == 1
+        return join(self.suite.dir, self.sourceDirs[0])
+
 class JavaProject(Project, ClasspathDependency):
     def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
@@ -10545,14 +10552,18 @@ def _eclipseinit_project(p, files=None, libFiles=None):
                 dep.walk_deps(visit=lambda dep2, edge2: libraryDeps.discard(dep2))
             else:
                 libraryDeps.add(dep)
-        elif dep.isProject():
+        elif dep.isJavaProject() or dep.isNativeProject():
             projectDeps.add(dep)
+        elif dep.isMavenProject():
+            libraryDeps.add(dep)
         elif dep.isJdkLibrary():
             jdkLibraryDeps.add(dep)
         elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
             distributionDeps.add(dep)
         elif dep.isJreLibrary() or dep.isDistribution():
             pass
+        elif dep.isProject():
+            logv('ignoring project ' + dep.name + ' for eclipseinit')
         else:
             abort('unexpected dependency: ' + str(dep))
     p.walk_deps(visit=processDep)
@@ -10564,8 +10575,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
 
     for dep in sorted(libraryDeps):
-        path = dep.path
-        dep.get_path(resolve=True)
+        path = dep.get_path(resolve=True)
 
         # Relative paths for "lib" class path entries have various semantics depending on the Eclipse
         # version being used (e.g. see https://bugs.eclipse.org/bugs/show_bug.cgi?id=274737) so it's
@@ -10830,7 +10840,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         for d in sorted(relevantResourceDeps):
             # Eclipse does not seem to trigger a build for a distribution if the references
             # to the constituent projects are of type IRESOURCE_PROJECT.
-            if d.isProject():
+            if d.isJavaProject():
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
@@ -10845,7 +10855,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isProject()]
+        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isJavaProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
@@ -14009,7 +14019,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.36.0")
+version = VersionSpec("5.36.1")
 
 currentUmask = None
 
