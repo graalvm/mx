@@ -9587,32 +9587,27 @@ class SafeFileCreation(object):
         self.path = path
 
     def __enter__(self):
-        if self.path:
-            path_dir = dirname(self.path)
-            ensure_dir_exists(path_dir)
-            # Temporary file must be on the same file system as `path` for os.rename to be atomic.
-            fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=path_dir)
-            self.tmpFd = fd
-            self.tmpPath = tmp
-        else:
-            self.tmpFd = None
-            self.tmpPath = None
+        path_dir = dirname(self.path)
+        ensure_dir_exists(path_dir)
+        # Temporary file must be on the same file system as self.path for os.rename to be atomic.
+        fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=path_dir)
+        self.tmpFd = fd
+        self.tmpPath = tmp
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.tmpPath:
-            # Windows will complain about tmp being in use by another process
-            # when calling shutil.move if we don't close the file descriptor.
-            os.close(self.tmpFd)
-            if exc_value:
-                # If an error occurred, delete the temp file
-                # instead of moving it into the destination
-                os.remove(self.tmpPath)
-            else:
-                # Correct the permissions on the temporary file which is created with restrictive permissions
-                os.chmod(self.tmpPath, 0o666 & ~currentUmask)
-                # Atomic if `path` does not exist.
-                os.rename(self.tmpPath, self.path)
+        # Windows will complain about tmp being in use by another process
+        # when calling os.rename if we don't close the file descriptor.
+        os.close(self.tmpFd)
+        if exc_value:
+            # If an error occurred, delete the temp file
+            # instead of renaming it
+            os.remove(self.tmpPath)
+        else:
+            # Correct the permissions on the temporary file which is created with restrictive permissions
+            os.chmod(self.tmpPath, 0o666 & ~currentUmask)
+            # Atomic if self.path does not already exist.
+            os.rename(self.tmpPath, self.path)
 
 class Archiver(SafeFileCreation):
     """
