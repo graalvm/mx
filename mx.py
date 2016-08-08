@@ -9618,21 +9618,23 @@ class Archiver(SafeFileCreation):
         self.kind = kind
 
     def __enter__(self):
-        SafeFileCreation.__enter__(self)
-        if self.tmpPath:
-            if self.kind == 'zip':
-                self.zf = zipfile.ZipFile(self.tmpPath, 'w')
-            elif self.kind == 'tar':
-                self.zf = tarfile.open(self.tmpPath, 'w')
-            elif self.kind == 'tgz':
-                self.zf = tarfile.open(self.tmpPath, 'w:gz')
-            else:
-                abort('unsupported archive kind: ' + self.kind)
+        if self.path:
+            SafeFileCreation.__enter__(self)
+            if self.tmpPath:
+                if self.kind == 'zip':
+                    self.zf = zipfile.ZipFile(self.tmpPath, 'w')
+                elif self.kind == 'tar':
+                    self.zf = tarfile.open(self.tmpPath, 'w')
+                elif self.kind == 'tgz':
+                    self.zf = tarfile.open(self.tmpPath, 'w:gz')
+                else:
+                    abort('unsupported archive kind: ' + self.kind)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.zf:
-            self.zf.close()
+        if self.path:
+            if self.zf:
+                self.zf.close()
         SafeFileCreation.__exit__(self, exc_type, exc_value, traceback)
 
 def _archive(args):
