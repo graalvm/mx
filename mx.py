@@ -2711,6 +2711,26 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         _, ext = os.path.splitext(path)
         cachePath = _get_path_in_cache(name, sha1, urls, ext=ext)
 
+        def _copy_or_symlink(source, link_name):
+            if canSymlink and 'symlink' in dir(os):
+                logvv('Symlinking {} to {}'.format(link_name, source))
+                if os.path.lexists(link_name):
+                    os.unlink(link_name)
+                try:
+                    os.symlink(source, link_name)
+                except OSError as e:
+                    # When doing parallel building, the symlink can fail
+                    # if another thread wins the race to create the symlink
+                    if not os.path.lexists(link_name):
+                        # It was some other error
+                        raise Exception(link_name, e)
+            else:
+                # If we can't symlink, then atomically copy. Never move as that
+                # can cause problems in the context of multiple processes/threads.
+                with SafeFileCreation(link_name) as sfc:
+                    logvv('Copying {} to {}'.format(source, link_name))
+                    shutil.copy(source, sfc.tmpPath)
+
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
@@ -2723,8 +2743,8 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
             legacyCachePath = _findLegacyCachePath()
             if legacyCachePath:
-                logvv('Copying {} to {}'.format(legacyCachePath, cachePath))
-                shutil.move(legacyCachePath, cachePath)
+                # Try symlink non-legacy cache path to legacy cache path
+                _copy_or_symlink(legacyCachePath, cachePath)
             else:
                 log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
                 download(cachePath, urls)
@@ -2733,21 +2753,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             d = dirname(path)
             if d != '':
                 ensure_dir_exists(d)
-            if canSymlink and 'symlink' in dir(os):
-                logvv('Symlinking {} to {}'.format(path, cachePath))
-                if os.path.lexists(path):
-                    os.unlink(path)
-                try:
-                    os.symlink(cachePath, path)
-                except OSError as e:
-                    # When doing parallel building, the symlink can fail
-                    # if another thread wins the race to create the symlink
-                    if not os.path.lexists(path):
-                        # It was some other error
-                        raise Exception(path, e)
-            else:
-                logvv('Copying {} to {}'.format(path, cachePath))
-                shutil.copy(cachePath, path)
+            _copy_or_symlink(cachePath, path)
 
         if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
             log('SHA1 of ' + sha1OfFile(cachePath) + ' does not match expected value (' + sha1 + ')')
@@ -8924,54 +8930,49 @@ def download(path, urls, verbose=False, abortOnError=True):
 
         # Use a temp file while downloading to avoid multiple threads
         # overwriting the same file.
-        fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(path) + '.', dir=d)
-        conn = None
-        try:
-            # 10 second timeout to establish connection
-            conn = urllib2.urlopen(url, timeout=10)
+        with SafeFileCreation(path) as sfc:
+            tmp = sfc.tmpPath
+            conn = None
+            try:
 
-            # Not all servers support the "Content-Length" header
-            lengthHeader = conn.info().getheader('Content-Length')
-            length = int(lengthHeader.strip()) if lengthHeader else -1
+                # 10 second timeout to establish connection
+                conn = urllib2.urlopen(url, timeout=10)
 
-            bytesRead = 0
-            chunkSize = 8192
+                # Not all servers support the "Content-Length" header
+                lengthHeader = conn.info().getheader('Content-Length')
+                length = int(lengthHeader.strip()) if lengthHeader else -1
 
-            with open(tmp, 'wb') as fp:
-                chunk = conn.read(chunkSize)
-                while chunk:
-                    bytesRead += len(chunk)
-                    fp.write(chunk)
-                    if progress:
-                        sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
-                    chunk = conn.read(chunkSize)
+                bytesRead = 0
+                chunkSize = 8192
 
-            if progress:
-                sys.stdout.write('\n')
-
-            if jarEntryName:
-                with zipfile.ZipFile(tmp, 'r') as zf:
-                    jarEntry = zf.read(jarEntryName)
                 with open(tmp, 'wb') as fp:
-                    fp.write(jarEntry)
+                    chunk = conn.read(chunkSize)
+                    while chunk:
+                        bytesRead += len(chunk)
+                        fp.write(chunk)
+                        if progress:
+                            sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
+                        chunk = conn.read(chunkSize)
 
-            # Relax the permissions on the temporary file as it's created with restrictive permissions
-            os.chmod(tmp, 0o666 & ~currentUmask)
-            # Windows will complain about tmp being in use by another process
-            # when calling shutil.move if we don't close the file descriptor.
-            os.close(fd)
-            # Atomic on Unix
-            shutil.move(tmp, path)
-            return True
+                if progress:
+                    sys.stdout.write('\n')
 
-        except (IOError, socket.timeout) as e:
-            log("Error reading from " + url + ": " + str(e))
-            _suggest_http_proxy_error(e)
-            if exists(tmp):
-                os.remove(tmp)
-        finally:
-            if conn:
-                conn.close()
+                if jarEntryName:
+                    with zipfile.ZipFile(tmp, 'r') as zf:
+                        jarEntry = zf.read(jarEntryName)
+                    with open(tmp, 'wb') as fp:
+                        fp.write(jarEntry)
+
+                return True
+
+            except (IOError, socket.timeout) as e:
+                log("Error reading from " + url + ": " + str(e))
+                _suggest_http_proxy_error(e)
+                if exists(tmp):
+                    os.remove(tmp)
+            finally:
+                if conn:
+                    conn.close()
 
     if abortOnError:
         abort('Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls))
@@ -9568,37 +9569,40 @@ def pylint(args):
 
     return 0
 
-"""
-Utility for creating and updating a zip or tar file atomically.
-"""
-class Archiver:
-    def __init__(self, path, kind='zip'):
+class SafeFileCreation(object):
+    """
+    Context manager for creating a file that tries hard to handle races between processes/threads
+    creating the same file. It tries to ensure that the file is created with the content provided
+    by exactly one process/thread but makes no guarantee about which process/thread wins.
+
+    Note that truly atomic file copying is hard (http://stackoverflow.com/a/28090883/6691595)
+
+    :Example:
+
+    with SafeFileCreation(dst) as sfc:
+        shutil.copy(src, sfc.tmpPath)
+
+    """
+    def __init__(self, path):
         self.path = path
-        self.kind = kind
 
     def __enter__(self):
         if self.path:
-            ensure_dir_exists(dirname(self.path))
-            fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=dirname(self.path))
+            path_dir = dirname(self.path)
+            ensure_dir_exists(path_dir)
+            # Temporary file must be on the same file system as `path` for os.rename to be atomic.
+            fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=path_dir)
             self.tmpFd = fd
             self.tmpPath = tmp
-            if self.kind == 'zip':
-                self.zf = zipfile.ZipFile(tmp, 'w')
-            elif self.kind == 'tar':
-                self.zf = tarfile.open(tmp, 'w')
-            elif self.kind == 'tgz':
-                self.zf = tarfile.open(tmp, 'w:gz')
-            else:
-                abort('unsupported archive kind: ' + self.kind)
         else:
             self.tmpFd = None
             self.tmpPath = None
-            self.zf = None
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.zf:
-            self.zf.close()
+        if self.tmpPath:
+            # Windows will complain about tmp being in use by another process
+            # when calling shutil.move if we don't close the file descriptor.
             os.close(self.tmpFd)
             if exc_value:
                 # If an error occurred, delete the temp file
@@ -9607,8 +9611,34 @@ class Archiver:
             else:
                 # Correct the permissions on the temporary file which is created with restrictive permissions
                 os.chmod(self.tmpPath, 0o666 & ~currentUmask)
-                # Atomic on Unix
-                shutil.move(self.tmpPath, self.path)
+                # Atomic if `path` does not exist.
+                os.rename(self.tmpPath, self.path)
+
+class Archiver(SafeFileCreation):
+    """
+    Utility for creating and updating a zip or tar file atomically.
+    """
+    def __init__(self, path, kind='zip'):
+        SafeFileCreation.__init__(self, path)
+        self.kind = kind
+
+    def __enter__(self):
+        SafeFileCreation.__enter__(self)
+        if self.tmpPath:
+            if self.kind == 'zip':
+                self.zf = zipfile.ZipFile(self.tmpPath, 'w')
+            elif self.kind == 'tar':
+                self.zf = tarfile.open(self.tmpPath, 'w')
+            elif self.kind == 'tgz':
+                self.zf = tarfile.open(self.tmpPath, 'w:gz')
+            else:
+                abort('unsupported archive kind: ' + self.kind)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.zf:
+            self.zf.close()
+        SafeFileCreation.__exit__(self, exc_type, exc_value, traceback)
 
 def _archive(args):
     archive(args)
@@ -10885,22 +10915,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 def _zip_files(files, baseDir, zipPath):
-    fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(zipPath), dir=baseDir)
-    try:
-        zf = zipfile.ZipFile(tmp, 'w')
+    with SafeFileCreation(zipPath) as sfc:
+        zf = zipfile.ZipFile(sfc.tmpPath, 'w')
         for f in sorted(set(files)):
             relpath = os.path.relpath(f, baseDir)
             arcname = relpath.replace(os.sep, '/')
             zf.write(f, arcname)
         zf.close()
-        os.close(fd)
-        # Atomic on Unix
-        shutil.move(tmp, zipPath)
-        # Correct the permissions on the temporary file which is created with restrictive permissions
-        os.chmod(zipPath, 0o666 & ~currentUmask)
-    finally:
-        if exists(tmp):
-            os.remove(tmp)
 
 RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
 
@@ -14019,7 +14040,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.37.0")
+version = VersionSpec("5.37.1")
 
 currentUmask = None
 
