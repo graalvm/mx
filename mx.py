@@ -6880,7 +6880,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     res = [s for s in _loadedSuites if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
     if opt_limit_to_suite and _opts.specific_suites:
-        res = [s for s in res and s.name in _opts.specific_suites]
+        res = [s for s in res if s.name in _opts.specific_suites]
     return res
 
 def suite(name, fatalIfMissing=True, context=None):
@@ -14036,7 +14036,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.37.1")
+version = VersionSpec("5.37.2")
 
 currentUmask = None
 
