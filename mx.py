@@ -3223,7 +3223,7 @@ class VC(object):
     @staticmethod
     def get_vc_root(dir, abortOnError=True):
         """
-        Attempt to determine what kind of VCS `dir` is it managed by.
+        Attempt to determine what kind of VCS `dir` is managed by.
         Return None, None if it cannot be determined.
 
         :param str dir: a valid path to a version controlled directory
