@@ -5985,8 +5985,13 @@ class Suite:
                 if envDynamicImports:
                     dynamicImports = envDynamicImports.split(',')
             if dynamicImports:
-                for name in dynamicImports:
-                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
+                for dynamic_import in dynamicImports:
+                    in_subdir = '/' in dynamic_import
+                    if in_subdir:
+                        name = dynamic_import[dynamic_import.index('/') + 1:]
+                    else:
+                        name = dynamic_import
+                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
 
     def re_init_imports(self):
         """
