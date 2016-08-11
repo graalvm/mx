@@ -12646,7 +12646,7 @@ def scloneimports(args):
         abort(args.source + ' is not a directory')
 
     source = os.path.realpath(args.source)
-    vcs = VC.get_vc(source)
+    vcs, vcs_root = VC.get_vc_root(source)
     s = _scloneimports_suitehelper(source, primary=True)
 
     default_path = vcs.default_pull(source)
