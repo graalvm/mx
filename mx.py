@@ -4162,8 +4162,10 @@ class GitConfig(VC):
     def metadir(self):
         return '.git'
 
-    def _clone(self, url, dest=None, abortOnError=True, **extra_args):
+    def _clone(self, url, dest=None, branch=None, abortOnError=True, **extra_args):
         cmd = ['git', 'clone']
+        if branch:
+            cmd += ['--branch', branch]
         cmd.append(url)
         if dest:
             cmd.append(dest)
@@ -4181,6 +4183,12 @@ class GitConfig(VC):
         rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=cwd, out=out)
         logvv(out.data)
         return rc == 0
+
+    hash_re = re.compile(r"^[0-9a-f]{7,40}$")
+
+    @staticmethod
+    def _is_hash(rev):
+        return bool(GitConfig.hash_re.match(rev))
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
@@ -4200,11 +4208,11 @@ class GitConfig(VC):
         # cloning it or fetching from it, and other repositories will be unable
         # to push to you, and you won't be able to push to other repositories.
         self._log_clone(url, dest, rev)
-        success = self._clone(url, dest=dest, abortOnError=abortOnError, **extra_args)
-        if success and rev:
+        success = self._clone(url, dest=dest, abortOnError=abortOnError, branch=None if GitConfig._is_hash(rev) else rev, **extra_args)
+        if success and rev and GitConfig._is_hash(rev):
             success = self._reset_rev(rev, dest=dest, abortOnError=abortOnError, **extra_args)
             if not success:
-                #TODO: should the cloned repo be removed from disk if the reset op failed?
+                # TODO: should the cloned repo be removed from disk if the reset op failed?
                 log('reset revision failed, removing {0}'.format(dest))
                 shutil.rmtree(os.path.abspath(dest))
         return success
@@ -5391,7 +5399,10 @@ class SuiteModel:
 
     @staticmethod
     def siblings_dir(suite_dir):
-        _, primary_vc_root = VC.get_vc_root(suite_dir)
+        if exists(suite_dir):
+            _, primary_vc_root = VC.get_vc_root(suite_dir)
+        else:
+            primary_vc_root = suite_dir
         return dirname(primary_vc_root)
 
     @staticmethod
@@ -5492,10 +5503,10 @@ class SuiteImport:
         if urls is None:
             if not in_subdir:
                 if import_dict.get("subdir") is None and importer_in_subdir:
-                    warn("No urls given but 'subdir' is not set, assuming 'subdir=True'", context)
+                    warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
                     in_subdir = True
                 else:
-                    abort("No urls given and not a 'subdir' suite", context=context)
+                    abort("In import for '{}':No urls given and not a 'subdir' suite".format(name), context=context)
             return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir)
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
@@ -6375,8 +6386,8 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc = None if internal else VC.get_vc(self.dir, abortOnError=False)
-        self.vc_dir = None if not self.vc else self.vc.root(self.dir)
+        self.vc, self.vc_dir = (None, None) if internal else VC.get_vc_root(self.dir, abortOnError=False)
+        print("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
         self._load_suite_dict()
         self._init_imports()
@@ -12498,6 +12509,7 @@ def sclone(args):
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
     parser.add_argument('--subdir', help='sub-directory containing the suite in the repository (suite name)')
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
+    parser.add_argument('--revision', help='revision to checkout')
     parser.add_argument("--no-imports", action='store_true', help='do not clone imported suites')
     parser.add_argument("--kind", help='vc kind for URL suites', default='hg')
     parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
@@ -12526,16 +12538,18 @@ def sclone(args):
         dest = args.dest
     else:
         dest = basename(source.rstrip('/'))
+        if dest.endswith('.git'):
+            dest = dest[:-len('.git')]
 
     dest = os.path.abspath(dest)
     # We can now set the primary dir for the src/dst suitemodel
     _dst_suitemodel.set_primary_dir(dest)
     _src_suitemodel.set_primary_dir(source)
     dest_dir = join(dest, args.subdir) if args.subdir else dest
-    _sclone(source, dest, dest_dir, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version)
+    _sclone(source, dest, dest_dir, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version, rev=args.revision)
 
-def _sclone(source, dest, dest_dir, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None):
-    rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
+def _sclone(source, dest, dest_dir, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None, rev=None):
+    rev = suite_import.version if suite_import is not None and suite_import.version is not None else rev
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     if manual is not None:
         assert len(url_vcs) > 0
