@@ -3221,12 +3221,12 @@ class VC(object):
             return None
 
     @staticmethod
-    def get_vc_root(dir, abortOnError=True):
+    def get_vc_root(directory, abortOnError=True):
         """
         Attempt to determine what kind of VCS `dir` is managed by.
         Return None, None if it cannot be determined.
 
-        :param str dir: a valid path to a version controlled directory
+        :param str directory: a valid path to a version controlled directory
         :param bool abortOnError: if an error occurs, abort mx operations
         :return: a tuple containing an instance of VC or None if it cannot be
         determined followed by the root of the repository or None.
@@ -3236,7 +3236,7 @@ class VC(object):
         best_vc = None
         for vcs in _vc_systems:
             vcs.check()
-            root = vcs.root(dir, abortOnError=False)
+            root = vcs.root(directory, abortOnError=False)
             if root is None:
                 continue
             root = os.path.realpath(os.path.abspath(root))
@@ -3244,7 +3244,7 @@ class VC(object):
                 best_root = root
                 best_vc = vcs
         if abortOnError and best_root is None:
-            abort('cannot determine VC and root for ' + dir)
+            abort('cannot determine VC and root for ' + directory)
         return best_vc, best_root
 
     def check(self, abortOnError=True):
@@ -3588,7 +3588,7 @@ class VC(object):
         """
         abort(self.kind + " exists is not implemented")
 
-    def root(self, dir, abortOnError=True):
+    def root(self, directory, abortOnError=True):
         """
         Returns the path to the root of the repository that contains `dir`.
 
@@ -3946,10 +3946,10 @@ class HgConfig(VC):
         except subprocess.CalledProcessError:
             abort('exists failed')
 
-    def root(self, dir, abortOnError=True):
+    def root(self, directory, abortOnError=True):
         self.check_for_hg()
         try:
-            out = subprocess.check_output(['hg', 'root'], cwd=dir, stderr=subprocess.STDOUT)
+            out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -4543,10 +4543,10 @@ class GitConfig(VC):
         except subprocess.CalledProcessError:
             return False
 
-    def root(self, dir, abortOnError=True):
+    def root(self, directory, abortOnError=True):
         self.check_for_git()
         try:
-            out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=dir, stderr=subprocess.STDOUT)
+            out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -4744,7 +4744,7 @@ class BinaryVC(VC):
         # a binary repo has nothing to report
         return True
 
-    def root(self, dir, abortOnError=True):
+    def root(self, directory, abortOnError=True):
         if abortOnError:
             abort("A binary VC has no 'root'")
         return None
@@ -5419,14 +5419,14 @@ class SiblingSuiteModel(SuiteModel):
         self._suiteRootDir = suiteRootDir
 
     def find_suite_dir(self, name, in_subdir):
-        print("find_suite_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, name))
+        logvv("find_suite_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, name))
         return self._search_dir(self._suiteRootDir, name, in_subdir)
 
     def set_primary_dir(self, d):
-        print("set_primary_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, d))
+        logvv("set_primary_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, d))
         SuiteModel.set_primary_dir(self, d)
         self._suiteRootDir = SuiteModel.siblings_dir(d)
-        print("self._suiteRootDir = {})".format(self._suiteRootDir))
+        logvv("self._suiteRootDir = {})".format(self._suiteRootDir))
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
@@ -6386,7 +6386,7 @@ class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
         self.vc, self.vc_dir = (None, None) if internal else VC.get_vc_root(self.dir, abortOnError=False)
-        print("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
+        logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
         self._load_suite_dict()
         self._init_imports()
@@ -12611,7 +12611,7 @@ def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
 
 def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
     # clone first, then visit imports once we can locate them
-    importee_source, importee_source_dir = _src_suitemodel.importee_dir(source, suite_import)
+    importee_source, _ = _src_suitemodel.importee_dir(source, suite_import)
     importee_dest, importee_dest_dir = _dst_suitemodel.importee_dir(s.dir, suite_import)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
@@ -12651,7 +12651,7 @@ def scloneimports(args):
         abort(args.source + ' is not a directory')
 
     source = os.path.realpath(args.source)
-    vcs, vcs_root = VC.get_vc_root(source)
+    vcs, _ = VC.get_vc_root(source)
     s = _scloneimports_suitehelper(source, primary=True)
 
     default_path = vcs.default_pull(source)
@@ -14010,6 +14010,8 @@ def _init_primary_suite(s):
         deferrable()
 
 def main():
+    _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
+    _opts.__dict__['very_verbose'] = '-V' in sys.argv
     global _mx_suite
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
