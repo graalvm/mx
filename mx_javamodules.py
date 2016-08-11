@@ -290,8 +290,7 @@ def make_java_module(dist, jdk):
     addExports = set()
     uses = set()
 
-    # Prepend JDK modules to module path
-    modulepath = list(jdk.get_modules())
+    modulepath = list()
     usedModules = set()
 
     if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
@@ -308,12 +307,15 @@ def make_java_module(dist, jdk):
     else:
         moduledeps = get_module_deps(dist)
 
+    # Prepend JDK modules to module path
+    allmodules = list(jdk.get_modules()) + modulepath
+
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
     packages = []
     for dep in javaprojects:
         uses.update(getattr(dep, 'uses', []))
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
-            depModule, visibility = lookup_package(modulepath, pkg, moduleName)
+            depModule, visibility = lookup_package(allmodules, pkg, moduleName)
             if depModule:
                 requires.setdefault(depModule.name, set())
                 if visibility == 'exported':
