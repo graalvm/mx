@@ -4302,8 +4302,7 @@ class GitConfig(VC):
         :rtype: bool
         """
         if update and not rev:
-            active_branch = self.active_branch(vcdir, abortOnError)
-            cmd = ['git', 'pull', 'origin', 'HEAD:{0}'.format(active_branch)]
+            cmd = ['git', 'pull']
             self._log_pull(vcdir, rev)
             out = OutputCapture()
             rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
