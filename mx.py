@@ -5164,7 +5164,7 @@ def _deploy_binary(args, suite):
         abort('Current primary suite has no version control')
     _mvn.check()
     def _versionGetter(suite):
-        return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.dir))
+        return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.vc_dir))
     dists = suite.dists
     if args.only:
         only = args.only.split(',')
@@ -6201,7 +6201,7 @@ class Suite:
                                 if imported.version != suite_import.version:
                                     resolved = _resolve_suite_version_conflict(s.name, s, imported.version, otherImporter, suite_import, importing_suite)
                                     if resolved:
-                                        s.vc.update(s.dir, rev=resolved, mayPull=True)
+                                        s.vc.update(s.vc_dir, rev=resolved, mayPull=True)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -6321,7 +6321,7 @@ class Suite:
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
-                imported_suite.vc.update(imported_suite.dir, rev=version, mayPull=True)
+                imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
             # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
                 imported_suite._init_metadata()
@@ -6371,11 +6371,11 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             return None
         if not isinstance(existingSuite, SourceSuite):
             abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
-        if not existingSuite.vc.exists(existingSuite.dir, rev=otherImport.version):
+        if not existingSuite.vc.exists(existingSuite.vc_dir, rev=otherImport.version):
             return otherImport.version
-        resolved = existingSuite.vc.latest(existingSuite.dir, otherImport.version, existingSuite.vc.parent(existingSuite.dir))
+        resolved = existingSuite.vc.latest(existingSuite.vc_dir, otherImport.version, existingSuite.vc.parent(existingSuite.vc_dir))
         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
-        if existingSuite.vc.parent(existingSuite.dir) == resolved:
+        if existingSuite.vc.parent(existingSuite.vc_dir) == resolved:
             return None
         return resolved
     if conflict_resolution == 'none':
@@ -6399,20 +6399,20 @@ class SourceSuite(Suite):
         Return the current head changeset of this suite.
         """
         # we do not cache the version because it changes in development
-        return self.vc.parent(self.dir, abortOnError=abortOnError)
+        return self.vc.parent(self.vc_dir, abortOnError=abortOnError)
 
     def isDirty(self, abortOnError=True):
         """
         Check whether there are pending changes in the source.
         """
-        return self.vc.isDirty(self.dir, abortOnError=abortOnError)
+        return self.vc.isDirty(self.vc_dir, abortOnError=abortOnError)
 
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if not self._releaseVersion:
-            tag = self.vc.release_version_from_tags(self.dir, self.name, snapshotSuffix=snapshotSuffix)
+            tag = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not tag:
                 tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
             self._releaseVersion = tag
@@ -6422,10 +6422,10 @@ class SourceSuite(Suite):
         scm = self.scm
         if scm:
             return scm
-        pull = self.vc.default_pull(self.dir, abortOnError=abortOnError)
+        pull = self.vc.default_pull(self.vc_dir, abortOnError=abortOnError)
         if abortOnError and not pull:
-            abort("Can not find scm metadata for suite {0} ({1})".format(self.name, self.dir))
-        push = self.vc.default_push(self.dir, abortOnError=abortOnError)
+            abort("Can not find scm metadata for suite {0} ({1})".format(self.name, self.vc_dir))
+        push = self.vc.default_push(self.vc_dir, abortOnError=abortOnError)
         if not push:
             push = pull
         return SCMMetadata(pull, pull, push)
@@ -6672,7 +6672,7 @@ class BinarySuite(Suite):
         Return the current head changeset of this suite.
         """
         # we do not cache the version because it changes in development
-        return self.vc.parent(self.dir)
+        return self.vc.parent(self.vc_dir)
 
     def release_version(self):
         return self.version()
@@ -9645,7 +9645,8 @@ def pylint(args):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
                 continue
-            files = suite.vc.locate(suite.dir, ['*.py'])
+            suite_location = os.path.relpath(suite.dir, suite.vc_dir)
+            files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
             for pyfile in files:
                 if exists(pyfile):
                     pyfiles.append(pyfile)
@@ -12038,8 +12039,8 @@ def fsckprojects(args):
                 projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
-                    indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
-                    indicatorsInVC = suite.vc.locate(suite.dir, indicators)
+                    indicators = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in indicators]
+                    indicatorsInVC = suite.vc.locate(suite.vc_dir, indicators)
                     # Only proceed if there are indicator files that are not under VC
                     if len(indicators) > len(indicatorsInVC):
                         if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
@@ -12528,7 +12529,12 @@ def sclone(args):
             abort('--source missing and no primary suite found')
         if args.dest is None:
             abort('--dest required when --source is not given')
-        source = _primary_suite.dir
+        source = _primary_suite.vc_dir
+        if _primary_suite.vc_dir != _primary_suite.dir:
+            subdir = os.path.relpath(_primary_suite.vc_dir, _primary_suite.dir)
+            if args.subdir and args.subdir != subdir:
+                abort('--subdir should be ' + subdir)
+            args.subdir = subdir
     else:
         mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
         source = args.source
@@ -12670,8 +12676,8 @@ def _spush_check_import_visitor(s, suite_import, **extra_args):
 def _spush(s, suite_import, dest, checks, clonemissing):
     vcs = s.vc
     if checks['on']:
-        if not vcs.can_push(s.dir, checks['strict'], abortOnError=False):
-            abort('working directory ' + s.dir + ' contains uncommitted changes, push aborted')
+        if not vcs.can_push(s.vc_dir, checks['strict'], abortOnError=False):
+            abort('working directory ' + s.vc_dir + ' contains uncommitted changes, push aborted')
 
     # check imports first
     if checks['on']:
@@ -12693,9 +12699,9 @@ def _spush(s, suite_import, dest, checks, clonemissing):
             return None
 
     if dest_exists:
-        vcs.push(s.dir, rev=get_version(), dest=dest)
+        vcs.push(s.vc_dir, rev=get_version(), dest=dest)
     else:
-        vcs.clone(s.dir, rev=get_version(), dest=dest)
+        vcs.clone(s.vc_dir, rev=get_version(), dest=dest)
 
 def spush(args):
     """push primary suite and all its imports"""
@@ -12731,7 +12737,7 @@ def _supdate_import_visitor(s, suite_import, **extra_args):
 
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
-    s.vc.update(s.dir)
+    s.vc.update(s.vc_dir)
 
 def supdate(args):
     """update primary suite and all its imports"""
@@ -12745,7 +12751,7 @@ def supdate(args):
 def _sbookmark_visitor(s, suite_import):
     imported_suite = suite(suite_import.name)
     if isinstance(imported_suite, SourceSuite):
-        imported_suite.vc.bookmark(imported_suite.dir, s.name + '-import', suite_import.version)
+        imported_suite.vc.bookmark(imported_suite.vc_dir, s.name + '-import', suite_import.version)
 
 def sbookmarkimports(args):
     """place bookmarks on the imported versions of suites in version control"""
@@ -12768,7 +12774,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
     if imported_suite.isDirty() and not ignore_uncommitted:
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
         if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
-            msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.dir)
+            msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
         abort(msg)
     if importedVersion != suite_import.version:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
@@ -12823,7 +12829,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                         if answer == 'a':
                             abort('aborting')
                         elif answer == 's':
-                            imported_suite.vc.status(imported_suite.dir)
+                            imported_suite.vc.status(imported_suite.vc_dir)
                         elif answer == 'c':
                             retry = False
                         elif answer == 'm':
@@ -12836,10 +12842,10 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=clean)
+            imported_suite.vc.update(imported_suite.vc_dir, suite_import_version, mayPull=True, clean=clean)
     else:
         # unusual case, no version specified, so pull the head
-        imported_suite.vc.pull(imported_suite.dir, update=True)
+        imported_suite.vc.pull(imported_suite.vc_dir, update=True)
 
     # now (may) need to force imports of this suite if the above changed its import revs
     # N.B. the suite_imports from the old version may now be invalid
@@ -12869,10 +12875,10 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
         if rev and vcs.kind != suite_import.kind:
             abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-        vcs.pull(imported_suite.dir, rev, update=not no_update)
+        vcs.pull(imported_suite.vc_dir, rev, update=not no_update)
 
     if not primary and update_versions:
-        importedVersion = vcs.parent(imported_suite.dir)
+        importedVersion = vcs.parent(imported_suite.vc_dir)
         if importedVersion != suite_import.version:
             if exists(importing_suite.suite_py()):
                 with open(importing_suite.suite_py()) as fp:
@@ -12911,7 +12917,7 @@ def _sincoming_import_visitor(s, suite_import, **extra_args):
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
 
-    output = s.vc.incoming(s.dir)
+    output = s.vc.incoming(s.vc_dir)
     if output:
         print output
 
@@ -12930,7 +12936,7 @@ def _hg_command(s, suite_import, **extra_args):
     s.visit_imports(_hg_command_import_visitor, **extra_args)
 
     if isinstance(s.vc, HgConfig):
-        out = s.vc.hg_command(s.dir, extra_args['args'])
+        out = s.vc.hg_command(s.vc_dir, extra_args['args'])
         print out
 
 def hg_command(args):
@@ -12973,7 +12979,7 @@ def _stip_import_visitor(s, suite_import, **extra_args):
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
-    print 'tip of ' + s.name + ': ' + s.vc.tip(s.dir)
+    print 'tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir)
 
 def stip(args):
     """check tip for primary suite and all imports"""
@@ -13008,7 +13014,7 @@ def sversions(args):
         if s.vc == None:
             print 'No version control info for suite ' + s.name
         else:
-            print _sversions_rev(s.vc.parent(s.dir), s.vc.isDirty(s.dir), with_color) + ' ' + s.name
+            print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name
         s.visit_imports(_sversions_import_visitor)
 
     primary_suite = _check_primary_suite()
@@ -13553,8 +13559,8 @@ def maven_install(args):
 
     _mvn.check()
     s = _primary_suite
-    nolocalchanges = args.no_checks or s.vc.can_push(s.dir, strict=False)
-    version = s.vc.parent(s.dir)
+    nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
+    version = s.vc.parent(s.vc_dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
     only = []
