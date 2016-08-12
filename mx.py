@@ -6674,6 +6674,7 @@ class BinarySuite(Suite):
         # directory. For a freshly downloaded suite, the actual distribution jars
         # have not been downloaded as we need info from the suite.py for that
         self.vc = BinaryVC()
+        self.vc_dir = self.dir
         self._load_binary_suite()
         self._init_imports()
         self._load()
