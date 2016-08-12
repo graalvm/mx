@@ -3223,7 +3223,7 @@ class VC(object):
     @staticmethod
     def get_vc_root(directory, abortOnError=True):
         """
-        Attempt to determine what kind of VCS `directory` is managed by.
+        Attempt to determine what kind of VCS is associated with `directory`.
         Return the VC and its root directory or (None, None) if it cannot be determined.
 
         If `directory` is contained in multiple VCS, the one with the deepest nesting is returned.
