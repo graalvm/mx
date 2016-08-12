@@ -64,6 +64,17 @@ and override any value provided by the shell environment.
 
 The `-v` option to `mx` will show the loading of `env` files during suite parsing.
 
+### Multiple suites per repository ###
+
+Sometimes it might be convenient to group multiple suites inside a single repository.
+In particular, this helps ensure that all these suites are synchronized and tested together.
+
+* A suite inside a 'big repo' must be in a directory that has the same name as the suite
+* If you depend on a suite that is inside a 'big repo', you have to set `subdir` to `True` in the suite import.
+* If you depend on a suite that is in the same 'big repo' as the current suite, you should not specify `urls` in the suite import.
+* In order to `sclone` something that is inside a 'big repo' you have to use the `--subdir` argument for `sclone` which tells in which directory the suite that you want to clone is
+* In order to dynamically import a suite that is inside a 'big repo' you have to use `--dynamicimport bigrepo/suite` (e.g., `--dynamicimport graal-enterprise/substratrevm`)
+
 ### mx versioning ###
 
 `mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if the
