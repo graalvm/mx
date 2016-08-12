@@ -14021,6 +14021,7 @@ def _init_primary_suite(s):
         deferrable()
 
 def main():
+    # make sure logv and logvv work as soon as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
     global _mx_suite
