@@ -3220,6 +3220,35 @@ class VC(object):
         else:
             return None
 
+    @staticmethod
+    def get_vc_root(directory, abortOnError=True):
+        """
+        Attempt to determine what kind of VCS is associated with `directory`.
+        Return the VC and its root directory or (None, None) if it cannot be determined.
+
+        If `directory` is contained in multiple VCS, the one with the deepest nesting is returned.
+
+        :param str directory: a valid path to a potentially version controlled directory
+        :param bool abortOnError: if an error occurs, abort mx operations
+        :return: a tuple containing an instance of VC or None if it cannot be
+        determined followed by the root of the repository or None.
+        :rtype: :class:`VC`, str
+        """
+        best_root = None
+        best_vc = None
+        for vcs in _vc_systems:
+            vcs.check()
+            root = vcs.root(directory, abortOnError=False)
+            if root is None:
+                continue
+            root = os.path.realpath(os.path.abspath(root))
+            if best_root is None or len(root) > len(best_root):  # prefer more nested vcs roots
+                best_root = root
+                best_vc = vcs
+        if abortOnError and best_root is None:
+            abort('cannot determine VC and root for ' + directory)
+        return best_vc, best_root
+
     def check(self, abortOnError=True):
         """
         Lazily check whether a particular VC system is available.
@@ -3560,6 +3589,18 @@ class VC(object):
         :rtype: bool
         """
         abort(self.kind + " exists is not implemented")
+
+    def root(self, directory, abortOnError=True):
+        """
+        Returns the path to the root of the repository that contains `dir`.
+
+        :param str dir: a path to a directory contained in a repository.
+        :param bool abortOnError: if True abort on mx error
+        :return: The path to the repository's root
+        :rtype: str or None
+        """
+        abort(self.kind + " root is not implemented")
+
 
 
 class OutputCapture:
@@ -3907,6 +3948,17 @@ class HgConfig(VC):
         except subprocess.CalledProcessError:
             abort('exists failed')
 
+    def root(self, directory, abortOnError=True):
+        self.check_for_hg()
+        try:
+            out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
+            return out.strip()
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('hg root failed')
+            else:
+                return None
+
 
 class GitConfig(VC):
     """
@@ -4112,8 +4164,10 @@ class GitConfig(VC):
     def metadir(self):
         return '.git'
 
-    def _clone(self, url, dest=None, abortOnError=True, **extra_args):
+    def _clone(self, url, dest=None, branch=None, abortOnError=True, **extra_args):
         cmd = ['git', 'clone']
+        if branch:
+            cmd += ['--branch', branch]
         cmd.append(url)
         if dest:
             cmd.append(dest)
@@ -4131,6 +4185,12 @@ class GitConfig(VC):
         rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=cwd, out=out)
         logvv(out.data)
         return rc == 0
+
+    hash_re = re.compile(r"^[0-9a-f]{7,40}$")
+
+    @staticmethod
+    def _is_hash(rev):
+        return bool(GitConfig.hash_re.match(rev))
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
@@ -4150,11 +4210,11 @@ class GitConfig(VC):
         # cloning it or fetching from it, and other repositories will be unable
         # to push to you, and you won't be able to push to other repositories.
         self._log_clone(url, dest, rev)
-        success = self._clone(url, dest=dest, abortOnError=abortOnError, **extra_args)
-        if success and rev:
+        success = self._clone(url, dest=dest, abortOnError=abortOnError, branch=None if GitConfig._is_hash(rev) else rev, **extra_args)
+        if success and rev and GitConfig._is_hash(rev):
             success = self._reset_rev(rev, dest=dest, abortOnError=abortOnError, **extra_args)
             if not success:
-                #TODO: should the cloned repo be removed from disk if the reset op failed?
+                # TODO: should the cloned repo be removed from disk if the reset op failed?
                 log('reset revision failed, removing {0}'.format(dest))
                 shutil.rmtree(os.path.abspath(dest))
         return success
@@ -4244,8 +4304,7 @@ class GitConfig(VC):
         :rtype: bool
         """
         if update and not rev:
-            active_branch = self.active_branch(vcdir, abortOnError)
-            cmd = ['git', 'pull', 'origin', 'HEAD:{0}'.format(active_branch)]
+            cmd = ['git', 'pull']
             self._log_pull(vcdir, rev)
             out = OutputCapture()
             rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
@@ -4486,6 +4545,17 @@ class GitConfig(VC):
         except subprocess.CalledProcessError:
             return False
 
+    def root(self, directory, abortOnError=True):
+        self.check_for_git()
+        try:
+            out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
+            return out.strip()
+        except subprocess.CalledProcessError:
+            if abortOnError:
+                abort('`git rev-parse --show-toplevel` (root) failed')
+            else:
+                return None
+
 
 
 class BinaryVC(VC):
@@ -4675,6 +4745,11 @@ class BinaryVC(VC):
     def status(self, abortOnError=True):
         # a binary repo has nothing to report
         return True
+
+    def root(self, directory, abortOnError=True):
+        if abortOnError:
+            abort("A binary VC has no 'root'")
+        return None
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -5091,7 +5166,7 @@ def _deploy_binary(args, suite):
         abort('Current primary suite has no version control')
     _mvn.check()
     def _versionGetter(suite):
-        return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.dir))
+        return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.vc_dir))
     dists = suite.dists
     if args.only:
         only = args.only.split(',')
@@ -5269,7 +5344,7 @@ class SuiteModel:
         self.primaryDir = None
         self.suitenamemap = {}
 
-    def find_suite_dir(self, suitename):
+    def find_suite_dir(self, suitename, subdir):
         """locates the URL/path for suitename or None if not found"""
         abort('find_suite_dir not implemented')
 
@@ -5289,11 +5364,15 @@ class SuiteModel:
         """Returns the dirname that contains any nested suites if the model supports that"""
         return None
 
-    def _search_dir(self, searchDir, name):
+    def _search_dir(self, searchDir, name, in_subdir):
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
-            sd = _is_suite_dir(join(searchDir, dd), _mxDirName(name))
+            if in_subdir:
+                candidate = join(searchDir, dd, name)
+            else:
+                candidate = join(searchDir, dd)
+            sd = _is_suite_dir(candidate, _mxDirName(name))
             if sd is not None:
                 return sd
 
@@ -5319,6 +5398,25 @@ class SuiteModel:
         else:
             abort('unknown suitemodel type: ' + name)
 
+    @staticmethod
+    def siblings_dir(suite_dir):
+        if exists(suite_dir):
+            _, primary_vc_root = VC.get_vc_root(suite_dir)
+        else:
+            primary_vc_root = suite_dir
+        return dirname(primary_vc_root)
+
+    @staticmethod
+    def _checked_to_importee_tuple(checked, suite_import):
+        """ Converts the result of `_check_exists` to a tuple containing the result of `_check_exists` and
+        the directory in which the importee can be found.
+        If the result of checked is the urlinfos list, this path is relative to where the repository would be checked out.
+        """
+        if isinstance(checked, list):
+            return checked, suite_import.name if suite_import.in_subdir else None
+        else:
+            return checked, join(checked, suite_import.name) if suite_import.in_subdir else checked
+
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
@@ -5326,31 +5424,36 @@ class SiblingSuiteModel(SuiteModel):
         SuiteModel.__init__(self, kind)
         self._suiteRootDir = suiteRootDir
 
-    def find_suite_dir(self, name):
-        return self._search_dir(self._suiteRootDir, name)
+    def find_suite_dir(self, name, in_subdir):
+        logvv("find_suite_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, name))
+        return self._search_dir(self._suiteRootDir, name, in_subdir)
 
     def set_primary_dir(self, d):
+        logvv("set_primary_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, d))
         SuiteModel.set_primary_dir(self, d)
-        self._suiteRootDir = dirname(d)
+        self._suiteRootDir = SuiteModel.siblings_dir(d)
+        logvv("self._suiteRootDir = {})".format(self._suiteRootDir))
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
-        path = join(dirname(importer_dir), suitename)
-        return self._check_exists(suite_import, path, check_alternate)
+        path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
+        checked = self._check_exists(suite_import, path, check_alternate)
+        return SuiteModel._checked_to_importee_tuple(checked, suite_import)
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'mx.imports/source' directory of the primary suite"""
-    def _imported_suites_dirname(self):
-        return 'mx.imports/source'
+    @staticmethod
+    def _imported_suites_dirname():
+        return join('mx.imports', 'source')
 
     def __init__(self, kind, primaryDir, option):
         SuiteModel.__init__(self, kind)
         self._primaryDir = primaryDir
 
-    def find_suite_dir(self, name):
-        return self._search_dir(join(self._primaryDir, self._imported_suites_dirname()), name)
+    def find_suite_dir(self, name, in_subdir):
+        return self._search_dir(join(self._primaryDir, NestedImportsSuiteModel._imported_suites_dirname()), name, in_subdir)
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
@@ -5358,15 +5461,16 @@ class NestedImportsSuiteModel(SuiteModel):
             suitename = self.suitenamemap[suitename]
         if basename(importer_dir) == basename(self._primaryDir):
             # primary is importer
-            this_imported_suites_dirname = join(importer_dir, self._imported_suites_dirname())
+            this_imported_suites_dirname = join(importer_dir, NestedImportsSuiteModel._imported_suites_dirname())
             ensure_dir_exists(this_imported_suites_dirname)
             path = join(this_imported_suites_dirname, suitename)
         else:
-            path = join(dirname(importer_dir), suitename)
-        return self._check_exists(suite_import, path, check_alternate)
+            path = join(SuiteModel.siblings_dir(importer_dir), suitename)
+        checked = self._check_exists(suite_import, path, check_alternate)
+        return SuiteModel._checked_to_importee_tuple(checked, suite_import)
 
     def nestedsuites_dirname(self):
-        return self._imported_suites_dirname()
+        return NestedImportsSuiteModel._imported_suites_dirname()
 
 """
 Captures the info in the {"url", "kind"} dict,
@@ -5384,21 +5488,31 @@ class SuiteImportURLInfo:
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
-    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False):
+    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False):
         self.name = name
         self.version = version
         self.urlinfos = [] if urlinfos is None else urlinfos
         self.dynamicImport = dynamicImport
         self.kind = kind
+        self.in_subdir = in_subdir
 
     @staticmethod
-    def parse_specification(import_dict, context, dynamicImport=False):
+    def parse_specification(import_dict, context, dynamicImport=False, importer_in_subdir=False):
         name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute', context=context)
         # missing defaults to the tip
         version = import_dict.get("version")
         urls = import_dict.get("urls")
+        in_subdir = import_dict.get("subdir", False)
+        if urls is None:
+            if not in_subdir:
+                if import_dict.get("subdir") is None and importer_in_subdir:
+                    warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
+                    in_subdir = True
+                else:
+                    abort("In import for '{}':No urls given and not a 'subdir' suite".format(name), context=context)
+            return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir)
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
             abort('suite import urls must be a list', context=context)
@@ -5422,7 +5536,7 @@ class SuiteImport:
             vc_kind = mainKind
         elif urlinfos:
             vc_kind = 'binary'
-        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport)
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -5859,7 +5973,7 @@ class Suite:
                     abort('suite import entry must be a dict')
 
                 import_dict = entry
-                suite_import = SuiteImport.parse_specification(import_dict, context=self, dynamicImport=self.dynamicallyImported)
+                suite_import = SuiteImport.parse_specification(import_dict, context=self, dynamicImport=self.dynamicallyImported, importer_in_subdir=self.dir != self.vc_dir)
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
                 if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
                     _jdkProvidedSuites.add(suite_import.name)
@@ -5877,8 +5991,13 @@ class Suite:
                 if envDynamicImports:
                     dynamicImports = envDynamicImports.split(',')
             if dynamicImports:
-                for name in dynamicImports:
-                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True))
+                for dynamic_import in dynamicImports:
+                    in_subdir = '/' in dynamic_import
+                    if in_subdir:
+                        name = dynamic_import[dynamic_import.index('/') + 1:]
+                    else:
+                        name = dynamic_import
+                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
 
     def re_init_imports(self):
         """
@@ -6093,7 +6212,7 @@ class Suite:
                                 if imported.version != suite_import.version:
                                     resolved = _resolve_suite_version_conflict(s.name, s, imported.version, otherImporter, suite_import, importing_suite)
                                     if resolved:
-                                        s.vc.update(s.dir, rev=resolved, mayPull=True)
+                                        s.vc.update(s.vc_dir, rev=resolved, mayPull=True)
                 return s
 
         searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
@@ -6117,14 +6236,14 @@ class Suite:
                 return importing_suite._find_binary_suite_dir(suite_import.name)
             else:
                 # use the SuiteModel to locate a local source copy of the suite
-                return _src_suitemodel.find_suite_dir(suite_import.name)
+                return _src_suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
 
         def _get_import_dir():
             """Return directory where the suite will be cloned to"""
             if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
-                importDir = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                importDir, _ = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
                 if exists(importDir):
                     abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
                 return importDir
@@ -6161,7 +6280,7 @@ class Suite:
                         break
                     else:
                         # it is possible that the clone partially populated the target
-                        # which will mess an up an alternate, so we clean it
+                        # which will mess up further attempts, so we "clean" it
                         if exists(importDir):
                             shutil.rmtree(importDir)
 
@@ -6213,7 +6332,7 @@ class Suite:
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
-                imported_suite.vc.update(imported_suite.dir, rev=version, mayPull=True)
+                imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
             # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
                 imported_suite._init_metadata()
@@ -6263,11 +6382,11 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             return None
         if not isinstance(existingSuite, SourceSuite):
             abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
-        if not existingSuite.vc.exists(existingSuite.dir, rev=otherImport.version):
+        if not existingSuite.vc.exists(existingSuite.vc_dir, rev=otherImport.version):
             return otherImport.version
-        resolved = existingSuite.vc.latest(existingSuite.dir, otherImport.version, existingSuite.vc.parent(existingSuite.dir))
+        resolved = existingSuite.vc.latest(existingSuite.vc_dir, otherImport.version, existingSuite.vc.parent(existingSuite.vc_dir))
         # TODO currently this only handles simple DAGs and it will always do an update assuming that the repo is at a version controlled by mx
-        if existingSuite.vc.parent(existingSuite.dir) == resolved:
+        if existingSuite.vc.parent(existingSuite.vc_dir) == resolved:
             return None
         return resolved
     if conflict_resolution == 'none':
@@ -6277,7 +6396,8 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc = None if internal else VC.get_vc(self.dir, abortOnError=False)
+        self.vc, self.vc_dir = (None, None) if internal else VC.get_vc_root(self.dir, abortOnError=False)
+        logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
         self._load_suite_dict()
         self._init_imports()
@@ -6290,20 +6410,20 @@ class SourceSuite(Suite):
         Return the current head changeset of this suite.
         """
         # we do not cache the version because it changes in development
-        return self.vc.parent(self.dir, abortOnError=abortOnError)
+        return self.vc.parent(self.vc_dir, abortOnError=abortOnError)
 
     def isDirty(self, abortOnError=True):
         """
         Check whether there are pending changes in the source.
         """
-        return self.vc.isDirty(self.dir, abortOnError=abortOnError)
+        return self.vc.isDirty(self.vc_dir, abortOnError=abortOnError)
 
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if not self._releaseVersion:
-            tag = self.vc.release_version_from_tags(self.dir, self.name, snapshotSuffix=snapshotSuffix)
+            tag = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not tag:
                 tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
             self._releaseVersion = tag
@@ -6313,10 +6433,10 @@ class SourceSuite(Suite):
         scm = self.scm
         if scm:
             return scm
-        pull = self.vc.default_pull(self.dir, abortOnError=abortOnError)
+        pull = self.vc.default_pull(self.vc_dir, abortOnError=abortOnError)
         if abortOnError and not pull:
-            abort("Can not find scm metadata for suite {0} ({1})".format(self.name, self.dir))
-        push = self.vc.default_push(self.dir, abortOnError=abortOnError)
+            abort("Can not find scm metadata for suite {0} ({1})".format(self.name, self.vc_dir))
+        push = self.vc.default_push(self.vc_dir, abortOnError=abortOnError)
         if not push:
             push = pull
         return SCMMetadata(pull, pull, push)
@@ -6563,7 +6683,7 @@ class BinarySuite(Suite):
         Return the current head changeset of this suite.
         """
         # we do not cache the version because it changes in development
-        return self.vc.parent(self.dir)
+        return self.vc.parent(self.vc_dir)
 
     def release_version(self):
         return self.version()
@@ -9536,7 +9656,8 @@ def pylint(args):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
                 continue
-            files = suite.vc.locate(suite.dir, ['*.py'])
+            suite_location = os.path.relpath(suite.dir, suite.vc_dir)
+            files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
             for pyfile in files:
                 if exists(pyfile):
                     pyfiles.append(pyfile)
@@ -11929,8 +12050,8 @@ def fsckprojects(args):
                 projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
                 indicators = projectConfigFiles.intersection(files)
                 if len(indicators) != 0:
-                    indicators = [os.path.relpath(join(dirpath, i), suite.dir) for i in indicators]
-                    indicatorsInVC = suite.vc.locate(suite.dir, indicators)
+                    indicators = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in indicators]
+                    indicatorsInVC = suite.vc.locate(suite.vc_dir, indicators)
                     # Only proceed if there are indicator files that are not under VC
                     if len(indicators) > len(indicatorsInVC):
                         if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
@@ -12397,7 +12518,9 @@ def sclone(args):
     """clone a suite repository, and its imported suites"""
     parser = ArgumentParser(prog='mx sclone')
     parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
+    parser.add_argument('--subdir', help='sub-directory containing the suite in the repository (suite name)')
     parser.add_argument('--dest', help='destination directory (default basename of source)', metavar='<path>')
+    parser.add_argument('--revision', help='revision to checkout')
     parser.add_argument("--no-imports", action='store_true', help='do not clone imported suites')
     parser.add_argument("--kind", help='vc kind for URL suites', default='hg')
     parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
@@ -12417,7 +12540,12 @@ def sclone(args):
             abort('--source missing and no primary suite found')
         if args.dest is None:
             abort('--dest required when --source is not given')
-        source = _primary_suite.dir
+        source = _primary_suite.vc_dir
+        if _primary_suite.vc_dir != _primary_suite.dir:
+            subdir = os.path.relpath(_primary_suite.vc_dir, _primary_suite.dir)
+            if args.subdir and args.subdir != subdir:
+                abort('--subdir should be ' + subdir)
+            args.subdir = subdir
     else:
         mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
         source = args.source
@@ -12426,16 +12554,18 @@ def sclone(args):
         dest = args.dest
     else:
         dest = basename(source.rstrip('/'))
+        if dest.endswith('.git'):
+            dest = dest[:-len('.git')]
 
     dest = os.path.abspath(dest)
     # We can now set the primary dir for the src/dst suitemodel
     _dst_suitemodel.set_primary_dir(dest)
     _src_suitemodel.set_primary_dir(source)
+    dest_dir = join(dest, args.subdir) if args.subdir else dest
+    _sclone(source, dest, dest_dir, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version, rev=args.revision)
 
-    _sclone(source, dest, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version)
-
-def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None):
-    rev = suite_import.version if suite_import is not None and suite_import.version is not None else None
+def _sclone(source, dest, dest_dir, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None, rev=None):
+    rev = suite_import.version if suite_import is not None and suite_import.version is not None else rev
     url_vcs = SuiteImport.get_source_urls(source, vc_kind)
     if manual is not None:
         assert len(url_vcs) > 0
@@ -12464,15 +12594,15 @@ def _sclone(source, dest, suite_import, no_imports=False, vc_kind=None, manual=N
         warn("Could not clone {}: {}".format(suite_import.name, reason))
         return None
 
-    mxDir = _is_suite_dir(dest)
+    mxDir = _is_suite_dir(dest_dir)
     if mxDir is None:
-        warn(dest + ' is not an mx suite')
+        warn(dest_dir + ' is not an mx suite')
         return None
 
     # create a Suite (without loading) to enable imports visitor
     s = SourceSuite(mxDir, load=False, dynamicallyImported=suite_import.dynamicImport if suite_import else False, primary=primary)
     if not no_imports:
-        s.visit_imports(_scloneimports_visitor, source=dest, manual=manual, ignoreVersion=ignoreVersion)
+        s.visit_imports(_scloneimports_visitor, source=dest_dir, manual=manual, ignoreVersion=ignoreVersion)
     return s
 
 def _scloneimports_visitor(s, suite_import, source, manual=None, ignoreVersion=False, **extra_args):
@@ -12492,11 +12622,11 @@ def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
 
 def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
     # clone first, then visit imports once we can locate them
-    importee_source = _src_suitemodel.importee_dir(source, suite_import)
-    importee_dest = _dst_suitemodel.importee_dir(s.dir, suite_import)
+    importee_source, _ = _src_suitemodel.importee_dir(source, suite_import)
+    importee_dest, importee_dest_dir = _dst_suitemodel.importee_dir(s.dir, suite_import)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
-        importee_suite = _scloneimports_suitehelper(importee_dest, dynamicallyImported=suite_import.dynamicImport)
+        importee_suite = _scloneimports_suitehelper(importee_dest_dir, dynamicallyImported=suite_import.dynamicImport)
         existingRevision = importee_suite.version()
         if not ignoreVersion and existingRevision != suite_import.version:
             resolved = _resolve_suite_version_conflict(suite_import.name, importee_suite, existingRevision, None, suite_import, s)
@@ -12510,7 +12640,7 @@ def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
                     importee_suite.vc.update(importee_dest, rev=resolved, mayPull=True)
         importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual, ignoreVersion=ignoreVersion)
     else:
-        _sclone(importee_source, importee_dest, suite_import, manual=manual, ignoreVersion=ignoreVersion, importingSuite=s)
+        _sclone(importee_source, importee_dest, importee_dest_dir, suite_import, manual=manual, ignoreVersion=ignoreVersion, importingSuite=s)
         # _clone handles the recursive visit of the new imports
 
 @primary_suite_exempt
@@ -12532,7 +12662,7 @@ def scloneimports(args):
         abort(args.source + ' is not a directory')
 
     source = os.path.realpath(args.source)
-    vcs = VC.get_vc(source)
+    vcs, _ = VC.get_vc_root(source)
     s = _scloneimports_suitehelper(source, primary=True)
 
     default_path = vcs.default_pull(source)
@@ -12545,7 +12675,7 @@ def scloneimports(args):
 def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
     """push visitor for Suite.visit_imports"""
     if dest is not None:
-        dest = _dst_suitemodel.importee_dir(dest, suite_import)
+        dest, _ = _dst_suitemodel.importee_dir(dest, suite_import)
     _spush(suite(suite_import.name), suite_import, dest, checks, clonemissing)
 
 def _spush_check_import_visitor(s, suite_import, **extra_args):
@@ -12557,8 +12687,8 @@ def _spush_check_import_visitor(s, suite_import, **extra_args):
 def _spush(s, suite_import, dest, checks, clonemissing):
     vcs = s.vc
     if checks['on']:
-        if not vcs.can_push(s.dir, checks['strict'], abortOnError=False):
-            abort('working directory ' + s.dir + ' contains uncommitted changes, push aborted')
+        if not vcs.can_push(s.vc_dir, checks['strict'], abortOnError=False):
+            abort('working directory ' + s.vc_dir + ' contains uncommitted changes, push aborted')
 
     # check imports first
     if checks['on']:
@@ -12580,9 +12710,9 @@ def _spush(s, suite_import, dest, checks, clonemissing):
             return None
 
     if dest_exists:
-        vcs.push(s.dir, rev=get_version(), dest=dest)
+        vcs.push(s.vc_dir, rev=get_version(), dest=dest)
     else:
-        vcs.clone(s.dir, rev=get_version(), dest=dest)
+        vcs.clone(s.vc_dir, rev=get_version(), dest=dest)
 
 def spush(args):
     """push primary suite and all its imports"""
@@ -12618,7 +12748,7 @@ def _supdate_import_visitor(s, suite_import, **extra_args):
 
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
-    s.vc.update(s.dir)
+    s.vc.update(s.vc_dir)
 
 def supdate(args):
     """update primary suite and all its imports"""
@@ -12632,7 +12762,7 @@ def supdate(args):
 def _sbookmark_visitor(s, suite_import):
     imported_suite = suite(suite_import.name)
     if isinstance(imported_suite, SourceSuite):
-        imported_suite.vc.bookmark(imported_suite.dir, s.name + '-import', suite_import.version)
+        imported_suite.vc.bookmark(imported_suite.vc_dir, s.name + '-import', suite_import.version)
 
 def sbookmarkimports(args):
     """place bookmarks on the imported versions of suites in version control"""
@@ -12655,7 +12785,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
     if imported_suite.isDirty() and not ignore_uncommitted:
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
         if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
-            msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.dir)
+            msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
         abort(msg)
     if importedVersion != suite_import.version:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
@@ -12710,7 +12840,7 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                         if answer == 'a':
                             abort('aborting')
                         elif answer == 's':
-                            imported_suite.vc.status(imported_suite.dir)
+                            imported_suite.vc.status(imported_suite.vc_dir)
                         elif answer == 'c':
                             retry = False
                         elif answer == 'm':
@@ -12723,10 +12853,10 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
                     abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.dir, suite_import_version, mayPull=True, clean=clean)
+            imported_suite.vc.update(imported_suite.vc_dir, suite_import_version, mayPull=True, clean=clean)
     else:
         # unusual case, no version specified, so pull the head
-        imported_suite.vc.pull(imported_suite.dir, update=True)
+        imported_suite.vc.pull(imported_suite.vc_dir, update=True)
 
     # now (may) need to force imports of this suite if the above changed its import revs
     # N.B. the suite_imports from the old version may now be invalid
@@ -12756,10 +12886,10 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
         if rev and vcs.kind != suite_import.kind:
             abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-        vcs.pull(imported_suite.dir, rev, update=not no_update)
+        vcs.pull(imported_suite.vc_dir, rev, update=not no_update)
 
     if not primary and update_versions:
-        importedVersion = vcs.parent(imported_suite.dir)
+        importedVersion = vcs.parent(imported_suite.vc_dir)
         if importedVersion != suite_import.version:
             if exists(importing_suite.suite_py()):
                 with open(importing_suite.suite_py()) as fp:
@@ -12798,7 +12928,7 @@ def _sincoming_import_visitor(s, suite_import, **extra_args):
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
 
-    output = s.vc.incoming(s.dir)
+    output = s.vc.incoming(s.vc_dir)
     if output:
         print output
 
@@ -12817,7 +12947,7 @@ def _hg_command(s, suite_import, **extra_args):
     s.visit_imports(_hg_command_import_visitor, **extra_args)
 
     if isinstance(s.vc, HgConfig):
-        out = s.vc.hg_command(s.dir, extra_args['args'])
+        out = s.vc.hg_command(s.vc_dir, extra_args['args'])
         print out
 
 def hg_command(args):
@@ -12827,13 +12957,13 @@ def hg_command(args):
 
 def _soutgoing_import_visitor(s, suite_import, dest, **extra_args):
     if dest is not None:
-        dest = _dst_suitemodel.importee_dir(dest, suite_import)
+        dest, _ = _dst_suitemodel.importee_dir(dest, suite_import)
     _soutgoing(suite(suite_import.name), suite_import, dest)
 
 def _soutgoing(s, suite_import, dest):
     s.visit_imports(_soutgoing_import_visitor, dest=dest)
 
-    output = s.vc.outgoing(s.dir, dest)
+    output = s.vc.outgoing(s.vc_dir, dest)
     if output:
         print output
 
@@ -12860,7 +12990,7 @@ def _stip_import_visitor(s, suite_import, **extra_args):
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
-    print 'tip of ' + s.name + ': ' + s.vc.tip(s.dir)
+    print 'tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir)
 
 def stip(args):
     """check tip for primary suite and all imports"""
@@ -12895,7 +13025,7 @@ def sversions(args):
         if s.vc == None:
             print 'No version control info for suite ' + s.name
         else:
-            print _sversions_rev(s.vc.parent(s.dir), s.vc.isDirty(s.dir), with_color) + ' ' + s.name
+            print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name
         s.visit_imports(_sversions_import_visitor)
 
     primary_suite = _check_primary_suite()
@@ -13440,8 +13570,8 @@ def maven_install(args):
 
     _mvn.check()
     s = _primary_suite
-    nolocalchanges = args.no_checks or s.vc.can_push(s.dir, strict=False)
-    version = s.vc.parent(s.dir)
+    nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
+    version = s.vc.parent(s.vc_dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
     only = []
@@ -13891,6 +14021,9 @@ def _init_primary_suite(s):
         deferrable()
 
 def main():
+    # make sure logv and logvv work as soon as possible
+    _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
+    _opts.__dict__['very_verbose'] = '-V' in sys.argv
     global _mx_suite
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
@@ -14036,7 +14169,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.37.3")
+version = VersionSpec("5.38.0")
 
 currentUmask = None
 
