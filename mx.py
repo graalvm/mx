@@ -4192,7 +4192,7 @@ class GitConfig(VC):
     def _is_hash(rev):
         return bool(GitConfig.hash_re.match(rev))
 
-    def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
+    def clone(self, url, dest=None, rev='master', abortOnError=True, **extra_args):
         """
         Clone the repo at `url` to `dest` using `rev`
 
