@@ -3223,10 +3223,12 @@ class VC(object):
     @staticmethod
     def get_vc_root(directory, abortOnError=True):
         """
-        Attempt to determine what kind of VCS `dir` is managed by.
-        Return None, None if it cannot be determined.
+        Attempt to determine what kind of VCS `directory` is managed by.
+        Return the VC and its root directory or (None, None) if it cannot be determined.
 
-        :param str directory: a valid path to a version controlled directory
+        If `directory` is contained in multiple VCS, the one with the deepest nesting is returned.
+
+        :param str directory: a valid path to a potentially version controlled directory
         :param bool abortOnError: if an error occurs, abort mx operations
         :return: a tuple containing an instance of VC or None if it cannot be
         determined followed by the root of the repository or None.
@@ -3240,7 +3242,7 @@ class VC(object):
             if root is None:
                 continue
             root = os.path.realpath(os.path.abspath(root))
-            if best_root is None or len(root) > len(best_root):
+            if best_root is None or len(root) > len(best_root):  # prefer more nested vcs roots
                 best_root = root
                 best_vc = vcs
         if abortOnError and best_root is None:
@@ -3953,7 +3955,7 @@ class HgConfig(VC):
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
-                abort('latest failed')
+                abort('hg root failed')
             else:
                 return None
 
@@ -4550,7 +4552,7 @@ class GitConfig(VC):
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
-                abort('latest failed')
+                abort('`git rev-parse --show-toplevel` (root) failed')
             else:
                 return None
 
@@ -5405,7 +5407,11 @@ class SuiteModel:
         return dirname(primary_vc_root)
 
     @staticmethod
-    def checked_to_importee_tuple(checked, suite_import):
+    def _checked_to_importee_tuple(checked, suite_import):
+        """ Converts the result of `_check_exists` to a tuple containing the result of `_check_exists` and
+        the directory in which the importee can be found.
+        If the result of checked is the urlinfos list, this path is relative to where the repository would be checked out.
+        """
         if isinstance(checked, list):
             return checked, suite_import.name if suite_import.in_subdir else None
         else:
@@ -5434,7 +5440,7 @@ class SiblingSuiteModel(SuiteModel):
             suitename = self.suitenamemap[suitename]
         path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
         checked = self._check_exists(suite_import, path, check_alternate)
-        return SuiteModel.checked_to_importee_tuple(checked, suite_import)
+        return SuiteModel._checked_to_importee_tuple(checked, suite_import)
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'mx.imports/source' directory of the primary suite"""
@@ -5461,7 +5467,7 @@ class NestedImportsSuiteModel(SuiteModel):
         else:
             path = join(SuiteModel.siblings_dir(importer_dir), suitename)
         checked = self._check_exists(suite_import, path, check_alternate)
-        return SuiteModel.checked_to_importee_tuple(checked, suite_import)
+        return SuiteModel._checked_to_importee_tuple(checked, suite_import)
 
     def nestedsuites_dirname(self):
         return NestedImportsSuiteModel._imported_suites_dirname()
