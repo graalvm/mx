@@ -4190,7 +4190,7 @@ class GitConfig(VC):
 
     @staticmethod
     def _is_hash(rev):
-        return bool(GitConfig.hash_re.match(rev))
+        return rev and bool(GitConfig.hash_re.match(rev))
 
     def clone(self, url, dest=None, rev='master', abortOnError=True, **extra_args):
         """
