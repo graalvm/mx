@@ -81,6 +81,13 @@ class MxCompatibility500(object):
     def verifySincePresent(self):
         return []
 
+    def moduleDepsEqualDistDeps(self):
+        """
+        Determines if the constituents of a module derived from a distribution are
+        exactly the same as the constituents of the distribution.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -169,6 +176,14 @@ class MxCompatibility5200(MxCompatibility59):#pylint: disable=too-many-ancestors
         return True
 
     def improvedImportMatching(self):
+        return True
+
+class MxCompatibility5344(MxCompatibility5200):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.34.4")
+
+    def moduleDepsEqualDistDeps(self):
         return True
 
 def minVersion():

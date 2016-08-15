@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2014, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2016, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,17 +30,36 @@ import org.junit.runner.notification.*;
 
 public class VerboseTextListener extends TextRunListener {
 
+    private static final int DEFAULT_MAX_TEST_PER_CLASS = 50;
+    public static final int SHOW_ALL_TESTS = Integer.MAX_VALUE;
+    private final int maxTestsPerClass;
+    private int currentTestNum;
+
     public VerboseTextListener(JUnitSystem system) {
         this(system.out());
     }
 
     public VerboseTextListener(PrintStream writer) {
+        this(writer, DEFAULT_MAX_TEST_PER_CLASS);
+    }
+
+    public VerboseTextListener(JUnitSystem system, int maxTests) {
+        this(system.out(), maxTests);
+    }
+
+    public VerboseTextListener(PrintStream writer, int maxTests) {
         super(writer);
+        maxTestsPerClass = maxTests;
+    }
+
+    private boolean beVerbose() {
+        return currentTestNum < maxTestsPerClass;
     }
 
     @Override
     public void testClassStarted(Class<?> clazz) {
         getWriter().print(clazz.getName() + " started");
+        currentTestNum = 0;
     }
 
     @Override
@@ -50,22 +69,39 @@ public class VerboseTextListener extends TextRunListener {
 
     @Override
     public void testStarted(Description description) {
-        getWriter().print("  " + description.getMethodName() + ": ");
+        if (beVerbose()) {
+            getWriter().print("  " + description.getMethodName() + ": ");
+            currentTestNum++;
+        } else {
+            super.testStarted(description);
+        }
     }
 
     @Override
     public void testIgnored(Description description) {
-        getWriter().print("Ignored");
+        if (beVerbose()) {
+            getWriter().print("Ignored");
+        } else {
+            super.testIgnored(description);
+        }
     }
 
     @Override
     public void testSucceeded(Description description) {
-        getWriter().print("Passed");
+        if (beVerbose()) {
+            getWriter().print("Passed");
+        } else {
+            super.testSucceeded(description);
+        }
     }
 
     @Override
     public void testAssumptionFailure(Failure failure) {
-        getWriter().printf("(%s) ", failure.getMessage());
+        if (beVerbose()) {
+            getWriter().printf("(%s) ", failure.getMessage());
+        } else {
+            super.testAssumptionFailure(failure);
+        }
     }
 
     @Override
@@ -86,7 +122,10 @@ public class VerboseTextListener extends TextRunListener {
 
     @Override
     public void testFinishedDelimiter() {
-        getWriter().println();
+        if (beVerbose()) {
+            getWriter().println();
+        } else {
+            super.testFinishedDelimiter();
+        }
     }
-
 }

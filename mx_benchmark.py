@@ -27,9 +27,11 @@
 import json
 import re
 import socket
+import time
 import traceback
 import uuid
 from argparse import ArgumentParser
+import os.path
 
 import mx
 
@@ -40,6 +42,11 @@ _benchmark_executor = None
 
 
 class BenchmarkSuite(object):
+    """
+    A harness for a benchmark suite.
+
+    A suite needs to be registered with mx_benchmarks.add_bm_suite.
+    """
     def name(self):
         """Returns the name of the suite.
 
@@ -68,12 +75,18 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
-    def benchmarks(self):
+    def benchmarkList(self, bmSuiteArgs):
         """Returns the list of the benchmarks provided by this suite.
 
+        :param list bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
         :rtype: list
         """
+        # TODO: Remove old-style benchmarks after updating downstream suites.
+        return self.benchmarks()
+
+    def benchmarks(self):
+        # Deprecated, consider using `benchmarkList` instead!
         raise NotImplementedError()
 
     def validateEnvironment(self):
@@ -159,16 +172,44 @@ def add_bm_suite(suite, mxsuite=None):
     _bm_suites[suite.name()] = suite
 
 
-class StdOutRule(object):
-    """Each rule contains a parsing pattern and a replacement template.
+class Rule(object):
+    # the maximum size of a string field
+    max_string_field_length = 255
 
-    A parsing pattern is a regex that may contain any number of named groups,
-    as shown in the example:
+    @staticmethod
+    def crop_front(prefix=""):
+        """Returns a function that truncates a string at the start."""
+        assert len(prefix) < Rule.max_string_field_length
+        def _crop(path):
+            if len(path) < Rule.max_string_field_length:
+                return str(path)
+            return str(prefix + path[-(Rule.max_string_field_length-len(prefix)):])
+        return _crop
 
-        r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
+    @staticmethod
+    def crop_back(suffix=""):
+        """Returns a function that truncates a string at the end."""
+        assert len(suffix) < Rule.max_string_field_length
+        def _crop(path):
+            if len(path) < Rule.max_string_field_length:
+                return str(path)
+            return str(path[:Rule.max_string_field_length-len(suffix)] + suffix)
+        return _crop
 
-    The above parsing regex captures the benchmark name into a variable `benchmark`
-    and the elapsed number of milliseconds into a variable called `value`.
+    def parse(self, text):
+        """Create a dictionary of variables for every measurment.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: Iterable of dictionaries with the matched variables.
+        :rtype: iterable
+        """
+        raise NotImplementedError()
+
+
+class BaseRule(Rule):
+    """A rule parses a raw result and a prepares a structured measurement using a replacement
+    template.
 
     A replacement template is a dictionary that describes how to create a measurement:
 
@@ -192,15 +233,25 @@ class StdOutRule(object):
           all the matches for that parsing rule.
     """
 
-    def __init__(self, pattern, replacement):
-        self.pattern = pattern
+    def __init__(self, replacement):
         self.replacement = replacement
+
+    def parseResults(self, text):
+        """Parses the raw result of a benchmark and create a dictionary of variables
+        for every measurment.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: Iterable of dictionaries with the matched variables.
+        :rtype: iterable
+        """
+        raise NotImplementedError()
 
     def parse(self, text):
         datapoints = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
-        for iteration, m in enumerate(re.finditer(self.pattern, text, re.MULTILINE)):
+        for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
             for key, value in self.replacement.iteritems():
                 inst = value
@@ -213,7 +264,7 @@ class StdOutRule(object):
                         else:
                             raise RuntimeError("Unknown var {0}".format(name))
                     v = varpat.sub(lambda vm: var(vm.group(1)), v)
-                    v = capturepat.sub(lambda vm: m.groupdict()[vm.group(1)], v)
+                    v = capturepat.sub(lambda vm: m[vm.group(1)], v)
                     # Convert to a different type.
                     if vtype is str:
                         inst = str(v)
@@ -223,6 +274,8 @@ class StdOutRule(object):
                         inst = float(v)
                     elif vtype is bool:
                         inst = bool(v)
+                    elif hasattr(vtype, '__call__'):
+                        inst = vtype(v)
                     else:
                         raise RuntimeError("Cannot handle type {0}".format(vtype))
                 if type(inst) not in [str, int, float, bool]:
@@ -230,6 +283,198 @@ class StdOutRule(object):
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
+
+
+class StdOutRule(BaseRule):
+    """Each rule contains a parsing pattern and a replacement template.
+
+    A parsing pattern is a regex that may contain any number of named groups,
+    as shown in the example:
+
+        r"===== DaCapo (?P<benchmark>[a-z]+) PASSED in (?P<value>[0-9]+) msec ====="
+
+    The above parsing regex captures the benchmark name into a variable `benchmark`
+    and the elapsed number of milliseconds into a variable called `value`.
+    """
+
+    def __init__(self, pattern, replacement):
+        super(StdOutRule, self).__init__(replacement)
+        self.pattern = pattern
+
+    def parseResults(self, text):
+        return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class CSVBaseRule(BaseRule):
+    """Parses a CSV file and creates a measurement result using the replacement."""
+
+    def __init__(self, colnames, replacement, filter_fn=None, **kwargs):
+        """
+        :param colnames: list of column names of the CSV file. These names are used to
+                         instantiate the replacement template.
+        :type colnames: list
+        :param filter_fn: function for filtering and transforming raw results
+        :type filter_fn: function
+        """
+        super(CSVBaseRule, self).__init__(replacement)
+        self.colnames = colnames
+        self.kwargs = kwargs
+        self.filter_fn = filter_fn if filter_fn else self.filterResult
+
+    def filterResult(self, r):
+        """Filters and transforms a raw result
+
+        :return: Dictionary of variables or None if the result should be omitted.
+        :rtype: dict or None
+        """
+        return r
+
+    def getCSVFiles(self, text):
+        """Get the CSV files which should be parsed.
+
+        :param text: The standard output of the benchmark.
+        :type text: str
+        :return: List of file names
+        :rtype: list
+        """
+        raise NotImplementedError()
+
+    def parseResults(self, text):
+        import csv
+        l = []
+        files = self.getCSVFiles(text)
+        for filename in files:
+            with open(filename, 'rb') as csvfile:
+                csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
+                l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
+        return l
+
+
+class CSVFixedFileRule(CSVBaseRule):
+    """CSV rule that parses a file with a predefined name."""
+
+    def __init__(self, filename, *args, **kwargs):
+        super(CSVFixedFileRule, self).__init__(*args, **kwargs)
+        self.filename = filename
+
+    def getCSVFiles(self, text):
+        return [self.filename]
+
+
+class CSVStdOutFileRule(CSVBaseRule):
+    """CSV rule that looks for CSV file names in the output of the benchmark."""
+
+    def __init__(self, pattern, match_name, *args, **kwargs):
+        super(CSVStdOutFileRule, self).__init__(*args, **kwargs)
+        self.pattern = pattern
+        self.match_name = match_name
+
+    def getCSVFiles(self, text):
+        return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
+
+
+class JMHJsonRule(Rule):
+    """Parses a JSON file produced by JMH and creates a measurement result."""
+
+    extra_jmh_keys = [
+        "mode",
+        "threads",
+        "forks",
+        "warmupIterations",
+        "warmupTime",
+        "warmupBatchSize",
+        "measurementIterations",
+        "measurementTime",
+        "measurementBatchSize",
+        ]
+
+    def __init__(self, filename, suiteName):
+        self.filename = filename
+        self.suiteName = suiteName
+
+    def shortenPackageName(self, benchmark):
+        """
+        Returns an abbreviated name for the benchmark.
+        Example: com.example.benchmark.Bench -> c.e.b.Bench
+        The full name is stored in the `extra.jmh.benchmark` property.
+        """
+        s = benchmark.split(".")
+        # class and method
+        clazz = s[-2:]
+        package = [str(x[0]) for x in s[:-2]]
+        return ".".join(package + clazz)
+
+    def benchSuiteName(self):
+        return self.suiteName
+
+    def getExtraJmhKeys(self):
+        return JMHJsonRule.extra_jmh_keys
+
+    def parse(self, text):
+        r = []
+        with open(self.filename) as fp:
+            for result in json.load(fp):
+
+                benchmark = result["benchmark"]
+                mode = result["mode"]
+
+                pm = result["primaryMetric"]
+                unit = pm["scoreUnit"]
+                unit_parts = unit.split("/")
+
+                if mode == "thrpt":
+                    # Throughput, ops/time
+                    metricName = "throughput"
+                    better = "higher"
+                    if len(unit_parts) == 2:
+                        metricUnit = "op/" + unit_parts[1]
+                    else:
+                        metricUnit = unit
+                elif mode in ["avgt", "sample", "ss"]:
+                    # Average time, Sampling time, Single shot invocation time
+                    metricName = "time"
+                    better = "lower"
+                    if len(unit_parts) == 2:
+                        metricUnit = unit_parts[0]
+                    else:
+                        metricUnit = unit
+                else:
+                    raise RuntimeError("Unknown benchmark mode {0}".format(mode))
+
+
+                d = {
+                    "bench-suite" : self.benchSuiteName(),
+                    "benchmark" : self.shortenPackageName(benchmark),
+                    "metric.name": metricName,
+                    "metric.unit": metricUnit,
+                    "metric.score-function": "id",
+                    "metric.better": better,
+                    "metric.type": "numeric",
+                    # full name
+                    "extra.jmh.benchmark" : benchmark,
+                }
+
+                if "params" in result:
+                    # add all parameter as a single string
+                    d["extra.jmh.params"] = ", ".join(["=".join(kv) for kv in result["params"].iteritems()])
+                    # and also the individual values
+                    for k, v in result["params"].iteritems():
+                        d["extra.jmh.param." + k] = str(v)
+
+                for k in self.getExtraJmhKeys():
+                    if k in result:
+                        d["extra.jmh." + k] = str(result[k])
+
+                for jmhFork, rawData in enumerate(pm["rawData"]):
+                    for iteration, data in enumerate(rawData):
+                        d2 = d.copy()
+                        d2.update({
+                          "metric.value": float(data),
+                          "metric.iteration": int(iteration),
+                          "extra.jmh.fork": str(jmhFork),
+                        })
+                        r.append(d2)
+        return r
 
 
 class StdOutBenchmarkSuite(BenchmarkSuite):
@@ -287,13 +532,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                         "Benchmark failed, exit code: {0}".format(retcode))
             for pat in self.failurePatterns():
                 if compiled(pat).search(out):
-                    raise RuntimeError("Benchmark failed")
+                    raise RuntimeError("Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
             success = False
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
                     success = True
             if not success:
-                raise RuntimeError("Benchmark failed")
+                raise RuntimeError("Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
@@ -478,6 +723,41 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         return code, out, dims
 
 
+class DefaultJavaVm(OutputCapturingJavaVm):
+    def __init__(self, raw_name, raw_config_name):
+        self.raw_name = raw_name
+        self.raw_config_name = raw_config_name
+
+    def name(self):
+        return self.raw_name
+
+    def config_name(self):
+        return self.raw_config_name
+
+    def post_process_command_line_args(self, args):
+        return args
+
+    def dimensions(self, cwd, args, code, out):
+        return {
+            "host-vm": self.name(),
+            "host-vm-config": self.config_name(),
+        }
+
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+
+
+class DummyJavaVm(OutputCapturingJavaVm):
+    """
+    Dummy VM to work around: "pylint #111138 disabling R0921 does'nt work"
+    https://www.logilab.org/ticket/111138
+
+    Note that the warning R0921 (abstract-class-little-used) has been removed
+    from pylint 1.4.3.
+    """
+    pass
+
+
 def add_java_vm(javavm):
     key = (javavm.name(), javavm.config_name())
     if key in _bm_suite_java_vms:
@@ -514,6 +794,125 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
+
+
+class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
+    """Base class for JMH based benchmark suites."""
+
+    jmh_result_file = "jmh_result.json"
+
+    def extraRunArgs(self):
+        return ["-rff", JMHBenchmarkSuiteBase.jmh_result_file, "-rf", "json"]
+
+    def extraVmArgs(self):
+        return []
+
+    def getJMHEntry(self):
+        raise NotImplementedError()
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if benchmarks is None:
+            benchmarks = []
+        vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
+        runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
+        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
+
+    def benchmarkList(self, bmSuiteArgs):
+        benchmarks = None
+        jvm = self.getJavaVm(bmSuiteArgs)
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
+        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        _, out, _ = jvm.run(cwd, args +  ["-l"])
+        benchs = out.splitlines()
+        assert benchs[0].startswith("Benchmarks:")
+        return benchs[1:]
+
+    def successPatterns(self):
+        return [
+            re.compile(
+                r"# Run complete.",
+                re.MULTILINE)
+        ]
+
+    def benchSuiteName(self):
+        return self.name()
+
+    def failurePatterns(self):
+        return [re.compile(r"<failure>")]
+
+    def flakySuccessPatterns(self):
+        return []
+
+    def rules(self, out, benchmarks, bmSuiteArgs):
+        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName())]
+
+
+class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
+
+    def extraVmArgs(self):
+        # find all projects with a direct JMH dependency
+        jmhProjects = []
+        for p in mx.projects_opt_limit_to_suites():
+            if 'JMH' in [x.name for x in p.deps]:
+                jmhProjects.append(p)
+        cp = mx.classpath([p.name for p in jmhProjects], jdk=mx.get_jdk())
+
+        return ['-cp', cp]
+
+    def getJMHEntry(self):
+        return ["org.openjdk.jmh.Main"]
+
+
+
+class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """
+    JMH benchmark suite that executes microbenchmarks in a JMH jar.
+
+    This suite relies on the `--jmh-jar` and `--jmh-name` to be set. The former
+    specifies the path to the JMH jar files. The later is the name suffix that is use
+    for the bench-suite property.
+    """
+
+    def benchSuiteName(self):
+        return "jmh-" + self.jmhName()
+
+    def vmArgs(self, bmSuiteArgs):
+        vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
+        parser = ArgumentParser(add_help=False)
+        parser.add_argument("--jmh-jar", default=None)
+        parser.add_argument("--jmh-name", default=None)
+        args, remaining = parser.parse_known_args(vmArgs)
+        self.jmh_jar = args.jmh_jar
+        self.jmh_name = args.jmh_name
+        return remaining
+
+    def getJMHEntry(self):
+        return ["-jar", self.jmhJAR()]
+
+    def jmhName(self):
+        if self.jmh_name is None:
+            mx.abort("Please use the --jmh-name benchmark suite argument to set the name of the JMH suite.")
+        return self.jmh_name
+
+    def jmhJAR(self):
+        if self.jmh_jar is None:
+            mx.abort("Please use the --jmh-jar benchmark suite argument to set the JMH jar file.")
+        jmh_jar = os.path.expanduser(self.jmh_jar)
+        if not os.path.exists(jmh_jar):
+            mx.abort("The --jmh-jar argument points to a non-existing file: " + jmh_jar)
+        return jmh_jar
+
+
+class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
+    def name(self):
+        return "jmh-mx"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
 
 
 class BenchmarkExecutor(object):
@@ -554,7 +953,7 @@ class BenchmarkExecutor(object):
 
     def branch(self):
         mxsuite = mx.primary_suite()
-        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        name = mxsuite.vc and mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
         return name
 
     def buildUrl(self):
@@ -610,7 +1009,7 @@ class BenchmarkExecutor(object):
                 include_ts=False))
         return standard
 
-    def getSuiteAndBenchNames(self, args):
+    def getSuiteAndBenchNames(self, args, bmSuiteArgs):
         argparts = args.benchmark.split(":")
         suitename = argparts[0]
         if len(argparts) == 2:
@@ -619,14 +1018,14 @@ class BenchmarkExecutor(object):
             benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'.".format(suitename))
+            mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, _bm_suites.keys()))
         if benchspec is "*":
-            return (suite, [[b] for b in suite.benchmarks()])
+            return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec is "":
             return (suite, [None])
-        elif not benchspec in suite.benchmarks():
-            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.".format(
-                benchspec, suitename))
+        elif not benchspec in suite.benchmarkList(bmSuiteArgs):
+            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
+                benchspec, suitename, suite.benchmarkList(bmSuiteArgs)))
         else:
             return (suite, [[benchspec]])
 
@@ -661,12 +1060,13 @@ class BenchmarkExecutor(object):
 
         self.checkEnvironmentVars()
 
-        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs)
+        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         results = []
 
         failures_seen = False
         suite.before(bmSuiteArgs)
+        start_time = time.time()
         for benchnames in benchNamesList:
             suite.validateEnvironment()
             try:
@@ -676,6 +1076,11 @@ class BenchmarkExecutor(object):
             except RuntimeError:
                 failures_seen = True
                 mx.log(traceback.format_exc())
+        end_time = time.time()
+
+        for result in results:
+            result["extra.benchmarking.start-ts"] = int(start_time)
+            result["extra.benchmarking.end-ts"] = int(end_time)
 
         topLevelJson = {
           "queries": results
@@ -689,6 +1094,12 @@ class BenchmarkExecutor(object):
 
 
 _benchmark_executor = BenchmarkExecutor()
+
+
+def init_benchmark_suites():
+    """Called after mx initialization if mx is the primary suite."""
+    add_java_vm(DefaultJavaVm("server", "default"))
+    add_bm_suite(JMHRunnerMxBenchmarkSuite())
 
 
 def splitArgs(args, separator):
