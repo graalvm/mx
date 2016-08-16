@@ -11379,6 +11379,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     for d in dists:
         buildOnly = buildOnly + sep + d.name
         sep = ','
+    out.element('arg', {'value' : '-f'})
     out.element('arg', {'value' : '--only'})
     out.element('arg', {'value' : buildOnly})
     out.element('arg', {'value' : '--force-javac'})
