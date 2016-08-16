@@ -7629,6 +7629,29 @@ class JDKFactory(object):
         nyi('description', self)
 
 
+class DisableJavaDebuggging:
+    """ Utility for temporarily disabling java remote debugging.
+
+    Should be used in conjunction with the ``with`` keywords, e.g.
+    ```
+    with DisableJavaDebugging():
+        # call to JDKConfig.run_java
+    ```
+    """
+    _disabled = False
+
+    def __enter__(self):
+        self.old = DisableJavaDebuggging._disabled
+        DisableJavaDebuggging._disabled = True
+
+    def __exit__(self, t, value, traceback):
+        DisableJavaDebuggging._disabled = self.old
+
+
+def is_debug_disabled():
+    return DisableJavaDebuggging._disabled
+
+
 def addJDKFactory(tag, compliance, factory):
     assert tag != DEFAULT_JDK_TAG
     complianceMap = _jdkFactories.setdefault(tag, {})
@@ -8613,6 +8636,7 @@ class JDKConfig:
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
+        self.debug_args = []
         attach = None
         if _opts.attach is not None:
             attach = 'server=n,address=' + _opts.attach
@@ -8621,7 +8645,7 @@ class JDKConfig:
                 attach = 'server=y,address=' + str(_opts.java_dbg_port)
 
         if attach is not None:
-            self.java_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+            self.debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
@@ -8668,8 +8692,13 @@ class JDKConfig:
         Returns a list composed of the arguments specified by the -P, -J and -A options (in that order)
         prepended to `args` if `addDefaultArgs` is true otherwise just return `args`.
         """
+        def add_debug_args():
+            if not self.debug_args or is_debug_disabled():
+                return []
+            return self.debug_args
+
         if addDefaultArgs:
-            return self.java_args_pfx + self.java_args + self.java_args_sfx + args
+            return self.java_args_pfx + self.java_args + add_debug_args() + self.java_args_sfx + args
         return args
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
