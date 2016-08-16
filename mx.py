@@ -11366,7 +11366,10 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('arg', {'value' : '--no-daemon'})
     out.close('exec')
     out.close('target')
-    out.open('target', {'name' : 'package'})
+    out.open('target', {'name' : 'package', 'depends' : 'init'})
+    out.open('copy', {'todir' : '${build.classes.dir}', 'overwrite' : 'true'})
+    out.element('resources', {'refid' : 'changed.files'})
+    out.close('copy')
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
@@ -11506,6 +11509,8 @@ build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
 build.dir=""" + p.output_dir() + """
 $cos.update=package
+$cos.update.resources=changed.files
+compile.on.save=true
 build.generated.sources.dir=${build.dir}/generated-sources
 # Only compile against the classpath explicitly listed here:
 build.sysclasspath=ignore
