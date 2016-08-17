@@ -662,7 +662,8 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         return get_java_vm(jvm, jvmConfig)
 
     def before(self, bmSuiteArgs):
-        self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
+        with mx.DisableJavaDebuggging():
+            self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         jvm = self.getJavaVm(bmSuiteArgs)
