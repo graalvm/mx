@@ -11342,6 +11342,8 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     if jdks:
         jdks.add(jdk)
 
+    execDir = primary_suite().dir
+
     out = XMLDoc()
     out.open('project', {'name' : p.name, 'default' : 'default', 'basedir' : '.'})
     out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
@@ -11372,7 +11374,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
 
     out.close('target')
     out.open('target', {'name' : 'clean'})
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'clean'})
@@ -11381,7 +11383,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'compile'})
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'build'})
@@ -11395,13 +11397,34 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('arg', {'value' : '--no-daemon'})
     out.close('exec')
     out.close('target')
+    out.open('target', {'name' : 'package', 'depends' : 'init'})
+    out.open('copy', {'todir' : '${build.classes.dir}', 'overwrite' : 'true'})
+    out.element('resources', {'refid' : 'changed.files'})
+    out.close('copy')
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
+    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
+    out.element('arg', {'value' : os.path.abspath(__file__)})
+    out.element('arg', {'value' : 'build'})
+    buildOnly = ''
+    sep = ''
+    for d in dists:
+        buildOnly = buildOnly + sep + d.name
+        sep = ','
+    out.element('arg', {'value' : '-f'})
+    out.element('arg', {'value' : '--only'})
+    out.element('arg', {'value' : buildOnly})
+    out.element('arg', {'value' : '--force-javac'})
+    out.element('arg', {'value' : '--no-native'})
+    out.element('arg', {'value' : '--no-daemon'})
+    out.close('exec')
+    out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
     out.element('target', {'name' : 'test', 'depends' : 'run'})
     out.element('target', {'name' : 'test-single', 'depends' : 'run'})
     out.open('target', {'name' : 'run', 'depends' : 'compile'})
     out.element('property', {'name' : 'test.class', 'value' : p.name})
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'unittest'})
@@ -11421,7 +11444,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('pathelement', {'location' : 'src'})
     out.close('sourcepath')
     out.close('nbjpdastart')
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : '-d'})
@@ -11432,7 +11455,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'javadoc'})
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true'})
+    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'javadoc'})
@@ -11517,6 +11540,9 @@ build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
 build.dir=""" + p.output_dir() + """
+$cos.update=package
+$cos.update.resources=changed.files
+compile.on.save=true
 build.generated.sources.dir=${build.dir}/generated-sources
 # Only compile against the classpath explicitly listed here:
 build.sysclasspath=ignore
