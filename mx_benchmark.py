@@ -124,6 +124,15 @@ class BenchmarkSuite(object):
         """
         pass
 
+    def after(self, bmSuiteArgs):
+        """Called exactly once after all benchmark invocations are done.
+
+        Useful for cleaning up after the benchmarks.
+
+        Arguments: see `run`.
+        """
+        pass
+
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
@@ -1078,6 +1087,7 @@ class BenchmarkExecutor(object):
                 failures_seen = True
                 mx.log(traceback.format_exc())
         end_time = time.time()
+        suite.after(bmSuiteArgs)
 
         for result in results:
             result["extra.benchmarking.start-ts"] = int(start_time)
