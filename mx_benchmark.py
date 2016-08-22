@@ -1033,11 +1033,13 @@ class BenchmarkExecutor(object):
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec is "":
             return (suite, [None])
-        elif not benchspec in suite.benchmarkList(bmSuiteArgs):
-            mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
-                benchspec, suitename, suite.benchmarkList(bmSuiteArgs)))
         else:
-            return (suite, [[benchspec]])
+            benchspec = benchspec.split(",")
+            for bench in benchspec:
+                if not bench in suite.benchmarkList(bmSuiteArgs):
+                    mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
+                        bench, suitename, suite.benchmarkList(bmSuiteArgs)))
+            return (suite, [benchspec])
 
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
