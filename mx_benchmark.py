@@ -245,7 +245,7 @@ class BaseRule(Rule):
     def __init__(self, replacement):
         self.replacement = replacement
 
-    def parseResults(self, text):
+    def parseResults(self, text, cwd):
         """Parses the raw result of a benchmark and create a dictionary of variables
         for every measurment.
 
@@ -256,11 +256,11 @@ class BaseRule(Rule):
         """
         raise NotImplementedError()
 
-    def parse(self, text):
+    def parse(self, text, cwd):
         datapoints = []
         capturepat = re.compile(r"<([a-zA-Z_][0-9a-zA-Z_]*)>")
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
-        for iteration, m in enumerate(self.parseResults(text)):
+        for iteration, m in enumerate(self.parseResults(text, cwd)):
             datapoint = {}
             for key, value in self.replacement.iteritems():
                 inst = value
@@ -310,7 +310,7 @@ class StdOutRule(BaseRule):
         super(StdOutRule, self).__init__(replacement)
         self.pattern = pattern
 
-    def parseResults(self, text):
+    def parseResults(self, text, cwd):
         return (m.groupdict() for m in re.finditer(self.pattern, text, re.MULTILINE))
 
 
@@ -348,11 +348,13 @@ class CSVBaseRule(BaseRule):
         """
         raise NotImplementedError()
 
-    def parseResults(self, text):
+    def parseResults(self, text, cwd):
         import csv
         l = []
         files = self.getCSVFiles(text)
         for filename in files:
+            if cwd is not None and not os.path.isabs(filename):
+                filename = os.path.join(cwd, filename)
             with open(filename, 'rb') as csvfile:
                 csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
                 l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
@@ -550,8 +552,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 raise RuntimeError("Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
 
         datapoints = []
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
-            parsedpoints = rule.parse(out)
+            parsedpoints = rule.parse(out, cwd)
             for datapoint in parsedpoints:
                 datapoint.update(dims)
             datapoints.extend(parsedpoints)
