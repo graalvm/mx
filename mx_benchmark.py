@@ -41,6 +41,35 @@ _bm_suites = {}
 _benchmark_executor = None
 
 
+# Contains an argument parser and its description.
+class ParserEntry(object):
+    def __init__(self, parser, description):
+        self.parser = parser
+        self.description = description
+
+
+# Parsers used by different `mx benchmark` commands.
+parsers = {}
+
+
+# Java suite parsers.
+parsers["java_benchmark_suite_jvm"] = ParserEntry(ArgumentParser(),
+    "\n\nJVM selection flags, specified in the benchmark suite arguments:\n"
+)
+parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm", default=None,
+    help="JVM to run the benchmark with, for example 'server' or 'client'.")
+parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm-config", default=None,
+    help="JVM configuration for the selected JVM, for example 'graal-core'.")
+
+
+# JMH suite parsers.
+parsers["jmh_jar_benchmark_suite_vm"] = ParserEntry(ArgumentParser(add_help=False),
+    "\n\nVM selection flags for JMH benchmark suites:\n"
+)
+parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-jar", default=None)
+parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-name", default=None)
+
+
 class BenchmarkSuite(object):
     """
     A harness for a benchmark suite.
@@ -631,11 +660,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         return splitArgs(bmSuiteArgs, "--")
 
     def splitJvmConfigArg(self, bmSuiteArgs):
-        parser = ArgumentParser()
-        parser.add_argument("--jvm", default=None,
-            help="JVM to run the benchmark with, for example 'server' or 'client'.")
-        parser.add_argument("--jvm-config", default=None,
-            help="JVM configuration for the selected JVM, for example 'graal-core'.")
+        parser = parsers["java_benchmark_suite_jvm"].parser
         args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
         return args.jvm, args.jvm_config, remainder
 
@@ -889,9 +914,7 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def vmArgs(self, bmSuiteArgs):
         vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
-        parser = ArgumentParser(add_help=False)
-        parser.add_argument("--jmh-jar", default=None)
-        parser.add_argument("--jmh-name", default=None)
+        parser = parsers["jmh_jar_benchmark_suite_vm"].parser
         args, remaining = parser.parse_known_args(vmArgs)
         self.jmh_jar = args.jmh_jar
         self.jmh_name = args.jmh_name
@@ -1061,14 +1084,28 @@ class BenchmarkExecutor(object):
         """Run a benchmark suite."""
         parser = ArgumentParser(prog="mx benchmark", description=benchmark.__doc__)
         parser.add_argument(
-            "benchmark", help="Benchmark to run, format: <suite>:<benchmark>.")
+            "benchmark", nargs="?", default=None,
+            help="Benchmark to run, format: <suite>:<benchmark>.")
         parser.add_argument(
             "--results-file",
             default="bench-results.json",
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
+        parser.add_argument(
+            "--helpful", default=None, action="store_true",
+            help="Use this flag to show a more complete set of arguments and flags.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
+
+        if mxBenchmarkArgs.helpful:
+            parser.print_help()
+            for _, entry in parsers.iteritems():
+                print entry.description
+                entry.parser.print_help()
+            mx.abort("")
+
+        if mxBenchmarkArgs.benchmark is None:
+            mx.abort(parser.format_help())
 
         self.checkEnvironmentVars()
 
