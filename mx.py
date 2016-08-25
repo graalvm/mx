@@ -5067,6 +5067,8 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
+    repositoryUrl = mx_urlrewrites.rewriteurl(repositoryUrl)
+
     cmd = ['--batch-mode']
 
     if not _opts.verbose:
