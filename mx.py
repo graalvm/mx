@@ -870,9 +870,17 @@ class Distribution(Dependency):
         nyi('needsUpdate', self)
 
     def maven_artifact_id(self):
+        if isinstance(self.maven, types.DictType):
+            artifact_id = self.maven.get('artifactId', None)
+            if artifact_id:
+                return artifact_id
         return _map_to_maven_dist_name(self.remoteName())
 
     def maven_group_id(self):
+        if isinstance(self.maven, types.DictType):
+            group_id = self.maven.get('groupId', None)
+            if group_id:
+                return group_id
         return _mavenGroupId(self.suite)
 
 class JARDistribution(Distribution, ClasspathDependency):
@@ -917,20 +925,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
         assert path.endswith(self.localExtension())
-
-    def maven_artifact_id(self):
-        if isinstance(self.maven, types.DictType):
-            artifact_id = self.maven.get('artifactId', None)
-            if artifact_id:
-                return artifact_id
-        return super(JARDistribution, self).maven_artifact_id()
-
-    def maven_group_id(self):
-        if isinstance(self.maven, types.DictType):
-            group_id = self.maven.get('groupId', None)
-            if group_id:
-                return group_id
-        return super(JARDistribution, self).maven_group_id()
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -14225,7 +14219,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.40.2")
+version = VersionSpec("5.41.0")
 
 currentUmask = None
 
