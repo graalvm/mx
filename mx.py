@@ -5067,6 +5067,8 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
+    repositoryUrl = mx_urlrewrites.rewriteurl(repositoryUrl)
+
     cmd = ['--batch-mode']
 
     if not _opts.verbose:
@@ -14219,7 +14221,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.41.0")
+version = VersionSpec("5.41.1")
 
 currentUmask = None
 
