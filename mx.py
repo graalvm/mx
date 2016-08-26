@@ -9744,15 +9744,16 @@ class SafeFileCreation(object):
         # Windows will complain about tmp being in use by another process
         # when calling os.rename if we don't close the file descriptor.
         os.close(self.tmpFd)
-        if exc_value:
-            # If an error occurred, delete the temp file
-            # instead of renaming it
-            os.remove(self.tmpPath)
-        else:
-            # Correct the permissions on the temporary file which is created with restrictive permissions
-            os.chmod(self.tmpPath, 0o666 & ~currentUmask)
-            # Atomic if self.path does not already exist.
-            os.rename(self.tmpPath, self.path)
+        if exists(self.tmpPath):
+            if exc_value:
+                # If an error occurred, delete the temp file
+                # instead of renaming it
+                os.remove(self.tmpPath)
+            else:
+                # Correct the permissions on the temporary file which is created with restrictive permissions
+                os.chmod(self.tmpPath, 0o666 & ~currentUmask)
+                # Atomic if self.path does not already exist.
+                os.rename(self.tmpPath, self.path)
 
 class Archiver(SafeFileCreation):
     """
@@ -14219,7 +14220,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.41.0")
+version = VersionSpec("5.41.1")
 
 currentUmask = None
 
