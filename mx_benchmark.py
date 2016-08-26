@@ -1092,20 +1092,14 @@ class BenchmarkExecutor(object):
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
-        parser.add_argument(
-            "--helpful", default=None, action="store_true",
-            help="Use this flag to show a more complete set of arguments and flags.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
-        if mxBenchmarkArgs.helpful:
+        if mxBenchmarkArgs.benchmark is None:
             parser.print_help()
             for _, entry in parsers.iteritems():
                 print entry.description
                 entry.parser.print_help()
             mx.abort("")
-
-        if mxBenchmarkArgs.benchmark is None:
-            mx.abort(parser.format_help())
 
         self.checkEnvironmentVars()
 
