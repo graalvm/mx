@@ -870,14 +870,14 @@ class Distribution(Dependency):
         nyi('needsUpdate', self)
 
     def maven_artifact_id(self):
-        if isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
             artifact_id = self.maven.get('artifactId', None)
             if artifact_id:
                 return artifact_id
         return _map_to_maven_dist_name(self.remoteName())
 
     def maven_group_id(self):
-        if isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
             group_id = self.maven.get('groupId', None)
             if group_id:
                 return group_id
