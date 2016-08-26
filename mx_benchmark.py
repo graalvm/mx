@@ -31,6 +31,7 @@ import time
 import traceback
 import uuid
 from argparse import ArgumentParser
+from argparse import RawTextHelpFormatter
 import os.path
 
 import mx
@@ -53,7 +54,9 @@ parsers = {}
 
 
 # Java suite parsers.
-parsers["java_benchmark_suite_jvm"] = ParserEntry(ArgumentParser(),
+_mx_benchmark_usage_example = "mx benchmark <suite>:<bench>"
+parsers["java_benchmark_suite_jvm"] = ParserEntry(
+    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nJVM selection flags, specified in the benchmark suite arguments:\n"
 )
 parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm", default=None,
@@ -63,7 +66,8 @@ parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm-config", default=
 
 
 # JMH suite parsers.
-parsers["jmh_jar_benchmark_suite_vm"] = ParserEntry(ArgumentParser(add_help=False),
+parsers["jmh_jar_benchmark_suite_vm"] = ParserEntry(
+    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nVM selection flags for JMH benchmark suites:\n"
 )
 parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-jar", default=None)
@@ -1082,7 +1086,12 @@ class BenchmarkExecutor(object):
 
     def benchmark(self, mxBenchmarkArgs, bmSuiteArgs):
         """Run a benchmark suite."""
-        parser = ArgumentParser(prog="mx benchmark", description=benchmark.__doc__)
+        parser = ArgumentParser(
+            prog="mx benchmark",
+            description=benchmark.__doc__,
+            epilog="Note: parsers used by different suites have additional arguments, shown below.",
+            usage="mx benchmark <options> -- <benchmark-suite-args> -- <benchmark-args>",
+            formatter_class=RawTextHelpFormatter)
         parser.add_argument(
             "benchmark", nargs="?", default=None,
             help="Benchmark to run, format: <suite>:<benchmark>.")
