@@ -34,7 +34,7 @@ def _should_test_project(p):
     if not p.isJavaProject():
         return False
     if hasattr(p, 'jackpot'):
-        return p.jackpot.lower() == 'true'
+        return p.jackpot.lower() == 'true' or p.jackpot is True
     if p.name.endswith('.test'):
         return False
     return True
@@ -72,13 +72,7 @@ def jackpot(args, suite=None):
             if dep in annotationProcessorOnlyDeps:
                 continue
 
-            if dep.isLibrary():
-                path = dep.get_path(resolve=True)
-                if path:
-                    javacClasspath.append(path)
-
-            elif dep.isProject():
-                javacClasspath.append(dep.classpath_repr())
+            javacClasspath.append(dep.classpath_repr(resolve=True))
 
         javaCompliance = p.javaCompliance
 
