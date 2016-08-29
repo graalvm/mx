@@ -75,6 +75,9 @@ In particular, this helps ensure that all these suites are synchronized and test
 * In order to `sclone` something that is inside a 'big repo' you have to use the `--subdir` argument for `sclone` which tells in which directory the suite that you want to clone is
 * In order to dynamically import a suite that is inside a 'big repo' you have to use `--dynamicimport bigrepo/suite` (e.g., `--dynamicimport graal-enterprise/substratrevm`)
 
+Note that a suite in a "big repo" should not have a dependency to a suite in a different repository that in turn has a transitive dependency to the same "big repo".
+In other words, there should be no back-and-forth to the same repo.
+
 ### mx versioning ###
 
 `mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if the
