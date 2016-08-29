@@ -110,6 +110,13 @@ suite = {
       "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
       "licence" : "GPLv2-CPE",
     },
+
+    "JACKPOT" : {
+      "urls" : [
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jackpot-8.1-20151011.220626.jar",
+      ],
+      "sha1" : "b5f91770afd3b8ce645e7b967a1f266ab472053b",
+    },
   },
 
   "licenses" : {

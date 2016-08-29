@@ -68,6 +68,7 @@ import mx_unittest
 import mx_findbugs
 import mx_sigtest
 import mx_gate
+import mx_jackpot
 import mx_compat
 import mx_microbench
 import mx_urlrewrites
@@ -13838,6 +13839,7 @@ _commands = {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'intellijinit': [intellijinit, ''],
+    'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'archive': [_archive, '[options]'],
     'maven-install' : [maven_install, ''],
@@ -14222,7 +14224,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.41.1")
+version = VersionSpec("5.42.0")
 
 currentUmask = None
 

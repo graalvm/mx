@@ -43,7 +43,7 @@ def _should_test_project(p):
     if not p.isJavaProject():
         return False
     if hasattr(p, 'findbugs'):
-        return p.findbugs.lower() == 'true'
+        return p.findbugs.lower() == 'true' or p.findbugs is True
     if p.name.endswith('.test'):
         return False
     return True
