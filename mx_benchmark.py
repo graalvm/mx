@@ -1014,6 +1014,7 @@ class BenchmarkExecutor(object):
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
+          "config.platform-version": "",
           "machine.name": self.machineName(mxBenchmarkArgs),
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
@@ -1024,6 +1025,8 @@ class BenchmarkExecutor(object):
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
+          "score-function": "id",
+          "warnings": "",
         }
 
         def commit_info(prefix, mxsuite, include_ts=False):
@@ -1068,6 +1071,15 @@ class BenchmarkExecutor(object):
                         bench, suitename, suite.benchmarkList(bmSuiteArgs)))
             return (suite, [benchspec])
 
+    def applyScoreFunction(self, datapoint):
+        if not "score-value" in datapoint:
+            function = datapoint["score-function"]
+            metric_value = datapoint["metric.value"]
+            if function is "id":
+                datapoint["score-value"] = metric_value
+            else:
+                mx.abort("Unknown score function '{0}'.".format(function))
+
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
         def postProcess(results):
             processed = []
@@ -1077,6 +1089,7 @@ class BenchmarkExecutor(object):
                     result = result.__dict__
                 point = dim.copy()
                 point.update(result)
+                self.applyScoreFunction(point)
                 processed.append(point)
             return processed
 
