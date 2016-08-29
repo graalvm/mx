@@ -12907,6 +12907,8 @@ def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, s
             if imported_suite.vc.kind != suite_import.kind:
                 abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
             imported_suite.vc.update(imported_suite.vc_dir, suite_import_version, mayPull=True, clean=clean)
+    elif importing_suite and importing_suite.vc_dir == imported_suite.vc_dir:
+        pass
     else:
         # unusual case, no version specified, so pull the head
         imported_suite.vc.pull(imported_suite.vc_dir, update=True)
