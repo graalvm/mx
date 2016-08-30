@@ -1025,7 +1025,7 @@ class BenchmarkExecutor(object):
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
-          "score-function": "id",
+          "metric.score-function": "id",
           "warnings": "",
         }
 
@@ -1072,15 +1072,15 @@ class BenchmarkExecutor(object):
             return (suite, [benchspec])
 
     def applyScoreFunction(self, datapoint):
-        if not "score-value" in datapoint:
-            function = datapoint["score-function"]
+        if not "metric.score-value" in datapoint:
+            function = datapoint["metric.score-function"]
             # Determine the metric value, if one exists.
             metric_value = 0
             if "metric.value" in datapoint:
                 metric_value = datapoint["metric.value"]
             # Apply the score function to the metric value.
             if function is "id":
-                datapoint["score-value"] = metric_value
+                datapoint["metric.score-value"] = metric_value
             else:
                 mx.abort("Unknown score function '{0}'.".format(function))
 
