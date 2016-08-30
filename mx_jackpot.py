@@ -35,8 +35,6 @@ def _should_test_project(p):
         return False
     if hasattr(p, 'jackpot'):
         return p.jackpot.lower() == 'true' or p.jackpot is True
-    if p.name.endswith('.test'):
-        return False
     return True
 
 def jackpot(args, suite=None):
