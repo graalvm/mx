@@ -57,7 +57,7 @@ def jackpot(args, suite=None):
         javacClasspath = []
 
         deps = []
-        p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
+        p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isJavaProject() else None)
         annotationProcessorOnlyDeps = []
         if len(p.annotation_processors()) > 0:
             for apDep in p.annotation_processors():
