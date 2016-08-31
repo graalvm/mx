@@ -35,7 +35,7 @@ import jdk.internal.module.ModuleBootstrap;
 
 /**
  * Utility for listing the info for all the modules in the Java runtime image.
- * This uses the same underlying module finding mechanism as {@code java -listmods}.
+ * This uses the same underlying module finding mechanism as {@code java --list-modules}.
  */
 public class ListModules {
 
