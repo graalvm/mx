@@ -18,6 +18,16 @@ gate : {
   timelimit : "10:00"
 }
 
+bench-test : {
+  run: [
+    ["./mx", "benchmark", "--results-file", "bench-results.json", "test"]
+  ]
+  teardown: [
+    ["bench-uploader.py", "--url", "$BENCH_SERVER_URL", "bench-results.json"]
+  ]
+}
+
 builds = [
-  ${gate} {capabilities : [linux, amd64, gate],   name: "gate-linux-amd64"}
+  ${gate} {capabilities : [linux, amd64, gate], name: "gate-linux-amd64"}
+  ${bench-test} {capabilities : [linux, amd64, gate], name: "bench-linux-amd64"}
 ]
