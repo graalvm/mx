@@ -579,6 +579,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             for pat in self.successPatterns():
                 if compiled(pat).search(out):
                     success = True
+            if len(self.successPatterns()) == 0:
+                success = True
             if not success:
                 raise RuntimeError("Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
 
@@ -816,6 +818,12 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     """
     def name(self):
         return "test"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
 
     def validateReturnCode(self, retcode):
         return True
@@ -1170,6 +1178,7 @@ def init_benchmark_suites():
     """Called after mx initialization if mx is the primary suite."""
     add_java_vm(DefaultJavaVm("server", "default"))
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
+    add_bm_suite(TestBenchmarkSuite())
 
 
 def splitArgs(args, separator):
