@@ -837,7 +837,7 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def rules(self, out, benchmarks, bmSuiteArgs):
         return [
           StdOutRule(r"-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
-            "input": ("<flag>", int),
+            "extra.input-num": ("<flag>", int),
             "metric.value": ("<bitnum>", int),
           }),
         ]
