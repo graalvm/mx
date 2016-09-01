@@ -8790,7 +8790,7 @@ class JDKConfig:
                 inLintSection = False
                 for line in lines:
                     if not inLintSection:
-                        if line.strip() == '-Xlint:key,...':
+                        if line.strip() in ['-Xlint:key,...', '-Xlint:<key>(,<key>)*']:
                             inLintSection = True
                     else:
                         if line.startswith('         '):
