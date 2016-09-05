@@ -12003,8 +12003,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
     antXml = XMLDoc()
     antXml.open('project', attributes={'name': suite.name, 'default': 'archive'})
     antXml.open('target', attributes={'name': 'archive'})
-    antXml.open('exec', attributes={'executable': '/bin/bash'})
-    antXml.element('arg', attributes={'value': 'mx'})
+    antXml.open('exec', attributes={'executable': sys.executable})
+    antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
     antXml.element('arg', attributes={'value': 'archive'})
 
     for dist in sorted_dists():
