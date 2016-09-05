@@ -2277,28 +2277,28 @@ class JavacCompiler(JavacLikeCompiler):
         if jdk.javaCompliance >= '1.9':
             def addExportArgs(dep, exports=None, prefix='', jdk=None):
                 """
-                Adds ``-XaddExports:`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
+                Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
                 :param :class:`mx.JavaProject` dep: a Java project that may dependent on private JDK modules
-                :param exports: either None or a set of exports per module for which ``-XaddExports`` args
+                :param exports: either None or a set of exports per module for which ``--add-exports`` args
                    have already been added to `javacArgs`
                 :type exports: None or dict
-                :param string prefix: the prefix to be added the ``-XaddExports`` arg(s)
+                :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 """
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
                     if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
                         # A JVMCI project may refer to a JVMCI API under development which
                         # can differ with the signature of the JVMCI API in the JDK used
                         # for compilation. As such, a normal class path reference to the
-                        # JVMCI API must be used instead of an -XaddExports option.
+                        # JVMCI API must be used instead of an --add-exports option.
                         continue
                     for package in packages:
                         exportedPackages = None if exports is None else exports.setdefault(module, set())
                         if exportedPackages is None or package not in exportedPackages:
                             if exportedPackages is not None:
                                 exportedPackages.add(package)
-                            exportArg = prefix + '-XaddExports:' + module + '/' + package + '=ALL-UNNAMED'
+                            exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
             addExportArgs(project)
@@ -2309,11 +2309,10 @@ class JavacCompiler(JavacLikeCompiler):
                     if dep.isJavaProject():
                         addExportArgs(dep, exports, '-J', jdk)
                 # If modules are exported for use by an annotation processor then
-                # they need to be boot modules since -XaddExports can only be used
+                # they need to be boot modules since --add-exports can only be used
                 # for boot modules.
                 if exports:
-                    addmodsArgs = ['-J-addmods', '-J' + ','.join(exports.iterkeys())]
-                    javacArgs.extend(addmodsArgs)
+                    javacArgs.append('-J--add-modules=' + ','.join(exports.iterkeys()))
 
             # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
             modulepath = jdk.get_modules()
@@ -7414,6 +7413,12 @@ def sorted_dists():
         add_dist(d)
     return dists
 
+#: The HotSpot options that have an argument following them on the command line
+_VM_OPTS_SPACE_SEPARATED_ARG = ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m',
+                        '--module-path', '--limit-modules', '--add-modules', '--upgrade-module-path',
+                        '--module', '--module-source-path', '--add-exports', '--add-reads',
+                        '--patch-module', '--boot-class-path', '--source-path']
+
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
     Partitions `args` into a leading sequence of HotSpot VM options and the rest. If
@@ -7434,7 +7439,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
                         abort('Cannot supply explicit class path option')
                     else:
                         continue
-                if i != 0 and (args[i - 1] in ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']):
+                if i != 0 and (args[i - 1] in _VM_OPTS_SPACE_SEPARATED_ARG):
                     continue
                 vmArgs = args[:i]
                 remainder = args[i:]
@@ -8785,7 +8790,7 @@ class JDKConfig:
                 inLintSection = False
                 for line in lines:
                     if not inLintSection:
-                        if line.strip() == '-Xlint:key,...':
+                        if line.strip() in ['-Xlint:key,...', '-Xlint:<key>(,<key>)*']:
                             inLintSection = True
                     else:
                         if line.startswith('         '):
@@ -8807,7 +8812,7 @@ class JDKConfig:
         if self.javaCompliance < '9':
             return []
         if not hasattr(self, '.modules'):
-            addExportsArg = '-XaddExports:java.base/jdk.internal.module=ALL-UNNAMED'
+            addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
             _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
             out = LinesOutputCapture()
             run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
@@ -10410,7 +10415,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
             mainClass = '-jar'
             appArgs = list(reversed(argsCopy))
             break
-        if a in ['-cp', '-classpath', '-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m']:
+        if a in _VM_OPTS_SPACE_SEPARATED_ARG:
             assert len(argsCopy) != 0
             cp = argsCopy.pop()
             vmArgs.append(a)
@@ -14226,7 +14231,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.42.1")
+version = VersionSpec("5.43.0")
 
 currentUmask = None
 

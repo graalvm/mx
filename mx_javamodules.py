@@ -325,7 +325,7 @@ def make_java_module(dist, jdk):
                     assert visibility == 'concealed'
                     concealedRequires.setdefault(depModule.name, set()).add(pkg)
                     usedModules.add(depModule)
-                    addExports.add('-XaddExports:' + depModule.name + '/' + pkg + '=' + moduleName)
+                    addExports.add('--add-exports=' + depModule.name + '/' + pkg + '=' + moduleName)
 
         # If an "exports" attribute is not present, all packages are exported
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
