@@ -140,6 +140,7 @@ class Task:
         return self
 
 _gate_runners = []
+_pre_gate_runners = []
 _extra_gate_arguments = []
 
 def add_gate_argument(*args, **kwargs):
@@ -157,6 +158,16 @@ def add_gate_runner(suite, runner):
     """
     suiteRunner = (suite, runner)
     _gate_runners.append(suiteRunner)
+
+def prepend_gate_runner(suite, runner):
+    """
+    Prepends a gate runner function for a given suite to be called by the gate before common gate tasks
+    are executed. The 'runner' function is called with these arguments:
+      args: the argparse.Namespace object containing result of parsing gate command line
+      tasks: list of Task to which extra Tasks should be added
+    """
+    suiteRunner = (suite, runner)
+    _pre_gate_runners.append(suiteRunner)
 
 def add_omit_clean_args(parser):
     parser.add_argument('-j', '--omit-java-clean', action='store_false', dest='cleanJava', help='omit cleaning Java native code')
@@ -249,6 +260,11 @@ def gate(args):
                         mx.log('==== ' + jdkDir + ' ====')
                         with open(release) as fp:
                             mx.log(fp.read().strip())
+
+        for suiteRunner in _pre_gate_runners:
+            suite, runner = suiteRunner
+            if args.all_suites or suite is mx.primary_suite():
+                runner(args, tasks)
 
         with Task('Pylint', tasks, tags=[Tags.style]) as t:
             if t:
