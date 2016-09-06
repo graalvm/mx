@@ -4464,7 +4464,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            output = subprocess.check_output(['git', 'status', '--porcelain'], cwd=vcdir)
+            output = subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=vcdir)
             return len(output.strip()) > 0
         except subprocess.CalledProcessError:
             if abortOnError:
