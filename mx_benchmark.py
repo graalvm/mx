@@ -166,6 +166,14 @@ class BenchmarkSuite(object):
         """
         pass
 
+    def parserNames(self):
+        """Returns the list of parser names that this benchmark suite uses.
+
+        This is used to more accurately show command line options tied to a specific
+        benchmark suite.
+        """
+        return []
+
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
 
@@ -662,6 +670,9 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         return None
 
+    def parserNames(self):
+        return ["java_benchmark_suite_jvm"]
+
     def vmAndRunArgs(self, bmSuiteArgs):
         return splitArgs(bmSuiteArgs, "--")
 
@@ -924,6 +935,9 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     def benchSuiteName(self):
         return "jmh-" + self.jmhName()
 
+    def parserNames(self):
+        return ["jmh_jar_benchmark_suite_vm"]
+
     def vmArgs(self, bmSuiteArgs):
         vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
         parser = parsers["jmh_jar_benchmark_suite_vm"].parser
@@ -1113,6 +1127,7 @@ class BenchmarkExecutor(object):
         """Run a benchmark suite."""
         parser = ArgumentParser(
             prog="mx benchmark",
+            add_help=False,
             description=benchmark.__doc__,
             epilog="Note: parsers used by different suites have additional arguments, shown below.",
             usage="mx benchmark <options> -- <benchmark-suite-args> -- <benchmark-args>",
@@ -1126,18 +1141,23 @@ class BenchmarkExecutor(object):
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
+        parser.add_argument(
+            "-h", "--help", action="store_true", default=None,
+            help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
-        if mxBenchmarkArgs.benchmark is None:
+        if mxBenchmarkArgs.benchmark:
+            suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
+
+        if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
-            for _, entry in parsers.iteritems():
-                print entry.description
-                entry.parser.print_help()
+            for key, entry in parsers.iteritems():
+                if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
+                    print entry.description
+                    entry.parser.print_help()
             mx.abort("")
 
         self.checkEnvironmentVars()
-
-        suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         results = []
 
