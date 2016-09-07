@@ -212,6 +212,14 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
+    def workingDirectory(self, benchmarks, bmSuiteArgs):
+        """Returns the desired working directory for running the benchmark.
+
+        By default it returns `None`, meaning that the working directory is not be
+        changed. It is meant to be overridden in subclasses when necessary.
+        """
+        return None
+
 
 def add_bm_suite(suite, mxsuite=None):
     if mxsuite is None:
@@ -661,14 +669,6 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         :rtype: list
         """
         raise NotImplementedError()
-
-    def workingDirectory(self, benchmarks, bmSuiteArgs):
-        """Returns the desired working directory for running the benchmark.
-
-        By default it returns `None`, meaning that the working directory is not be
-        changed. It is meant to be overridden in subclasses when necessary.
-        """
-        return None
 
     def parserNames(self):
         return ["java_benchmark_suite_jvm"]
