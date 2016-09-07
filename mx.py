@@ -2048,7 +2048,7 @@ class JavaBuildTask(ProjectBuildTask):
                                 return '{} is older than {}'.format(witness, TimeStampFile(inputFile))
                             if newestInput and witness.isOlderThan(newestInput):
                                 return '{} is older than {}'.format(witness, newestInput)
-                        return None
+                    return None
 
                 if not buildReason and checkBuildReason:
                     buildReason = findBuildReason()
