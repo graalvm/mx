@@ -264,6 +264,14 @@ class Rule(object):
         """
         raise NotImplementedError()
 
+    def _prepend_working_dir(self, filename):
+        """Prepends the current working directory to the filename.
+        Can only be called from within `parse()`.
+        """
+        if self._cwd and not os.path.isabs(filename):
+            return os.path.join(self._cwd, filename)
+        return filename
+
 
 class BaseRule(Rule):
     """A rule parses a raw result and a prepares a structured measurement using a replacement
@@ -402,7 +410,7 @@ class CSVBaseRule(BaseRule):
         l = []
         files = self.getCSVFiles(text)
         for filename in files:
-            with open(filename, 'rb') as csvfile:
+            with open(self._prepend_working_dir(filename), 'rb') as csvfile:
                 csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
                 l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
         return l
@@ -470,7 +478,7 @@ class JMHJsonRule(Rule):
 
     def parse(self, text):
         r = []
-        with open(self.filename) as fp:
+        with open(self._prepend_working_dir(self.filename)) as fp:
             for result in json.load(fp):
 
                 benchmark = result["benchmark"]
@@ -602,6 +610,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
+            # pass working directory to rule without changing the signature of parse
+            rule._cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
             parsedpoints = rule.parse(out)
             for datapoint in parsedpoints:
                 datapoint.update(dims)
