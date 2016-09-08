@@ -268,7 +268,7 @@ class Rule(object):
         """Prepends the current working directory to the filename.
         Can only be called from within `parse()`.
         """
-        if self._cwd and not os.path.isabs(filename):
+        if hasattr(self, "_cwd") and self._cwd and not os.path.isabs(filename):
             return os.path.join(self._cwd, filename)
         return filename
 
