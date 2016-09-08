@@ -212,6 +212,14 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
+    def workingDirectory(self, benchmarks, bmSuiteArgs):
+        """Returns the desired working directory for running the benchmark.
+
+        By default it returns `None`, meaning that the working directory is not be
+        changed. It is meant to be overridden in subclasses when necessary.
+        """
+        return None
+
 
 def add_bm_suite(suite, mxsuite=None):
     if mxsuite is None:
@@ -255,6 +263,14 @@ class Rule(object):
         :rtype: iterable
         """
         raise NotImplementedError()
+
+    def _prepend_working_dir(self, filename):
+        """Prepends the current working directory to the filename.
+        Can only be called from within `parse()`.
+        """
+        if hasattr(self, "_cwd") and self._cwd and not os.path.isabs(filename):
+            return os.path.join(self._cwd, filename)
+        return filename
 
 
 class BaseRule(Rule):
@@ -394,7 +410,7 @@ class CSVBaseRule(BaseRule):
         l = []
         files = self.getCSVFiles(text)
         for filename in files:
-            with open(filename, 'rb') as csvfile:
+            with open(self._prepend_working_dir(filename), 'rb') as csvfile:
                 csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
                 l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
         return l
@@ -462,7 +478,7 @@ class JMHJsonRule(Rule):
 
     def parse(self, text):
         r = []
-        with open(self.filename) as fp:
+        with open(self._prepend_working_dir(self.filename)) as fp:
             for result in json.load(fp):
 
                 benchmark = result["benchmark"]
@@ -594,6 +610,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
 
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
+            # pass working directory to rule without changing the signature of parse
+            rule._cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
             parsedpoints = rule.parse(out)
             for datapoint in parsedpoints:
                 datapoint.update(dims)
@@ -661,14 +679,6 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         :rtype: list
         """
         raise NotImplementedError()
-
-    def workingDirectory(self, benchmarks, bmSuiteArgs):
-        """Returns the desired working directory for running the benchmark.
-
-        By default it returns `None`, meaning that the working directory is not be
-        changed. It is meant to be overridden in subclasses when necessary.
-        """
-        return None
 
     def parserNames(self):
         return ["java_benchmark_suite_jvm"]
