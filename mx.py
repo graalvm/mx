@@ -11657,8 +11657,10 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         if dep.isLibrary() or dep.isJdkLibrary():
             if dep.isLibrary():
                 path = dep.get_path(resolve=True)
+                sourcePath = dep.get_source_path(resolve=True)
             else:
                 path = dep.classpath_repr(jdk, resolve=True)
+                sourcePath = dep.get_source_path(jdk)
             if path:
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
@@ -11666,6 +11668,10 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
                 print >> out, ref + '=' + path
                 if libFiles:
                     libFiles.append(path)
+            if sourcePath:
+                if os.sep == '\\':
+                    sourcePath = sourcePath.replace('\\', '\\\\')
+                print >> out, 'source.reference.' + dep.name + '-bin=' + sourcePath
 
         elif dep.isProject():
             n = dep.name.replace('.', '_')
