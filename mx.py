@@ -11640,7 +11640,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     javacClasspath = []
 
     deps = []
-    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
+    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None)
     annotationProcessorOnlyDeps = []
     if len(p.annotation_processors()) > 0:
         for apDep in p.annotation_processors():
@@ -11654,8 +11654,11 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         if dep == p:
             continue
 
-        if dep.isLibrary():
-            path = dep.get_path(resolve=True)
+        if dep.isLibrary() or dep.isJdkLibrary():
+            if dep.isLibrary():
+                path = dep.get_path(resolve=True)
+            else:
+                path = dep.classpath_repr(jdk, resolve=True)
             if path:
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
