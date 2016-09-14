@@ -13573,7 +13573,7 @@ def junit(args, harness=_basic_junit_harness, parser=None, jdk_default=None):
             abort("jdk '" + args.jdk + "' not found")
     else:
         if not jdk_default:
-            jdk_default = get_jdk()
+            jdk = get_jdk()
         else:
             jdk = jdk_default
 
