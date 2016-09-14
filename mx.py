@@ -3943,7 +3943,8 @@ class HgConfig(VC):
             abort('exists failed')
 
     def root(self, directory, abortOnError=True):
-        self.check_for_hg()
+        if not self.check_for_hg(abortOnError=abortOnError):
+            return None
         try:
             out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
@@ -4540,7 +4541,8 @@ class GitConfig(VC):
             return False
 
     def root(self, directory, abortOnError=True):
-        self.check_for_git()
+        if not self.check_for_git(abortOnError=abortOnError):
+            return None
         try:
             out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
@@ -5397,7 +5399,15 @@ class SuiteModel:
     @staticmethod
     def siblings_dir(suite_dir):
         if exists(suite_dir):
-            _, primary_vc_root = VC.get_vc_root(suite_dir)
+            _, primary_vc_root = VC.get_vc_root(suite_dir, abortOnError=False)
+            if not primary_vc_root:
+                suite_parent = dirname(suite_dir)
+                # Use the heuristic of a 'ci.hocon' file being
+                # at the root of a repo that contains multiple suites.
+                hocon = join(suite_parent, 'ci.hocon')
+                if exists(hocon):
+                    return dirname(suite_parent)
+                return suite_parent
         else:
             primary_vc_root = suite_dir
         return dirname(primary_vc_root)
@@ -12095,7 +12105,10 @@ def fsckprojects(args):
             if dirpath == suite.dir:
                 # no point in traversing vc metadata dir, lib, .workspace
                 # if there are nested source suites must not scan those now, as they are not in projectDirs (but contain .project files)
-                dirnames[:] = [d for d in dirnames if d not in [suite.vc.metadir(), suite.mxDir, 'lib', '.workspace', 'mx.imports']]
+                omitted = [suite.mxDir, 'lib', '.workspace', 'mx.imports']
+                if suite.vc:
+                    omitted.append(suite.vc.metadir())
+                dirnames[:] = [d for d in dirnames if d not in omitted]
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
@@ -14231,7 +14244,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.0")
+version = VersionSpec("5.46.1")
 
 currentUmask = None
 
