@@ -204,6 +204,11 @@ def _warn_or_abort(msg, strict_mode):
     reporter = mx.abort if strict_mode else mx.warn
     reporter(msg)
 
+def _get_mx_tag_for_HEAD():
+    vc = mx.VC.get_vc(mx._mx_home, abortOnError=True)
+    assert isinstance(vc, mx.GitConfig)
+    return vc.git_command(mx._mx_suite.dir, ['tag', '-l', '--points-at', 'HEAD'], abortOnError=True).strip()
+
 def gate(args):
     """run the tests used to validate a push
 
@@ -326,6 +331,15 @@ def gate(args):
         if mx._primary_suite is mx._mx_suite:
             with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
                 if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
+                
+            with Task('CheckTagAndVersion', tasks, tags=[Tags.style]) as t:
+                if t:
+                    tag = _get_mx_tag_for_HEAD()
+                    if not tag:
+                        t.abort('Missing tag for HEAD')
+                    version = str(mx.version)
+                    if version != tag:
+                        t.abort('Mx version ({}) does not match HEAD tag ({})'.format(version, tag))
 
         if exists('jacoco.exec'):
             os.unlink('jacoco.exec')

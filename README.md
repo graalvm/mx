@@ -101,14 +101,17 @@ the current version can still be loaded with the new version and vice versa),
 leave the major and minor versions as they are but increase the patch level.
 
 The version update strategy is designed to help users to detect if their `mx`
-version is compatible with a suite.  Thus, changes to the code that do not
-affect users do not require a change in the version number.  See the following
-examples.  In these examples, by *user* we mean command line clients or `mx`
-extensions (for example `mx_graal-core.py`).
+version is compatible with a suite.  For that reason, every change to mx
+must at least bump the patch level. The git commit for each mx
+change must have a tag whose name matches the (new) mx version. This is enforced
+by the mx gate.
+
+See the following examples for how to update the version number.  In these
+examples, by *user* we mean command line clients or `mx` extensions (for example
+`mx_graal-core.py`).
 
 - "I found a for-loop in the code that could be expressed using a map
-function. I changed it accordingly."  This change has no influence on users.
-Thus, no version change is required!
+function. I changed it accordingly."  The patch level should be increased.
 
 - "I added a new `mx` command."  Since this function was not available to
 users before, old scripts will continue to work with the new version.  New
@@ -119,12 +122,8 @@ and requires a new minor number and a reset of the patch level.
 This is a bugfix that is user visible.  The patch level should be increased
 since users of old versions can expect at least the bug that was just fixed.
 
-- "I fixed some documentation."  This fix has no impact on the usage of `mx`
-and should thus not change the version of `mx`.
-
 - "I fixed a function.  The result now differs from the results before.  A
-user cannot call this function."  Since this function is invisible to the
-user, no version update is required.
+user cannot call this function."  The patch level should be increased.
 
 - "I fixed a function.  The result now differs from the results before.  A
 user could call this function."  Since the semantics of the function changed
@@ -132,7 +131,7 @@ and the function is part of the API, old scripts might not work properly
 anymore.  Since this change is not backward compatible, this is a major update.
 
 - "I added some internal functions."  Since the functions are internal, they
-have no impact on users.  No version changed is required.
+have no impact on users.  The patch level should be increased.
 
 - "I added some new commands."  Since the commands did not change the old
 commands, old scripts will continue to work as expected.  New scripts that
