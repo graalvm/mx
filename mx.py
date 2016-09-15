@@ -3636,13 +3636,10 @@ class HgConfig(VC):
                 self.has_hg = True
             except OSError:
                 self.has_hg = False
-                warn(self.missing)
 
         if not self.has_hg:
             if abortOnError:
                 abort(self.missing)
-            else:
-                warn(self.missing)
 
         return self if self.has_hg else None
 
@@ -3975,13 +3972,10 @@ class GitConfig(VC):
                 self.has_git = True
             except OSError:
                 self.has_git = False
-                warn(self.missing)
 
         if not self.has_git:
             if abortOnError:
                 abort(self.missing)
-            else:
-                warn(self.missing)
 
         return self if self.has_git else None
 
@@ -14244,7 +14238,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.1")
+version = VersionSpec("5.46.2")
 
 currentUmask = None
 
