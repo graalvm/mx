@@ -11640,7 +11640,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     javacClasspath = []
 
     deps = []
-    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isProject() else None)
+    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None)
     annotationProcessorOnlyDeps = []
     if len(p.annotation_processors()) > 0:
         for apDep in p.annotation_processors():
@@ -11654,8 +11654,13 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         if dep == p:
             continue
 
-        if dep.isLibrary():
-            path = dep.get_path(resolve=True)
+        if dep.isLibrary() or dep.isJdkLibrary():
+            if dep.isLibrary():
+                path = dep.get_path(resolve=True)
+                sourcePath = dep.get_source_path(resolve=True)
+            else:
+                path = dep.classpath_repr(jdk, resolve=True)
+                sourcePath = dep.get_source_path(jdk)
             if path:
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
@@ -11663,6 +11668,10 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
                 print >> out, ref + '=' + path
                 if libFiles:
                     libFiles.append(path)
+            if sourcePath:
+                if os.sep == '\\':
+                    sourcePath = sourcePath.replace('\\', '\\\\')
+                print >> out, 'source.reference.' + dep.name + '-bin=' + sourcePath
 
         elif dep.isProject():
             n = dep.name.replace('.', '_')
@@ -14238,7 +14247,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.2")
+version = VersionSpec("5.46.3")
 
 currentUmask = None
 
