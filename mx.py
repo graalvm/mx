@@ -10118,7 +10118,7 @@ def checkstyle(args):
                             if name == 'file':
                                 source[0] = attrs['name']
                             elif name == 'error':
-                                errors.append('{0}:{1}: {2}'.format(source[0], attrs['line'], attrs['message']))
+                                errors.append(u'{0}:{1}: {2}'.format(source[0], attrs['line'], attrs['message']))
 
                         xp = xml.parsers.expat.ParserCreate()
                         xp.StartElementHandler = start_element
