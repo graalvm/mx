@@ -31,7 +31,7 @@ import os
 import re
 import tempfile
 import fnmatch
-from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError
 from os.path import exists, join
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
@@ -198,7 +198,7 @@ def set_vm_launcher(name, launcher, jdk=None):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None):
+def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None, repeat=None):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -224,6 +224,9 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         coreArgs.append('-JUnitEagerStackTrace')
     if gc_after_test:
         coreArgs.append('-JUnitGCAfterTest')
+    if repeat:
+        coreArgs.append('-JUnitRepeat')
+        coreArgs.append(repeat)
 
 
     def harness(unittestCp, vmLauncher, vmArgs):
@@ -301,6 +304,15 @@ unittestHelpSuffix = """
     it uses to run the VM.
 """
 
+def is_strictly_positive(value):
+    try:
+        if int(value) <= 0:
+            raise ArgumentTypeError("%s must be greater than 0" % value)
+    except ValueError:
+        raise ArgumentTypeError("%s: integer greater than 0 expected" % value)
+    return value
+
+
 def unittest(args):
     """run the JUnit tests"""
 
@@ -320,6 +332,7 @@ def unittest(args):
     parser.add_argument('--color', help='enable color output', action='store_true')
     parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
+    parser.add_argument('--repeat', help='run only the unit tests in <suite>', type=is_strictly_positive)
     eagerStacktrace = parser.add_mutually_exclusive_group()
     eagerStacktrace.add_argument('--eager-stacktrace', action='store_const', const=True, dest='eager_stacktrace', help='print test errors as they occur (default)')
     eagerStacktrace.add_argument('--no-eager-stacktrace', action='store_const', const=False, dest='eager_stacktrace', help='print test errors after all tests have run')

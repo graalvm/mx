@@ -116,7 +116,7 @@ public class TextRunListener implements MxRunListener {
             private boolean failed;
 
             @Override
-            public final void testStarted(Description description) {
+            public void testStarted(Description description) {
                 Class<?> currentClass = description.getTestClass();
                 if (currentClass != lastClass) {
                     if (lastClass != null) {
@@ -133,13 +133,13 @@ public class TextRunListener implements MxRunListener {
             }
 
             @Override
-            public final void testFailure(Failure failure) {
+            public void testFailure(Failure failure) {
                 failed = true;
                 l.testFailed(failure);
             }
 
             @Override
-            public final void testFinished(Description description) {
+            public void testFinished(Description description) {
                 // we have to do this because there is no callback for successful tests
                 if (!failed) {
                     l.testSucceeded(description);

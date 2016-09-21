@@ -37,6 +37,50 @@ import org.junit.runners.model.*;
 
 public class MxJUnitWrapper {
 
+    static class RepeatingRunner extends Runner {
+
+        private final Runner parent;
+        private int repeat;
+
+        RepeatingRunner(Runner parent, int repeat) {
+            this.parent = parent;
+            this.repeat = repeat;
+        }
+
+        @Override
+        public Description getDescription() {
+            return parent.getDescription();
+        }
+
+        @Override
+        public void run(RunNotifier notifier) {
+            for (int i = 0; i < repeat; i++) {
+                parent.run(notifier);
+            }
+        }
+
+        @Override
+        public int testCount() {
+            return super.testCount() * repeat;
+        }
+    }
+
+    static class RepeatingRequest extends Request {
+
+        private final Request request;
+        private final int repeat;
+
+        RepeatingRequest(Request request, int repeat) {
+            this.request = request;
+            this.repeat = repeat;
+        }
+
+        @Override
+        public Runner getRunner() {
+            return new RepeatingRunner(request.getRunner(), repeat);
+        }
+    }
+
     /**
      * Run the tests contained in the classes named in the <code>args</code>. A single test method
      * can be specified by adding #method after the class name. Only a single test can be run in
@@ -61,6 +105,7 @@ public class MxJUnitWrapper {
         boolean color = false;
         boolean eagerStackTrace = false;
         boolean gcAfterTest = false;
+        int repeatCount = 1;
 
         String[] expandedArgs = expandArgs(args);
         for (int i = 0; i < expandedArgs.length; i++) {
@@ -81,6 +126,17 @@ public class MxJUnitWrapper {
                     eagerStackTrace = true;
                 } else if (each.contentEquals("-JUnitGCAfterTest")) {
                     gcAfterTest = true;
+                } else if (each.contentEquals("-JUnitRepeat")) {
+                    if (i + 1 >= expandedArgs.length) {
+                        system.out().println("Must include argument for -JUnitRepeat");
+                        System.exit(1);
+                    }
+                    try {
+                        repeatCount = Integer.parseInt(expandedArgs[++i]);
+                    } catch (NumberFormatException e) {
+                        system.out().println("Expected integer argument for -JUnitRepeat. Found: " + expandedArgs[i]);
+                        System.exit(1);
+                    }
                 } else {
                     system.out().println("Unknown command line argument: " + each);
                 }
@@ -168,6 +224,9 @@ public class MxJUnitWrapper {
                 system.out().println("Single method selected - fail fast not supported");
             }
             request = Request.method(classes.get(0), methodName);
+        }
+        if (repeatCount != 1) {
+            request = new RepeatingRequest(request, repeatCount);
         }
         Result result = junitCore.run(request);
         for (Failure each : missingClasses) {
