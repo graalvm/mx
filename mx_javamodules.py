@@ -365,7 +365,7 @@ def make_java_module(dist, jdk):
     javacCmd = [jdk.javac, '-d', moduleDir]
     modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath]
     if modulepathJars:
-        javacCmd.append('-mp')
+        javacCmd.append('--module-path')
         javacCmd.append(os.pathsep.join(modulepathJars))
     javacCmd.extend(addExports)
     javacCmd.append(moduleInfo)
