@@ -4859,9 +4859,29 @@ class MavenRepo:
             latest = versioning.find('latest')
             release = versioning.find('release')
             versions = versioning.find('versions')
-            releaseVersionString = release.text if release else None
-            latestVersionString = latest.text
             versionStrings = [v.text for v in versions.iter('version')]
+            releaseVersionString = release.text if release else None
+            if latest:
+                latestVersionString = latest.text
+            else:
+                logv('Element \'latest\' not specified in metadata. Fallback: Find latest via \'versions\'.')
+                latestVersionString = None
+                for version_str in reversed(versionStrings):
+                    snapshot_metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl,
+                                                                                       groupId.replace('.', '/'),
+                                                                                       artifactId,
+                                                                                       version_str)
+                    try:
+                        snapshot_metadataFile = urllib2.urlopen(snapshot_metadataUrl, timeout=10)
+                    except urllib2.HTTPError as e:
+                        logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
+                        snapshot_metadataFile = None
+
+                    if snapshot_metadataFile:
+                        logv('Using version {0} as latestVersionString.'.format(version_str))
+                        latestVersionString = version_str
+                        snapshot_metadataFile.close()
+                        break
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
         except urllib2.URLError as e:
@@ -6331,7 +6351,7 @@ class Suite:
         imported_suite = Suite._find_and_loadsuite(self, suite_import, fatalIfMissing=False)
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
-            if urlinfos:
+            if urlinfos and version:
                 imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
             # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
