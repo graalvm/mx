@@ -216,6 +216,7 @@ def gate(args):
     parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
+    parser.add_argument('-B', dest='build_with', action='append', metavar='<build_with>', help='append additional arguments to mx build commands used in the gate')
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
@@ -288,13 +289,13 @@ def gate(args):
             with Task('BuildJavaWithEcj', tasks, tags=[Tags.fullbuild]) as t:
                 if t:
                     if mx.get_env('JDT'):
-                        mx.command_function('build')(['-p', '--no-native', '--warning-as-error'])
+                        mx.command_function('build')(['-p', '--no-native', '--warning-as-error'] + args.build_with)
                         gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                     else:
                         _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
 
         with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
-            if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'])
+            if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'] + args.build_with)
 
         with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
             if t:
