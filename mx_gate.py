@@ -244,6 +244,9 @@ def gate(args):
     elif args.x:
         mx.abort('-x option cannot be used without --task-filter or the --tags option')
 
+    if not args.extra_build_args:
+        args.extra_build_args = []
+
     tasks = []
     total = Task('Gate')
     try:
