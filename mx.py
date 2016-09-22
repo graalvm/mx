@@ -2091,7 +2091,8 @@ class JavaBuildTask(ProjectBuildTask):
                 disableApiRestrictions=not self.args.warnAPI,
                 warningsAsErrors=self.args.warning_as_error,
                 showTasks=self.args.jdt_show_task_tags,
-                postCompileActions=self.postCompileActions)
+                postCompileActions=self.postCompileActions,
+                deprecation_as_warning=self.args.deprecation_as_warning)
             self.compiler.prepare_daemon(self.jdk, daemons, self.compileArgs)
         else:
             self.compileArgs = None
@@ -2145,7 +2146,7 @@ class JavaCompiler:
         nyi('name', self)
 
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
+        disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, postCompileActions):
         """
         Prepares for a compilation with this compiler. This done in the main process.
 
@@ -2159,6 +2160,7 @@ class JavaCompiler:
         :param str sourceGenDir: where to place generated source files
         :param bool disableApiRestrictions: specifies if the compiler should not warning about accesses to restricted API
         :param bool warningsAsErrors: specifies if the compiler should treat warnings as errors
+        :param bool deprecation_as_warning: ignores deprecation warnings and does not treat them as errors
         :param bool showTasks: specifies if the compiler should show tasks tags as warnings (JDT only)
         :param list postCompileActions: list into which callable objects can be added for performing post-compile actions
         :return: the value to be bound to `args` when calling `compile` to perform the compilation
@@ -2192,7 +2194,7 @@ class JavacLikeCompiler(JavaCompiler):
         return get_jdk(compliance)
 
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
-        disableApiRestrictions, warningsAsErrors, showTasks, postCompileActions):
+        disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, postCompileActions):
         javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
         if processorPath:
             ensure_dir_exists(sourceGenDir)
@@ -2229,9 +2231,9 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
-        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles)
+        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, hybridCrossCompilation, tempFiles)
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, hybridCrossCompilation, tempFiles):
         """
         `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
@@ -2246,7 +2248,7 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, hybridCrossCompilation, tempFiles):
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -2260,6 +2262,10 @@ class JavacCompiler(JavacLikeCompiler):
                 # since we are not in strict compliance mode
                 assert not _opts.strict_compliance or project.name == 'com.oracle.mxtool.compilerserver'
                 lint += ['-options']
+
+        if deprecation_as_warning:
+            lint += ['-deprecation']
+
         knownLints = jdk.getKnownJavacLints()
         if knownLints:
             lint = [l for l in lint if l in knownLints]
@@ -2465,7 +2471,7 @@ class ECJCompiler(JavacLikeCompiler):
             abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
         return jdk
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, deprecation_as_warning, showTasks, hybridCrossCompilation, tempFiles):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -2489,6 +2495,10 @@ class ECJCompiler(JavacLikeCompiler):
                 if disableApiRestrictions:
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.forbiddenReference=ignore'
                     content = content + '\norg.eclipse.jdt.core.compiler.problem.discouragedReference=ignore'
+
+                if deprecation_as_warning:
+                    content = content.replace('org.eclipse.jdt.core.compiler.problem.deprecation=error', 'org.eclipse.jdt.core.compiler.problem.deprecation=warning')
+
             if origContent != content:
                 jdtPropertiesTmp = jdtProperties + '.tmp'
                 with open(jdtPropertiesTmp, 'w') as fp:
@@ -9223,6 +9233,7 @@ def build(args, parser=None):
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
     parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="Use javac from each project's compliance levels rather than perform a cross compilation using the default JDK")
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
+    parser.add_argument('--deprecation-as-warning', action='store_true', help='force errors regarding deprecation to be warnings')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
