@@ -14279,7 +14279,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.4")
+version = VersionSpec("5.46.5")
 
 currentUmask = None
 
