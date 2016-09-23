@@ -8316,8 +8316,12 @@ def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=No
     commands = [sys.executable, join(_mx_home, 'mx.py')]
     cwd = None
     if suite:
-        commands += ['-p', suite.dir]
-        cwd = suite.dir
+        if isinstance(suite, str):
+            commands += ['-p', suite]
+            cwd = suite
+        else:
+            commands += ['-p', suite.dir]
+            cwd = suite.dir
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def _get_new_progress_group_args():
