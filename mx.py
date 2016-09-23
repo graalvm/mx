@@ -4657,12 +4657,12 @@ class BinaryVC(VC):
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
         if not update:
             return False  # TODO or True?
-        metadata = self._readMetadata(vcdir)
-        if rev == self._id(metadata):
-            return True
 
+        metadata = self._readMetadata(vcdir)
         if not rev:
             rev = self._tip(metadata)
+        if rev == self._id(metadata):
+            return False
 
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
         tmpdir = tempfile.mkdtemp()
@@ -6351,8 +6351,10 @@ class Suite:
         imported_suite = Suite._find_and_loadsuite(self, suite_import, fatalIfMissing=False)
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
-            if urlinfos and version:
-                imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
+            if urlinfos:
+                updated = imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
+                if isinstance(imported_suite, BinarySuite) and updated:
+                    imported_suite.reload_binary_suite()
             # TODO Add support for imports in dynamically loaded suites (no current use case)
             if not imported_suite.post_init:
                 imported_suite._init_metadata()
@@ -6698,6 +6700,12 @@ class BinarySuite(Suite):
         self._load_binary_suite()
         self._init_imports()
         self._load()
+
+    def reload_binary_suite(self):
+        for d in self.dists:
+            _dists.pop(d.name, None)
+        self.dists = []
+        self._load_binary_suite()
 
     def version(self, abortOnError=True):
         """
@@ -14271,7 +14279,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.4")
+version = VersionSpec("5.46.5")
 
 currentUmask = None
 
