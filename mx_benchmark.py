@@ -1152,12 +1152,21 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
+            "--list", default=None, action="store_true",
+            help="When set, just prints the list of all available benchmark suites.")
+        parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         if mxBenchmarkArgs.benchmark:
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
+
+        if mxBenchmarkArgs.list:
+            print "The following benchmark suites are available:\n"
+            for name in _bm_suites:
+                print "  " + name
+            mx.abort("")
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
