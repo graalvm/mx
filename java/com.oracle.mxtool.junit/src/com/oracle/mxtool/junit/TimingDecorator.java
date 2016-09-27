@@ -46,7 +46,9 @@ public class TimingDecorator extends MxRunListenerDecorator {
     public void testClassFinished(Class<?> clazz) {
         long totalTime = System.nanoTime() - classStartTime;
         super.testClassFinished(clazz);
-        getWriter().print(' ' + valueToString(totalTime));
+        if (beVerbose()) {
+            getWriter().print(' ' + valueToString(totalTime));
+        }
     }
 
     @Override
@@ -59,7 +61,9 @@ public class TimingDecorator extends MxRunListenerDecorator {
     public void testFinished(Description description) {
         long totalTime = System.nanoTime() - startTime;
         super.testFinished(description);
-        getWriter().print(" " + valueToString(totalTime));
+        if (beVerbose()) {
+            getWriter().print(" " + valueToString(totalTime));
+        }
     }
 
     private static String valueToString(long value) {

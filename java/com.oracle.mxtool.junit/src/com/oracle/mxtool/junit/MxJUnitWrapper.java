@@ -185,7 +185,7 @@ public class MxJUnitWrapper {
             textListener = new TextRunListener(system);
         }
         MxRunListener mxListener = textListener;
-        if (enableTiming) {
+        if ((veryVerbose || verbose) && enableTiming) {
             mxListener = new TimingDecorator(mxListener);
         }
         if (color) {
