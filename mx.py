@@ -9031,6 +9031,7 @@ def _send_sigquit():
                 log("mx: implement me! want to send SIGQUIT to my child process")
             else:
                 # only send SIGQUIT to the child not the process group
+                logv('sending SIGQUIT to ' + str(p.pid))
                 os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
@@ -9048,6 +9049,7 @@ def abort(codeOrMessage, context=None):
     """
 
     if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+        logv('sending SIGQUIT to subprocesses on abort')
         _send_sigquit()
 
     def is_alive(p):
@@ -14290,7 +14292,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.5")
+version = VersionSpec("5.46.6")
 
 currentUmask = None
 
