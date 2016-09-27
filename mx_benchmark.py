@@ -1037,6 +1037,11 @@ class BenchmarkExecutor(object):
     def checkEnvironmentVars(self):
         pass
 
+    def triggeringSuite(self, mxBenchmarkArgs):
+        if mxBenchmarkArgs.triggering_suite:
+            return mxBenchmarkArgs.triggering_suite
+        return mx.get_env("TRIGGERING_SUITE", default=None)
+
     def dimensions(self, suite, mxBenchmarkArgs, bmSuiteArgs):
         standard = {
           "metric.uuid": self.uid(),
@@ -1078,8 +1083,9 @@ class BenchmarkExecutor(object):
         standard.update(commit_info("", mx.primary_suite()))
         for (name, mxsuite) in mx._suites.iteritems():
             standard.update(commit_info("extra." + name + ".", mxsuite))
-        if mxBenchmarkArgs.triggering_suite:
-            mxsuite = mx._suites[mxBenchmarkArgs.triggering_suite]
+        triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
+        if triggering_suite:
+            mxsuite = mx._suites[triggering_suite]
             standard.update(commit_info("extra.triggering-repo.", mxsuite))
         return standard
 
