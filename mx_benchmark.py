@@ -1061,7 +1061,7 @@ class BenchmarkExecutor(object):
           "warnings": "",
         }
 
-        def commit_info(prefix, mxsuite, include_ts=False):
+        def commit_info(prefix, mxsuite):
             vc = mxsuite.vc
             if vc is None:
                 return {}
@@ -1075,10 +1075,12 @@ class BenchmarkExecutor(object):
               prefix + "commit.committer-ts": info["committer-ts"],
             }
 
-        standard.update(commit_info("", mx.primary_suite(), include_ts=True))
+        standard.update(commit_info("", mx.primary_suite()))
         for (name, mxsuite) in mx._suites.iteritems():
-            standard.update(commit_info("extra." + name + ".", mxsuite,
-                include_ts=False))
+            standard.update(commit_info("extra." + name + ".", mxsuite))
+        if mxBenchmarkArgs.triggering_suite:
+            mxsuite = mx._suites[mxBenchmarkArgs.triggering_suite]
+            standard.update(commit_info("extra.triggering-repo.", mxsuite))
         return standard
 
     def getSuiteAndBenchNames(self, args, bmSuiteArgs):
@@ -1151,6 +1153,9 @@ class BenchmarkExecutor(object):
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
+        parser.add_argument(
+            "--triggering-suite", default=None,
+            help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
         parser.add_argument(
             "--list", default=None, action="store_true",
             help="When set, just prints the list of all available benchmark suites.")
