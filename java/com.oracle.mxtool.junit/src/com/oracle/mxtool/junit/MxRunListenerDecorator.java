@@ -27,7 +27,7 @@ import java.io.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
 
-public class MxRunListenerDecorator implements MxRunListener {
+public abstract class MxRunListenerDecorator implements MxRunListener {
 
     private final MxRunListener l;
 
@@ -104,6 +104,10 @@ public class MxRunListenerDecorator implements MxRunListener {
 
     public void testFinishedDelimiter() {
         l.testFinishedDelimiter();
+    }
+
+    public boolean beVerbose() {
+        return l.beVerbose();
     }
 
 }

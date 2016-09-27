@@ -269,9 +269,10 @@ unittestHelpSuffix = """
       --blacklist <file>     run all testcases not specified in the blacklist
       --whitelist <file>     run only testcases which are included
                              in the given whitelist
+      --very-verbose         enable very verbose JUnit output
       --verbose              enable verbose JUnit output
       --fail-fast            stop after first JUnit test class that has a failure
-      --enable-timing        enable JUnit test timing
+      --enable-timing        enable JUnit test timing (requires --verbose or --very-verbose)
       --regex <regex>        run only testcases matching a regular expression
       --color                enable colors output
       --eager-stacktrace     print stacktrace eagerly (default)
@@ -327,7 +328,7 @@ def unittest(args):
     parser.add_argument('--verbose', help='enable verbose JUnit output', action='store_true')
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', action='store_true')
     parser.add_argument('--fail-fast', help='stop after first JUnit test class that has a failure', action='store_true')
-    parser.add_argument('--enable-timing', help='enable JUnit test timing', action='store_true')
+    parser.add_argument('--enable-timing', help='enable JUnit test timing (requires --verbose/--very-verbose)', action='store_true')
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
     parser.add_argument('--color', help='enable color output', action='store_true')
     parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')

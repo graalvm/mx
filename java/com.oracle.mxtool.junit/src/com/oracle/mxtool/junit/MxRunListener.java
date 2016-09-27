@@ -123,6 +123,8 @@ public interface MxRunListener {
      */
     void testFinishedDelimiter();
 
+    boolean beVerbose();
+
     PrintStream getWriter();
 
 }
