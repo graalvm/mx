@@ -2052,6 +2052,27 @@ class JavaBuildTask(ProjectBuildTask):
 
                 if not buildReason and checkBuildReason:
                     buildReason = findBuildReason()
+        self.copyfiles = []
+        if hasattr(self.subject, 'copyFiles'):
+            for depname, copyMap in self.subject.copyFiles.items():
+                dep = dependency(depname)
+                if not dep.isProject():
+                    abort("Unsupported dependency type: " + dep.name)
+                deproot = dep.get_output_root()
+                if dep.isNativeProject():
+                    deproot = join(dep.suite.dir, dep.getOutput())
+                for src, dst in copyMap.items():
+                    absolute_src = join(deproot, src)
+                    absolute_dst = join(outputDir, dst)
+                    self.copyfiles += [(absolute_src, absolute_dst)]
+                    witness = TimeStampFile(absolute_dst)
+                    if not buildReason and checkBuildReason:
+                        if not witness.exists():
+                            buildReason = witness.path + ' does not exist'
+                        if witness.isOlderThan(absolute_src):
+                            buildReason = '{} is older than {}'.format(witness, TimeStampFile(absolute_src))
+                    if witness.exists() and (not self._newestOutput or witness.isNewerThan(self._newestOutput)):
+                        self._newestOutput = witness
 
         self.javafilelist = sorted(self.javafilelist)  # for reproducibility
         return buildReason
@@ -2128,6 +2149,13 @@ class JavaBuildTask(ProjectBuildTask):
                     self._newestOutput = TimeStampFile(dst)
         if self._nonJavaFileCount():
             logvv('Finished resource copy for {}'.format(self.subject.name))
+        if self.copyfiles:
+            for src, dst in self.copyfiles:
+                ensure_dir_exists(dirname(dst))
+                if not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
+                    shutil.copyfile(src, dst)
+                    self._newestOutput = TimeStampFile(dst)
+            logvv('Finished copying files from dependencies for {}'.format(self.subject.name))
 
     def clean(self, forBuild=False):
         genDir = self.subject.source_gen_dir()
@@ -14292,7 +14320,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.7")
+version = VersionSpec("5.47.0")
 
 currentUmask = None
 
