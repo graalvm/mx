@@ -52,7 +52,8 @@ public class VerboseTextListener extends TextRunListener {
         maxTestsPerClass = maxTests;
     }
 
-    private boolean beVerbose() {
+    @Override
+    public boolean beVerbose() {
         return currentTestNum < maxTestsPerClass;
     }
 

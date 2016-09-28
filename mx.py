@@ -9059,6 +9059,7 @@ def _send_sigquit():
                 log("mx: implement me! want to send SIGQUIT to my child process")
             else:
                 # only send SIGQUIT to the child not the process group
+                logv('sending SIGQUIT to ' + str(p.pid))
                 os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
@@ -9076,6 +9077,7 @@ def abort(codeOrMessage, context=None):
     """
 
     if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+        logv('sending SIGQUIT to subprocesses on abort')
         _send_sigquit()
 
     def is_alive(p):
@@ -12933,7 +12935,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
         if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
             msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
         abort(msg)
-    if importedVersion != suite_import.version:
+    if importedVersion != suite_import.version and suite_import.version is not None:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
             with open(importing_suite.suite_py()) as fp:
@@ -14318,7 +14320,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.46.5")
+version = VersionSpec("5.46.7")
 
 currentUmask = None
 

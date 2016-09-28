@@ -41,6 +41,10 @@ public class TextRunListener implements MxRunListener {
         fWriter = writer;
     }
 
+    public boolean beVerbose() {
+        return false;
+    }
+
     @Override
     public PrintStream getWriter() {
         return fWriter;
