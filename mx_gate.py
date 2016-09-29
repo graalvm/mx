@@ -289,15 +289,15 @@ def gate(args):
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
         if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
-            with Task('BuildJavaWithEcj', tasks, tags=[Tags.fullbuild]) as t:
+            with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild]) as t:
                 if t:
                     if mx.get_env('JDT'):
-                        mx.command_function('build')(['-p', '--no-native', '--warning-as-error'] + args.extra_build_args)
+                        mx.command_function('build')(['-p', '--warning-as-error'] + args.extra_build_args)
                         gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                     else:
-                        _warn_or_abort('JDT environment variable not set. Cannot execute BuildJavaWithEcj task.', args.strict_mode)
+                        _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
 
-        with Task('BuildJavaWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
+        with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'] + args.extra_build_args)
 
         with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
