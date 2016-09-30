@@ -60,9 +60,10 @@ class Task:
 
     verbose = False
 
-    def __init__(self, title, tasks=None, disableJacoco=False, tags=None):
+    def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None):
         self.tasks = tasks
         self.title = title
+        self.legacyTitles = legacyTitles or []
         self.skipped = False
         self.tags = tags
         if tasks is not None:
@@ -78,10 +79,11 @@ class Task:
                 else:
                     self.skipped = True
             elif Task.filters:
+                titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
-                    self.skipped = any([f in title for f in Task.filters])
+                    self.skipped = any([f in t for t in titles for f in Task.filters])
                 else:
-                    self.skipped = not any([f in title for f in Task.filters])
+                    self.skipped = not any([f in t for t in titles for f in Task.filters])
             if Task.tags is not None:
                 if Task.tagsExclude:
                     self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
@@ -289,7 +291,7 @@ def gate(args):
                     t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
 
         if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
-            with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild]) as t:
+            with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
                 if t:
                     if mx.get_env('JDT'):
                         mx.command_function('build')(['-p', '--warning-as-error'] + args.extra_build_args)
@@ -297,7 +299,7 @@ def gate(args):
                     else:
                         _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
 
-        with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild]) as t:
+        with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
             if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'] + args.extra_build_args)
 
         with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
