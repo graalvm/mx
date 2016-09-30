@@ -1072,6 +1072,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                         arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
+                    if hasattr(dep, "doNotArchive") and dep.doNotArchive:
+                        logv('[' + self.path + ': ignoring project ' + dep.name + ']')
+                        continue
                     if self.theLicense is not None and dep.theLicense != self.theLicense:
                         if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
                             report = abort
@@ -1140,8 +1143,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                         for f in dep.getResults():
                             relpath = dep.get_relpath(f, outputDir)
                             addFile(outputDir, relpath, archivePrefix)
-                    elif hasattr(dep, "doNotArchive") and dep.doNotArchive:
-                        logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
