@@ -10325,6 +10325,7 @@ def projectgraph(args, suite=None):
 
     parser = ArgumentParser(prog='mx projectgraph')
     parser.add_argument('--dist', action='store_true', help='group projects by distribution')
+    parser.add_argument('--ignore', action='append', help='dependencies to ignore', default=[])
     parser.add_argument('--igv', action='store_true', help='output to IGV listening on 127.0.0.1:4444')
     parser.add_argument('--igv-format', action='store_true', help='output graph in IGV format')
 
@@ -10372,11 +10373,16 @@ def projectgraph(args, suite=None):
             print igv.xml(indent='  ', newl='\n')
         return
 
+    def should_ignore(name):
+        return any((ignored in name for ignored in args.ignore))
+
     print 'digraph projects {'
     print 'rankdir=BT;'
     print 'node [shape=rect];'
     if args.dist:
         for d in sorted_dists():
+            if should_ignore(d.name):
+                continue
             print 'subgraph "cluster_' + d.name + '" {'
             print 'label="' + d.name + '";'
             print 'color=blue;'
@@ -10385,16 +10391,24 @@ def projectgraph(args, suite=None):
             if d.isJARDistribution():
                 for p in d.archived_deps():
                     if p.isProject():
+                        if should_ignore(p.name):
+                            continue
                         print '"' + p.name + '";'
             print '}'
     for p in projects():
+        if should_ignore(p.name):
+            continue
         for dep in p.canonical_deps():
+            if should_ignore(dep.name):
+                continue
             if args.dist and dep.isDistribution():
                 print '"' + p.name + '"->"' + dep.name + ':DUMMY" [lhead=cluster_' + dep.name + ' color=blue];'
             else:
                 print '"' + p.name + '"->"' + dep.name + '";'
         if p is JavaProject:
             for apd in p.declaredAnnotationProcessors:
+                if should_ignore(apd.name):
+                    continue
                 print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
     print '}'
 

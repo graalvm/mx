@@ -242,7 +242,7 @@ def get_java_module_info(dist, fatalIfNotModule=False):
         moduleName = getattr(dist, 'moduleName', None)
         if not moduleName:
             if fatalIfNotModule:
-                mx.abort('Distribution' + dist.name + ' does not define a module')
+                mx.abort('Distribution ' + dist.name + ' does not define a module')
             return None
         assert len(moduleName) > 0, '"moduleName" attribute of distribution ' + dist.name + ' cannot be empty'
     else:
