@@ -11002,7 +11002,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         out.element('factorypathentry', {'kind' : 'PLUGIN', 'id' : 'org.eclipse.jst.ws.annotations.core', 'enabled' : 'true', 'runInBatchMode' : 'false'})
         processorsPath = classpath_entries(names=processors)
         for e in processorsPath:
-            if e.isDistribution():
+            if e.isDistribution() and not isinstance(e.suite, BinarySuite):
                 out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
             elif e.isJdkLibrary() or e.isJreLibrary():
                 path = e.classpath_repr(jdk, resolve=True)
@@ -14335,7 +14335,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.47.1")
+version = VersionSpec("5.47.2")
 
 currentUmask = None
 
