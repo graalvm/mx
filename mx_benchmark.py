@@ -986,7 +986,7 @@ class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
 
 def build_number():
     """
-    Get the current build number from the BUILD_NUMBER environment variable. If BUILD_NUMBER not set, or not a number,
+    Get the current build number from the BUILD_NUMBER environment variable. If BUILD_NUMBER is not set or not a number,
     a default of -1 is returned.
 
     :return: the build number
