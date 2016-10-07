@@ -984,6 +984,40 @@ class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
         return "mx"
 
 
+def build_number():
+    """
+    get the build number if set in the BUILD_NUMBER env var
+
+    :return: the build number
+    :rtype: int
+    """
+    return int(mx.get_env("BUILD_NUMBER", default="-1"))
+
+
+def builders_url():
+    """
+    get the builders url if set in the BUILD_URL env var
+
+    :return: the builders url
+    :rtype: basestring
+    """
+    return mx.get_env("BUILD_URL", default="")
+
+
+def build_url():
+    """
+    get the current builder url, this method requires both the BUILD_NUMBER and BUILD_URL env vars to be set
+
+    :return: the build url
+    :rtype: basestring
+    """
+    build_num = build_number()
+    base_url = builders_url()
+    if base_url and build_num != -1:
+        return "{0}/builds/{1}".format(base_url, build_num)
+    return ""
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -1026,13 +1060,10 @@ class BenchmarkExecutor(object):
         return name
 
     def buildUrl(self):
-        return mx.get_env("BUILD_URL", default="")
+        return builders_url()
 
     def buildNumber(self):
-        build_num = mx.get_env("BUILD_NUMBER", default="")
-        if not build_num:
-            return -1
-        return int(build_num)
+        return build_number()
 
     def checkEnvironmentVars(self):
         pass
