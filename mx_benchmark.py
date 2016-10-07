@@ -994,7 +994,7 @@ def build_number():
     return int(mx.get_env("BUILD_NUMBER", default="-1"))
 
 
-def builders_url():
+def builder_url():
     """
     Get the builders url if set in the BUILD_URL env var
 
@@ -1012,7 +1012,7 @@ def build_url():
     :rtype: basestring
     """
     build_num = build_number()
-    base_url = builders_url()
+    base_url = builder_url()
     if base_url and build_num != -1:
         return "{0}/builds/{1}".format(base_url, build_num)
     return ""
@@ -1060,7 +1060,7 @@ class BenchmarkExecutor(object):
         return name
 
     def buildUrl(self):
-        return builders_url()
+        return builder_url()
 
     def buildNumber(self):
         return build_number()
