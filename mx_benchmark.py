@@ -1012,7 +1012,7 @@ def builder_url():
 
 def build_url():
     """
-    Get the current builder url. This method requires that both BUILD_NUMBER and BUILD_URL environment variables to be
+    Get the current builder url. This method requires that both BUILD_NUMBER and BUILD_URL environment variables are 
     set. If either the build number or the builder url cannot be retrieved an empty string is returned.
 
     :return: the build url
