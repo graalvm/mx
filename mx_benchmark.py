@@ -991,7 +991,12 @@ def build_number():
     :return: the build number
     :rtype: int
     """
-    return int(mx.get_env("BUILD_NUMBER", default="-1"))
+    build_num = mx.get_env("BUILD_NUMBER", default="-1")
+    try:
+        return int(build_num)
+    except ValueError:
+        mx.logv("Could not parse the build number from BUILD_NUMBER. Expected int, instead got: {0}".format(build_num))
+        return -1
 
 
 def builder_url():
