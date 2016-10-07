@@ -986,7 +986,8 @@ class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
 
 def build_number():
     """
-    Get the build number if set in the BUILD_NUMBER env var
+    Get the current build number from the BUILD_NUMBER environment variable. If BUILD_NUMBER not set, or not a number,
+    a default of -1 is returned.
 
     :return: the build number
     :rtype: int
@@ -1001,7 +1002,7 @@ def build_number():
 
 def builder_url():
     """
-    Get the builders url if set in the BUILD_URL env var
+    Get the builders url from the BUILD_URL environment variable, or an empty string otherwise.
 
     :return: the builders url
     :rtype: basestring
@@ -1011,7 +1012,8 @@ def builder_url():
 
 def build_url():
     """
-    Get the current builder url, this method requires both the BUILD_NUMBER and BUILD_URL env vars to be set
+    Get the current builder url. This method requires that both BUILD_NUMBER and BUILD_URL environment variables to be
+    set. If either the build number or the builder url cannot be retrieved an empty string is returned.
 
     :return: the build url
     :rtype: basestring
