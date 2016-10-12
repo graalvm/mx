@@ -4001,7 +4001,6 @@ class GitConfig(VC):
         self.has_git = None
 
     def check(self, abortOnError=True):
-        # Mercurial does lazy checking before use of the git command itself
         return self
 
     def check_for_git(self, abortOnError=True):
@@ -4019,7 +4018,7 @@ class GitConfig(VC):
         return self if self.has_git else None
 
     def run(self, *args, **kwargs):
-        # Ensure hg exists before executing the command
+        # Ensure git exists before executing the command
         self.check_for_git()
         return run(*args, **kwargs)
 
@@ -8360,7 +8359,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
-    commands = [sys.executable, join(_mx_home, 'mx.py')]
+    commands = [sys.executable, '-u', join(_mx_home, 'mx.py')]
     cwd = None
     if suite:
         if isinstance(suite, str):
@@ -8413,7 +8412,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         for arg in args:
             # TODO: handle newlines in args once there's a use case
             if '\n' in arg:
-                abort("nyi")
+                abort('cannot handle new line in argument to run: "' + arg + '"')
             assert '\n' not in arg
             print >> fp, arg
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
@@ -14335,7 +14334,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.47.2")
+version = VersionSpec("5.47.3")
 
 currentUmask = None
 
