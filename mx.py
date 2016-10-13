@@ -2597,9 +2597,11 @@ class NativeProject(Project):
         return NativeBuildTask(args, self)
 
     def getOutput(self, replaceVar=_replaceResultsVar):
-        if not self.output:
-            return None
-        return re.sub(r'<(.+?)>', replaceVar, self.output)
+        if self.output:
+            return re.sub(r'<(.+?)>', replaceVar, self.output)
+        if self.vpath:
+            return self.get_output_root()
+        return None
 
     def getResults(self, replaceVar=_replaceResultsVar):
         results = []
@@ -2622,7 +2624,15 @@ class NativeBuildTask(ProjectBuildTask):
         javaDeps = [d for d in self.subject.canonical_deps() if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        run([gmake_cmd()], cwd=self.subject.dir, env=env)
+        cmdline = [gmake_cmd()]
+        if self.subject.vpath:
+            env['VPATH'] = self.subject.dir
+            cwd = join(self.subject.suite.dir, self.subject.getOutput())
+            ensure_dir_exists(cwd)
+            cmdline += ['-f', join(self.subject.dir, 'Makefile')]
+        else:
+            cwd = self.subject.dir
+        run(cmdline, cwd=cwd, env=env)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
@@ -2657,7 +2667,10 @@ class NativeBuildTask(ProjectBuildTask):
 
     def clean(self, forBuild=False):
         if not forBuild:  # assume make can do incremental builds
-            run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
+            if self.subject.vpath:
+                shutil.rmtree(self.subject.getOutput())
+            else:
+                run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
             self._newestOutput = None
 
 def _make_absolute(path, prefix):
