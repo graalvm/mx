@@ -8249,11 +8249,12 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
 
 def _kill_process(pid, sig):
     """
-    Kills the process identified by `pid` by sending the sugnal `sig` to it. If `pid` is a process group
-    leader, then the whole process group is killed.
+    Sends the signal `sig` to the process identified by `pid`. If `pid` is a process group
+    leader, then signal is sent to the process group id.
     """
     pgid = os.getpgid(pid)
     try:
+        logvv('[{} sending {} to {}]'.format(os.getpid(), sig, pid))
         if pgid == pid:
             os.killpg(pgid, sig)
         else:
@@ -8307,6 +8308,7 @@ _currentSubprocesses = []
 
 def _addSubprocess(p, args):
     entry = (p, args)
+    logvv('[{}: started subprocess {}: {}]'.format(os.getpid(), p.pid, args))
     _currentSubprocesses.append(entry)
     return entry
 
@@ -8477,7 +8479,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             raise e
         abort(e.errno)
     except KeyboardInterrupt:
-        abort(1)
+        abort(1, killsig=signal.SIGINT)
     finally:
         _removeSubprocess(sub)
         os.remove(subprocessCommandFile)
@@ -9067,7 +9069,7 @@ def _send_sigquit():
                 os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
-def abort(codeOrMessage, context=None):
+def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     """
     Aborts the program with a SystemExit exception.
     If `codeOrMessage` is a plain integer, it specifies the system exit status;
@@ -9092,7 +9094,10 @@ def abort(codeOrMessage, context=None):
 
     for p, args in _currentSubprocesses:
         if is_alive(p):
-            p.terminate()
+            if get_os() == 'windows':
+                p.terminate()
+            else:
+                _kill_process(p.pid, killsig)
             time.sleep(0.1)
         if is_alive(p):
             try:
@@ -14320,7 +14325,7 @@ def main():
             _removedDeps = _remove_unsatisfied_deps()
 
     def term_handler(signum, frame):
-        abort(1)
+        abort(1, killsig=signal.SIGTERM)
     if not is_jython():
         signal.signal(signal.SIGTERM, term_handler)
 
@@ -14340,9 +14345,9 @@ def main():
             abort(retcode)
     except KeyboardInterrupt:
         # no need to show the stack trace when the user presses CTRL-C
-        abort(1)
+        abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.48.0")
+version = VersionSpec("5.48.1")
 
 currentUmask = None
 
