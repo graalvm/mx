@@ -8333,7 +8333,7 @@ def _parse_http_proxy(envVarNames):
     in `envVarNames` into a host and port tuple where port is None if
     it's not present in the environment variable.
     """
-    p = re.compile(r'(?:https?://)?([^:]+):?(\d+)?$')
+    p = re.compile(r'(?:https?://)?([^:]+):?(\d+)?/?$')
     for name in envVarNames:
         value = get_env(name)
         if value:
