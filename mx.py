@@ -8442,7 +8442,11 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     sub = None
 
     try:
-        preexec_fn, creationflags = _get_new_progress_group_args()
+        if timeout or get_os() == 'windows':
+            preexec_fn, creationflags = _get_new_progress_group_args()
+        else:
+            preexec_fn, creationflags = (None, 0)
+
         def redirect(stream, f):
             for line in iter(stream.readline, ''):
                 f(line)
