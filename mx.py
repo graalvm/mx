@@ -8246,13 +8246,20 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
     # We cannot bisect further. The last succesful attempt is the result.
     log('%s %s' % (benchName, lastSuccess))
 
-def _kill_process_group(pid, sig):
+def _kill_process(pid, sig):
+    """
+    Kills the process identified by `pid` by sending the sugnal `sig` to it. If `pid` is a process group
+    leader, then the whole process group is killed.
+    """
     pgid = os.getpgid(pid)
     try:
-        os.killpg(pgid, sig)
+        if pgid == pid:
+            os.killpg(pgid, sig)
+        else:
+            os.kill(pid, sig)
         return True
     except:
-        log('Error killing subprocess ' + str(pgid) + ': ' + str(sys.exc_info()[1]))
+        log('Error killing subprocess ' + str(pid) + ': ' + str(sys.exc_info()[1]))
         return False
 
 def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
@@ -8287,7 +8294,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
                 abort(msg)
             else:
                 log(msg)
-                _kill_process_group(process.pid, signal.SIGKILL)
+                _kill_process(process.pid, signal.SIGKILL)
                 return ERROR_TIMEOUT
         delay = min(delay * 2, remaining, .05)
         time.sleep(delay)
@@ -8432,11 +8439,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     sub = None
 
     try:
-        if timeout or get_os() == 'windows':
-            preexec_fn, creationflags = _get_new_progress_group_args()
-        else:
-            preexec_fn, creationflags = (None, 0)
-
+        preexec_fn, creationflags = _get_new_progress_group_args()
         def redirect(stream, f):
             for line in iter(stream.readline, ''):
                 f(line)
@@ -9095,7 +9098,7 @@ def abort(codeOrMessage, context=None):
                 if get_os() == 'windows':
                     p.terminate()
                 else:
-                    _kill_process_group(p.pid, signal.SIGKILL)
+                    _kill_process(p.pid, signal.SIGKILL)
             except BaseException as e:
                 if is_alive(p):
                     log('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
@@ -14334,7 +14337,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.47.3")
+version = VersionSpec("5.47.4")
 
 currentUmask = None
 
