@@ -37,14 +37,14 @@ def testdownstream_cli(args):
     """tests a downstream repo against the current working directory state of the primary suite
 
     Multiple repos can be specified with multiple instances of the -R/--repo option. The
-    first specified repo is the one being tested. The remainder are specified either to
-    override where suite are cloned from or to satisfy --dynamicimports.
+    first specified repo is the one being tested. Further repos can be specified to either
+    override where suites are cloned from or to satisfy --dynamicimports.
     """
     parser = ArgumentParser(prog='mx testdownstream')
     parser.add_argument('-R', '--repo', dest='repos', action='append', help='URL of downstream repo to clone. First specified repo is the primary repo being tested', required=True, metavar='<url>', default=[])
     parser.add_argument('--suitedir', action='store', help='relative directory of suite to test in primary repo (default: . )', default='.', metavar='<path>')
     parser.add_argument('-C', '--mx-command', dest='mxCommands', action='append', help='arguments to an mx command run in primary repo suite (e.g., -C-v -C--strict-compliance -Cgate)', default=[], metavar='<args>')
-    parser.add_argument('-E', '--encoded-space', help='character in mx command argument that will be replace with space', metavar='<char>')
+    parser.add_argument('-E', '--encoded-space', help='character used to encode a space in an mx command argument. Each instance of this character in an argument will be replaced with a space.', metavar='<char>')
 
     args = parser.parse_args(args)
 
