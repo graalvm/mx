@@ -12203,6 +12203,9 @@ def fsckprojects(args):
                 if suite.vc:
                     omitted.append(suite.vc.metadir())
                 dirnames[:] = [d for d in dirnames if d not in omitted]
+            elif dirpath == suite.get_output_root():
+                # don't want to traverse output dir
+                dirnames[:] = []
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
@@ -12210,7 +12213,7 @@ def fsckprojects(args):
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
             elif dirpath in distIdeDirs:
-                # don't traverse subdirs of an existing distributions in this suite
+                # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
             else:
                 projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
