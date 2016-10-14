@@ -73,6 +73,7 @@ import mx_compat
 import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
+import mx_downstream
 
 from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package
 
@@ -8366,7 +8367,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
-    commands = [sys.executable, '-u', join(_mx_home, 'mx.py')]
+    commands = [sys.executable, '-u', join(_mx_home, 'mx.py'), '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
         if isinstance(suite, str):
@@ -12202,6 +12203,9 @@ def fsckprojects(args):
                 if suite.vc:
                     omitted.append(suite.vc.metadir())
                 dirnames[:] = [d for d in dirnames if d not in omitted]
+            elif dirpath == suite.get_output_root():
+                # don't want to traverse output dir
+                dirnames[:] = []
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
@@ -12209,7 +12213,7 @@ def fsckprojects(args):
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
             elif dirpath in distIdeDirs:
-                # don't traverse subdirs of an existing distributions in this suite
+                # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
             else:
                 projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', basename(dirpath) + '.iml'])
@@ -13971,6 +13975,7 @@ _commands = {
     'stip': [stip, ''],
     'sversions': [sversions, '[options]'],
     'supdate': [supdate, ''],
+    'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
     'java': [java_command, '[-options] class [args...]'],
@@ -14337,7 +14342,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1)
 
-version = VersionSpec("5.47.4")
+version = VersionSpec("5.48.0")
 
 currentUmask = None
 
