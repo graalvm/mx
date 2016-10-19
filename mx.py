@@ -2406,7 +2406,8 @@ class CompilerDaemon(Daemon):
 
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
-        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose
+        jobs = ['-j', str(cpu_count())]
+        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + jobs
         preexec_fn, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
             log(' '.join(map(pipes.quote, args)))
