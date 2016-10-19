@@ -1078,7 +1078,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
                         logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                         continue
-                    if self.theLicense is not None and dep.theLicense != self.theLicense:
+                    if self.theLicense is not None and set(self.theLicense or []) < set(dep.theLicense or []):
                         if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
                             report = abort
                         else:
