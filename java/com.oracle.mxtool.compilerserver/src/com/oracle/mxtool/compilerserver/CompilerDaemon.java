@@ -47,9 +47,17 @@ public abstract class CompilerDaemon {
     private ServerSocket serverSocket;
 
     public void run(String[] args) throws Exception {
-        for (String arg : args) {
+        int jobsArg = -1;
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
             if (arg.equals("-v")) {
                 verbose = true;
+            } else if (arg.equals("-j") && ++i < args.length) {
+                try {
+                    jobsArg = Integer.parseInt(args[i]);
+                } catch (NumberFormatException e) {
+                    usage();
+                }
             } else {
                 usage();
             }
@@ -61,7 +69,7 @@ public abstract class CompilerDaemon {
 
         // Need at least 2 threads since we dedicate one to the control
         // connection waiting for the shutdown message.
-        int threadCount = Math.max(2, Runtime.getRuntime().availableProcessors());
+        int threadCount = Math.max(2, jobsArg > 0 ? jobsArg : Runtime.getRuntime().availableProcessors());
         threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(), new ThreadFactory() {
             public Thread newThread(Runnable runnable) {
                 return new Thread(runnable);
@@ -84,7 +92,7 @@ public abstract class CompilerDaemon {
     }
 
     private static void usage() {
-        System.err.println("Usage: [ -v ]");
+        System.err.println("Usage: [ -v ] [ -j NUM ]");
         System.exit(1);
     }
 
