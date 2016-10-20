@@ -2587,11 +2587,21 @@ def _replaceResultsVar(m):
     else:
         abort('Unknown variable: ' + var)
 
+"""
+A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
+to a classpath containing all JavaProject dependencies.
+Additional attributes:
+  results: a list of result file names that will be packaged if the project is part of a distribution
+  output: the directory where the Makefile puts the `results`
+  vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
+         if `False` or undefined, make will be executed from the source directory
+"""
 class NativeProject(Project):
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
         self.results = results
         self.output = output
+        self.vpath = False
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
@@ -14369,7 +14379,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.50.0")
+version = VersionSpec("5.50.1")
 
 currentUmask = None
 
