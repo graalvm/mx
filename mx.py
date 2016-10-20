@@ -7179,6 +7179,9 @@ def get_license(names, fatalIfMissing=True, context=None):
             abort('license named ' + name + ' not found', context=context)
         return l
 
+    if isinstance(names, str):
+        names = [names]
+
     return [get_single_licence(name) for name in names]
 
 def repository(name, fatalIfMissing=True, context=None):
