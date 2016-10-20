@@ -2635,7 +2635,7 @@ class NativeBuildTask(ProjectBuildTask):
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
         cmdline = [gmake_cmd()]
-        if self.subject.vpath:
+        if hasattr(self.subject, "vpath") and self.subject.vpath:
             env['VPATH'] = self.subject.dir
             cwd = join(self.subject.suite.dir, self.subject.getOutput())
             ensure_dir_exists(cwd)
@@ -14379,7 +14379,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.50.1")
+version = VersionSpec("5.50.2")
 
 currentUmask = None
 
