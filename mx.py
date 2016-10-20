@@ -345,6 +345,8 @@ The name must be unique across all Dependency instances.
 class Dependency(SuiteConstituent):
     def __init__(self, suite, name, theLicense):
         SuiteConstituent.__init__(self, suite, name)
+        if isinstance(theLicense, str):
+            theLicense = [theLicense]
         self.theLicense = theLicense
 
     def __cmp__(self, other):
@@ -1076,14 +1078,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
                         logv('[' + self.path + ': ignoring project ' + dep.name + ']')
                         continue
-                    if self.theLicense is not None and dep.theLicense != self.theLicense:
+                    if self.theLicense is not None and set(self.theLicense or []) < set(dep.theLicense or []):
                         if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
                             report = abort
                         else:
                             report = warn
-                        depLicense = dep.theLicense.name if dep.theLicense else '??'
-                        selfLicense = self.theLicense.name if self.theLicense else '??'
-                        report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(self.name, selfLicense, dep.name, depLicense))
+                        depLicense = [l.name for l in dep.theLicense] if dep.theLicense else ['??']
+                        selfLicense = [l.name for l in self.theLicense] if self.theLicense else ['??']
+                        report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(self.name, ', '.join(selfLicense), dep.name, ', '.join(depLicense)))
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
                             l = dep
@@ -5032,7 +5034,7 @@ class Repository(SuiteConstituent):
         return not self.__eq__(other)
 
     def resolveLicenses(self):
-        self.licenses = [get_license(l) for l in self.licenses]
+        self.licenses = get_license(self.licenses)
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -5943,6 +5945,8 @@ class Suite:
         if not _validate_abolute_url(self.url, acceptNone=True):
             abort('Invalid url in {}'.format(self.suite_py()))
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
+        if isinstance(self.defaultLicense, str):
+            self.defaultLicense = [self.defaultLicense]
 
         if scmDict:
             try:
@@ -7166,12 +7170,19 @@ def annotation_processors():
         _annotationProcessors = list(aps)
     return _annotationProcessors
 
-def get_license(name, fatalIfMissing=True, context=None):
-    _, name = splitqualname(name)
-    l = _licenses.get(name)
-    if l is None and fatalIfMissing:
-        abort('license named ' + name + ' not found', context=context)
-    return l
+def get_license(names, fatalIfMissing=True, context=None):
+
+    def get_single_licence(name):
+        _, name = splitqualname(name)
+        l = _licenses.get(name)
+        if l is None and fatalIfMissing:
+            abort('license named ' + name + ' not found', context=context)
+        return l
+
+    if isinstance(names, str):
+        names = [names]
+
+    return [get_single_licence(name) for name in names]
 
 def repository(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
@@ -14379,7 +14390,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.50.3")
+version = VersionSpec("5.51.0")
 
 currentUmask = None
 
