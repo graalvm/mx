@@ -2611,7 +2611,7 @@ class NativeProject(Project):
     def getOutput(self, replaceVar=_replaceResultsVar):
         if self.output:
             return re.sub(r'<(.+?)>', replaceVar, self.output)
-        if self.vpath:
+        if hasattr(self.subject, "vpath") and self.vpath:
             return self.get_output_root()
         return None
 
@@ -2679,7 +2679,7 @@ class NativeBuildTask(ProjectBuildTask):
 
     def clean(self, forBuild=False):
         if not forBuild:  # assume make can do incremental builds
-            if self.subject.vpath:
+            if hasattr(self.subject, "vpath") and self.subject.vpath:
                 shutil.rmtree(self.subject.getOutput())
             else:
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
@@ -14390,7 +14390,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.51.0")
+version = VersionSpec("5.51.1")
 
 currentUmask = None
 
