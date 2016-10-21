@@ -5295,7 +5295,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
     if licenses is None:
         licenses = []
     for dist in dists:
-        if dist.theLicense is None:
+        if not dist.theLicense:
             abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repository_id, dist.name))
         for distLicense in dist.theLicense:
             if distLicense not in licenses:
