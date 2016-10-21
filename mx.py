@@ -2148,9 +2148,10 @@ class JavaBuildTask(ProjectBuildTask):
             for src in nonjavafilelist:
                 dst = join(outputDir, src[len(sourceDir) + 1:])
                 ensure_dir_exists(dirname(dst))
-                if exists(dirname(dst)) and (not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src)):
+                dstFile = TimeStampFile(dst)
+                if dstFile.isOlderThan(src):
                     shutil.copyfile(src, dst)
-                    self._newestOutput = TimeStampFile(dst)
+                    self._newestOutput = dstFile
         if self._nonJavaFileCount():
             logvv('Finished resource copy for {}'.format(self.subject.name))
         if self.copyfiles:
