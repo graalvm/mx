@@ -5097,10 +5097,11 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         warn("Suite {}'s version is too old to contain the 'developer' attribute".format(dist.suite.name))
     if dist.theLicense:
         pom.open('licenses')
-        pom.open('license')
-        pom.element('name', data=dist.theLicense.fullname)
-        pom.element('url', data=dist.theLicense.url)
-        pom.close('license')
+        for distLicense in dist.theLicense:
+            pom.open('license')
+            pom.element('name', data=distLicense.fullname)
+            pom.element('url', data=distLicense.url)
+            pom.close('license')
         pom.close('licenses')
     elif validateMetadata != 'none':
         if dist.suite.getMxCompatibility().supportsLicenses() or validateMetadata == 'full':
@@ -5294,9 +5295,11 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
     if licenses is None:
         licenses = []
     for dist in dists:
-        if dist.theLicense not in licenses:
-            distLicense = dist.theLicense.name if dist.theLicense else '??'
-            abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense, repository_id, dist.name))
+        if dist.theLicense is None:
+            abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repository_id, dist.name))
+        for distLicense in dist.theLicense:
+            if distLicense not in licenses:
+                abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repository_id, dist.name))
     for dist in dists:
         if dist.isJARDistribution():
             pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
@@ -14390,7 +14393,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.51.1")
+version = VersionSpec("5.51.2")
 
 currentUmask = None
 
