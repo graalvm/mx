@@ -10005,7 +10005,7 @@ def canonicalizeprojects(args):
             ignoredDeps = set([d for d in p.deps if d.isJavaProject()])
             for pkg in p.imported_java_packages():
                 for dep in p.deps:
-                    if not dep.isProject():
+                    if not dep.isJavaProject():
                         ignoredDeps.discard(dep)
                     else:
                         if pkg in dep.defined_java_packages():
@@ -14393,7 +14393,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.51.2")
+version = VersionSpec("5.51.3")
 
 currentUmask = None
 
