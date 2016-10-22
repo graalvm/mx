@@ -8411,8 +8411,17 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
-def run_mx(args, suite=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
-    commands = [sys.executable, '-u', join(_mx_home, 'mx.py'), '--java-home=' + get_jdk().home]
+def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
+    """
+    Recursively runs mx.
+
+    :param list args: the command line arguments to pass to the recusive mx execution
+    :param suite: the primary suite or primary suite directory to use
+    :param str mxpy: path the mx module to run (None to use the current mx module)
+    """
+    if mxpy is None:
+        mxpy = join(_mx_home, 'mx.py')
+    commands = [sys.executable, '-u', mxpy, '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
         if isinstance(suite, str):
@@ -14394,7 +14403,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.51.3")
+version = VersionSpec("5.51.4")
 
 currentUmask = None
 
