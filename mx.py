@@ -8524,7 +8524,17 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             for t in joiners:
                 t.join(10)
         if timeout is None or timeout == 0:
-            retcode = waitOn(p)
+            while True:
+                try:
+                    retcode = waitOn(p)
+                    break
+                except KeyboardInterrupt:
+                    if get_os() == 'windows':
+                        p.terminate()
+                    else:
+                        # Propagate SIGINT to subprocess. If the subprocess does not
+                        # handle the signal, it will terminate and this loop exits.
+                        _kill_process(p.pid, signal.SIGINT)
         else:
             if get_os() == 'windows':
                 abort('Use of timeout not (yet) supported on Windows')
@@ -14403,7 +14413,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.51.4")
+version = VersionSpec("5.51.5")
 
 currentUmask = None
 
