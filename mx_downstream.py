@@ -43,7 +43,7 @@ def testdownstream_cli(args):
     parser = ArgumentParser(prog='mx testdownstream')
     parser.add_argument('-R', '--repo', dest='repos', action='append', help='URL of downstream repo to clone. First specified repo is the primary repo being tested', required=True, metavar='<url>', default=[])
     parser.add_argument('--suitedir', action='store', help='relative directory of suite to test in primary repo (default: . )', default='.', metavar='<path>')
-    parser.add_argument('-C', '--mx-command', dest='mxCommands', action='append', help='arguments to an mx command run in primary repo suite (e.g., -C-v -C--strict-compliance -Cgate)', default=[], metavar='<args>')
+    parser.add_argument('-C', '--mx-command', dest='mxCommands', action='append', help='arguments to an mx command run in primary repo suite (e.g., -C "-v --strict-compliance gate")', default=[], metavar='<args>')
     parser.add_argument('-E', '--encoded-space', help='character used to encode a space in an mx command argument. Each instance of this character in an argument will be replaced with a space.', metavar='<char>')
 
     args = parser.parse_args(args)
@@ -56,15 +56,18 @@ def testdownstream_cli(args):
 
     return testdownstream(mx.primary_suite(), args.repos, args.suitedir, mxCommands)
 
-def testdownstream(suite, repoUrls, relSuiteDir, mxCommands):
+def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands):
     """
     Tests a downstream repo against the current working directory state of `suite`.
 
-    :param list repoUrls: URLs of downstream repos to clone, the first of which is the primary repo being tested
-    :param str relSuiteDir: directory of the primary repo suite to test
-    :param list mxCommands: argument lists for the mx commands run in primary repo suite
+    :param mx.Suite suite: the suite to test against the downstream repo
+    :param list repoUrls: URLs of downstream repos to clone, the first of which is the repo being tested
+    :param str relTargetSuiteDir: directory of the downstream suite to test relative to the top level
+           directory of the downstream repo being tested
+    :param list mxCommands: argument lists for the mx commands run in downstream suite being tested
     """
 
+    assert len(repoUrls) > 0
     workDir = join(suite.get_output_root(), 'testdownstream')
 
     # A mirror of the current suite is created with symlinks
@@ -106,9 +109,10 @@ def testdownstream(suite, repoUrls, relSuiteDir, mxCommands):
         if not targetDir:
             targetDir = repoWorkDir
 
-    assert not isabs(relSuiteDir)
-    suiteDir = join(targetDir, relSuiteDir)
-    assert suiteDir.startswith(targetDir)
+    assert not isabs(relTargetSuiteDir)
+    targetSuiteDir = join(targetDir, relTargetSuiteDir)
+    assert targetSuiteDir.startswith(targetDir)
+    mxpy = None if suite != mx._mx_suite else join(mirror, 'mx.py')
     for command in mxCommands:
-        mx.logv('[running "mx ' + ' '.join(command) + '" in ' + suiteDir + ']')
-        mx.run_mx(command, suiteDir)
+        mx.logv('[running "mx ' + ' '.join(command) + '" in ' + targetSuiteDir + ']')
+        mx.run_mx(command, targetSuiteDir, mxpy=mxpy)
