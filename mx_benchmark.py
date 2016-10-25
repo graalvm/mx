@@ -224,10 +224,25 @@ class BenchmarkSuite(object):
 def add_bm_suite(suite, mxsuite=None):
     if mxsuite is None:
         mxsuite = mx.currently_loading_suite.get()
-    if suite.name() in _bm_suites:
-        raise RuntimeError("Benchmark suite '{0}' already exists.".format(suite.name()))
+
+    full_name = "{}-{}".format(suite.name(), suite.subgroup())
+    if full_name in _bm_suites:
+        raise RuntimeError("Benchmark suite full name '{0}' already exists.".format(full_name))
+    _bm_suites[full_name] = suite
     setattr(suite, ".mxsuite", mxsuite)
-    _bm_suites[suite.name()] = suite
+
+    simple_name = suite.name()
+    # If possible also register suite with simple_name
+    if simple_name in _bm_suites:
+        if _bm_suites[simple_name]:
+            mx.log("Warning: Benchmark suite '{0}' name collision. Suites only available as '{0}-<subgroup>'.".format(simple_name))
+        _bm_suites[simple_name] = None
+    else:
+        _bm_suites[simple_name] = suite
+
+
+def bm_suite_valid_keys():
+    return sorted([k for k, v in _bm_suites.items() if v])
 
 
 class Rule(object):
@@ -1136,7 +1151,7 @@ class BenchmarkExecutor(object):
             benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, _bm_suites.keys()))
+            mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, bm_suite_valid_keys()))
         if benchspec is "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec is "":
@@ -1213,7 +1228,7 @@ class BenchmarkExecutor(object):
 
         if mxBenchmarkArgs.list:
             print "The following benchmark suites are available:\n"
-            for name in _bm_suites:
+            for name in bm_suite_valid_keys():
                 print "  " + name
             mx.abort("")
 
