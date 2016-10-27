@@ -43,6 +43,8 @@ def testdownstream_cli(args):
     parser = ArgumentParser(prog='mx testdownstream')
     parser.add_argument('-R', '--repo', dest='repos', action='append', help='URL of downstream repo to clone. First specified repo is the primary repo being tested', required=True, metavar='<url>', default=[])
     parser.add_argument('--suitedir', action='store', help='relative directory of suite to test in primary repo (default: . )', default='.', metavar='<path>')
+    parser.add_argument('--downstream-branch', action='store', help='name of branch to look for in downstream repo(s). '
+                        'Can be specified by DOWNSTREAM_BRANCH environment variable. If not specified, current branch of the primary suite is used.', metavar='<name>')
     parser.add_argument('-C', '--mx-command', dest='mxCommands', action='append', help='arguments to an mx command run in primary repo suite (e.g., -C "-v --strict-compliance gate")', default=[], metavar='<args>')
     parser.add_argument('-E', '--encoded-space', help='character used to encode a space in an mx command argument. Each instance of this character in an argument will be replaced with a space.', metavar='<char>')
 
@@ -54,9 +56,10 @@ def testdownstream_cli(args):
             command = [arg.replace(args.encoded_space, ' ') for arg in command]
         mxCommands.append(command)
 
-    return testdownstream(mx.primary_suite(), args.repos, args.suitedir, mxCommands)
+    branch = args.downstream_branch or mx.get_env('DOWNSTREAM_BRANCH', None)
+    return testdownstream(mx.primary_suite(), args.repos, args.suitedir, mxCommands, branch)
 
-def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands):
+def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     """
     Tests a downstream repo against the current working directory state of `suite`.
 
@@ -65,6 +68,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands):
     :param str relTargetSuiteDir: directory of the downstream suite to test relative to the top level
            directory of the downstream repo being tested
     :param list mxCommands: argument lists for the mx commands run in downstream suite being tested
+    :param str branch: name of branch to look for in downstream repo(s)
     """
 
     assert len(repoUrls) > 0
@@ -103,7 +107,8 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands):
             git.clone(repoUrl, repoWorkDir)
 
         # See if there's a matching (non-master) branch downstream and use it if there is
-        branch = git.git_command(suite.dir, ['rev-parse', '--abbrev-ref', 'HEAD']).strip()
+        if not branch:
+            branch = git.git_command(suite.dir, ['rev-parse', '--abbrev-ref', 'HEAD']).strip()
         if branch != 'master':
             git.git_command(repoWorkDir, ['checkout', branch], abortOnError=False)
         if not targetDir:
