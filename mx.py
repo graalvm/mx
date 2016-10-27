@@ -5382,7 +5382,7 @@ def maven_deploy(args):
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
     if args.url:
-        licenses = [get_license(l) for l in args.licenses.split(',') if l]
+        licenses = get_license(args.licenses.split(','))
         repo = Repository(None, args.repository_id, args.url, licenses)
     else:
         if not s.getMxCompatibility().supportsRepositories():
