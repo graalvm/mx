@@ -12049,7 +12049,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
     for library in libraries:
         sourcePath = None
         if library.isLibrary():
-            path = os.path.relpath(library.path, suite.dir)
+            path = os.path.relpath(library.get_path(True), suite.dir)
             if library.sourcePath:
                 sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
         elif library.isJARDistribution():
