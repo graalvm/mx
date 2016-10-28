@@ -11980,16 +11980,18 @@ def _intellij_suite(args, suite, refreshOnly=False):
         def processDep(dep, edge):
             if dep is proj:
                 return
-            if dep.isLibrary() or dep.isJARDistribution():
+            if dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject():
                 libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
-            elif dep.isProject():
+            elif dep.isJavaProject():
                 moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
             elif dep.isJdkLibrary():
                 jdk_libraries.add(dep)
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isJreLibrary():
                 pass
+            elif dep.isNativeProject() or dep.isArchivableProject():
+                log("Ignoring dependency from {} to {}".format(proj.name, dep.name))
             else:
                 abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
         p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
@@ -12035,7 +12037,10 @@ def _intellij_suite(args, suite, refreshOnly=False):
         libraryXml.element('JAVADOC')
         if sourcePath:
             libraryXml.open('SOURCES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
+            if os.path.isdir(sourcePath):
+                libraryXml.element('root', attributes={'url': 'file://$PROJECT_DIR$/' + sourcePath})
+            else:
+                libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
             libraryXml.close('SOURCES')
         else:
             libraryXml.element('SOURCES')
@@ -12049,9 +12054,12 @@ def _intellij_suite(args, suite, refreshOnly=False):
     for library in libraries:
         sourcePath = None
         if library.isLibrary():
-            path = os.path.relpath(library.path, suite.dir)
+            path = os.path.relpath(library.get_path(True), suite.dir)
             if library.sourcePath:
                 sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
+        elif library.isMavenProject():
+            path = os.path.relpath(library.get_path(True), suite.dir)
+            sourcePath = os.path.relpath(library.get_source_path(True), suite.dir)
         elif library.isJARDistribution():
             path = os.path.relpath(library.path, suite.dir)
             if library.sourcesPath:
@@ -12305,7 +12313,7 @@ def fsckprojects(args):
                 def processDep(dep, edge):
                     if dep is p:
                         return
-                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary():
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
             neededLibraryFiles = frozenset([l.name + '.xml' for l in neededLibraries])
