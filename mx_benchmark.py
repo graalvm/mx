@@ -1135,6 +1135,9 @@ class BenchmarkExecutor(object):
 
         standard.update(commit_info("", mx.primary_suite()))
         for (name, mxsuite) in mx._suites.iteritems():
+            ignored = mxBenchmarkArgs.ignore_suite_commit_info
+            if ignored and name in ignored:
+                continue
             standard.update(commit_info("extra." + name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
         if triggering_suite:
@@ -1215,6 +1218,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--triggering-suite", default=None,
             help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
+        parser.add_argument(
+            "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
+            help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
             "--list", default=None, action="store_true",
             help="When set, just prints the list of all available benchmark suites.")
