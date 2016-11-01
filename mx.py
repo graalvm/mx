@@ -57,6 +57,7 @@ import pipes
 import difflib
 import glob
 import urllib2, urlparse
+import filecmp
 from collections import Callable
 from collections import OrderedDict, namedtuple
 from datetime import datetime
@@ -895,6 +896,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
+    :param list stripConfig: paths to stripping configurations
     :param str subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
     :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
            it is interpreted to be relative to `suite.dir`.
@@ -915,11 +917,11 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param bool maven:
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
-                 javadocType="implementation", allowsJavadocWarnings=False, maven=True):
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfig=None):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
-        self.path = _make_absolute(path.replace('/', os.sep), suite.dir)
+        self._path = _make_absolute(path.replace('/', os.sep), suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
         self.archiveparticipants = []
         self.mainClass = mainClass
@@ -928,7 +930,21 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
+        self.stripConfig = stripConfig
         assert path.endswith(self.localExtension())
+
+    @property
+    def path(self):
+        if _opts.strip_jars and self.is_stripped():
+            return join(ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
+        else:
+            return self._path
+
+    def original_path(self):
+        return self._path
+
+    def is_stripped(self):
+        return self.stripConfig is not None
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -980,13 +996,13 @@ class JARDistribution(Distribution, ClasspathDependency):
         Creates the jar file(s) defined by this JARDistribution.
         """
         # are sources combined into main archive?
-        unified = self.path == self.sourcesPath
+        unified = self.original_path() == self.sourcesPath
         snippetsPattern = None
         if hasattr(self.suite, 'snippetsPattern'):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
 
         services = {}
-        with Archiver(self.path) as arc:
+        with Archiver(self.original_path()) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
 
@@ -1023,7 +1039,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                     isOverwrite = False
                     if existingSource and existingSource != source:
                         if arcname[-1] != os.path.sep:
-                            warn(self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                            warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
                         isOverwrite = True
                     zf._provenance[arcname] = source
                     return isOverwrite
@@ -1076,7 +1092,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 for dep in self.archived_deps():
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
-                        logv('[' + self.path + ': ignoring project ' + dep.name + ']')
+                        logv('[' + self.original_path() + ': ignoring project ' + dep.name + ']')
                         continue
                     if self.theLicense is not None and set(self.theLicense or []) < set(dep.theLicense or []):
                         if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
@@ -1090,11 +1106,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if dep.isLibrary():
                             l = dep
                             # merge library jar into distribution jar
-                            logv('[' + self.path + ': adding library ' + l.name + ']')
+                            logv('[' + self.original_path() + ': adding library ' + l.name + ']')
                             jarPath = l.get_path(resolve=True)
                             jarSourcePath = l.get_source_path(resolve=True)
                         elif dep.isJARDistribution():
-                            logv('[' + self.path + ': adding distribution ' + dep.name + ']')
+                            logv('[' + self.original_path() + ': adding distribution ' + dep.name + ']')
                             jarPath = dep.path
                             jarSourcePath = dep.sourcesPath
                         else:
@@ -1110,7 +1126,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
                     elif dep.isMavenProject():
-                        logv('[' + self.path + ': adding jar from Maven project ' + dep.name + ']')
+                        logv('[' + self.original_path() + ': adding jar from Maven project ' + dep.name + ']')
                         addFromJAR(dep.classpath_repr())
                         for srcDir in dep.source_dirs():
                             addSrcFromDir(srcDir)
@@ -1120,7 +1136,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if p.javaCompliance > self.javaCompliance:
                                 abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
 
-                        logv('[' + self.path + ': adding project ' + p.name + ']')
+                        logv('[' + self.original_path() + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
 
                         archivePrefix = ''
@@ -1140,7 +1156,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir)
                     elif dep.isArchivableProject():
-                        logv('[' + self.path + ': adding archivable project ' + dep.name + ']')
+                        logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
                         archivePrefix = dep.archive_prefix()
                         outputDir = dep.output_dir()
                         for f in dep.getResults():
@@ -1164,6 +1180,74 @@ class JARDistribution(Distribution, ClasspathDependency):
             jmd = make_java_module(self, jdk)
             if jmd:
                 setattr(self, '.javaModule', jmd)
+
+        if _opts.strip_jars and self.is_stripped():
+            self.strip_jar()
+
+    def strip_mapping_file(self):
+        assert _opts.strip_jars
+        return self.path + '.map'
+
+    def strip_jar(self):
+        def _extract_dependency_info(initial_deps=None):
+            cp_entries = classpath_entries(self, includeSelf=False, preferProjects=False)
+            input_strip_maps = []
+            library_dependencies = [] if initial_deps is None else initial_deps
+            for d in cp_entries:
+                if d.isJdkLibrary() or d.isJreLibrary():
+                    new_library = d.classpath_repr(get_jdk())
+                elif d.isJARDistribution() and d.is_stripped():
+                    input_map = d.strip_mapping_file()
+                    assert exists(input_map) and exists(d.path), 'Distribution ' + d.name + ' must be stripped'
+                    input_strip_maps.append(input_map)
+                    new_library = d.original_path()
+                else:
+                    new_library = d.classpath_repr()
+
+                # Remove duplicates: file comparison as there are inconsistent paths when using symlinks
+                if not [d for d in library_dependencies if filecmp.cmp(d, new_library)]:
+                    library_dependencies.append(new_library)
+            return library_dependencies, input_strip_maps
+
+        assert _opts.strip_jars, "Only works under the flag."
+        logv('Stripping {}...'.format(self.name))
+        strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
+
+        # add config files from projects
+        strip_config_paths = [join(self.suite.dir, f) for f in self.stripConfig]
+        for config_path in strip_config_paths:
+            strip_command += ['-include', config_path]
+
+        # input and output jars
+        library_paths, input_maps = _extract_dependency_info(get_jdk().bootclasspath().split(os.pathsep))
+        library_paths_set = library_paths
+        strip_command += [
+            '-injars', self.original_path(),
+            '-outjars', self.path, # only the jar of this distribution
+            '-libraryjars', os.pathsep.join(library_paths_set),
+            '-printmapping', self.strip_mapping_file(),
+        ]
+
+        # options for incremental stripping
+        strip_command += ['-dontoptimize', '-dontshrink', '-useuniqueclassmembernames']
+
+        # common options for all projects
+        strip_command += [
+            '-adaptclassstrings',
+            '-adaptresourcefilecontents', 'META-INF/services/*',
+            '-adaptresourcefilenames', 'META-INF/services/*',
+            '-renamesourcefileattribute', 'stripped',
+            '-keepattributes', '*Annotation*,SourceFile,LineNumberTable,InnerClasses,EnclosingMethod',
+        ]
+
+        # add mappings of all stripped dependencies
+        for mf in input_maps:
+            strip_command += ['-applymapping', mf]
+
+        if _opts.verbose:
+            strip_command.append('-verbose')
+
+        run_java(strip_command)
 
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
@@ -6157,9 +6241,11 @@ class Suite:
             javadocType = attrs.pop('javadocType', 'implementation')
             allowsJavadocWarnings = attrs.pop('allowsJavadocWarnings', False)
             maven = attrs.pop('maven', True)
+            stripConfig = attrs.pop('strip', None)
+            assert stripConfig is None or isinstance(stripConfig, list)
             if isinstance(maven, types.DictType) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings, maven=maven)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings, maven=maven, stripConfig=stripConfig)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
@@ -7640,6 +7726,8 @@ environment variables:
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
+        self.add_argument('--strip-jars', action='store_true', help='Produce and use stripped jars in all mx commands.')
+
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
@@ -14456,7 +14544,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.56.0")
+version = VersionSpec("5.57.0")
 
 currentUmask = None
 
