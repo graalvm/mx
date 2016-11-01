@@ -37,7 +37,7 @@ def _should_test_project(p):
         return p.jackpot.lower() == 'true' or p.jackpot is True
     return True
 
-def jackpot(args, suite=None):
+def jackpot(args, suite=None, nonZeroIsFatal=False):
     """run Jackpot 3.0 against non-test Java projects"""
     jackpotHome = mx.get_env('JACKPOT_HOME', None)
     if jackpotHome:
@@ -79,7 +79,7 @@ def jackpot(args, suite=None):
     cmd = ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
     cmd = cmd + ['--fail-on-warnings', '--progress'] + args + groups
 
-    return mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
+    return mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=mx.get_jdk(javaCompliance))
 
 def _escape_string(s):
     return s.replace("\\", "\\\\").replace(" ", "\\ ")
