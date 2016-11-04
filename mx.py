@@ -10063,6 +10063,17 @@ class Archiver(SafeFileCreation):
                 self.zf.close()
             SafeFileCreation.__exit__(self, exc_type, exc_value, traceback)
 
+def _unstrip(args):
+    """ Unstrips the contents of a file passed as the second argument with mappings from the file in the first arguments.
+    Directly passes the arguments to proguard-retrace.jar. For more details see: http://proguard.sourceforge.net/manual/retrace/usage.html"""
+    unstrip(args)
+    return 0
+
+def unstrip(args):
+    proguard_cp = library('PROGUARD_RETRACE').get_path(resolve=True) + os.pathsep + library('PROGUARD').get_path(resolve=True)
+    unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
+    run_java(unstrip_command + args)
+
 def _archive(args):
     archive(args)
     return 0
@@ -14161,6 +14172,7 @@ _commands = {
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'archive': [_archive, '[options]'],
+    'unstrip': [_unstrip, '[options]'],
     'maven-install' : [maven_install, ''],
     'maven-deploy' : [maven_deploy, ''],
     'deploy-binary' : [deploy_binary, ''],
