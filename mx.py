@@ -1189,26 +1189,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         return self.path + '.map'
 
     def strip_jar(self):
-        def _extract_dependency_info(initial_deps=None):
-            cp_entries = classpath_entries(self, includeSelf=False, preferProjects=False)
-            input_strip_maps = []
-            library_dependencies = [] if initial_deps is None else initial_deps
-            for d in cp_entries:
-                if d.isJdkLibrary() or d.isJreLibrary():
-                    new_library = d.classpath_repr(get_jdk())
-                elif d.isJARDistribution() and d.is_stripped():
-                    input_map = d.strip_mapping_file()
-                    assert exists(input_map) and exists(d.path), 'Distribution ' + d.name + ' must be stripped'
-                    input_strip_maps.append(input_map)
-                    new_library = d.original_path()
-                else:
-                    new_library = d.classpath_repr()
-
-                # Remove duplicates: file comparison as there are inconsistent paths when using symlinks
-                if not [d for d in library_dependencies if filecmp.cmp(d, new_library)]:
-                    library_dependencies.append(new_library)
-            return library_dependencies, input_strip_maps
-
         assert _opts.strip_jars, "Only works under the flag."
         logv('Stripping {}...'.format(self.name))
         strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
@@ -1219,12 +1199,11 @@ class JARDistribution(Distribution, ClasspathDependency):
             strip_command += ['-include', config_path]
 
         # input and output jars
-        library_paths, input_maps = _extract_dependency_info(get_jdk().bootclasspath().split(os.pathsep))
-        library_paths_set = library_paths
+        input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
         strip_command += [
             '-injars', self.original_path(),
             '-outjars', self.path, # only the jar of this distribution
-            '-libraryjars', os.pathsep.join(library_paths_set),
+            '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True),
             '-printmapping', self.strip_mapping_file(),
         ]
 
@@ -7494,7 +7473,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
@@ -7502,19 +7481,23 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     """
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     cp = []
+    def _appendUnique(cp_addition):
+        for new_path in cp_addition.split(os.pathsep):
+            if not unique or not [d for d in cp if filecmp.cmp(d, new_path)]:
+                cp.append(new_path)
     if includeBootClasspath and get_jdk().bootclasspath():
-        cp.append(get_jdk().bootclasspath())
+        _appendUnique(get_jdk().bootclasspath())
     if _opts.cp_prefix is not None:
-        cp.append(_opts.cp_prefix)
+        _appendUnique(_opts.cp_prefix)
     for dep in cpEntries:
         if dep.isJdkLibrary() or dep.isJreLibrary():
             cp_repr = dep.classpath_repr(jdk, resolve=resolve)
         else:
             cp_repr = dep.classpath_repr(resolve)
         if cp_repr:
-            cp.append(cp_repr)
+            _appendUnique(cp_repr)
     if _opts.cp_suffix is not None:
-        cp.append(_opts.cp_suffix)
+        _appendUnique(_opts.cp_suffix)
 
     return os.pathsep.join(cp)
 

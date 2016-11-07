@@ -103,6 +103,8 @@ public class FindClassesByAnnotatedMethods {
 
             List<String> classNames = new ArrayList<>(jarFile.size());
             Enumeration<JarEntry> e = jarFile.entries();
+            System.err.println(url);
+            System.err.println(jarFile.entries());
             while (e.hasMoreElements()) {
                 JarEntry je = e.nextElement();
                 if (je.isDirectory() || !je.getName().endsWith(".class")) {
