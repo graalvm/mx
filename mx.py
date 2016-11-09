@@ -9638,7 +9638,7 @@ def eclipseformat(args):
     if not os.access(args.eclipse_exe, os.X_OK):
         abort('Not an executable file: ' + args.eclipse_exe)
 
-    eclipseinit([], buildProcessorJars=False)
+    wsroot = eclipseinit([], buildProcessorJars=False)
 
     # build list of projects to be processed
     if args.projects is not None:
@@ -9741,6 +9741,7 @@ def eclipseformat(args):
                 '-nosplash',
                 '-application',
                 '-consolelog',
+                '-data', wsroot,
                 '-vm', get_jdk(tag=DEFAULT_JDK_TAG).java,
                 'org.eclipse.jdt.core.JavaCodeFormatter',
                 '-config', batch.path]
@@ -10643,11 +10644,12 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=F
     for s in suites(True) + [_mx_suite]:
         _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force)
 
-    generate_eclipse_workingsets()
+    wsroot = generate_eclipse_workingsets()
 
     if doFsckProjects and not refreshOnly:
         fsckprojects([])
 
+    return wsroot
 
 def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
     """
@@ -11376,6 +11378,7 @@ def generate_eclipse_workingsets():
         wsdoc = _make_workingset_xml(workingSets)
 
     update_file(wspath, wsdoc.xml(newl='\n'))
+    return wsroot
 
 def _find_eclipse_wsroot(wsdir):
     md = join(wsdir, '.metadata')
