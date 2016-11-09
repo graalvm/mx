@@ -1203,7 +1203,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         strip_command += [
             '-injars', self.original_path(),
             '-outjars', self.path, # only the jar of this distribution
-            '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True),
+            '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True),
             '-printmapping', self.strip_mapping_file(),
         ]
 
@@ -2184,7 +2184,7 @@ class JavaBuildTask(ProjectBuildTask):
                 jdk=self.jdk,
                 compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance))),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance), ignoreStripped=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
                 disableApiRestrictions=not self.args.warnAPI,
@@ -7473,7 +7473,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False):
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False):
     """
     Get the class path for a list of named projects and distributions, resolving each entry in the
     path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
@@ -7492,6 +7492,8 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     for dep in cpEntries:
         if dep.isJdkLibrary() or dep.isJreLibrary():
             cp_repr = dep.classpath_repr(jdk, resolve=resolve)
+        elif dep.isJARDistribution() and ignoreStripped:
+            cp_repr = dep.original_path()
         else:
             cp_repr = dep.classpath_repr(resolve)
         if cp_repr:
