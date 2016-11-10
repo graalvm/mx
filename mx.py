@@ -1258,9 +1258,9 @@ class NativeTARDistribution(Distribution):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     :param str relpath: specifies if the names of tar file entries should be relative to the output
-           directories of the constituent native projects' output directories.
-    :param str output: specifies where the tar file should be extracted when this distribution is
-           retrieved as a binary dependency
+           directories of the constituent native projects' output directories
+    :param str output: specifies where the content of the distribution should be copied upon creation
+           or extracted after pull
     Attributes:
         path: suite-local path to where the tar file will be placed
     """
@@ -1273,8 +1273,21 @@ class NativeTARDistribution(Distribution):
     def make_archive(self):
         directory = dirname(self.path)
         ensure_dir_exists(directory)
+
         with Archiver(self.path, kind='tar') as arc:
             files = set()
+            def archive_and_copy(name, arcname):
+                assert arcname not in files, arcname
+                files.add(arcname)
+
+                arc.zf.add(name, arcname=arcname)
+
+                if self.output:
+                    dest = join(self.suite.dir, self.output, arcname)
+                    if name != dest:
+                        ensure_dir_exists(os.path.dirname(dest))
+                        shutil.copy2(name, dest)
+
             for d in self.archived_deps():
                 if d.isNativeProject():
                     output = d.getOutput()
@@ -1284,22 +1297,18 @@ class NativeTARDistribution(Distribution):
                             filename = os.path.relpath(r, output)
                         else:
                             filename = basename(r)
-                        assert filename not in files, filename
                         # Make debug-info files optional for distribution
                         if is_debug_lib_file(r) and not os.path.exists(r):
                             warn("File {} for archive {} does not exist.".format(filename, d.name))
                         else:
-                            files.add(filename)
-                            arc.zf.add(r, arcname=filename)
+                            archive_and_copy(r, filename)
                 elif d.isArchivableProject():
                     outputDir = d.output_dir()
                     archivePrefix = d.archive_prefix()
                     for f in d.getResults():
                         relpath = d.get_relpath(f, outputDir)
                         arcname = join(archivePrefix, relpath)
-                        assert arcname not in files, arcname
-                        files.add(arcname)
-                        arc.zf.add(f, arcname=arcname)
+                        archive_and_copy(f, arcname)
                 elif hasattr(d, 'getResults') and not d.getResults():
                     logv("[{}: ignoring dependency {} with no results]".format(self.name, d.name))
                 else:
