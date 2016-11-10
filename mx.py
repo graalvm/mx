@@ -1406,6 +1406,8 @@ class Project(Dependency):
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
+        if hasattr(self, 'build_deps'):
+            self._resolveDepsHelper(self.build_deps)
 
     def get_output_root(self):
         """
@@ -9424,21 +9426,38 @@ def build(args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
+    delayedTasks = {}
 
     def _createTask(dep, edge):
         task = dep.getBuildTask(args)
         assert task.subject not in taskMap
-        sortedTasks.append(task)
         taskMap[dep] = task
-        lst = depsMap.setdefault(dep, [])
-        for d in lst:
-            task.deps.append(taskMap[d])
+        def try_link_task(t):
+            if hasattr(t.subject, 'build_deps'):
+                for build_dep in t.subject.build_deps:
+                    if build_dep not in taskMap:
+                        delayedTasks.setdefault(build_dep, []).append(t)
+                        return
+                    else:
+                        t.deps.append(taskMap[build_dep])
+            sortedTasks.append(t)
+            lst = depsMap.setdefault(t.subject, [])
+            for d in lst:
+                t.deps.append(taskMap[d])
+
+        if dep in delayedTasks:
+            candidates = delayedTasks[dep]
+            del delayedTasks[dep]
+            for candidate in candidates:
+                try_link_task(candidate)
+        try_link_task(task)
 
     def _registerDep(src, edgeType, dst):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+    assert not delayedTasks
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
