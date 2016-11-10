@@ -1219,9 +1219,16 @@ class JARDistribution(Distribution, ClasspathDependency):
             '-keepattributes', '*Annotation*,SourceFile,LineNumberTable,InnerClasses,EnclosingMethod',
         ]
 
-        # add mappings of all stripped dependencies
-        for mf in input_maps:
-            strip_command += ['-applymapping', mf]
+        # add mappings of all stripped dependencies (must be one file)
+        if input_maps:
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.map')
+            for map_file_name in input_maps:
+                with open(map_file_name, 'r') as map_file:
+                    shutil.copyfileobj(map_file, tmp_file)
+            tmp_file.close()
+
+            strip_command += ['-applymapping', tmp_file.name]
+
 
         if _opts.verbose:
             strip_command.append('-verbose')
