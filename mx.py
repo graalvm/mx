@@ -2681,7 +2681,9 @@ class NativeBuildTask(ProjectBuildTask):
     def clean(self, forBuild=False):
         if not forBuild:  # assume make can do incremental builds
             if hasattr(self.subject, "vpath") and self.subject.vpath:
-                shutil.rmtree(self.subject.getOutput())
+                output = self.subject.getOutput()
+                if os.path.exists(output):
+                    shutil.rmtree(output)
             else:
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
             self._newestOutput = None
@@ -14424,7 +14426,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.53.2")
+version = VersionSpec("5.53.3")
 
 currentUmask = None
 
