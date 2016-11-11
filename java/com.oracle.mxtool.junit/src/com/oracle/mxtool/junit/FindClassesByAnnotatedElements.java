@@ -23,7 +23,7 @@
 package com.oracle.mxtool.junit;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Method;
+import java.lang.reflect.AnnotatedElement;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
@@ -34,15 +34,18 @@ import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
- * Finds classes in given jar files that contain methods annotated by a given set of annotations.
+ * Finds classes in given jar files that contain {@code AnnotatedElement}s annotated by a given set of annotations.
  */
-public class FindClassesByAnnotatedMethods {
+public class FindClassesByAnnotatedElements {
 
     private static boolean containsAnnotation(Class<?> javaClass, Set<String> qualifiedAnnotations, Set<String> unqualifiedAnnotations) {
-        for (Method method : javaClass.getDeclaredMethods()) {
-            Annotation[] annos = method.getAnnotations();
+        AnnotatedElement[] classAnnotatedElements = Stream.of(javaClass.getDeclaredMethods(), javaClass.getDeclaredFields()).
+                flatMap(Stream::of).toArray(AnnotatedElement[]::new);
+        for (AnnotatedElement element : classAnnotatedElements) {
+            Annotation[] annos = element.getAnnotations();
             for (Annotation a : annos) {
                 if (!qualifiedAnnotations.isEmpty()) {
                     String qualifiedName = a.annotationType().getName();
@@ -72,15 +75,14 @@ public class FindClassesByAnnotatedMethods {
      *            are jar file names
      */
     public static void main(String... args) throws Throwable {
-        int i = 0;
         Set<String> qualifiedAnnotations = new HashSet<>();
         Set<String> unqualifiedAnnotations = new HashSet<>();
         List<Pattern> snippetPatterns = new ArrayList<>();
         for (String arg : args) {
-            if (arg.startsWith("snippetsPattern:")) {
+            if (isSnippetArg(arg)) {
                 snippetPatterns.add(Pattern.compile(arg.substring("snippetsPattern:".length())));
-            } else if (arg.charAt(0) == '@') {
-                String annotation = args[i++].substring(1);
+            } else if (isAnnotationArg(arg)) {
+                String annotation = arg.substring(1);
                 int lastDot = annotation.lastIndexOf('.');
                 if (lastDot != -1) {
                     qualifiedAnnotations.add(annotation);
@@ -91,13 +93,12 @@ public class FindClassesByAnnotatedMethods {
             }
         }
 
-        for (String arg : args) {
-            if (arg.startsWith("snippetsPattern:") || arg.charAt(0) == '@') {
+
+        for (String jarFilePath : args) {
+            if (isSnippetArg(jarFilePath) || isAnnotationArg(jarFilePath)) {
                 continue;
             }
-            final String jarFilePath = arg;
             JarFile jarFile = new JarFile(jarFilePath);
-
             URL url = new URL("jar", "", "file:" + jarFilePath + "!/");
             ClassLoader loader = new URLClassLoader(new URL[]{url});
 
@@ -115,9 +116,12 @@ public class FindClassesByAnnotatedMethods {
             int unsupportedClasses = 0;
             for (String className : classNames) {
                 try {
-                    Class<?> javaClass = Class.forName(className, false, loader);
-                    if (containsAnnotation(javaClass, qualifiedAnnotations, unqualifiedAnnotations)) {
-                        System.out.println(className + " " + arg);
+                    Class<?> tmpClass = Class.forName(className, false, loader);
+                    if (containsAnnotation(tmpClass, qualifiedAnnotations, unqualifiedAnnotations)) {
+                        while(tmpClass.getEnclosingClass() != null) {
+                            tmpClass = tmpClass.getEnclosingClass();
+                        }
+                        System.out.println(tmpClass.getName() + " " + jarFilePath);
                     }
                 } catch (UnsupportedClassVersionError ucve) {
                     unsupportedClasses++;
@@ -126,13 +130,20 @@ public class FindClassesByAnnotatedMethods {
                         throw ncdfe;
                     }
                 }
-
             }
             if (unsupportedClasses != 0) {
                 System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n",
                                 jarFilePath, unsupportedClasses);
             }
         }
+    }
+
+    private static boolean isAnnotationArg(String arg) {
+        return arg.charAt(0) == '@';
+    }
+
+    private static boolean isSnippetArg(String arg) {
+        return arg.startsWith("snippetsPattern:");
     }
 
     private static boolean matches(NoClassDefFoundError ncdfe, List<Pattern> snippetPatterns, String className) {

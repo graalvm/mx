@@ -50,9 +50,9 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
             snippetsPatterns.append('snippetsPattern:' + suite.snippetsPattern)
     cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in dists], jdk=jdk)
     out = mx.OutputCapture()
-    mx.run_java(['-cp', cp] + [
-        'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + snippetsPatterns + annotations + jars.keys(),
-                out=out)
+    mx.run_java(['-cp', cp, '-noverify'] + [
+        'com.oracle.mxtool.junit.FindClassesByAnnotatedElements'] + snippetsPatterns + annotations + jars.keys(),
+                out=out, addDefaultArgs=False)
     for line in out.data.strip().split('\n'):
         name, jar = line.split(' ')
         # Record class name to the binary suite distribution containing it
@@ -81,11 +81,6 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
         if t.startswith('-'):
             mx.abort('VM option ' + t + ' must precede ' + tests[0])
 
-    # Dictionary from fully qualified class names to the project or distribution containing the class
-    binarySuiteDists = [d for d in mx.dependencies(opt_limit_to_suite=True) if d.isJARDistribution() and
-                        isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
-    binary_candidates = _find_classes_by_annotated_methods(annotations, binarySuiteDists)
-
     # find a corresponding project for each test
     project_candidates = {}
     jdk = mx.get_jdk()
@@ -94,14 +89,14 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
             for c in p.find_classes_with_annotations(None, annotations):
                 project_candidates[c] = p
 
-    distribution_candidates = _find_classes_by_annotated_methods(annotations, mx.sorted_dists(), jdk)
+    # find a corresponding distribution for each test
+    candidates = _find_classes_by_annotated_methods(annotations, mx.sorted_dists(), jdk)
 
     # list tests that are found in projects and not found in distributions
     for c, p in project_candidates.items():
-        if c not in distribution_candidates.keys():
+        if c not in candidates.keys():
             mx.warn("Test " + str(c) + " will not be executed. Its class is not present in test distributions.")
 
-    candidates = dict(distribution_candidates, **binary_candidates.copy())
     # now add the dependencies
     classes = []
     if len(tests) == 0:
@@ -146,7 +141,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 if not found:
                     mx.log('warning: no tests matched by substring "' + t)
 
-    unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk(), includeBootClasspath=True)
+    unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
 

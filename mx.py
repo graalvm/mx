@@ -1193,47 +1193,46 @@ class JARDistribution(Distribution, ClasspathDependency):
         logv('Stripping {}...'.format(self.name))
         strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
 
-        # add config files from projects
-        strip_config_paths = [join(self.suite.dir, f) for f in self.stripConfig]
-        for config_path in strip_config_paths:
-            strip_command += ['-include', config_path]
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.map') as config_tmp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.map') as mapping_tmp_file:
+                # add config files from projects
+                strip_config_paths = [join(self.suite.dir, f) for f in self.stripConfig]
 
-        # input and output jars
-        input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
-        strip_command += [
-            '-injars', self.original_path(),
-            '-outjars', self.path, # only the jar of this distribution
-            '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True),
-            '-printmapping', self.strip_mapping_file(),
-        ]
+                # add configs (must be one file)
+                _merge_file_contents(strip_config_paths, config_tmp_file)
+                strip_command += ['-include', config_tmp_file.name]
 
-        # options for incremental stripping
-        strip_command += ['-dontoptimize', '-dontshrink', '-useuniqueclassmembernames']
+                # input and output jars
+                input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+                strip_command += [
+                     '-injars', self.original_path(),
+                     '-outjars', self.path, # only the jar of this distribution
+                     '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True),
+                     '-printmapping', self.strip_mapping_file(),
+                ]
 
-        # common options for all projects
-        strip_command += [
-            '-adaptclassstrings',
-            '-adaptresourcefilecontents', 'META-INF/services/*',
-            '-adaptresourcefilenames', 'META-INF/services/*',
-            '-renamesourcefileattribute', 'stripped',
-            '-keepattributes', '*Annotation*,SourceFile,LineNumberTable,InnerClasses,EnclosingMethod',
-        ]
+                # options for incremental stripping
+                strip_command += ['-dontoptimize', '-dontshrink', '-useuniqueclassmembernames']
 
-        # add mappings of all stripped dependencies (must be one file)
-        if input_maps:
-            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.map')
-            for map_file_name in input_maps:
-                with open(map_file_name, 'r') as map_file:
-                    shutil.copyfileobj(map_file, tmp_file)
-            tmp_file.close()
+                # common options for all projects
+                strip_command += [
+                    '-adaptclassstrings',
+                    '-adaptresourcefilecontents', 'META-INF/services/*',
+                    '-adaptresourcefilenames', 'META-INF/services/*',
+                    '-renamesourcefileattribute', 'stripped',
+                    '-keepattributes', '*Annotation*,SourceFile,LineNumberTable,InnerClasses,EnclosingMethod',
+                ]
 
-            strip_command += ['-applymapping', tmp_file.name]
+                # add mappings of all stripped dependencies (must be one file)
+                if input_maps:
+                    _merge_file_contents(input_maps, mapping_tmp_file)
+                    strip_command += ['-applymapping', mapping_tmp_file.name]
 
 
-        if _opts.verbose:
-            strip_command.append('-verbose')
+                if _opts.verbose:
+                    strip_command.append('-verbose')
 
-        run_java(strip_command)
+                run_java(strip_command)
 
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
@@ -2672,6 +2671,12 @@ def _replaceResultsVar(m):
         return add_debug_lib_suffix(add_lib_prefix(libname))
     else:
         abort('Unknown variable: ' + var)
+
+def _merge_file_contents(input_files, output_file):
+    for file_name in input_files:
+        with open(file_name, 'r') as input_file:
+            shutil.copyfileobj(input_file, output_file)
+        output_file.flush()
 
 """
 A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
