@@ -2240,6 +2240,8 @@ class JavacLikeCompiler(JavaCompiler):
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
+        if compliance >= '1.8':
+            javacArgs.append('-parameters')
         if processorPath:
             ensure_dir_exists(sourceGenDir)
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
@@ -14454,7 +14456,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.55.0")
+version = VersionSpec("5.56.0")
 
 currentUmask = None
 
