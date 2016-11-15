@@ -896,7 +896,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
-    :param list stripConfig: paths to stripping configurations
+    :param list stripConfigFileNames: names of stripping configurations that are located in `<mx_dir>/proguard/` and suffixed with `.proguard`
     :param str subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
     :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
            it is interpreted to be relative to `suite.dir`.
@@ -917,7 +917,7 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param bool maven:
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
-                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfig=None):
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
         ClasspathDependency.__init__(self)
         self.subDir = subDir
@@ -930,7 +930,10 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
-        self.stripConfig = stripConfig
+        if stripConfigFileNames:
+            self.stripConfig = [join(suite.mxDir, stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
+        else:
+            self.stripConfig = None
         assert path.endswith(self.localExtension())
 
     @property
@@ -6232,11 +6235,14 @@ class Suite:
             javadocType = attrs.pop('javadocType', 'implementation')
             allowsJavadocWarnings = attrs.pop('allowsJavadocWarnings', False)
             maven = attrs.pop('maven', True)
-            stripConfig = attrs.pop('strip', None)
-            assert stripConfig is None or isinstance(stripConfig, list)
+            stripConfigFileNames = attrs.pop('strip', None)
+            assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
             if isinstance(maven, types.DictType) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
-            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps, javaCompliance, platformDependent, theLicense, javadocType=javadocType, allowsJavadocWarnings=allowsJavadocWarnings, maven=maven, stripConfig=stripConfig)
+            d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
+                                javaCompliance, platformDependent, theLicense, javadocType=javadocType,
+                                allowsJavadocWarnings=allowsJavadocWarnings, maven=maven,
+                                stripConfigFileNames=stripConfigFileNames)
         d.__dict__.update(attrs)
         self.dists.append(d)
         return d
