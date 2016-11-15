@@ -931,7 +931,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
         if stripConfigFileNames:
-            self.stripConfig = [join(suite.mxDir, stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
+            self.stripConfig = [join(join(suite.mxDir, 'proguard'), stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
         assert path.endswith(self.localExtension())
@@ -939,12 +939,18 @@ class JARDistribution(Distribution, ClasspathDependency):
     @property
     def path(self):
         if _opts.strip_jars and self.is_stripped():
-            return join(ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
+            return self._stripped_path()
         else:
-            return self._path
+            return self.original_path()
+
+    def _stripped_path(self):
+        return join(ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
 
     def original_path(self):
         return self._path
+
+    def paths_to_clean(self):
+        return [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
 
     def is_stripped(self):
         return self.stripConfig is not None
@@ -1188,11 +1194,10 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.strip_jar()
 
     def strip_mapping_file(self):
-        assert _opts.strip_jars
-        return self.path + '.map'
+        return self._stripped_path() + '.map'
 
     def strip_jar(self):
-        assert _opts.strip_jars, "Only works under the flag."
+        assert _opts.strip_jars, "Only works under the flag --strip-jars"
         logv('Stripping {}...'.format(self.name))
         strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
 
@@ -1307,8 +1312,9 @@ class JARArchiveTask(ArchiveTask):
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             abort('should not reach here')
-        if exists(self.subject.path):
-            os.remove(self.subject.path)
+        for path in self.subject.paths_to_clean():
+            if exists(path):
+                os.remove(path)
         if self.subject.sourcesPath and exists(self.subject.sourcesPath):
             os.remove(self.subject.sourcesPath)
 
