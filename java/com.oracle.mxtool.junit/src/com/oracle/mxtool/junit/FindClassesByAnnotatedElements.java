@@ -22,11 +22,16 @@
  */
 package com.oracle.mxtool.junit;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
@@ -92,7 +97,7 @@ public class FindClassesByAnnotatedElements {
                 }
             }
         }
-
+        String[] annotationsArray = Stream.concat(qualifiedAnnotations.stream(), unqualifiedAnnotations.stream()).toArray(String[]::new);
 
         for (String jarFilePath : args) {
             if (isSnippetArg(jarFilePath) || isAnnotationArg(jarFilePath)) {
@@ -109,8 +114,10 @@ public class FindClassesByAnnotatedElements {
                 if (je.isDirectory() || !je.getName().endsWith(".class")) {
                     continue;
                 }
-                String className = je.getName().substring(0, je.getName().length() - ".class".length());
-                classNames.add(className.replace('/', '.'));
+                if (fastContainsAnnotations(jarFile, je, annotationsArray)) {
+                    String className = je.getName().substring(0, je.getName().length() - ".class".length());
+                    classNames.add(className.replace('/', '.'));
+                }
             }
 
             int unsupportedClasses = 0;
@@ -135,6 +142,34 @@ public class FindClassesByAnnotatedElements {
                 System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n",
                                 jarFilePath, unsupportedClasses);
             }
+        }
+    }
+
+    /**
+     * Check for possible presence of annotations in class files by doing text search.
+     *
+     * This is (1) more resilient to incomplete classpaths and (2) faster as it avoids loading most of the classes.
+     * False positives are discarded in later steps with queries through java reflection.
+     */
+    private static boolean fastContainsAnnotations(JarFile jf, JarEntry je, String[] annotations) {
+        String[] annotationsInJars = Arrays.stream(annotations).map(a -> a.replaceAll("\\.", "/") + ";").toArray(String[]::new);
+        InputStream input;
+        try {
+            input = jf.getInputStream(je);
+            InputStreamReader isr = new InputStreamReader(input);
+            BufferedReader reader = new BufferedReader(isr);
+            String line;
+            while ((line = reader.readLine()) != null) {
+                for (String annotation : annotationsInJars) {
+                    if (line.contains(annotation)) {
+                        return true;
+                    }
+                }
+            }
+            reader.close();
+            return false;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
