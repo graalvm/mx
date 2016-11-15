@@ -938,7 +938,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     @property
     def path(self):
-        if _opts.strip_jars and self.is_stripped():
+        if self.is_stripped():
             return self._stripped_path()
         else:
             return self.original_path()
@@ -953,7 +953,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
 
     def is_stripped(self):
-        return self.stripConfig is not None
+        return _opts.strip_jars and not self.stripConfig is None
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -1190,7 +1190,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             if jmd:
                 setattr(self, '.javaModule', jmd)
 
-        if _opts.strip_jars and self.is_stripped():
+        if self.is_stripped():
             self.strip_jar()
 
     def strip_mapping_file(self):
