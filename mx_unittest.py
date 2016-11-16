@@ -85,11 +85,11 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     project_candidates = {}
     jdk = mx.get_jdk()
     for p in mx.projects(opt_limit_to_suite=True):
-        if p.isJavaProject() and (not suite or p.suite != suite) and jdk.javaCompliance >= p.javaCompliance:
+        if p.isJavaProject() and (not suite or p.suite == suite) and jdk.javaCompliance >= p.javaCompliance:
             for c in p.find_classes_with_annotations(None, annotations):
                 project_candidates[c] = p
 
-    jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution()]
+    jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and (not suite or d.suite == suite)]
     # find a corresponding distribution for each test
     candidates = _find_classes_by_annotated_elements(annotations, jar_distributions, jdk)
 
