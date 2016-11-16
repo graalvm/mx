@@ -1193,16 +1193,18 @@ class JARDistribution(Distribution, ClasspathDependency):
         if self.is_stripped():
             self.strip_jar()
 
+    _strip_map_file_suffix = '.map'
+
     def strip_mapping_file(self):
-        return self._stripped_path() + '.map'
+        return self._stripped_path() + JARDistribution._strip_map_file_suffix
 
     def strip_jar(self):
         assert _opts.strip_jars, "Only works under the flag --strip-jars"
         logv('Stripping {}...'.format(self.name))
         strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.map') as config_tmp_file:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.map') as mapping_tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
                 # add config files from projects
                 strip_config_paths = [join(self.suite.dir, f) for f in self.stripConfig]
 
@@ -10081,7 +10083,18 @@ def _unstrip(args):
 def unstrip(args):
     proguard_cp = library('PROGUARD_RETRACE').get_path(resolve=True) + os.pathsep + library('PROGUARD').get_path(resolve=True)
     unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
-    run_java(unstrip_command + args)
+    mapfiles = []
+    inputfiles = []
+    for arg in args:
+        if os.path.isdir(arg):
+            mapfiles += glob.glob(join(arg, '*' + JARDistribution._strip_map_file_suffix))
+        elif arg.endswith(JARDistribution._strip_map_file_suffix):
+            mapfiles.append(arg)
+        else:
+            inputfiles.append(arg)
+    with tempfile.NamedTemporaryFile() as catmapfile:
+        _merge_file_contents(mapfiles, catmapfile)
+        run_java(unstrip_command + [catmapfile.name] + inputfiles)
 
 def _archive(args):
     archive(args)
