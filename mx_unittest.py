@@ -125,7 +125,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
             if not found:
-                mx.log('warning: no tests matched by substring "' + t)
+                mx.log('warning: no tests matched by substring: ' + t)
             elif len(classes) != 1:
                 mx.abort('More than one test matches substring {0} {1}'.format(t, classes))
 
@@ -140,7 +140,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
                 if not found:
-                    mx.log('warning: no tests matched by substring "' + t)
+                    mx.log('warning: no tests matched by substring: ' + t)
 
     unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
