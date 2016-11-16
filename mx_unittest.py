@@ -35,7 +35,7 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeEr
 from os.path import exists, join
 
 
-def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
+def _find_classes_by_annotated_elements(annotations, dists, jdk=None):
     if len(dists) == 0:
         return {}
 
@@ -89,8 +89,9 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
             for c in p.find_classes_with_annotations(None, annotations):
                 project_candidates[c] = p
 
+    jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution()]
     # find a corresponding distribution for each test
-    candidates = _find_classes_by_annotated_methods(annotations, mx.sorted_dists(), jdk)
+    candidates = _find_classes_by_annotated_elements(annotations, jar_distributions, jdk)
 
     # list tests that are found in projects and not found in distributions
     for c, p in project_candidates.items():
