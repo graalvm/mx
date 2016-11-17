@@ -22,52 +22,20 @@
  */
 package com.oracle.mxtool.junit;
 
-import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
- * Finds classes in given jar files that contain {@code AnnotatedElement}s annotated by a given set of annotations.
+ * Finds classes in given jar files that contain {@code AnnotatedElement}s annotated by a given set
+ * of annotations.
  */
 public class FindClassesByAnnotatedElements {
-
-    private static boolean containsAnnotation(Class<?> javaClass, Set<String> qualifiedAnnotations, Set<String> unqualifiedAnnotations) {
-        AnnotatedElement[] classAnnotatedElements = Stream.of(javaClass.getDeclaredMethods(), javaClass.getDeclaredFields()).
-                flatMap(Stream::of).toArray(AnnotatedElement[]::new);
-        for (AnnotatedElement element : classAnnotatedElements) {
-            Annotation[] annos = element.getAnnotations();
-            for (Annotation a : annos) {
-                if (!qualifiedAnnotations.isEmpty()) {
-                    String qualifiedName = a.annotationType().getName();
-                    if (qualifiedAnnotations.contains(qualifiedName)) {
-                        return true;
-                    }
-                }
-                if (!unqualifiedAnnotations.isEmpty()) {
-                    String simpleName = a.annotationType().getSimpleName();
-                    if (unqualifiedAnnotations.contains(simpleName)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
 
     /**
      * Finds classes in a given set of jar files that contain at least one method with an annotation
@@ -82,11 +50,8 @@ public class FindClassesByAnnotatedElements {
     public static void main(String... args) throws Throwable {
         Set<String> qualifiedAnnotations = new HashSet<>();
         Set<String> unqualifiedAnnotations = new HashSet<>();
-        List<Pattern> snippetPatterns = new ArrayList<>();
         for (String arg : args) {
-            if (isSnippetArg(arg)) {
-                snippetPatterns.add(Pattern.compile(arg.substring("snippetsPattern:".length())));
-            } else if (isAnnotationArg(arg)) {
+            if (isAnnotationArg(arg)) {
                 String annotation = arg.substring(1);
                 int lastDot = annotation.lastIndexOf('.');
                 if (lastDot != -1) {
@@ -97,79 +62,47 @@ public class FindClassesByAnnotatedElements {
                 }
             }
         }
-        String[] annotationsArray = Stream.concat(qualifiedAnnotations.stream(), unqualifiedAnnotations.stream()).toArray(String[]::new);
 
         for (String jarFilePath : args) {
             if (isSnippetArg(jarFilePath) || isAnnotationArg(jarFilePath)) {
                 continue;
             }
             JarFile jarFile = new JarFile(jarFilePath);
-            URL url = new URL("jar", "", "file:" + jarFilePath + "!/");
-            ClassLoader loader = new URLClassLoader(new URL[]{url});
-
-            List<String> classNames = new ArrayList<>(jarFile.size());
             Enumeration<JarEntry> e = jarFile.entries();
+            int unsupportedClasses = 0;
             while (e.hasMoreElements()) {
                 JarEntry je = e.nextElement();
                 if (je.isDirectory() || !je.getName().endsWith(".class")) {
                     continue;
                 }
-                if (fastContainsAnnotations(jarFile, je, annotationsArray)) {
-                    String className = je.getName().substring(0, je.getName().length() - ".class".length());
-                    classNames.add(className.replace('/', '.'));
-                }
-            }
-
-            int unsupportedClasses = 0;
-            for (String className : classNames) {
+                Set<String> methodAnnotationTypes = new HashSet<>();
+                DataInputStream stream = new DataInputStream(jarFile.getInputStream(je));
                 try {
-                    Class<?> tmpClass = Class.forName(className, false, loader);
-                    if (containsAnnotation(tmpClass, qualifiedAnnotations, unqualifiedAnnotations)) {
-                        while(tmpClass.getEnclosingClass() != null) {
-                            tmpClass = tmpClass.getEnclosingClass();
-                        }
-                        System.out.println(tmpClass.getName() + " " + jarFilePath);
-                    }
+                    readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
                     unsupportedClasses++;
-                } catch (NoClassDefFoundError ncdfe) {
-                    if (!matches(ncdfe, snippetPatterns, className)) {
-                        throw ncdfe;
+                }
+                String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
+                for (String annotationType : methodAnnotationTypes) {
+                    if (!qualifiedAnnotations.isEmpty()) {
+                        if (qualifiedAnnotations.contains(annotationType)) {
+                            System.out.println(className + " " + jarFilePath);
+                        }
+                    }
+                    if (!unqualifiedAnnotations.isEmpty()) {
+                        final int lastDot = annotationType.lastIndexOf('.');
+                        if (lastDot != -1) {
+                            String simpleName = annotationType.substring(lastDot + 1);
+                            if (unqualifiedAnnotations.contains(simpleName)) {
+                                System.out.println(className + " " + jarFilePath);
+                            }
+                        }
                     }
                 }
             }
             if (unsupportedClasses != 0) {
-                System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n",
-                                jarFilePath, unsupportedClasses);
+                System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n", jarFilePath, unsupportedClasses);
             }
-        }
-    }
-
-    /**
-     * Check for possible presence of annotations in class files by doing text search.
-     *
-     * This is (1) more resilient to incomplete classpaths and (2) faster as it avoids loading most of the classes.
-     * False positives are discarded in later steps with queries through java reflection.
-     */
-    private static boolean fastContainsAnnotations(JarFile jf, JarEntry je, String[] annotations) {
-        String[] annotationsInJars = Arrays.stream(annotations).map(a -> a.replaceAll("\\.", "/") + ";").toArray(String[]::new);
-        InputStream input;
-        try {
-            input = jf.getInputStream(je);
-            InputStreamReader isr = new InputStreamReader(input);
-            BufferedReader reader = new BufferedReader(isr);
-            String line;
-            while ((line = reader.readLine()) != null) {
-                for (String annotation : annotationsInJars) {
-                    if (line.contains(annotation)) {
-                        return true;
-                    }
-                }
-            }
-            reader.close();
-            return false;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -181,13 +114,204 @@ public class FindClassesByAnnotatedElements {
         return arg.startsWith("snippetsPattern:");
     }
 
-    private static boolean matches(NoClassDefFoundError ncdfe, List<Pattern> snippetPatterns, String className) {
-        for (Pattern p : snippetPatterns) {
-            if (p.matcher(ncdfe.getMessage()).matches()) {
-                System.err.println("Warning: cannot resolve " + className + " due to " + ncdfe + " which is matched by snippetsPattern \"" + p + "\"");
-                return true;
+    /*
+     * Small bytecode parser that extract annotations.
+     */
+    private static final int MAJOR_VERSION_JAVA7 = 51;
+    private static final int MAJOR_VERSION_JAVA9 = 53;
+    private static final byte CONSTANT_Utf8 = 1;
+    private static final byte CONSTANT_Integer = 3;
+    private static final byte CONSTANT_Float = 4;
+    private static final byte CONSTANT_Long = 5;
+    private static final byte CONSTANT_Double = 6;
+    private static final byte CONSTANT_Class = 7;
+    private static final byte CONSTANT_Fieldref = 9;
+    private static final byte CONSTANT_String = 8;
+    private static final byte CONSTANT_Methodref = 10;
+    private static final byte CONSTANT_InterfaceMethodref = 11;
+    private static final byte CONSTANT_NameAndType = 12;
+    private static final byte CONSTANT_MethodHandle = 15;
+    private static final byte CONSTANT_MethodType = 16;
+    private static final byte CONSTANT_InvokeDynamic = 18;
+
+    private static void readClassfile(DataInputStream stream, Collection<String> methodAnnotationTypes) throws IOException {
+        // magic
+        int magic = stream.readInt();
+        assert magic == 0xCAFEBABE;
+
+        int minor = stream.readUnsignedShort();
+        int major = stream.readUnsignedShort();
+        if (major < MAJOR_VERSION_JAVA7 || major > MAJOR_VERSION_JAVA9) {
+            throw new UnsupportedClassVersionError("Unsupported class file version: " + major + "." + minor);
+        }
+
+        String[] cp = readConstantPool(stream);
+
+        // access_flags, this_class, super_class
+        stream.skipBytes(6);
+
+        // interfaces
+        stream.skipBytes(stream.readUnsignedShort() * 2);
+
+        // fields
+        skipFields(stream);
+
+        // methods
+        readMethods(stream, cp, methodAnnotationTypes);
+
+        // attributes
+        skipAttributes(stream);
+    }
+
+    static void skipFully(DataInputStream stream, int n) throws IOException {
+        long skipped = 0;
+        do {
+            long s = stream.skip(n - skipped);
+            skipped += s;
+            if (s == 0 && skipped != n) {
+                // Check for EOF (i.e., truncated class file)
+                if (stream.read() == -1) {
+                    throw new IOException("truncated stream");
+                }
+                skipped++;
+            }
+        } while (skipped != n);
+    }
+
+    private static String[] readConstantPool(DataInputStream stream) throws IOException {
+        int count = stream.readUnsignedShort();
+        String[] cp = new String[count];
+
+        int i = 1;
+        while (i < count) {
+            byte tag = stream.readByte();
+            switch (tag) {
+                case CONSTANT_Class:
+                case CONSTANT_String:
+                case CONSTANT_MethodType: {
+                    skipFully(stream, 2);
+                    break;
+                }
+                case CONSTANT_InterfaceMethodref:
+                case CONSTANT_Methodref:
+                case CONSTANT_Fieldref:
+                case CONSTANT_NameAndType:
+                case CONSTANT_Float:
+                case CONSTANT_Integer:
+                case CONSTANT_InvokeDynamic: {
+                    skipFully(stream, 4);
+                    break;
+                }
+                case CONSTANT_Long:
+                case CONSTANT_Double: {
+                    skipFully(stream, 8);
+                    break;
+                }
+                case CONSTANT_Utf8: {
+                    cp[i] = stream.readUTF();
+                    break;
+                }
+                case CONSTANT_MethodHandle: {
+                    skipFully(stream, 3);
+                    break;
+                }
+                default: {
+                    throw new InternalError("Invalid constant pool tag: " + tag);
+                }
+            }
+            if ((tag == CONSTANT_Double) || (tag == CONSTANT_Long)) {
+                i += 2;
+            } else {
+                i += 1;
             }
         }
-        return false;
+        return cp;
+    }
+
+    private static void skipAttributes(DataInputStream stream) throws IOException {
+        int attributesCount;
+        attributesCount = stream.readUnsignedShort();
+        for (int i = 0; i < attributesCount; i++) {
+            stream.skipBytes(2); // name_index
+            int attributeLength = stream.readInt();
+            skipFully(stream, attributeLength);
+        }
+    }
+
+    private static void readMethodAttributes(DataInputStream stream, String[] cp, Collection<String> methodAnnotationTypes) throws IOException {
+        int attributesCount;
+        attributesCount = stream.readUnsignedShort();
+        for (int i = 0; i < attributesCount; i++) {
+            String attributeName = cp[stream.readUnsignedShort()];
+            int attributeLength = stream.readInt();
+
+            if (attributeName.equals("RuntimeVisibleAnnotations")) {
+                int numAnnotations = stream.readUnsignedShort();
+                for (int a = 0; a != numAnnotations; a++) {
+                    readAnnotation(stream, cp, methodAnnotationTypes);
+                }
+            } else {
+                skipFully(stream, attributeLength);
+            }
+        }
+    }
+
+    private static void readAnnotation(DataInputStream stream, String[] cp, Collection<String> methodAnnotationTypes) throws IOException {
+        int typeIndex = stream.readUnsignedShort();
+        int pairs = stream.readUnsignedShort();
+        String type = cp[typeIndex];
+        String className = type.substring(1, type.length() - 1).replace('/', '.');
+        methodAnnotationTypes.add(className);
+        readAnnotationElements(stream, cp, pairs, true, methodAnnotationTypes);
+    }
+
+    private static void readAnnotationElements(DataInputStream stream, String[] cp, int pairs, boolean withElementName, Collection<String> methodAnnotationTypes) throws IOException {
+        for (int p = 0; p < pairs; p++) {
+            if (withElementName) {
+                skipFully(stream, 2);
+            }
+            int tag = stream.readByte();
+            switch (tag) {
+                case 'B':
+                case 'C':
+                case 'D':
+                case 'F':
+                case 'I':
+                case 'J':
+                case 'S':
+                case 'Z':
+                case 's':
+                case 'c':
+                    skipFully(stream, 2);
+                    break;
+                case 'e':
+                    skipFully(stream, 4);
+                    break;
+                case '@':
+                    readAnnotation(stream, cp, methodAnnotationTypes);
+                    break;
+                case '[': {
+                    int numValues = stream.readUnsignedShort();
+                    readAnnotationElements(stream, cp, numValues, false, methodAnnotationTypes);
+                    break;
+                }
+            }
+        }
+    }
+
+    private static void skipFields(DataInputStream stream) throws IOException {
+        int count = stream.readUnsignedShort();
+        for (int i = 0; i < count; i++) {
+            stream.skipBytes(6); // access_flags, name_index, descriptor_index
+            skipAttributes(stream);
+        }
+    }
+
+    private static void readMethods(DataInputStream stream, String[] cp, Collection<String> methodAnnotationTypes) throws IOException {
+        int count = stream.readUnsignedShort();
+        for (int i = 0; i < count; i++) {
+            skipFully(stream, 6); // access_flags, name_index, descriptor_index
+            readMethodAttributes(stream, cp, methodAnnotationTypes);
+        }
     }
 }

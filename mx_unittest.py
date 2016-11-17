@@ -44,15 +44,9 @@ def _find_classes_by_annotated_elements(annotations, dists, jdk=None):
     mx.build(['--dependencies', 'com.oracle.mxtool.junit'])
     # Create map from jar file to the binary suite distribution defining it
     jars = {d.classpath_repr(): d for d in dists}
-    snippetsPatterns = []
-    for suite in frozenset([d.suite for d in dists]):
-        if hasattr(suite, 'snippetsPattern'):
-            snippetsPatterns.append('snippetsPattern:' + suite.snippetsPattern)
     cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in dists], jdk=jdk)
     out = mx.OutputCapture()
-    mx.run_java(['-cp', cp, '-noverify'] + [
-        'com.oracle.mxtool.junit.FindClassesByAnnotatedElements'] + snippetsPatterns + annotations + jars.keys(),
-                out=out, addDefaultArgs=False)
+    mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedElements'] + annotations + jars.keys(), out=out, addDefaultArgs=False)
     for line in out.data.strip().split('\n'):
         name, jar = line.split(' ')
         # Record class name to the binary suite distribution containing it
