@@ -69,7 +69,6 @@ class _VMLauncher(object):
         return self._jdk
 
 def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
-
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
         if t.startswith('-'):
