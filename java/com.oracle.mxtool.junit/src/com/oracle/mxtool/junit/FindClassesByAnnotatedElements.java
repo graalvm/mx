@@ -159,9 +159,6 @@ public class FindClassesByAnnotatedElements {
 
         // methods
         readMethods(stream, cp, methodAnnotationTypes);
-
-        // attributes
-        skipAttributes(stream);
     }
 
     private static void skipFully(DataInputStream stream, int n) throws IOException {
