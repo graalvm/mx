@@ -34,25 +34,45 @@ import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError
 from os.path import exists, join
 
+def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
+    """
+    Scan the sources of project 'p' for Java source files containing a line starting with
+    any element of 'annotations' (ignoring preceding whitespace) and return the list of fully
+    qualified class names for each Java source file matched.
+    """
 
-def _find_classes_by_annotated_elements(annotations, dists, jdk=None):
-    if len(dists) == 0:
-        return {}
+    matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
+    return p.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
 
-    candidates = {}
-    # Ensure Java support class is built
-    mx.build(['--dependencies', 'com.oracle.mxtool.junit'])
-    # Create map from jar file to the binary suite distribution defining it
-    jars = {d.classpath_repr(): d for d in dists}
-    cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in dists], jdk=jdk)
-    out = mx.OutputCapture()
-    mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedElements'] + annotations + jars.keys(), out=out, addDefaultArgs=False)
-    for line in out.data.strip().split('\n'):
-        name, jar = line.split(' ')
-        # Record class name to the binary suite distribution containing it
-        candidates[name] = jars[jar]
-    return candidates
+def _find_classes_by_annotated_methods(annotations, suite):
+    """
+    Scan distributions from binary suite dependencies for classes contain at least one method
+    with an annotation from 'annotations' and return a dictionary from fully qualified class
+    names to the distribution containing the class.
+    """
+    binarySuiteDists = [d for d in mx.dependencies(opt_limit_to_suite=True) if d.isJARDistribution() and
+                        isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
+    if len(binarySuiteDists) != 0:
+        # Ensure Java support class is built
+        mx.build(['--dependencies', 'com.oracle.mxtool.junit'])
 
+        # Create map from jar file to the binary suite distribution defining it
+        jars = {d.classpath_repr() : d for d in binarySuiteDists}
+        snippetsPatterns = []
+        for binarySuite in frozenset([d.suite for d in binarySuiteDists]):
+            if hasattr(binarySuite, 'snippetsPattern'):
+                snippetsPatterns.append('snippetsPattern:' + binarySuite.snippetsPattern)
+
+        cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in binarySuiteDists])
+        out = mx.OutputCapture()
+        mx.run_java(['-cp', cp] + ['com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + snippetsPatterns + annotations + jars.keys(), out=out)
+        candidates = {}
+        for line in out.data.strip().split('\n'):
+            name, jar = line.split(' ')
+            # Record class name to the binary suite distribution containing it
+            candidates[name] = jars[jar]
+        return candidates
+    return {}
 
 class _VMLauncher(object):
     """
@@ -69,16 +89,26 @@ class _VMLauncher(object):
         return self._jdk
 
 def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
+
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
         if t.startswith('-'):
             mx.abort('VM option ' + t + ' must precede ' + tests[0])
 
-    jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and (not suite or d.suite == suite)]
-    # find a corresponding distribution for each test
-    candidates = _find_classes_by_annotated_elements(annotations, jar_distributions, vmLauncher.jdk())
+    # Dictionary from fully qualified class names to the project or distribution containing the class
+    candidates = _find_classes_by_annotated_methods(annotations, suite)
 
-    # now add the dependencies
+    jdk = mx.get_jdk()
+    for p in mx.projects(opt_limit_to_suite=True):
+        if not p.isJavaProject():
+            continue
+        if suite and not p.suite == suite:
+            continue
+        if jdk.javaCompliance < p.javaCompliance:
+            continue
+        for c in _find_classes_with_annotations(p, None, annotations):
+            candidates[c] = p
+
     classes = []
     if len(tests) == 0:
         classes = candidates.keys()
@@ -105,7 +135,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
             if not found:
-                mx.log('warning: no tests matched by substring: ' + t)
+                mx.log('warning: no tests matched by substring "' + t)
             elif len(classes) != 1:
                 mx.abort('More than one test matches substring {0} {1}'.format(t, classes))
 
@@ -120,7 +150,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
                 if not found:
-                    mx.log('warning: no tests matched by substring: ' + t)
+                    mx.log('warning: no tests matched by substring "' + t)
 
     unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
