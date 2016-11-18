@@ -22,6 +22,7 @@
  */
 package com.oracle.mxtool.junit;
 
+import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Collection;
@@ -76,7 +77,7 @@ public class FindClassesByAnnotatedElements {
                     continue;
                 }
                 Set<String> methodAnnotationTypes = new HashSet<>();
-                DataInputStream stream = new DataInputStream(jarFile.getInputStream(je));
+                DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je)));
                 try {
                     readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
@@ -163,7 +164,7 @@ public class FindClassesByAnnotatedElements {
         skipAttributes(stream);
     }
 
-    static void skipFully(DataInputStream stream, int n) throws IOException {
+    private static void skipFully(DataInputStream stream, int n) throws IOException {
         long skipped = 0;
         do {
             long s = stream.skip(n - skipped);
