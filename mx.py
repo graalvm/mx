@@ -12132,7 +12132,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
         for src in p.srcDirs:
             srcDir = join(p.dir, src)
             ensure_dir_exists(srcDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': 'false'})
+            is_test = p.name.endswith('.test')
+            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': str(is_test)})
         for name in ['.externalToolBuilders', '.settings', 'nbproject']:
             _intellij_exclude_if_exists(moduleXml, p, name)
         moduleXml.close('content')
