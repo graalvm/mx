@@ -33,10 +33,10 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Finds classes in given jar files that contain {@code AnnotatedElement}s annotated by a given set
+ * Finds classes in given jar files that contain methods annotated by a given set
  * of annotations.
  */
-public class FindClassesByAnnotatedElements {
+public class FindClassesByAnnotatedMethods {
 
     /**
      * Finds classes in a given set of jar files that contain at least one method with an annotation
