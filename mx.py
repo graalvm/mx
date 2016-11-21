@@ -3768,7 +3768,6 @@ class VC(object):
         abort(self.kind + " root is not implemented")
 
 
-
 class OutputCapture:
     def __init__(self):
         self.data = ""
@@ -9752,12 +9751,15 @@ def eclipseformat(args):
     parser.add_argument('--projects', action='store', help='comma separated projects to process (omit to process all projects)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
+    parser.add_argument('--restore', action='store_true', help='restore original files after the formatting job (does not create a backup).')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
         args.eclipse_exe = os.environ.get('ECLIPSE_EXE')
     if args.eclipse_exe is None:
         abort('Could not find Eclipse executable. Use -e option or ensure ECLIPSE_EXE environment variable is set.')
+    if args.restore:
+        args.backup = False
 
     # Maybe an Eclipse installation dir was specified - look for the executable in it
     if isdir(args.eclipse_exe):
@@ -9769,7 +9771,7 @@ def eclipseformat(args):
     if not os.access(args.eclipse_exe, os.X_OK):
         abort('Not an executable file: ' + args.eclipse_exe)
 
-    wsroot = eclipseinit([], buildProcessorJars=False)
+    wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
 
     # build list of projects to be processed
     if args.projects is not None:
@@ -9816,10 +9818,11 @@ def eclipseformat(args):
                 self.content = fp.read()
             self.times = (os.path.getatime(path), os.path.getmtime(path))
 
-        def update(self, removeTrailingWhitespace):
+        def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
                 content = fp.read()
-
+            file_modified = False  # whether the file was modified by formatting
+            file_updated = False  # whether the file is really different on disk after the update
             if self.content != content:
                 # Only apply *after* formatting to match the order in which the IDE does it
                 if removeTrailingWhitespace:
@@ -9832,11 +9835,18 @@ def eclipseformat(args):
                 if self.content != content:
                     rpath = os.path.relpath(self.path, _primary_suite.dir)
                     self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
-                    self.content = content
-                    return True
+                    if restore:
+                        with open(self.path, 'w') as fp:
+                            fp.write(self.content)
+                    else:
+                        file_updated = True
+                        self.content = content
+                    file_modified = True
 
-            # reset access and modification time of file
-            os.utime(self.path, self.times)
+            if not file_updated and (os.path.getatime(self.path), os.path.getmtime(self.path)) != self.times:
+                # reset access and modification time of file
+                os.utime(self.path, self.times)
+            return file_modified
 
     modified = list()
     batches = dict()  # all sources with the same formatting settings are formatted together
@@ -9866,9 +9876,13 @@ def eclipseformat(args):
             res.extend(javafiles)
 
     log("we have: " + str(len(batches)) + " batches")
+    batch_num = 0
     for batch, javafiles in batches.iteritems():
+        batch_num += 1
+        log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
         for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-            run([args.eclipse_exe,
+            capture = OutputCapture()
+            rc = run([args.eclipse_exe,
                 '-nosplash',
                 '-application',
                 '-consolelog',
@@ -9876,9 +9890,12 @@ def eclipseformat(args):
                 '-vm', get_jdk(tag=DEFAULT_JDK_TAG).java,
                 'org.eclipse.jdt.core.JavaCodeFormatter',
                 '-config', batch.path]
-                + [f.path for f in chunk])
+                + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
+            if rc != 0:
+                log(capture.data)
+                abort("Error while running formatter")
             for fi in chunk:
-                if fi.update(batch.removeTrailingWhitespace):
+                if fi.update(batch.removeTrailingWhitespace, args.restore):
                     modified.append(fi)
 
     log('{0} files were modified'.format(len(modified)))
@@ -14479,7 +14496,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.59.0")
+version = VersionSpec("5.59.1")
 
 currentUmask = None
 
