@@ -8026,11 +8026,20 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if cancel and (versionDescription, purpose) in _canceled_java_requests:
         return None
 
+    def abort_not_found():
+        msg = "Could not find JDK"
+        if versionDescription:
+            msg += " (" + versionDescription + ")"
+        msg += "\nTry using the --java-home argument or the JAVA_HOME or EXTRA_JAVA_HOMES environment variables"
+        abort(msg)
+
     if defaultJdk:
         if not _default_java_home:
             _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, purpose=purpose, cancel=cancel, isDefaultJdk=True)
             if not _default_java_home:
-                assert cancel and (versionDescription or purpose)
+                if not cancel:
+                    abort_not_found()
+                assert versionDescription or purpose
                 _canceled_java_requests.add((versionDescription, purpose))
         return _default_java_home
 
@@ -8045,8 +8054,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if jdk:
         assert jdk not in _extra_java_homes
         _extra_java_homes = _sorted_unique_jdk_configs(_extra_java_homes + [jdk])
+    elif not cancel:
+        abort_not_found()
     else:
-        assert cancel and (versionDescription or purpose)
+        assert versionDescription or purpose
         _canceled_java_requests.add((versionDescription, purpose))
     return jdk
 
@@ -14500,7 +14511,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.59.2")
+version = VersionSpec("5.59.3")
 
 currentUmask = None
 
