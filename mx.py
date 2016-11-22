@@ -1330,7 +1330,7 @@ class JARArchiveTask(ArchiveTask):
 class NativeTARDistribution(Distribution):
     """
     A distribution dependencies are only `NativeProject`s. It packages all the resources specified by
-    `NativeProject.getResults` for each constituent project.
+    `NativeProject.getResults` and `NativeProject.headers` for each constituent project.
 
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
@@ -1382,6 +1382,14 @@ class NativeTARDistribution(Distribution):
                             warn("File {} for archive {} does not exist.".format(filename, d.name))
                         else:
                             archive_and_copy(r, filename)
+                    if hasattr(d, "headers"):
+                        srcdir = os.path.join(self.suite.dir, d.dir)
+                        for h in d.headers:
+                            if self.relpath:
+                                filename = h
+                            else:
+                                filename = basename(h)
+                            archive_and_copy(os.path.join(srcdir, h), filename)
                 elif d.isArchivableProject():
                     outputDir = d.output_dir()
                     archivePrefix = d.archive_prefix()
@@ -2701,6 +2709,7 @@ A NativeProject is a Project containing native code. It is built using `make`. T
 to a classpath containing all JavaProject dependencies.
 Additional attributes:
   results: a list of result file names that will be packaged if the project is part of a distribution
+  headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
   output: the directory where the Makefile puts the `results`
   vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
          if `False` or undefined, make will be executed from the source directory
