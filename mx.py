@@ -1579,6 +1579,10 @@ class Project(Dependency):
         """
         pass
 
+    def is_test_project(self):
+        return self.name.endswith('.test')
+
+
 class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
@@ -10186,7 +10190,7 @@ def canonicalizeprojects(args):
     nonCanonical = []
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
-            if p.name.endswith('.test'):
+            if p.is_test_project():
                 continue
             if p.checkPackagePrefix:
                 for pkg in p.defined_java_packages():
@@ -12132,7 +12136,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
         for src in p.srcDirs:
             srcDir = join(p.dir, src)
             ensure_dir_exists(srcDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': 'false'})
+            moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': str(p.is_test_project())})
         for name in ['.externalToolBuilders', '.settings', 'nbproject']:
             _intellij_exclude_if_exists(moduleXml, p, name)
         moduleXml.close('content')
@@ -12573,7 +12577,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     def assess_candidate(p, projects):
         if p in projects:
             return (False, 'Already visited')
-        if not args.implementation and p.name.endswith('.test'):
+        if not args.implementation and p.is_test_project():
             return (False, 'Test project')
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
@@ -14496,7 +14500,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.59.1")
+version = VersionSpec("5.59.2")
 
 currentUmask = None
 
