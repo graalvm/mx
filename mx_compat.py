@@ -88,6 +88,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def useDistsForUnittest(self):
+        """
+        Determines if Unittest uses jars from distributions for testing.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -184,6 +190,14 @@ class MxCompatibility5344(MxCompatibility5200):#pylint: disable=too-many-ancesto
         return mx.VersionSpec("5.34.4")
 
     def moduleDepsEqualDistDeps(self):
+        return True
+
+class MxCompatibility5590(MxCompatibility5344):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.59.0")
+
+    def useDistsForUnittest(self):
         return True
 
 def minVersion():
