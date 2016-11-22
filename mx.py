@@ -2038,6 +2038,9 @@ class JavaProject(Project, ClasspathDependency):
             setattr(self, cache, concealed)
         return getattr(self, cache)
 
+    def is_test_project(self):
+        return super(JavaProject, self).is_test_project() or self.name.endswith('.jtt')
+
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk, requiredCompliance):
         ProjectBuildTask.__init__(self, args, 1, project)
