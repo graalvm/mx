@@ -1494,8 +1494,8 @@ class Project(Dependency):
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
-        if hasattr(self, 'build_deps'):
-            self._resolveDepsHelper(self.build_deps)
+        if hasattr(self, 'buildDependencies'):
+            self._resolveDepsHelper(self.buildDependencies)
 
     def get_output_root(self):
         """
@@ -2749,7 +2749,10 @@ class NativeBuildTask(ProjectBuildTask):
 
     def build(self):
         env = os.environ.copy()
-        javaDeps = [d for d in self.subject.canonical_deps() if isinstance(d, JavaProject)]
+        all_deps = self.subject.canonical_deps()
+        if hasattr(self.subject, 'buildDependencies'):
+            all_deps += self.subject.buildDependencies
+        javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
         cmdline = [gmake_cmd()]
@@ -9561,8 +9564,8 @@ def build(args, parser=None):
         assert task.subject not in taskMap
         taskMap[dep] = task
         def try_link_task(t):
-            if hasattr(t.subject, 'build_deps'):
-                for build_dep in t.subject.build_deps:
+            if hasattr(t.subject, 'buildDependencies'):
+                for build_dep in t.subject.buildDependencies:
                     if build_dep not in taskMap:
                         delayedTasks.setdefault(build_dep, []).append(t)
                         return
