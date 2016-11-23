@@ -2698,6 +2698,22 @@ def _replaceResultsVar(m):
     else:
         abort('Unknown variable: ' + var)
 
+def _replacePathVar(m):
+    var = m.group(1)
+    if var.startswith('path:'):
+        dname = var[len('path:'):]
+        d = distribution(dname)
+        if d.isJARDistribution() and hasattr(d, "path"):
+            path = d.path
+        elif d.isTARDistribution() and hasattr(d, "output"):
+            path = d.output
+        if path:
+            return join(d.suite.dir, path)
+        else:
+            abort('distribution ' + dname + ' has no path')
+    else:
+        return _replaceResultsVar(m)
+
 def _merge_file_contents(input_files, output_file):
     for file_name in input_files:
         with open(file_name, 'r') as input_file:
@@ -2713,6 +2729,7 @@ Additional attributes:
   output: the directory where the Makefile puts the `results`
   vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
          if `False` or undefined, make will be executed from the source directory
+  buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None):
@@ -2739,6 +2756,13 @@ class NativeProject(Project):
             results.append(join(self.suite.dir, output, r))
         return results
 
+    def getBuildEnv(self, replaceVar=_replacePathVar):
+        ret = {}
+        if hasattr(self, 'buildEnv'):
+            for key, value in self.buildEnv.items():
+                ret[key] = re.sub(r'<(.+?)>', replaceVar, value)
+        return ret
+
 class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
@@ -2763,6 +2787,8 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
+        if hasattr(self.subject, "getBuildEnv"):
+            env.update(self.subject.getBuildEnv())
         run(cmdline, cwd=cwd, env=env)
         self._newestOutput = None
 
