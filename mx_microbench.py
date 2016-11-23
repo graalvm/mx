@@ -82,12 +82,14 @@ class MicrobenchExecutor(object):
                     jmhProjects.append(p)
             # get java compliance - 1.8 is minimum since we build jmh-runner with java 8
             self.javaCompliance = max([p.javaCompliance for p in jmhProjects] + [mx.JavaCompliance('1.8')])
-            cp = mx.classpath([p.name for p in jmhProjects], jdk=mx.get_jdk(self.javaCompliance))
+            cpArgs = mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk(self.javaCompliance))
 
             # execute JMH runner
-            args = ['-cp', cp]
-            if not forking:
-                args += vmArgs
+            if forking:
+                args, cpVmArgs = self.filterVmArgs(cpArgs)
+                vmArgs += cpVmArgs
+            else:
+                args = cpArgs + vmArgs
             args += ['org.openjdk.jmh.Main']
 
         if forking:
@@ -111,6 +113,27 @@ class MicrobenchExecutor(object):
 
     def parseForkedVmArgs(self, vmArgs):
         return vmArgs
+
+    def filterVmArgs(self, allArgs):
+        # JMH deals with -cp and -D itself, everything else needs to be passed with --jvmArgsPrepend
+        args = []
+        vmArgs = []
+        skipNext = False
+        for i in range(len(allArgs)):
+            if skipNext:
+                skipNext = False
+                continue
+
+            arg = allArgs[i]
+            if arg == '-cp':
+                args += ['-cp', allArgs[i+1]]
+                skipNext = True
+            elif arg.startswith('-D'):
+                args.append(arg)
+            else:
+                vmArgs.append(arg)
+
+        return args, vmArgs
 
 def microbench(args):
     get_microbenchmark_executor().microbench(args)

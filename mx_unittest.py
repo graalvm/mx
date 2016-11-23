@@ -149,7 +149,6 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 if not found:
                     mx.log('warning: no tests matched by substring: ' + t)
 
-    unittestCp = mx.classpath(depsContainingTests, jdk=vmLauncher.jdk())
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
 
@@ -164,7 +163,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
         for c in classes:
             f_testfile.write(c + '\n')
         f_testfile.close()
-        harness(unittestCp, vmLauncher, vmArgs)
+        harness(depsContainingTests, vmLauncher, vmArgs)
 
 #: A `_VMLauncher` object.
 _vm_launcher = None
@@ -226,17 +225,17 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         coreArgs.append(repeat)
 
 
-    def harness(unittestCp, vmLauncher, vmArgs):
+    def harness(unittestDeps, vmLauncher, vmArgs):
         prefixArgs = ['-esa', '-ea']
         if gc_after_test:
             prefixArgs.append('-XX:-DisableExplicitGC')
         with open(testfile) as fp:
             testclasses = [l.rstrip() for l in fp.readlines()]
 
-        cp = prefixCp + coreCp + os.pathsep + unittestCp
+        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=vmLauncher.jdk())
 
         # suppress menubar and dock when running on Mac
-        vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs + ['-cp', mx._separatedCygpathU2W(cp)]
+        vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
         mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
