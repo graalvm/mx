@@ -1,5 +1,5 @@
 # overlay version
-overlay = fe4cdc87fd0bc552a81443ba95baa8d4c094d130
+overlay = ca7616b74ad83f0e7f55bef69eb396e775b6d5e7
 
 gate : {
   packages : {
