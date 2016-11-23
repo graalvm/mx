@@ -4762,7 +4762,7 @@ class BinaryVC(VC):
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
 
         mxname = _mx_binary_distribution_root(suite_name)
-        self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name), mxname), dest, rev)
+        self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name).replace('.', '/'), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
         if not self._pull_artifact(metadata, mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
             return False
@@ -4776,7 +4776,8 @@ class BinaryVC(VC):
         snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
         if not snapshot:
             if abortOnVersionError:
-                abort('Version {} not found for {}:{}'.format(metadata.snapshotVersion, groupId, artifactId))
+                url = repo.getSnapshotUrl(groupId, artifactId, metadata.snapshotVersion)
+                abort('Version {} not found for {}:{} ({})'.format(metadata.snapshotVersion, groupId, artifactId, url))
             return False
         build = snapshot.getCurrentSnapshotBuild()
         metadata.snapshotTimestamp = snapshot.currentTime
@@ -5044,10 +5045,7 @@ class MavenRepo:
                 logv('Element \'latest\' not specified in metadata. Fallback: Find latest via \'versions\'.')
                 latestVersionString = None
                 for version_str in reversed(versionStrings):
-                    snapshot_metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl,
-                                                                                       groupId.replace('.', '/'),
-                                                                                       artifactId,
-                                                                                       version_str)
+                    snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
                         snapshot_metadataFile = urllib2.urlopen(snapshot_metadataUrl, timeout=10)
                     except urllib2.HTTPError as e:
@@ -5067,9 +5065,12 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
+    def getSnapshotUrl(self, groupId, artifactId, version):
+        return "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId, version)
+
     def getSnapshot(self, groupId, artifactId, version):
         assert version.endswith('-SNAPSHOT')
-        metadataUrl = "{0}/{1}/{2}/{3}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId, version)
+        metadataUrl = self.getSnapshotUrl(groupId, artifactId, version)
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
