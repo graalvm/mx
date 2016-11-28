@@ -534,6 +534,43 @@ class Dependency(SuiteConstituent):
                 # If the first element has been resolved, then all elements should have been resolved
                 assert len([d for d in deps if not isinstance(d, str)])
 
+def _replaceResultsVar(m):
+    var = m.group(1)
+    if var == 'os':
+        return get_os()
+    elif var == 'arch':
+        return get_arch()
+    elif var.startswith('lib:'):
+        libname = var[len('lib:'):]
+        return add_lib_suffix(add_lib_prefix(libname))
+    elif var.startswith('libdebug:'):
+        libname = var[len('libdebug:'):]
+        return add_debug_lib_suffix(add_lib_prefix(libname))
+    else:
+        abort('Unknown variable: ' + var)
+
+def _replacePathVar(m):
+    var = m.group(1)
+    if var.startswith('path:'):
+        dname = var[len('path:'):]
+        d = distribution(dname)
+        if d.isJARDistribution() and hasattr(d, "path"):
+            path = d.path
+        elif d.isTARDistribution() and hasattr(d, "output"):
+            path = d.output
+        if path:
+            return join(d.suite.dir, path)
+        else:
+            abort('distribution ' + dname + ' has no path')
+    else:
+        return _replaceResultsVar(m)
+
+"""
+A dependency that can be put on the classpath of a Java commandline.
+
+Attributes:
+    javaProperties: dictionary of custom Java properties that should be added to the commandline
+"""
 class ClasspathDependency(Dependency):
     def __init__(self): # pylint: disable=super-init-not-called
         pass
@@ -552,6 +589,13 @@ class ClasspathDependency(Dependency):
         if cp_repr:
             return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR') or '.jar_' in cp_repr
         return True
+
+    def getJavaProperties(self, replaceVar=_replacePathVar):
+        ret = {}
+        if hasattr(self, "javaProperties"):
+            for key, value in self.javaProperties.items():
+                ret[key] = re.sub(r'<(.+?)>', replaceVar, value)
+        return ret
 
 """
 A build task is used to build a dependency.
@@ -1330,7 +1374,7 @@ class JARArchiveTask(ArchiveTask):
 class NativeTARDistribution(Distribution):
     """
     A distribution dependencies are only `NativeProject`s. It packages all the resources specified by
-    `NativeProject.getResults` for each constituent project.
+    `NativeProject.getResults` and `NativeProject.headers` for each constituent project.
 
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
@@ -1382,6 +1426,14 @@ class NativeTARDistribution(Distribution):
                             warn("File {} for archive {} does not exist.".format(filename, d.name))
                         else:
                             archive_and_copy(r, filename)
+                    if hasattr(d, "headers"):
+                        srcdir = os.path.join(self.suite.dir, d.dir)
+                        for h in d.headers:
+                            if self.relpath:
+                                filename = h
+                            else:
+                                filename = basename(h)
+                            archive_and_copy(os.path.join(srcdir, h), filename)
                 elif d.isArchivableProject():
                     outputDir = d.output_dir()
                     archivePrefix = d.archive_prefix()
@@ -1486,8 +1538,8 @@ class Project(Dependency):
         licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
-        if hasattr(self, 'build_deps'):
-            self._resolveDepsHelper(self.build_deps)
+        if hasattr(self, 'buildDependencies'):
+            self._resolveDepsHelper(self.buildDependencies)
 
     def get_output_root(self):
         """
@@ -2502,7 +2554,7 @@ class CompilerDaemon(Daemon):
         if not buildArgs:
             buildArgs = []
         build(buildArgs + ['--no-daemon', '--dependencies', 'com.oracle.mxtool.compilerserver'])
-        cp = classpath(['com.oracle.mxtool.compilerserver']) + os.pathsep + toolJar
+        cpArgs = get_runtime_jvm_args(names=['com.oracle.mxtool.compilerserver'], jdk=jdk, cp_suffix=toolJar)
 
         self.port = None
         self.portRegex = re.compile(r'Started server on port ([0-9]+)')
@@ -2510,7 +2562,7 @@ class CompilerDaemon(Daemon):
         # Start Java process asynchronously
         verbose = ['-v'] if _opts.verbose else []
         jobs = ['-j', str(cpu_count())]
-        args = [jdk.java] + jvmArgs + ['-cp', cp, mainClass] + verbose + jobs
+        args = [jdk.java] + jvmArgs + cpArgs + [mainClass] + verbose + jobs
         preexec_fn, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
             log(' '.join(map(pipes.quote, args)))
@@ -2675,21 +2727,6 @@ class ECJDaemon(CompilerDaemon):
 def is_debug_lib_file(fn):
     return fn.endswith(add_debug_lib_suffix(""))
 
-def _replaceResultsVar(m):
-    var = m.group(1)
-    if var == 'os':
-        return get_os()
-    elif var == 'arch':
-        return get_arch()
-    elif var.startswith('lib:'):
-        libname = var[len('lib:'):]
-        return add_lib_suffix(add_lib_prefix(libname))
-    elif var.startswith('libdebug:'):
-        libname = var[len('libdebug:'):]
-        return add_debug_lib_suffix(add_lib_prefix(libname))
-    else:
-        abort('Unknown variable: ' + var)
-
 def _merge_file_contents(input_files, output_file):
     for file_name in input_files:
         with open(file_name, 'r') as input_file:
@@ -2701,9 +2738,11 @@ A NativeProject is a Project containing native code. It is built using `make`. T
 to a classpath containing all JavaProject dependencies.
 Additional attributes:
   results: a list of result file names that will be packaged if the project is part of a distribution
+  headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
   output: the directory where the Makefile puts the `results`
   vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
          if `False` or undefined, make will be executed from the source directory
+  buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None):
@@ -2730,6 +2769,13 @@ class NativeProject(Project):
             results.append(join(self.suite.dir, output, r))
         return results
 
+    def getBuildEnv(self, replaceVar=_replacePathVar):
+        ret = {}
+        if hasattr(self, 'buildEnv'):
+            for key, value in self.buildEnv.items():
+                ret[key] = re.sub(r'<(.+?)>', replaceVar, value)
+        return ret
+
 class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
@@ -2740,7 +2786,10 @@ class NativeBuildTask(ProjectBuildTask):
 
     def build(self):
         env = os.environ.copy()
-        javaDeps = [d for d in self.subject.canonical_deps() if isinstance(d, JavaProject)]
+        all_deps = self.subject.canonical_deps()
+        if hasattr(self.subject, 'buildDependencies'):
+            all_deps += self.subject.buildDependencies
+        javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
         cmdline = [gmake_cmd()]
@@ -2751,6 +2800,8 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
+        if hasattr(self.subject, "getBuildEnv"):
+            env.update(self.subject.getBuildEnv())
         run(cmdline, cwd=cwd, env=env)
         self._newestOutput = None
 
@@ -7506,13 +7557,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
     walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
     return cpEntries
 
-def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False):
-    """
-    Get the class path for a list of named projects and distributions, resolving each entry in the
-    path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
-    then all registered dependencies are used.
-    """
-    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
+def _entries_to_classpath(cpEntries, resolve=True, includeBootClasspath=False, jdk=None, unique=False, ignoreStripped=False, cp_prefix=None, cp_suffix=None):
     cp = []
     def _appendUnique(cp_addition):
         for new_path in cp_addition.split(os.pathsep):
@@ -7522,6 +7567,8 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
         _appendUnique(get_jdk().bootclasspath())
     if _opts.cp_prefix is not None:
         _appendUnique(_opts.cp_prefix)
+    if cp_prefix is not None:
+        _appendUnique(cp_prefix)
     for dep in cpEntries:
         if dep.isJdkLibrary() or dep.isJreLibrary():
             cp_repr = dep.classpath_repr(jdk, resolve=resolve)
@@ -7531,10 +7578,44 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
             cp_repr = dep.classpath_repr(resolve)
         if cp_repr:
             _appendUnique(cp_repr)
+    if cp_suffix is not None:
+        _appendUnique(cp_suffix)
     if _opts.cp_suffix is not None:
         _appendUnique(_opts.cp_suffix)
 
     return os.pathsep.join(cp)
+
+def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, preferProjects=False, jdk=None, unique=False, ignoreStripped=False):
+    """
+    Get the class path for a list of named projects and distributions, resolving each entry in the
+    path (e.g. downloading a missing library) if 'resolve' is true. If 'names' is None,
+    then all registered dependencies are used.
+    """
+    cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
+    return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
+
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
+    """
+    Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
+    distributions. If 'names' is None, then all registered dependencies are used.
+    """
+    cpEntries = classpath_entries(names=names)
+    ret = ["-cp", _separatedCygpathU2W(_entries_to_classpath(cpEntries, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk))]
+
+    def add_props(d):
+        if hasattr(d, "getJavaProperties"):
+            for key, value in d.getJavaProperties().items():
+                ret.append("-D" + key + "=" + value)
+
+    for dep in cpEntries:
+        add_props(dep)
+
+        # also look through the individual projects inside all distributions on the classpath
+        if dep.isDistribution():
+            for project in dep.archived_deps():
+                add_props(project)
+
+    return ret
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
@@ -9552,8 +9633,8 @@ def build(args, parser=None):
         assert task.subject not in taskMap
         taskMap[dep] = task
         def try_link_task(t):
-            if hasattr(t.subject, 'build_deps'):
-                for build_dep in t.subject.build_deps:
+            if hasattr(t.subject, 'buildDependencies'):
+                for build_dep in t.subject.buildDependencies:
                     if build_dep not in taskMap:
                         delayedTasks.setdefault(build_dep, []).append(t)
                         return
@@ -14515,7 +14596,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.59.3")
+version = VersionSpec("5.60.0")
 
 currentUmask = None
 

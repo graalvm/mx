@@ -939,9 +939,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
         for p in mx.projects_opt_limit_to_suites():
             if 'JMH' in [x.name for x in p.deps]:
                 jmhProjects.append(p)
-        cp = mx.classpath([p.name for p in jmhProjects], jdk=mx.get_jdk())
-
-        return ['-cp', cp]
+        return mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk())
 
     def getJMHEntry(self):
         return ["org.openjdk.jmh.Main"]
