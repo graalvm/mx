@@ -154,8 +154,7 @@ public class TextRunListener implements MxRunListener {
 
             @Override
             public void testIgnored(Description description) {
-                l.testStarted(description);
-                l.testStartedDelimiter();
+                testStarted(description);
                 l.testIgnored(description);
                 l.testFinished(description);
                 l.testFinishedDelimiter();
