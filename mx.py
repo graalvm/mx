@@ -553,15 +553,17 @@ def _replacePathVar(m):
     var = m.group(1)
     if var.startswith('path:'):
         dname = var[len('path:'):]
-        d = distribution(dname)
+        d = dependency(dname)
         if d.isJARDistribution() and hasattr(d, "path"):
             path = d.path
         elif d.isTARDistribution() and hasattr(d, "output"):
             path = d.output
+        elif d.isLibrary():
+            path = d.get_path(resolve=True)
         if path:
             return join(d.suite.dir, path)
         else:
-            abort('distribution ' + dname + ' has no path')
+            abort('dependency ' + dname + ' has no path')
     else:
         return _replaceResultsVar(m)
 
@@ -14596,7 +14598,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.60.1")
+version = VersionSpec("5.60.2")
 
 currentUmask = None
 
