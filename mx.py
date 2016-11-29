@@ -12265,7 +12265,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
                 moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
             elif dep.isJreLibrary():
                 pass
-            elif dep.isNativeProject() or dep.isArchivableProject():
+            elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
                 log("Ignoring dependency from {} to {}".format(proj.name, dep.name))
             else:
                 abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
