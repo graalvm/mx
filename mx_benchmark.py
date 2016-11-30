@@ -602,6 +602,14 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 return re.compile(pat)
             return pat
 
+        flaky_skip = False
+        for pat in self.flakySkipPatterns(benchmarks, bmSuiteArgs):
+            if compiled(pat).search(out):
+                flaky_skip = True
+        if flaky_skip:
+            mx.warn("Benchmark skipped, flaky pattern found. Benchmark(s): {0}".format(benchmarks))
+            return []
+
         flaky = False
         for pat in self.flakySuccessPatterns():
             if compiled(pat).search(out):
@@ -640,8 +648,22 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """List of regex pattern that can override matched failure and success patterns.
 
         If any of the patterns in this list match, the output will not be checked for
-        failure or success patterns.
+        failure or success patterns. The result will still be checked according to the
+        `self.rules()`.
         If none of the patterns in this list match, the output is checked normally.
+
+        This method should be overridden for suites that are known to be flaky.
+        """
+        return []
+
+    def flakySkipPatterns(self, benchmarks, bmSuiteArgs):
+        """List of regex pattern that indicate whether a benchmark run was flaky and
+        the results should be ignored.
+
+        If none of the patterns in this list match, the output is checked normally.
+
+        The difference to `flakySuccessPatterns` is that the run will be ignored completely.
+        No results will be produced.
 
         This method should be overridden for suites that are known to be flaky.
         """
