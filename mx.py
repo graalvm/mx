@@ -3583,7 +3583,7 @@ class VC(object):
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
-        Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
+        Returns a release version derived from VC tags that match the pattern <prefix>-<number>(.<number>)*
         or None if no such tags exist.
 
         :param str vcdir: a valid repository path
@@ -3594,6 +3594,18 @@ class VC(object):
         :rtype: str
         """
         abort(self.kind + " release_version_from_tags is not implemented")
+
+    @staticmethod
+    def _version_string_helper(current_revision, tag_revision, tag_version, snapshotSuffix):
+        def version_str(version_list):
+            return '.'.join((str(a) for a in version_list))
+
+        if current_revision == tag_revision:
+            return version_str(tag_version)
+        else:
+            next_version = list(tag_version)
+            next_version[-1] += 1
+            return version_str(next_version) + '-' + snapshotSuffix
 
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
@@ -3981,12 +3993,7 @@ class HgConfig(VC):
             version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
             version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
             most_recent_tag_version, most_recent_tag_id = version_ids[0]
-
-            if current_id == most_recent_tag_id:
-                return '.'.join((str(e) for e in most_recent_tag_version))
-            else:
-                major, minor = most_recent_tag_version
-                return str(major) + '.' + str(minor + 1) + '-' + snapshotSuffix
+            return VC._version_string_helper(current_id, most_recent_tag_id, most_recent_tag_version, snapshotSuffix)
         return None
 
     def metadir(self):
@@ -4353,7 +4360,7 @@ class GitConfig(VC):
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
-        Returns a release version derived from VC tags that match the pattern <prefix>-<major>.<minor>
+        Returns a release version derived from VC tags that match the pattern <prefix>-<number>(.<number>)*
         or None if no such tags exist.
 
         :param str vcdir: a valid repository path
@@ -4372,12 +4379,7 @@ class GitConfig(VC):
             most_recent_version = matching_versions[0]
             most_recent_tag = tag_prefix + '.'.join((str(x) for x in most_recent_version))
             most_recent_tag_revision = self._commitish_revision(vcdir, most_recent_tag)
-
-            if latest_rev == most_recent_tag_revision:
-                return most_recent_tag[len(tag_prefix):]
-            else:
-                major, minor = most_recent_version
-                return '{0}.{1}-{2}'.format(major, minor  + 1, snapshotSuffix)
+            return VC._version_string_helper(latest_rev, most_recent_tag_revision, most_recent_version, snapshotSuffix)
         return None
 
     def metadir(self):
