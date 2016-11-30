@@ -94,6 +94,10 @@ public class FindClassesByAnnotatedMethods {
                         final int lastDot = annotationType.lastIndexOf('.');
                         if (lastDot != -1) {
                             String simpleName = annotationType.substring(lastDot + 1);
+                            int lastDollar = simpleName.lastIndexOf('$');
+                            if (lastDollar != -1) {
+                                simpleName = simpleName.substring(lastDollar + 1);
+                            }
                             if (unqualifiedAnnotations.contains(simpleName)) {
                                 System.out.println(className + " " + jarFilePath);
                             }
