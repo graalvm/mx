@@ -92,9 +92,8 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
         # find a corresponding distribution for each test
         candidates = _find_classes_by_annotated_methods(annotations, jar_distributions, vmLauncher.jdk())
     else:
-        assert not mx._opts.strip_jars, "Testing stripped jars must be done with option --use-distributions"
         binary_deps = [d for d in mx.dependencies(opt_limit_to_suite=True) if d.isJARDistribution() and
--                        isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
+                       isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
         candidates = _find_classes_by_annotated_methods(annotations, binary_deps, vmLauncher.jdk())
         for p in mx.projects(opt_limit_to_suite=True):
             if not p.isJavaProject():
