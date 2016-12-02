@@ -75,6 +75,7 @@ import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 import mx_downstream
+import mx_subst
 
 from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package
 
@@ -534,38 +535,29 @@ class Dependency(SuiteConstituent):
                 # If the first element has been resolved, then all elements should have been resolved
                 assert len([d for d in deps if not isinstance(d, str)])
 
+# for backwards compatibility
 def _replaceResultsVar(m):
-    var = m.group(1)
-    if var == 'os':
-        return get_os()
-    elif var == 'arch':
-        return get_arch()
-    elif var.startswith('lib:'):
-        libname = var[len('lib:'):]
-        return add_lib_suffix(add_lib_prefix(libname))
-    elif var.startswith('libdebug:'):
-        libname = var[len('libdebug:'):]
-        return add_debug_lib_suffix(add_lib_prefix(libname))
-    else:
-        abort('Unknown variable: ' + var)
+    return mx_subst.results_substitutions.substitute(m.group(0))
 
+# for backwards compatibility
 def _replacePathVar(m):
-    var = m.group(1)
-    if var.startswith('path:'):
-        dname = var[len('path:'):]
-        d = dependency(dname)
-        if d.isJARDistribution() and hasattr(d, "path"):
-            path = d.path
-        elif d.isTARDistribution() and hasattr(d, "output"):
-            path = d.output
-        elif d.isLibrary():
-            path = d.get_path(resolve=True)
-        if path:
-            return join(d.suite.dir, path)
-        else:
-            abort('dependency ' + dname + ' has no path')
+    return mx_subst.path_substitutions.substitute(m.group(0))
+
+def _get_dependency_path(dname):
+    d = dependency(dname)
+    if d.isJARDistribution() and hasattr(d, "path"):
+        path = d.path
+    elif d.isTARDistribution() and hasattr(d, "output"):
+        path = d.output
+    elif d.isLibrary():
+        path = d.get_path(resolve=True)
+    if path:
+        return join(d.suite.dir, path)
     else:
-        return _replaceResultsVar(m)
+        abort('dependency ' + dname + ' has no path')
+
+mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
+
 
 """
 A dependency that can be put on the classpath of a Java commandline.
@@ -592,11 +584,11 @@ class ClasspathDependency(Dependency):
             return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR') or '.jar_' in cp_repr
         return True
 
-    def getJavaProperties(self, replaceVar=_replacePathVar):
+    def getJavaProperties(self, replaceVar=mx_subst.path_substitutions):
         ret = {}
         if hasattr(self, "javaProperties"):
             for key, value in self.javaProperties.items():
-                ret[key] = re.sub(r'<(.+?)>', replaceVar, value)
+                ret[key] = replaceVar.substitute(value)
         return ret
 
 """
@@ -2756,26 +2748,26 @@ class NativeProject(Project):
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
 
-    def getOutput(self, replaceVar=_replaceResultsVar):
+    def getOutput(self, replaceVar=mx_subst.results_substitutions):
         if self.output:
-            return re.sub(r'<(.+?)>', replaceVar, self.output)
+            return mx_subst.as_engine(replaceVar).substitute(self.output)
         if self.vpath:
             return self.get_output_root()
         return None
 
-    def getResults(self, replaceVar=_replaceResultsVar):
+    def getResults(self, replaceVar=mx_subst.results_substitutions):
         results = []
         output = self.getOutput(replaceVar=replaceVar)
         for rt in self.results:
-            r = re.sub(r'<(.+?)>', replaceVar, rt)
+            r = mx_subst.as_engine(replaceVar).substitute(rt)
             results.append(join(self.suite.dir, output, r))
         return results
 
-    def getBuildEnv(self, replaceVar=_replacePathVar):
+    def getBuildEnv(self, replaceVar=mx_subst.path_substitutions):
         ret = {}
         if hasattr(self, 'buildEnv'):
             for key, value in self.buildEnv.items():
-                ret[key] = re.sub(r'<(.+?)>', replaceVar, value)
+                ret[key] = replaceVar.substitute(value)
         return ret
 
 class NativeBuildTask(ProjectBuildTask):
@@ -7193,6 +7185,8 @@ def get_os():
     else:
         abort('Unknown operating system ' + sys.platform)
 
+mx_subst.results_substitutions.register_no_arg('os', get_os)
+
 def _cygpathU2W(p):
     """
     Translate a path from unix-style to windows-style.
@@ -7248,6 +7242,8 @@ def get_arch():
             # sysctl is not available
             pass
     abort('unknown or unsupported architecture: os=' + get_os() + ', machine=' + machine)
+
+mx_subst.results_substitutions.register_no_arg('arch', get_arch)
 
 def vc_system(kind, abortOnError=True):
     for vc in _vc_systems:
@@ -8819,6 +8815,9 @@ def add_debug_lib_suffix(name):
     if os == 'darwin':
         return name + '.dylib.dSYM'
     return name
+
+mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
+mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
 
 """
 Utility for filtering duplicate lines.
