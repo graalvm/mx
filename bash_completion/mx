@@ -1,0 +1,84 @@
+_mx() {
+    local cur prev opts commands
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    #  read options & commands
+    IFS='|' read opts commands <<< $(_mx_help)
+
+    # complete command arguments
+    for command in $commands; do
+        if [[ "${prev}" == "${command}" ]]; then
+            # unusable output
+            #local help=$(mx help ${command})
+            local help=""
+            COMPREPLY=($(compgen -W "${help}" -- $cur))
+            return 0
+        fi
+    done;
+    #  complete the arguments
+    if [[ "${cur}" == -* ]]; then
+        COMPREPLY=($(compgen -W "${opts}" -- $cur))
+        return 0
+    fi
+
+    COMPREPLY=($(compgen -W "${commands}" -- $cur))
+    return 0
+}
+
+_mx_help() {
+    mx help 2>/dev/null | awk '
+        BEGIN {
+            # state
+            state_options=0;
+            state_commands=0;
+            # counts
+            nr_options=0;
+            nr_commands=0;
+        }
+        {
+            # reset
+            if ($0 == "") {
+                state_options=0;
+                next;
+            }
+
+            # arguments
+            if ($1 == "optional" && $2 == "arguments:") {
+                state_options=1;
+                next;
+            }
+            if (state_options) {
+                for (i = 1; i <= NF; i++) {
+                    if (index($i, "-") == 1) {
+                        options[nr_options] = $i;
+                        nr_options++;
+                    }
+                }
+                next;
+            }
+
+            # commands
+            if ($1 == "available" && $2 == "commands:") {
+                state_commands=1;
+                next;
+            };
+            if (state_commands && $1 != "") {
+                commands[nr_commands] = $1;
+                nr_commands++;
+            }
+        }
+        END {
+            for (i = 0; i < nr_options; i++) {
+                printf("%s ", options[i]);
+            }
+            printf("%s ", "|");
+            for (i = 0; i < nr_commands; i++) {
+                printf("%s ", commands[i]);
+            }
+        }';
+}
+complete -F _mx mx
+
+# vi: syntax=bash
