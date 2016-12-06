@@ -18,6 +18,8 @@ If no options or command is specified, `mx` prints information on the available 
 
 For an example of `mx` usage, you can read the [Instructions][1] for the Graal project.
 
+Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file.
+
 ### URL rewriting ###
 
 Mx includes support for the primary suite to be able to override the source URLs of imported suites.
