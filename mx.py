@@ -11982,6 +11982,8 @@ annotation.processing.processors.list=
 annotation.processing.run.all.processors=true
 application.title=""" + p.name + """
 application.vendor=mx
+auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsEnabled=true
+auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsFile=nbproject/cfg_hints.xml
 build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
@@ -12132,6 +12134,48 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     out.close()
     if files:
         files.append(join(p.dir, 'nbproject', 'project.properties'))
+
+    content = """
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration PUBLIC "-//NetBeans//DTD Tool Configuration 1.0//EN" "http://www.netbeans.org/dtds/ToolConfiguration-1_0.dtd">
+<configuration>
+    <tool kind="hints" type="text/x-java">
+        <node name="Javac_FINALLY">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_DIVISION_BY_ZERO">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_OVERRIDES">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_DEPRECATED">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_RAWTYPES">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_UNCHECKED">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_EMPTY_STATEMENT_AFTER_IF">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_SERIALIZATION">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_FALLTHROUGH">
+            <attribute name="enabled" value="true"/>
+        </node>
+        <node name="Javac_UNNECESSARY_CAST">
+            <attribute name="enabled" value="true"/>
+        </node>
+    </tool>
+</configuration>
+"""
+    update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
+    if files:
+        files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
 def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
     mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
