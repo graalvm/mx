@@ -1,5 +1,6 @@
 *.pyc
 *.orig
+*.iml
 /mx.mx/env
 /workingsets.xml
 /.idea
@@ -16,6 +17,5 @@ eclipse-launches
 /java/*/.project
 /java/*/bin/
 /java/*/.checkstyle
-/java/*/*.iml
 /java/*/.factorypath
 /java/*.dist/
