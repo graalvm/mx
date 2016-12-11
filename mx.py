@@ -11967,16 +11967,18 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
 
     annotationProcessorEnabled = "false"
     annotationProcessorSrcFolder = ""
+    annotationProcessorSrcFolderReference = ""
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
-        genSrcDir = p.source_gen_dir()
-        ensure_dir_exists(genSrcDir)
-        genSrcDir = genSrcDir.replace('\\', '\\\\')
-        annotationProcessorSrcFolder = "src.ap-source-output.dir=" + genSrcDir
+        annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), p.dir)
+        ensure_dir_exists(annotationProcessorSrcFolder)
+        annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
+        annotationProcessorSrcFolderReference = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
 annotation.processing.enabled.in.editor=""" + annotationProcessorEnabled + """
+annotation.processing.source.output=""" + annotationProcessorSrcFolder + """
 annotation.processing.processors.list=
 annotation.processing.run.all.processors=true
 application.title=""" + p.name + """
@@ -12043,7 +12045,7 @@ run.test.classpath=\\
 ${javac.test.classpath}:\\
 ${build.test.classes.dir}
 test.src.dir=./test
-""" + annotationProcessorSrcFolder + """
+""" + annotationProcessorSrcFolderReference + """
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print >> out, content
 
@@ -12077,14 +12079,20 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     javacClasspath = []
 
+    def newDepsCollector(into):
+        return lambda dep, edge: into.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None
+
     deps = []
-    p.walk_deps(visit=lambda dep, edge: deps.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None)
+    p.walk_deps(visit=newDepsCollector(deps))
     annotationProcessorOnlyDeps = []
     if len(p.annotation_processors()) > 0:
         for apDep in p.annotation_processors():
-            if not apDep in deps:
-                deps.append(apDep)
-                annotationProcessorOnlyDeps.append(apDep)
+            resolvedApDeps = []
+            apDep.walk_deps(visit=newDepsCollector(resolvedApDeps))
+            for resolvedApDep in resolvedApDeps:
+                if not resolvedApDep in deps:
+                    deps.append(resolvedApDep)
+                    annotationProcessorOnlyDeps.append(resolvedApDep)
 
     annotationProcessorReferences = []
 
@@ -12114,9 +12122,10 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         elif dep.isProject():
             n = dep.name.replace('.', '_')
             relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
+            depBuildPath = os.path.relpath(dep.output_dir(), p.dir)
             ref = 'reference.' + n + '.jar'
             print >> out, 'project.' + n + '=' + relDepPath
-            print >> out, ref + '=${project.' + n + '}/dist/' + dep.name + '.jar'
+            print >> out, ref + '=${project.' + n + '}/' + depBuildPath
 
         if not dep in annotationProcessorOnlyDeps:
             javacClasspath.append('${' + ref + '}')
