@@ -11967,13 +11967,13 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
 
     annotationProcessorEnabled = "false"
     annotationProcessorSrcFolder = ""
-    annotationProcessorSrcFolderReference = ""
+    annotationProcessorSrcFolderRef = ""
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
         annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), p.dir)
         ensure_dir_exists(annotationProcessorSrcFolder)
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
-        annotationProcessorSrcFolderReference = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
+        annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
@@ -12045,7 +12045,7 @@ run.test.classpath=\\
 ${javac.test.classpath}:\\
 ${build.test.classes.dir}
 test.src.dir=./test
-""" + annotationProcessorSrcFolderReference + """
+""" + annotationProcessorSrcFolderRef + """
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print >> out, content
 
