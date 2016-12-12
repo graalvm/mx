@@ -26,6 +26,7 @@ import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleReference;
 import java.lang.module.ModuleFinder;
 import java.io.PrintStream;
+import java.lang.reflect.Method;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -55,12 +56,21 @@ public class ListModules {
         return false;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Throwable {
         PrintStream out = System.out;
         Set<ModuleDescriptor> bootModules = new HashSet<>();
         for (Module module : Layer.boot().modules()) {
         	bootModules.add(module.getDescriptor());
         }
+
+        // Use reflection to support backward incompatible module API change
+        // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l20.679
+        Method providesMethod = ModuleDescriptor.class.getMethod("provides");
+        boolean providesIsSet = providesMethod.getReturnType() == Set.class;
+
+        // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l18.37
+        out.println(providesIsSet ? "transitive" : "public");
+
         for (ModuleReference moduleRef : ModuleBootstrap.finder().findAll()) {
             ModuleDescriptor md = moduleRef.descriptor();
             if (!matches(md.name(), args)) {
@@ -83,9 +93,20 @@ public class ListModules {
             for (String pkg : md.packages()) {
                 out.println("  package " + pkg);
             }
-            for (Map.Entry<String, ModuleDescriptor.Provides> e : md.provides().entrySet()) {
-                for (String provider : e.getValue().providers()) {
-                    out.println("  provides " + e.getKey() + " with " + provider);
+
+            Object providesResult = providesMethod.invoke(md);
+
+            Iterable<ModuleDescriptor.Provides> providesIterable;
+            if (providesIsSet) {
+                providesIterable = (Set<ModuleDescriptor.Provides>) providesResult;
+            } else {
+                Map<String, ModuleDescriptor.Provides> providesMap = (Map<String, ModuleDescriptor.Provides>) providesResult;
+                providesIterable = providesMap.values();
+            }
+
+            for (ModuleDescriptor.Provides provides : providesIterable) {
+                for (String provider : provides.providers()) {
+                    out.println("  provides " + provides.service() + " with " + provider);
                 }
             }
         }

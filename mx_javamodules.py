@@ -299,7 +299,7 @@ def make_java_module(dist, jdk):
             jmd = make_java_module(dep, jdk) if dep.isJARDistribution() else None
             if jmd:
                 modulepath.append(jmd)
-                requires[jmd.name] = set(['public'])
+                requires[jmd.name] = set([jdk.get_transitive_requires_keyword()])
             elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
                 pass
             else:

@@ -9188,7 +9188,11 @@ class JDKConfig:
             packages = set()
             boot = None
 
-            for line in out.lines:
+            keyword = out.lines[0]
+            setattr(self, '.transitiveRequiresKeyword', keyword)
+            assert keyword == 'transitive' or keyword == 'public'
+
+            for line in out.lines[1:]:
                 parts = line.strip().split()
                 assert len(parts) > 0
                 if len(parts) == 1:
@@ -9235,6 +9239,47 @@ class JDKConfig:
                 modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
             setattr(self, '.modules', tuple(modules.values()))
         return getattr(self, '.modules')
+
+    def get_transitive_requires_keyword(self):
+        '''
+        Gets the keyword used to denote transitive dependencies. This can also effectively
+        be used to determine if this is JDK contains the module changes made by
+        https://bugs.openjdk.java.net/browse/JDK-8169069.
+        '''
+        if self.javaCompliance < '9':
+            abort('Cannot call get_transitive_requires_keyword() for pre-9 JDK ' + str(self))
+        self.get_modules()
+        # see http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l18.37
+        return getattr(self, '.transitiveRequiresKeyword')
+
+    def get_automatic_module_name(self, modulejar):
+        """
+        Derives the name of an automatic module from an automatic module jar according to
+        specification of ``java.lang.module.ModuleFinder.of(Path... entries)``.
+
+        :param str modulejar: the path to a jar file treated as an automatic module
+        :return: the name of the automatic module derived from `modulejar`
+        """
+
+        if self.javaCompliance < '9':
+            abort('Cannot call get_transitive_requires_keyword() for pre-9 JDK ' + str(self))
+
+        # Drop directory prefix and .jar (or .zip) suffix
+        name = os.path.basename(modulejar)[0:-4]
+
+        # Find first occurrence of -${NUMBER}. or -${NUMBER}$
+        m = re.search(r'-(\d+(\.|$))', name)
+        if m:
+            name = name[0:m.start()]
+
+        # Finally clean up the module name (see java.lang.module.ModulePath.cleanModuleName())
+        if self.get_transitive_requires_keyword() == 'transitive':
+            # http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l23.90
+            name = re.sub(r'(\.|\d)*$', '', name) # drop trailing version from name
+        name = re.sub(r'[^A-Za-z0-9]', '.', name) # replace non-alphanumeric
+        name = re.sub(r'(\.)(\1)+', '.', name) # collapse repeating dots
+        name = re.sub(r'^\.', '', name) # drop leading dots
+        return re.sub(r'\.$', '', name) # drop trailing dots
 
     def get_boot_layer_modules(self):
         """
