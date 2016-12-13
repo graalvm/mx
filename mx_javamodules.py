@@ -287,7 +287,6 @@ def make_java_module(dist, jdk):
     exports = {}
     requires = {}
     concealedRequires = {}
-    addExports = set()
     uses = set()
 
     modulepath = list()
@@ -325,7 +324,6 @@ def make_java_module(dist, jdk):
                     assert visibility == 'concealed'
                     concealedRequires.setdefault(depModule.name, set()).add(pkg)
                     usedModules.add(depModule)
-                    addExports.add('--add-exports=' + depModule.name + '/' + pkg + '=' + moduleName)
 
         # If an "exports" attribute is not present, all packages are exported
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
@@ -367,7 +365,6 @@ def make_java_module(dist, jdk):
     if modulepathJars:
         javacCmd.append('--module-path')
         javacCmd.append(os.pathsep.join(modulepathJars))
-    javacCmd.extend(addExports)
     javacCmd.append(moduleInfo)
     mx.run(javacCmd)
 

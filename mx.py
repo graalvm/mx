@@ -2490,9 +2490,19 @@ class JavacCompiler(JavacLikeCompiler):
             aps = project.annotation_processors()
             if aps:
                 exports = {}
+
                 for dep in classpath_entries(aps, preferProjects=True):
                     if dep.isJavaProject():
                         addExportArgs(dep, exports, '-J', jdk)
+
+                # An annotation processor may have a dependency on other annotation
+                # processors. The latter might need extra exports.
+                for dep in classpath_entries(aps, preferProjects=False):
+                    if dep.isJARDistribution() and dep.definedAnnotationProcessors:
+                        for apDep in dep.deps:
+                            if apDep.isJavaProject():
+                                addExportArgs(apDep, exports, '-J', jdk)
+
                 # If modules are exported for use by an annotation processor then
                 # they need to be boot modules since --add-exports can only be used
                 # for boot modules.
@@ -6755,7 +6765,7 @@ class SourceSuite(Suite):
             self.projects.append(p)
 
 
-        # Create a distribution for each project that defines annotation processors
+        # Record the projects that define annotation processors
         apProjects = {}
         for p in self.projects:
             if not p.isJavaProject():
@@ -14653,7 +14663,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.62.0")
+version = VersionSpec("5.63.0")
 
 currentUmask = None
 
