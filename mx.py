@@ -12173,7 +12173,13 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
                 if os.sep == '\\':
                     sourcePath = sourcePath.replace('\\', '\\\\')
                 print >> out, 'source.reference.' + dep.name + '-bin=' + sourcePath
-
+        elif dep.isMavenProject():
+            path = dep.get_path(resolve=False)
+            if path:
+                if os.sep == '\\':
+                    path = path.replace('\\', '\\\\')
+                ref = 'file.reference.' + dep.name + '-bin'
+                print >> out, ref + '=' + path
         elif dep.isProject():
             n = dep.name.replace('.', '_')
             relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
