@@ -12038,7 +12038,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
             os.unlink(nbBuildDir)
         os.symlink(p.output_dir(), nbBuildDir)
     else:
-        nbBuildDir=p.output_dir()
+        nbBuildDir = p.output_dir()
         apSourceOutRef = ""
 
     content = """
