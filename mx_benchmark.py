@@ -33,11 +33,14 @@ import uuid
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 import os.path
+from collections import OrderedDict
 
 import mx
 
 
-_bm_suite_java_vms = {}
+_bm_suite_java_vms = OrderedDict()
+_bm_java_vms_suite = {}
+_bm_java_vms_priority = {}
 _bm_suites = {}
 _benchmark_executor = None
 
@@ -756,7 +759,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         return self.vmAndRunArgs(bmSuiteArgs)[1]
 
     def getJavaVm(self, bmSuiteArgs):
-        get_java_vm_from_suite_args(bmSuiteArgs)
+        return get_java_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
         with mx.DisableJavaDebuggging():
@@ -868,31 +871,61 @@ def get_java_vm_from_suite_args(bmSuiteArgs):
     """
     args, remainder = get_parser("java_benchmark_suite_jvm").parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
     jvm = args.jvm
-    jvmConfig = args.jvm_config
+    jvm_config = args.jvm_config
     if jvm is None:
-        if mx.get_opts().vm is not None:
-            mx.log("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
+        if mx.get_opts().vm is not None and (jvm_config is None or (mx.get_opts().vm, jvm_config) in _bm_suite_java_vms):
+            mx.warn("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
             jvm = mx.get_opts().vm
         else:
-            mx.log("Defaulting the JVM to 'server'.")
-            jvm = "server"
-    if jvmConfig is None:
-        mx.log("Defaulting --jvm-config to 'default'. Consider adding --jvm-config.")
-        jvmConfig = "default"
-    return get_java_vm(jvm, jvmConfig)
+            jvms = [(jvm,
+                     _bm_java_vms_suite[(jvm, config)] == mx.primary_suite(),
+                     _bm_java_vms_priority[(jvm, config)]
+                     ) for (jvm, config) in _bm_suite_java_vms if jvm_config is None or config == jvm_config]
+            if not jvms:
+                mx.abort("Could not find a JVM to default to.")
+            jvms.sort(key=lambda t: t[1:], reverse=True)
+            jvm = jvms[0][0]
+            if len(jvms) == 1:
+                notice = mx.log
+                choice = jvm
+            else:
+                notice = mx.warn
+                seen = set()
+                choice = ' [' + '|'.join((c[0] for c in jvms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+            notice("Defaulting the JVM to '{}'. Consider using --jvm {}".format(jvm, choice))
+    if jvm_config is None:
+        jvm_configs = [(config,
+                        _bm_java_vms_suite[(jvm, config)] == mx.primary_suite(),
+                        _bm_java_vms_priority[(jvm, config)]
+                        ) for (j, config) in _bm_suite_java_vms if j == jvm]
+        if not jvm_configs:
+            mx.abort("Could not find a JVM config to default to for JVM '{}'.".format(jvm))
+        jvm_configs.sort(key=lambda t: t[1:], reverse=True)
+        jvm_config = jvm_configs[0][0]
+        if len(jvm_config) == 1:
+            notice = mx.log
+            choice = jvm_config
+        else:
+            notice = mx.warn
+            seen = set()
+            choice = ' [' + '|'.join((c[0] for c in jvm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+        notice("Defaulting the JVM config to '{}'. Consider using --jvm-config {}.".format(jvm_config, choice))
+    return get_java_vm(jvm, jvm_config)
 
 
-def add_java_vm(javavm):
+def add_java_vm(javavm, suite=None, priority=0):
     key = (javavm.name(), javavm.config_name())
     if key in _bm_suite_java_vms:
-        raise RuntimeError("Java VM and config '{0}' already exist.".format(key))
+        mx.abort("Java VM and config '{0}' already exist.".format(key))
     _bm_suite_java_vms[key] = javavm
+    _bm_java_vms_suite[key] = suite
+    _bm_java_vms_priority[key] = priority
 
 
 def get_java_vm(vm_name, jvmconfig):
     key = (vm_name, jvmconfig)
-    if not key in _bm_suite_java_vms:
-        raise RuntimeError("Java VM and config '{0}' do not exist.".format(key))
+    if key not in _bm_suite_java_vms:
+        mx.abort("Java VM and config '{0}' do not exist.".format(key))
     return _bm_suite_java_vms[key]
 
 
@@ -1330,7 +1363,7 @@ _benchmark_executor = BenchmarkExecutor()
 
 def init_benchmark_suites():
     """Called after mx initialization if mx is the primary suite."""
-    add_java_vm(DefaultJavaVm("server", "default"))
+    add_java_vm(DefaultJavaVm("server", "default"), priority=-1)
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
     add_bm_suite(TestBenchmarkSuite())
 
