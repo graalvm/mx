@@ -12030,10 +12030,21 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
+    canSymlink = not (get_os() == 'windows' or get_os() == 'cygwin') and 'symlink' in dir(os)
+    if canSymlink:
+        nbBuildDir = join(p.dir, 'nbproject', 'build')
+        apSourceOutRef = "annotation.processing.source.output=" + annotationProcessorSrcFolder
+        if os.path.lexists(nbBuildDir):
+            os.unlink(nbBuildDir)
+        os.symlink(p.output_dir(), nbBuildDir)
+    else:
+        nbBuildDir=p.output_dir()
+        apSourceOutRef = ""
+
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
 annotation.processing.enabled.in.editor=""" + annotationProcessorEnabled + """
-annotation.processing.source.output=""" + annotationProcessorSrcFolder + """
+""" + apSourceOutRef + """
 annotation.processing.processors.list=
 annotation.processing.run.all.processors=true
 application.title=""" + p.name + """
@@ -12041,7 +12052,7 @@ application.vendor=mx
 build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
-build.dir=""" + p.output_dir() + """
+build.dir=""" + nbBuildDir + """
 $cos.update=package
 $cos.update.resources=changed.files
 compile.on.save=true
@@ -12177,7 +12188,10 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         elif dep.isProject():
             n = dep.name.replace('.', '_')
             relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
-            depBuildPath = os.path.relpath(dep.output_dir(), p.dir)
+            if canSymlink:
+                depBuildPath = join('nbproject', 'build')
+            else:
+                depBuildPath = 'dist/' + dep.name + '.jar'
             ref = 'reference.' + n + '.jar'
             print >> out, 'project.' + n + '=' + relDepPath
             print >> out, ref + '=${project.' + n + '}/' + depBuildPath
