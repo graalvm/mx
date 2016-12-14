@@ -53,25 +53,36 @@ class ParserEntry(object):
 parsers = {}
 
 
+def add_parser(name, parser_entry):
+    if name in parsers:
+        mx.abort("There is already a parser called '{}'".format(name))
+    parsers[name] = parser_entry
+
+
+def get_parser(name):
+    return parsers[name].parser
+
+
 # Java suite parsers.
+java_vm_parser_name = "java_benchmark_suite_jvm"
 _mx_benchmark_usage_example = "mx benchmark <suite>:<bench>"
-parsers["java_benchmark_suite_jvm"] = ParserEntry(
+add_parser(java_vm_parser_name, ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nJVM selection flags, specified in the benchmark suite arguments:\n"
-)
-parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm", default=None,
-    help="JVM to run the benchmark with, for example 'server' or 'client'.")
-parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm-config", default=None,
-    help="JVM configuration for the selected JVM, for example 'graal-core'.")
+))
+get_parser(java_vm_parser_name).add_argument("--jvm", default=None,
+                                             help="JVM to run the benchmark with, for example 'server' or 'client'.")
+get_parser(java_vm_parser_name).add_argument("--jvm-config", default=None,
+                                             help="JVM configuration for the selected JVM, for example 'graal-core'.")
 
 
 # JMH suite parsers.
-parsers["jmh_jar_benchmark_suite_vm"] = ParserEntry(
+add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nVM selection flags for JMH benchmark suites:\n"
-)
-parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-jar", default=None)
-parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-name", default=None)
+))
+get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-jar", default=None)
+get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-name", default=None)
 
 
 class BenchmarkSuite(object):
@@ -718,7 +729,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         raise NotImplementedError()
 
     def parserNames(self):
-        return ["java_benchmark_suite_jvm"]
+        return [java_vm_parser_name]
 
     def vmAndRunArgs(self, bmSuiteArgs):
         return splitArgs(bmSuiteArgs, "--")
@@ -745,19 +756,7 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         return self.vmAndRunArgs(bmSuiteArgs)[1]
 
     def getJavaVm(self, bmSuiteArgs):
-        jvm = self.jvm(bmSuiteArgs)
-        jvmConfig = self.jvmConfig(bmSuiteArgs)
-        if jvm is None:
-            if mx.get_opts().vm is not None:
-                mx.log("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
-                jvm = mx.get_opts().vm
-            else:
-                mx.log("Defaulting the JVM to 'server'.")
-                jvm = "server"
-        if jvmConfig is None:
-            mx.log("Defaulting --jvm-config to 'default'. Consider adding --jvm-config.")
-            jvmConfig = "default"
-        return get_java_vm(jvm, jvmConfig)
+        get_java_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
         with mx.DisableJavaDebuggging():
@@ -855,6 +854,32 @@ class DummyJavaVm(OutputCapturingJavaVm):
     from pylint 1.4.3.
     """
     pass
+
+
+def get_java_vm_from_suite_args(bmSuiteArgs):
+    """
+    Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
+
+    Suites that might need this should add `java_vm_parser_name` to their `parserNames`.
+
+    :param bmSuiteArgs: the suite args provided by mx benchmark
+    :return: a JavaVm as configured by the `bmSuiteArgs`.
+    :rtype: JavaVm
+    """
+    args, remainder = get_parser("java_benchmark_suite_jvm").parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
+    jvm = args.jvm
+    jvmConfig = args.jvm_config
+    if jvm is None:
+        if mx.get_opts().vm is not None:
+            mx.log("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
+            jvm = mx.get_opts().vm
+        else:
+            mx.log("Defaulting the JVM to 'server'.")
+            jvm = "server"
+    if jvmConfig is None:
+        mx.log("Defaulting --jvm-config to 'default'. Consider adding --jvm-config.")
+        jvmConfig = "default"
+    return get_java_vm(jvm, jvmConfig)
 
 
 def add_java_vm(javavm):
