@@ -1413,7 +1413,7 @@ class BenchmarkExecutor(object):
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
             "--list", default=None, action="store_true",
-            help="When set, just prints the list of all available benchmark suites.")
+            help="When set, just prints the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
@@ -1423,10 +1423,15 @@ class BenchmarkExecutor(object):
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         if mxBenchmarkArgs.list:
-            print "The following benchmark suites are available:\n"
-            for name in bm_suite_valid_keys():
-                print "  " + name
-            mx.abort("")
+            if mxBenchmarkArgs.benchmark and suite:
+                print "The following benchmarks are available in suite {}:\n".format(suite.name())
+                for name in suite.benchmarkList(bmSuiteArgs):
+                    print "  " + name
+            else:
+                print "The following benchmark suites are available:\n"
+                for name in bm_suite_valid_keys():
+                    print "  " + name
+            return 0
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
@@ -1434,7 +1439,7 @@ class BenchmarkExecutor(object):
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
                     print entry.description
                     entry.parser.print_help()
-            mx.abort("")
+            return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()
 
