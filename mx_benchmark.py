@@ -61,27 +61,34 @@ def add_parser(name, parser_entry):
 
 
 def get_parser(name):
+    """Gets the named parser
+    :rtype: ArgumentParser
+    """
     return parsers[name].parser
 
 
 class VmRegistry(object):
-    def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None):
+    def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None, known_guest_registries=None):
         self.vm_type_name = vm_type_name + " VM"
-        self.short_vm_type_name = short_vm_type_name if short_vm_type_name else short_vm_type_name.lower() + "-vm"
+        self.short_vm_type_name = short_vm_type_name if short_vm_type_name else vm_type_name.lower() + "-vm"
         self.default_vm = default_vm
         assert re.compile(r"\A[a-z-]+\Z").match(self.short_vm_type_name)
         self._vms = OrderedDict()
         self._vms_suite = {}
         self._vms_priority = {}
+        self._known_guest_registries = known_guest_registries or []
         add_parser(self.get_parser_name(), ParserEntry(
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-            "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(vm_type_name)
+            "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(self.vm_type_name)
         ))
-        get_parser(self.get_parser_name()).add_argument("--{}".format(short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
-        get_parser(self.get_parser_name()).add_argument("--{}-config".format(short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
+        get_parser(self.get_parser_name()).add_argument("--{}".format(self.short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
+        get_parser(self.get_parser_name()).add_argument("--{}-config".format(self.short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
 
     def get_parser_name(self):
         return self.vm_type_name + "_parser"
+
+    def get_known_guest_registries(self):
+        return self._known_guest_registries
 
     def get_default_vm(self, config):
         if callable(self.default_vm):
@@ -97,49 +104,53 @@ class VmRegistry(object):
 
         :param bmSuiteArgs: the suite args provided by mx benchmark
         :return: a JavaVm as configured by the `bmSuiteArgs`.
-        :rtype: JavaVm
+        :rtype: Vm
         """
-        args, remainder = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
+        args, _ = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
         arg_vm_type_name = self.short_vm_type_name.replace('-', '_')
         vm = getattr(args, arg_vm_type_name)
         vm_config = getattr(args, arg_vm_type_name + '_config')
         if vm is None:
             vm = self.get_default_vm(vm_config)
             if vm is None:
-                jvms = [(vm,
+                vms = [(vm,
                          self._vms_suite[(vm, config)] == mx.primary_suite(),
                          self._vms_priority[(vm, config)]
                          ) for (vm, config) in self._vms if vm_config is None or config == vm_config]
-                if not jvms:
+                if not vms:
                     mx.abort("Could not find a {} to default to.".format(self.vm_type_name))
-                jvms.sort(key=lambda t: t[1:], reverse=True)
-                vm = jvms[0][0]
-                if len(jvms) == 1:
+                vms.sort(key=lambda t: t[1:], reverse=True)
+                vm = vms[0][0]
+                if len(vms) == 1:
                     notice = mx.log
                     choice = vm
                 else:
                     notice = mx.warn
                     seen = set()
-                    choice = ' [' + '|'.join((c[0] for c in jvms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+                    choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
                 notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
         if vm_config is None:
-            jvm_configs = [(config,
+            vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
                             self._vms_priority[(vm, config)]
                             ) for (j, config) in self._vms if j == vm]
-            if not jvm_configs:
+            if not vm_configs:
                 mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{}'.".format(vm=vm, vm_type=self.vm_type_name))
-            jvm_configs.sort(key=lambda t: t[1:], reverse=True)
-            vm_config = jvm_configs[0][0]
-            if len(vm_config) == 1:
+            vm_configs.sort(key=lambda t: t[1:], reverse=True)
+            vm_config = vm_configs[0][0]
+            if len(vm_configs) == 1:
                 notice = mx.log
                 choice = vm_config
             else:
                 notice = mx.warn
                 seen = set()
-                choice = ' [' + '|'.join((c[0] for c in jvm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+                choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
             notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
-        return self.get_vm(vm, vm_config)
+        vm_object = self.get_vm(vm, vm_config)
+        if isinstance(vm_object, HostedVm):
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs)
+            vm_object = vm_object.with_host_vm(host_vm)
+        return vm_object
 
     def add_vm(self, vm, suite=None, priority=0):
         key = (vm.name(), vm.config_name())
@@ -790,7 +801,77 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
-class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
+class VmBenchmarkSuite(StdOutBenchmarkSuite):
+    def vmArgs(self, bmSuiteArgs):
+        args = self.vmAndRunArgs(bmSuiteArgs)[0]
+        for parser_name in self.parserNames():
+            parser = get_parser(parser_name)
+            _, args = parser.parse_known_args(args)
+        return args
+
+    def parserNames(self):
+        names = []
+
+        def _acc(reg):
+            names.append(reg.get_parser_name())
+            for guest_reg in reg.get_known_guest_registries():
+                _acc(guest_reg)
+        _acc(self.get_vm_registry())
+        return names
+
+    def vmAndRunArgs(self, bmSuiteArgs):
+        return splitArgs(bmSuiteArgs, "--")
+
+    def runArgs(self, bmSuiteArgs):
+        return self.vmAndRunArgs(bmSuiteArgs)[1]
+
+    def createCommandLineArgs(self, benchmarks, runArgs):
+        """" Creates the arguments that need to be passed to the VM to run the benchamrks.
+        :rtype: list
+        """
+        raise NotImplementedError()
+
+    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
+        command = self.createCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
+        if command is None:
+            return 0, "", {}
+        vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
+        t = vm.run(cwd, command)
+        if len(t) == 2:
+            ret_code, out = t
+            vm_dims = {}
+        else:
+            ret_code, out, vm_dims = t
+        host_vm = None
+        if isinstance(vm, HostedVm):
+            host_vm = vm.host_vm()
+            assert host_vm
+        dims = {
+            "vm": vm.name(),
+            "host-vm": host_vm.name() if host_vm else vm.name(),
+            "host-vm-config": host_vm.config_name() if host_vm else vm.config_name(),
+            "guest-vm": vm.name() if host_vm else "none",
+            "guest-vm-config": vm.config_name() if host_vm else "default",
+        }
+        for key, value in vm_dims.items():
+            if key in dims and value != dims[key]:
+                if value == 'none':
+                    mx.warn("VM {}:{} ({}) tried overwriting {}='{original}' with '{}', keeping '{original}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, value, original=dims[key]))
+                    continue
+                else:
+                    mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
+            dims[key] = value
+        return ret_code, out, dims
+
+    def get_vm_registry(self):
+        """" Gets the VM registry used to run this type of benchmarks.
+        :rtype: VmRegistry
+        """
+        raise NotImplementedError()
+
+
+class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
 
     This suite relies on the `--jvm-config` flag to specify which JVM must be used to
@@ -808,11 +889,8 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """
         raise NotImplementedError()
 
-    def parserNames(self):
-        return [java_vm_registry.get_parser_name()]
-
-    def vmAndRunArgs(self, bmSuiteArgs):
-        return splitArgs(bmSuiteArgs, "--")
+    def get_vm_registry(self):
+        return java_vm_registry
 
     def splitJvmConfigArg(self, bmSuiteArgs):
         parser = get_parser(java_vm_registry.get_parser_name())
@@ -827,28 +905,12 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """Returns the value of the `--jvm-config` argument or `None` if not present."""
         return self.splitJvmConfigArg(bmSuiteArgs)[1]
 
-    def vmArgs(self, bmSuiteArgs):
-        """Returns the VM arguments for the benchmark."""
-        return self.splitJvmConfigArg(bmSuiteArgs)[2]
-
-    def runArgs(self, bmSuiteArgs):
-        """Returns the run arguments for the benchmark."""
-        return self.vmAndRunArgs(bmSuiteArgs)[1]
-
     def getJavaVm(self, bmSuiteArgs):
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
         with mx.DisableJavaDebuggging():
             self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
-
-    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
-        jvm = self.getJavaVm(bmSuiteArgs)
-        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
-        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        if args is None:
-            return 0, "", {}
-        return jvm.run(cwd, args)
 
 
 class Vm(object): #pylint: disable=R0922
@@ -876,6 +938,31 @@ class Vm(object): #pylint: disable=R0922
         raise NotImplementedError()
 
 
+class HostedVm(Vm): #pylint: disable=R0921
+    def __init__(self, host_vm=None):
+        self._host_vm = host_vm
+
+    def hosting_registry(self):
+        """Returns the Host VM registry.
+        :rtype: VmRegistry
+        """
+        raise NotImplementedError()
+
+    def with_host_vm(self, host_vm):
+        """Returns a copy of this VM with the host VM set to `host_vm`.
+
+        :rtype: HostedVm
+        """
+        return self.__class__(host_vm)
+
+    def host_vm(self):
+        """Returns the Host VM.
+
+        :rtype: Vm
+        """
+        return self._host_vm
+
+
 class JavaVm(Vm):
     pass
 
@@ -898,8 +985,10 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         raise NotImplementedError()
 
     def dimensions(self, cwd, args, code, out):
-        """Returns a list of additional dimensions to put into every datapoint."""
-        raise NotImplementedError()
+        """Returns a dict of additional dimensions to put into every datapoint.
+        :rtype: dict
+        """
+        return {}
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
@@ -928,12 +1017,6 @@ class DefaultJavaVm(OutputCapturingJavaVm):
 
     def post_process_command_line_args(self, args):
         return args
-
-    def dimensions(self, cwd, args, code, out):
-        return {
-            "host-vm": self.name(),
-            "host-vm-config": self.config_name(),
-        }
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
