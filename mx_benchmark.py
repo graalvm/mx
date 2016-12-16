@@ -45,6 +45,10 @@ _benchmark_executor = None
 # Contains an argument parser and its description.
 class ParserEntry(object):
     def __init__(self, parser, description):
+        """
+        :param ArgumentParser parser: the parser
+        :param str description: the description
+        """
         self.parser = parser
         self.description = description
 
@@ -55,6 +59,11 @@ _mx_benchmark_usage_example = "mx benchmark <suite>:<bench>"
 
 
 def add_parser(name, parser_entry):
+    """Add a named parser to be used in benchmark suites.
+    :param str name: the name of the parser
+    :param ParserEntry parser_entry: the parser and description
+    :return:
+    """
     if name in parsers:
         mx.abort("There is already a parser called '{}'".format(name))
     parsers[name] = parser_entry
@@ -62,21 +71,30 @@ def add_parser(name, parser_entry):
 
 def get_parser(name):
     """Gets the named parser
+    :param str name: the name of the parser
     :rtype: ArgumentParser
     """
     return parsers[name].parser
 
 
 class VmRegistry(object):
-    def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None, known_guest_registries=None):
+    def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None, known_host_registries=None):
+        """
+
+        :param str vm_type_name: full VM type name (e.g., "Java")
+        :param str short_vm_type_name:
+        :param default_vm: a callable which, given a config name gives a default VM name
+        :param list[VmRegistry] known_host_registries: a list of known host VM registries
+        """
         self.vm_type_name = vm_type_name + " VM"
         self.short_vm_type_name = short_vm_type_name if short_vm_type_name else vm_type_name.lower() + "-vm"
+        assert default_vm is None or callable(default_vm)
         self.default_vm = default_vm
         assert re.compile(r"\A[a-z-]+\Z").match(self.short_vm_type_name)
         self._vms = OrderedDict()
         self._vms_suite = {}
         self._vms_priority = {}
-        self._known_guest_registries = known_guest_registries or []
+        self._known_host_registries = known_host_registries or []
         add_parser(self.get_parser_name(), ParserEntry(
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
             "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(self.vm_type_name)
@@ -88,13 +106,12 @@ class VmRegistry(object):
         return self.vm_type_name + "_parser"
 
     def get_known_guest_registries(self):
-        return self._known_guest_registries
+        return self._known_host_registries
 
     def get_default_vm(self, config):
-        if callable(self.default_vm):
+        if self.default_vm:
             return self.default_vm(config, self._vms)
-        else:
-            return self.default_vm
+        return None
 
     def get_vm_from_suite_args(self, bmSuiteArgs):
         """
@@ -102,8 +119,8 @@ class VmRegistry(object):
 
         Suites that might need this should add `java_vm_parser_name` to their `parserNames`.
 
-        :param bmSuiteArgs: the suite args provided by mx benchmark
-        :return: a JavaVm as configured by the `bmSuiteArgs`.
+        :param list[str] bmSuiteArgs: the suite args provided by mx benchmark
+        :return: a Vm as configured by the `bmSuiteArgs`.
         :rtype: Vm
         """
         args, _ = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
@@ -147,7 +164,7 @@ class VmRegistry(object):
                 choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
             notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
-        if isinstance(vm_object, HostedVm):
+        if isinstance(vm_object, GuestVm):
             host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
@@ -213,9 +230,9 @@ class BenchmarkSuite(object):
     def benchmarkList(self, bmSuiteArgs):
         """Returns the list of the benchmarks provided by this suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
-        :rtype: list
+        :rtype: list[str]
         """
         # TODO: Remove old-style benchmarks after updating downstream suites.
         return self.benchmarks()
@@ -235,18 +252,18 @@ class BenchmarkSuite(object):
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: A list of string flags that are VM flags.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
     def runArgs(self, bmSuiteArgs):
         """Extracts the run flags from the list of arguments passed to the suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: A list of string flags that are arguments for the suite.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
@@ -273,6 +290,7 @@ class BenchmarkSuite(object):
 
         This is used to more accurately show command line options tied to a specific
         benchmark suite.
+        :rtype: list[str]
         """
         return []
 
@@ -844,7 +862,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         else:
             ret_code, out, vm_dims = t
         host_vm = None
-        if isinstance(vm, HostedVm):
+        if isinstance(vm, GuestVm):
             host_vm = vm.host_vm()
             assert host_vm
         dims = {
@@ -882,10 +900,10 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
-        :param list benchmarks: List of benchmarks from the suite to execute.
-        :param list bmSuiteArgs: Arguments passed to the suite.
+        :param list[str] benchmarks: List of benchmarks from the suite to execute.
+        :param list[str] bmSuiteArgs: Arguments passed to the suite.
         :return: A list of command-line arguments.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
@@ -931,14 +949,14 @@ class Vm(object): #pylint: disable=R0922
         extra dimensions to incorporate into the datapoints.
 
         :param str cwd: Current working directory.
-        :param list args: List of command-line arguments for the VM.
+        :param list[str] args: List of command-line arguments for the VM.
         :return: A tuple with an exit-code, stdout, and a dict with extra dimensions.
         :rtype: tuple
         """
         raise NotImplementedError()
 
 
-class HostedVm(Vm): #pylint: disable=R0921
+class GuestVm(Vm): #pylint: disable=R0921
     def __init__(self, host_vm=None):
         self._host_vm = host_vm
 
@@ -950,8 +968,8 @@ class HostedVm(Vm): #pylint: disable=R0921
 
     def with_host_vm(self, host_vm):
         """Returns a copy of this VM with the host VM set to `host_vm`.
-
-        :rtype: HostedVm
+        :param Vm host_vm: the host VM to set in the returned object.
+        :rtype: GuestVm
         """
         return self.__class__(host_vm)
 
