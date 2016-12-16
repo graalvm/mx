@@ -8406,7 +8406,7 @@ def _sorted_unique_jdk_configs(configs):
 def is_interactive():
     if get_env('CONTINUOUS_INTEGRATION'):
         return False
-    return sys.__stdin__.isatty()
+    return not sys.stdin.closed and sys.stdin.isatty()
 
 def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
     filtered = []
