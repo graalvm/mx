@@ -5,7 +5,7 @@ _mx() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     #  read options & commands
-    IFS='|' read opts commands <<< $(_mx_help)
+    IFS='|' read opts commands <<< $(_mx_completion)
 
     # complete command arguments
     for command in $commands; do
@@ -27,57 +27,62 @@ _mx() {
     return 0
 }
 
-_mx_help() {
-    mx help 2>/dev/null | awk '
-        BEGIN {
-            # state
-            state_options=0;
-            state_commands=0;
-            # counts
-            nr_options=0;
-            nr_commands=0;
-        }
-        {
-            # reset
-            if ($0 == "") {
+_mx_completion() {
+    local project_hash=$(echo -n $PWD | sha1sum | awk '{print $1}')
+    local tmp_file="/tmp/mx-bash-completion-${project_hash}"
+    if [[ ! -f $tmp_file ]]; then
+        mx help 2>/dev/null | awk '
+            BEGIN {
+                # state
                 state_options=0;
-                next;
+                state_commands=0;
+                # counts
+                nr_options=0;
+                nr_commands=0;
             }
-
-            # arguments
-            if ($1 == "optional" && $2 == "arguments:") {
-                state_options=1;
-                next;
-            }
-            if (state_options) {
-                for (i = 1; i <= NF; i++) {
-                    if (index($i, "-") == 1) {
-                        options[nr_options] = $i;
-                        nr_options++;
-                    }
+            {
+                # reset
+                if ($0 == "") {
+                    state_options=0;
+                    next;
                 }
-                next;
-            }
 
-            # commands
-            if ($1 == "available" && $2 == "commands:") {
-                state_commands=1;
-                next;
-            };
-            if (state_commands && $1 != "") {
-                commands[nr_commands] = $1;
-                nr_commands++;
+                # arguments
+                if ($1 == "optional" && $2 == "arguments:") {
+                    state_options=1;
+                    next;
+                }
+                if (state_options) {
+                    for (i = 1; i <= NF; i++) {
+                        if (index($i, "-") == 1) {
+                            options[nr_options] = $i;
+                            nr_options++;
+                        }
+                    }
+                    next;
+                }
+
+                # commands
+                if ($1 == "available" && $2 == "commands:") {
+                    state_commands=1;
+                    next;
+                };
+                if (state_commands && $1 != "") {
+                    commands[nr_commands] = $1;
+                    nr_commands++;
+                }
             }
-        }
-        END {
-            for (i = 0; i < nr_options; i++) {
-                printf("%s ", options[i]);
-            }
-            printf("%s ", "|");
-            for (i = 0; i < nr_commands; i++) {
-                printf("%s ", commands[i]);
-            }
-        }';
+            END {
+                for (i = 0; i < nr_options; i++) {
+                    printf("%s ", options[i]);
+                }
+                printf("%s ", "|");
+                for (i = 0; i < nr_commands; i++) {
+                    printf("%s ", commands[i]);
+                }
+            }' > $tmp_file
+    fi
+    cat $tmp_file
 }
 complete -F _mx mx
 
