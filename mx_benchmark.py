@@ -1103,7 +1103,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     def extraVmArgs(self):
         return []
 
-    def getJMHEntry(self):
+    def getJMHEntry(self, bmSuiteArgs):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
@@ -1111,14 +1111,14 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
             benchmarks = []
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
+        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
 
     def benchmarkList(self, bmSuiteArgs):
         benchmarks = None
         jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        _, out, _ = jvm.run(cwd, args +  ["-l"])
+        _, out, _ = jvm.run(cwd, args + ["-l"])
         benchs = out.splitlines()
         assert benchs[0].startswith("Benchmarks:")
         return benchs[1:]
@@ -1130,7 +1130,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
                 re.MULTILINE)
         ]
 
-    def benchSuiteName(self):
+    def benchSuiteName(self, bmSuiteArgs):
         return self.name()
 
     def failurePatterns(self):
@@ -1140,7 +1140,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return []
 
     def rules(self, out, benchmarks, bmSuiteArgs):
-        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName())]
+        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
 
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
@@ -1154,7 +1154,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
                 jmhProjects.append(p)
         return mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk())
 
-    def getJMHEntry(self):
+    def getJMHEntry(self, bmSuiteArgs):
         return ["org.openjdk.jmh.Main"]
 
 
@@ -1167,33 +1167,33 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     specifies the path to the JMH jar files. The later is the name suffix that is use
     for the bench-suite property.
     """
+    jmh_jar_parser_name = "jmh_jar_benchmark_suite_vm"
 
-    def benchSuiteName(self):
-        return "jmh-" + self.jmhName()
+    def benchSuiteName(self, bmSuiteArgs):
+        return "jmh-" + self.jmhName(bmSuiteArgs)
 
     def parserNames(self):
-        return ["jmh_jar_benchmark_suite_vm"]
+        return super(JMHJarBenchmarkSuite, self).parserNames() + [JMHJarBenchmarkSuite.jmh_jar_parser_name]
 
-    def vmArgs(self, bmSuiteArgs):
-        vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
-        parser = parsers["jmh_jar_benchmark_suite_vm"].parser
-        args, remaining = parser.parse_known_args(vmArgs)
-        self.jmh_jar = args.jmh_jar
-        self.jmh_name = args.jmh_name
-        return remaining
+    def getJMHEntry(self, bmSuiteArgs):
+        return ["-jar", self.jmhJAR(bmSuiteArgs)]
 
-    def getJMHEntry(self):
-        return ["-jar", self.jmhJAR()]
+    def jmhArgs(self, bmSuiteArgs):
+        vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
+        args, _ = get_parser(JMHJarBenchmarkSuite.jmh_jar_parser_name).parse_known_args(vmAndSuiteArgs)
+        return args
 
-    def jmhName(self):
-        if self.jmh_name is None:
+    def jmhName(self, bmSuiteArgs):
+        jmh_name = self.jmhArgs(bmSuiteArgs).jmh_name
+        if jmh_name is None:
             mx.abort("Please use the --jmh-name benchmark suite argument to set the name of the JMH suite.")
-        return self.jmh_name
+        return jmh_name
 
-    def jmhJAR(self):
-        if self.jmh_jar is None:
+    def jmhJAR(self, bmSuiteArgs):
+        jmh_jar = self.jmhArgs(bmSuiteArgs).jmh_jar
+        if jmh_jar is None:
             mx.abort("Please use the --jmh-jar benchmark suite argument to set the JMH jar file.")
-        jmh_jar = os.path.expanduser(self.jmh_jar)
+        jmh_jar = os.path.expanduser(jmh_jar)
         if not os.path.exists(jmh_jar):
             mx.abort("The --jmh-jar argument points to a non-existing file: " + jmh_jar)
         return jmh_jar
