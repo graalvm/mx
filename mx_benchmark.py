@@ -843,7 +843,10 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
     def runArgs(self, bmSuiteArgs):
         return self.vmAndRunArgs(bmSuiteArgs)[1]
 
-    def createCommandLineArgs(self, benchmarks, runArgs):
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        return self.createVmCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
+
+    def createVmCommandLineArgs(self, benchmarks, runArgs):
         """" Creates the arguments that need to be passed to the VM to run the benchamrks.
         :rtype: list
         """
@@ -851,7 +854,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
-        command = self.createCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
+        command = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
