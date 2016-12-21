@@ -1494,6 +1494,9 @@ class TARArchiveTask(ArchiveTask):
             abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
+        tarOutputDir = join(self.subject.suite.dir, self.subject.output)
+        if os.path.exists(tarOutputDir):
+            shutil.rmtree(tarOutputDir)
 
     def cleanForbidden(self):
         if ArchiveTask.cleanForbidden(self):
