@@ -2882,6 +2882,8 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
+        if hasattr(self.subject, "makeTarget"):
+            cmdline += [self.subject.makeTarget]
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
         return cmdline, cwd, env
