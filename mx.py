@@ -2023,7 +2023,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
-        if hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
+        if not requiredCompliance.isExactBound and hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
             jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
             if jdk.javaCompliance < requiredCompliance:
                 jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
@@ -8069,7 +8069,7 @@ def _is_supported_by_jdt(jdk):
         assert isinstance(jdk, JDKConfig)
     return jdk.javaCompliance < '9'
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPerference=None, **kwargs):
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPreference=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
 
@@ -8157,7 +8157,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     return jdk
 
 def _convert_compliance_to_version_check(requiredCompliance):
-    if _opts.strict_compliance and not requiredCompliance.isLowerBound:
+    if requiredCompliance.isExactBound or (_opts.strict_compliance and not requiredCompliance.isLowerBound):
         versionDesc = str(requiredCompliance)
         versionCheck = requiredCompliance.exactMatch
     else:
@@ -8879,6 +8879,8 @@ class JavaCompliance:
         assert m is not None, 'not a recognized version string: ' + ver
         self.value = int(m.group(1))
         self.isLowerBound = ver.endswith('+')
+        self.isExactBound = ver.endswith('=')
+        assert not self.isLowerBound or not self.isExactBound
 
     def __str__(self):
         return '1.' + str(self.value)
@@ -9184,10 +9186,25 @@ class JDKConfig:
         if self.javaCompliance < '9':
             return []
         if not hasattr(self, '.modules'):
-            addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
-            _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
-            out = LinesOutputCapture()
-            run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
+            jdkModules = join(self.home, 'lib', 'modules')
+            cache = join(ensure_dir_exists(join('.jdk' + str(self.version))), 'listmodules')
+            isJDKImage = exists(jdkModules)
+            if not exists(cache) or not isJDKImage or TimeStampFile(jdkModules).isNewerThan(cache) or TimeStampFile(__file__).isNewerThan(cache):
+                addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
+                _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
+                out = LinesOutputCapture()
+                run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
+                lines = out.lines
+                if isJDKImage:
+                    try:
+                        with open(cache, 'w') as fp:
+                            fp.write('\n'.join(lines))
+                    except IOError as e:
+                        warn('Error writing to ' + cache + ': ' + str(e))
+                        os.remove(cache)
+            else:
+                with open(cache) as fp:
+                    lines = fp.read().split('\n')
 
             modules = {}
             name = None
@@ -9198,13 +9215,13 @@ class JDKConfig:
             packages = set()
             boot = None
 
-            keyword = out.lines[0]
+            keyword = lines[0]
             setattr(self, '.transitiveRequiresKeyword', keyword)
             assert keyword == 'transitive' or keyword == 'public'
 
-            for line in out.lines[1:]:
+            for line in lines[1:]:
                 parts = line.strip().split()
-                assert len(parts) > 0
+                assert len(parts) > 0, '>>>'+line+'<<<'
                 if len(parts) == 1:
                     if name is not None:
                         assert name not in modules, 'duplicate module: ' + name
@@ -14684,7 +14701,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.67.0")
+version = VersionSpec("5.67.1")
 
 currentUmask = None
 
