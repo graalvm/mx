@@ -9364,6 +9364,21 @@ def log(msg=None):
     else:
         print msg
 
+def log_error(msg=None):
+    """
+    Write an error message to the console.
+    All script output goes through this method thus allowing a subclass
+    to redirect it.
+    """
+    isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
+    if msg is None:
+        sys.stderr.write(os.linesep)
+    elif isUnix and sys.stderr.isatty():
+        # On unix systems, we can use ANSI escape sequences
+        sys.stderr.write('\033[91m' + msg.encode('utf8') + '\033[0m' + os.linesep)
+    else:
+        sys.stderr.write(msg.encode('utf8') + os.linesep)
+
 def expand_project_in_class_path_arg(cpArg):
     """
     Replaces each "@" prefixed element in the class path `cpArg` with
@@ -9467,7 +9482,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
                     _kill_process(p.pid, signal.SIGKILL)
             except BaseException as e:
                 if is_alive(p):
-                    log('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
+                    log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
     if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
         import traceback
@@ -9847,7 +9862,7 @@ def build(args, parser=None):
 
         if len(failed):
             for t in failed:
-                log('{0} failed'.format(t))
+                log_error('{0} failed'.format(t))
             abort('{0} build tasks failed'.format(len(failed)))
 
     else:  # not parallelize
@@ -10134,21 +10149,21 @@ def pylint(args):
 
     rcfile = join(dirname(__file__), '.pylintrc')
     if not exists(rcfile):
-        log('pylint configuration file does not exist: ' + rcfile)
+        log_error('pylint configuration file does not exist: ' + rcfile)
         return -1
 
     try:
         output = subprocess.check_output(['pylint', '--version'], stderr=subprocess.STDOUT)
         m = re.match(r'.*pylint (\d+)\.(\d+)\.(\d+).*', output, re.DOTALL)
         if not m:
-            log('could not determine pylint version from ' + output)
+            log_error('could not determine pylint version from ' + output)
             return -1
         major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
         if major != 1 or minor != 1:
-            log('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
+            log_error('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
             return -1
     except BaseException as e:
-        log('pylint is not available: ' + str(e))
+        log_error('pylint is not available: ' + str(e))
         return -1
 
     def findfiles_by_walk(pyfiles):
@@ -10625,7 +10640,7 @@ def checkstyle(args):
                         with open(auditfileName) as fp:
                             xp.ParseFile(fp)
                         if len(errors) != 0:
-                            map(log, errors)
+                            map(log_error, errors)
                             totalErrors = totalErrors + len(errors)
                         else:
                             batch.timestamp.touch()
@@ -12632,7 +12647,7 @@ def ideclean(args):
         try:
             rm(join(p.dir, p.name + '.jar'))
         except:
-            log("Error removing {0}".format(p.name + '.jar'))
+            log_error("Error removing {0}".format(p.name + '.jar'))
 
     for d in _dists.itervalues():
         if not d.isJARDistribution():
