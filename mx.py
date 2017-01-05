@@ -12408,7 +12408,7 @@ def _intellij_suite(args, s, refreshOnly=False):
             moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
             genDir = p.source_gen_dir()
             ensure_dir_exists(genDir)
-            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': 'false', 'generated': 'true'})
+            moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': str(p.is_test_project()), 'generated': 'true'})
             for name in [basename(p.output_dir())]:
                 _intellij_exclude_if_exists(moduleXml, p, name, output=True)
             moduleXml.close('content')
@@ -12566,6 +12566,7 @@ def _intellij_suite(args, s, refreshOnly=False):
             processors = t[1:]
             compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]) + "-" + source_gen_dir, 'enabled': 'true'})
             compilerXml.element('sourceOutputDir', attributes={'name': join(os.pardir, source_gen_dir)})
+            compilerXml.element('sourceTestOutputDir', attributes={'name': join(os.pardir, source_gen_dir)})
             compilerXml.open('processorPath', attributes={'useClasspath': 'false'})
 
             # IntelliJ supports both directories and jars on the annotation processor path whereas
