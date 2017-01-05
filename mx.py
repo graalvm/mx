@@ -6628,11 +6628,11 @@ class Suite:
         return None
 
 def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, existingImporter, otherImport, otherImportingSuite):
-    if otherImport.dynamicImport and (not existingSuite or not existingSuite.dynamicallyImported):
+    conflict_resolution = _opts.version_conflict_resolution
+    if otherImport.dynamicImport and (not existingSuite or not existingSuite.dynamicallyImported) and conflict_resolution != 'latest_all':
         return None
     if not otherImport.version:
         return None
-    conflict_resolution = _opts.version_conflict_resolution
     if conflict_resolution == 'suite':
         if otherImportingSuite:
             conflict_resolution = otherImportingSuite.versionConflictResolution
@@ -6642,7 +6642,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
     if conflict_resolution == 'ignore':
         warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
-    elif conflict_resolution == 'latest':
+    elif conflict_resolution == 'latest' or conflict_resolution == 'latest_all':
         if not existingSuite:
             return None # can not resolve at the moment
         if existingSuite.vc.kind != otherImport.kind:
@@ -7833,7 +7833,7 @@ environment variables:
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
-        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'ignore'])
+        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--strip-jars', action='store_true', help='Produce and use stripped jars in all mx commands.')
 
