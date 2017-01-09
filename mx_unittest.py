@@ -43,14 +43,11 @@ def _read_cached_testclasses(cachesDir, jar):
              exist or is out of date
     """
     cache = join(cachesDir, basename(jar) + '.testclasses')
-    if exists(cache):
+    if exists(cache) and mx.TimeStampFile(cache).isNewerThan(jar):
+        # Only use the cached result if the source jar is older than the cache file
         try:
-            sha1 = mx.sha1OfFile(jar)
             with open(cache) as fp:
-                savedSha1 = fp.readline().strip()
-                if sha1 == savedSha1:
-                    # Only use the cached result if the source jar hasn't changed
-                    return [line.strip() for line in fp.readlines()]
+                return [line.strip() for line in fp.readlines()]
         except IOError as e:
             mx.warn('Error reading from ' + cache + ': ' + str(e))
     return None
@@ -63,10 +60,8 @@ def _write_cached_testclasses(cachesDir, jar, testclasses):
     :param list testclasses: a list of test class names
     """
     cache = join(cachesDir, basename(jar) + '.testclasses')
-    sha1 = mx.sha1OfFile(jar)
     try:
         with open(cache, 'w') as fp:
-            print >> fp, sha1
             for classname in testclasses:
                 print >> fp, classname
     except IOError as e:
