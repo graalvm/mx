@@ -12040,6 +12040,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     else:
         nbBuildDir = p.output_dir()
         apSourceOutRef = ""
+    ensure_dir_exists(p.output_dir())
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
