@@ -2616,7 +2616,13 @@ class CompilerDaemon(Daemon):
         commandLine = u'\x00'.join(compilerArgs)
         s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
-        retcode = int(f.readline().decode('utf-8'))
+        response = f.readline().decode('utf-8')
+        if response == '':
+            # Compiler server process probably crashed
+            logv('[Compiler daemon process appears to have crashed]')
+            retcode = -1
+        else:
+            retcode = int(response)
         s.close()
         if retcode:
             if _opts.verbose:
