@@ -1415,7 +1415,7 @@ class NativeTARDistribution(Distribution):
         filesToArchive = []
         for d in self.archived_deps():
             if d.isNativeProject():
-                filesToArchive.extend(self.get_files_for_nativeProject(d, False))
+                filesToArchive.extend(self.get_files_for_nativeProject(d, reportOutput))
             elif d.isArchivableProject():
                 filesToArchive.extend(self.get_files_for_archivableProject(d))
             elif hasattr(d, 'getResults') and not d.getResults():
