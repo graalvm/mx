@@ -20,6 +20,42 @@ For an example of `mx` usage, you can read the [Instructions][1] for the Graal p
 
 Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.
 
+### Unit testing with Junit ###
+
+The `unittest` command supports running Junit tests in `mx` suites.
+
+Executing tests on JDK 9 or later can be complicated if the tests access
+packages that are publicly available in JDK 8 or earlier but are not public as
+of JDK 9. That is, the packages are *concealed* by their declaring module. Such
+tests can be compiled simply enough by specifying their Java compliance as
+"1.8=". Running the tests on JDK 9 however requires that the concealed packages
+are exported to the test classes. To achieve this, an `AddExports` annotation
+should be applied to the test class requiring the export or to any of its super
+classes or super interfaces. To avoid the need for a dependency on mx, unittest
+harness simply looks for an annotation named `AddExports` that matches the
+following definition:
+
+```
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Specifies packages concealed in JDK modules used by a test. The mx unit test runner will ensure
+ * the packages are exported to the module containing annotated test class.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface AddExports {
+    /**
+     * The qualified name of the concealed package(s) in {@code <module>/<package>} format (e.g.,
+     * "jdk.vm.ci/jdk.vm.ci.code").
+     */
+    String[] value() default "";
+}
+```
+
 ### URL rewriting ###
 
 Mx includes support for the primary suite to be able to override the source URLs of imported suites.

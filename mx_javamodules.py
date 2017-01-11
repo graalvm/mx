@@ -306,8 +306,11 @@ def make_java_module(dist, jdk):
     else:
         moduledeps = get_module_deps(dist)
 
-    # Prepend JDK modules to module path
-    allmodules = list(jdk.get_modules()) + modulepath
+    # Append JDK modules to module path
+    jdkModules = jdk.get_modules()
+    if not isinstance(jdkModules, list):
+        jdkModules = list(jdkModules)
+    allmodules = modulepath + jdkModules
 
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
     packages = []
@@ -315,7 +318,7 @@ def make_java_module(dist, jdk):
         uses.update(getattr(dep, 'uses', []))
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
             depModule, visibility = lookup_package(allmodules, pkg, moduleName)
-            if depModule:
+            if depModule and depModule.name != moduleName:
                 requires.setdefault(depModule.name, set())
                 if visibility == 'exported':
                     # A distribution based module does not re-export its imported JDK packages
@@ -361,10 +364,15 @@ def make_java_module(dist, jdk):
     with open(moduleInfo, 'w') as fp:
         print >> fp, jmd.as_module_info()
     javacCmd = [jdk.javac, '-d', moduleDir]
-    modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath]
+    jdkModuleNames = [m.name for m in jdkModules]
+    modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
+    upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
     if modulepathJars:
         javacCmd.append('--module-path')
         javacCmd.append(os.pathsep.join(modulepathJars))
+    if upgrademodulepathJars:
+        javacCmd.append('--upgrade-module-path')
+        javacCmd.append(os.pathsep.join(upgrademodulepathJars))
     javacCmd.append(moduleInfo)
     mx.run(javacCmd)
 
