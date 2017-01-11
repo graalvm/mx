@@ -9372,12 +9372,12 @@ def log_error(msg=None):
     """
     isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
     if msg is None:
-        sys.stderr.write(os.linesep)
+        print >> sys.stderr
     elif isUnix and sys.stderr.isatty():
         # On unix systems, we can use ANSI escape sequences
-        sys.stderr.write('\033[91m' + msg.encode('utf8') + '\033[0m' + os.linesep)
+        print >> sys.stderr, '\033[91m' + msg + '\033[0m'
     else:
-        sys.stderr.write(msg.encode('utf8') + os.linesep)
+        print >> sys.stderr, msg
 
 def expand_project_in_class_path_arg(cpArg):
     """
