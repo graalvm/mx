@@ -7963,7 +7963,7 @@ class JDKFactory(object):
         nyi('description', self)
 
 
-class DisableJavaDebuggging:
+class DisableJavaDebugging(object):
     """ Utility for temporarily disabling java remote debugging.
 
     Should be used in conjunction with the ``with`` keywords, e.g.
@@ -7975,15 +7975,22 @@ class DisableJavaDebuggging:
     _disabled = False
 
     def __enter__(self):
-        self.old = DisableJavaDebuggging._disabled
-        DisableJavaDebuggging._disabled = True
+        self.old = DisableJavaDebugging._disabled
+        DisableJavaDebugging._disabled = True
 
     def __exit__(self, t, value, traceback):
-        DisableJavaDebuggging._disabled = self.old
+        DisableJavaDebugging._disabled = self.old
+
+
+class DisableJavaDebuggging(DisableJavaDebugging):
+    def __init__(self, *args, **kwargs):
+        super(DisableJavaDebuggging, self).__init__(*args, **kwargs)
+        if primary_suite().getMxCompatibility().excludeDisableJavaDebuggging():
+            abort('Class DisableJavaDebuggging is deleted in version 5.68.0 as it is misspelled.')
 
 
 def is_debug_disabled():
-    return DisableJavaDebuggging._disabled
+    return DisableJavaDebugging._disabled
 
 
 def addJDKFactory(tag, compliance, factory):
@@ -14726,7 +14733,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.67.3")
+version = VersionSpec("5.68.0")
 
 currentUmask = None
 

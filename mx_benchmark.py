@@ -930,7 +930,7 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
-        with mx.DisableJavaDebuggging():
+        with mx.DisableJavaDebugging():
             self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
 
