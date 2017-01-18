@@ -12519,7 +12519,7 @@ def _intellij_suite(args, suite, refreshOnly=False):
             # Eclipse only supports jars.
             for apDep in processors:
                 def processApDep(dep, edge):
-                    if dep.isLibrary():
+                    if dep.isLibrary() or dep.isJARDistribution():
                         compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.path, suite.dir)})
                     elif dep.isProject():
                         compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.output_dir(), suite.dir)})
@@ -14746,7 +14746,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.3")
+version = VersionSpec("5.68.4")
 
 currentUmask = None
 
