@@ -37,6 +37,8 @@ def _should_test_project(p):
     return len(mx._find_packages(p)) > 0
 
 def sigtest(args, suite=None, projects=None):
+    """Generates signature files for all projects with API
+    """
     parser = ArgumentParser(prog='mx sigtest')
     parser.add_argument('--generate', action='store_true', help='Generates signature files for projects with API')
     parser.add_argument('--check', action='store', help='Check <binary|all> against existing signature files', default='binary')

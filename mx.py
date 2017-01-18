@@ -4132,19 +4132,6 @@ class HgConfig(VC):
         hgdir = join(vcdir, self.metadir())
         return os.path.isdir(hgdir)
 
-    def hg_command(self, vcdir, args, abortOnError=False, quiet=True):
-        args = ['hg', '-R', vcdir] + args
-        if not quiet:
-            print '{0}'.format(" ".join(args))
-        out = OutputCapture()
-        rc = self.run(args, nonZeroIsFatal=False, out=out)
-        if rc == 0 or rc == 1:
-            return out.data
-        else:
-            if abortOnError:
-                abort(" ".join(args) + ' returned ' + str(rc))
-            return None
-
     def active_branch(self, vcdir, abortOnError=True):
         out = OutputCapture()
         cmd = ['hg', 'bookmarks']
@@ -5651,7 +5638,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
         run_maven(cmd)
 
 def deploy_binary(args):
-    """deploy binaries for the primary suite to remote maven repository.
+    """deploy binaries for the primary suite to remote maven repository
 
     All binaries must be built first using ``mx build``.
     """
@@ -5794,7 +5781,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
             warn('Unsupported distribution: ' + dist.name)
 
 def maven_deploy(args):
-    """deploy jars for the primary suite to remote maven repository.
+    """deploy jars for the primary suite to remote maven repository
 
     All binaries must be built first using 'mx build'.
     """
@@ -8027,7 +8014,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
-        return ArgumentParser.format_help(self) + """
+        return """""" + ArgumentParser.format_help(self) + """
 environment variables:
   JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
@@ -8722,9 +8709,11 @@ def set_java_command_default_jdk_tag(tag):
     _java_command_default_jdk_tag = tag
 
 def java_command(args):
-    """
-    run the java executable in the selected JDK.
-    See get_jdk for details on JDK selection.
+    """run the java executable in the selected JDK
+
+    The JDK is selected by consulting the --jdk option, the --java-home option,
+    the JAVA_HOME environment variable, the --extra-java-homes option and the
+    EXTRA_JAVA_HOMES enviroment variable in that order.
     """
     run_java(args)
 
@@ -10667,7 +10656,9 @@ class Archiver(SafeFileCreation):
             SafeFileCreation.__exit__(self, exc_type, exc_value, traceback)
 
 def _unstrip(args):
-    """ Unstrips the contents of a file passed as the second argument with mappings from the file in the first arguments.
+    """using obfuscation mappings of a file to unstrip the contents of another file
+
+    Arguments are mapping file and content file.
     Directly passes the arguments to proguard-retrace.jar. For more details see: http://proguard.sourceforge.net/manual/retrace/usage.html"""
     unstrip(args)
     return 0
@@ -10689,11 +10680,11 @@ def unstrip(args):
         run_java(unstrip_command + [catmapfile.name] + inputfiles)
 
 def _archive(args):
+    """create jar files for projects and distributions"""
     archive(args)
     return 0
 
 def archive(args):
-    """create jar files for projects and distributions"""
     parser = ArgumentParser(prog='mx archive')
     parser.add_argument('--parsable', action='store_true', dest='parsable', help='Outputs results in a stable parsable way (one archive per line, <ARCHIVE>=<path>)')
     parser.add_argument('names', nargs=REMAINDER, metavar='[<project>|@<distribution>]...')
@@ -11102,12 +11093,8 @@ def clean(args, parser=None):
     if suppliedParser:
         return args
 
-def about(args):
-    """show the 'man page' for mx"""
-    print __doc__
-
 def help_(args):
-    """show help for a given command
+    """show detailed help for mx or a given command
 
 With no arguments, print a list of commands and short help for each command.
 
@@ -11442,6 +11429,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     return update_file(join(eclipseLaunches, name + '.launch'), launch)
 
 def eclipseinit_cli(args):
+    """(re)generate Eclipse project configurations and working sets"""
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
@@ -14671,8 +14659,7 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extra
     return (myDir, binDir)
 
 def assessannotationprocessors(args):
-    """apply heuristics to determine if projects declare exactly the
-    annotation processors they need
+    """assess correctness of annotation processor declarations
 
     This process automatically analyzes annotation processors annotated
     with @SupportedAnnotationTypes. Extra annotation processor dependencies
@@ -14818,9 +14805,9 @@ def mvn_local_install(suite_name, dist_name, path, version, repo=None):
             version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
-    """
-    Install the primary suite in a maven repository, mainly for testing as it
-    only actually does the install if --local is set.
+    """install the primary suite in a local maven repository for testing
+
+    this is mainly for testing as it only actually does the install if --local is set.
     """
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
@@ -15013,14 +15000,44 @@ def warn(msg, context=None):
             msg = contextMsg + ":\n" + msg
         print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr)
 
+def print_simple_help():
+    print('Welcome to Mx version ' + str(version))
+    print(ArgumentParser.format_help(_argParser))
+    print('Modify ./mx.<suite>/suite.py to change the project structure')
+    print('Here are common Mx commands:')
+    print('\nBuilding and testing:')
+    list_commands(_build_commands)
+    print('Testing stylistic aspects:')
+    list_commands(_style_check_commands)
+    print('Useful utilities:')
+    list_commands(_utilities_commands)
+    print('\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command')
+    
+
+def list_commands(list):
+    msg = ""
+    for cmd in list:
+        c, _ = _commands[cmd][:2]
+        doc = c.__doc__
+        if doc is None:
+            doc = ''
+        msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+    print(msg)
+
+_build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
+_style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
+_utilities_commands = ['suites', 'envs', 'findclass', 'javap']
+
+
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
 # If any of the format args are instances of Callable, then they are called with an 'env' are before being
 # used in the call to str.format().
 # Suite extensions should not update this table directly, but use update_commands
 _commands = {
-    'about': [about, ''],
+    'archive': [_archive, '[options]'],
     'assessaps': [assessannotationprocessors, '[options]'],
+    'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -15028,10 +15045,11 @@ _commands = {
     'checkoverlap': [checkoverlap, ''],
     'verifysourceinproject': [verifysourceinproject, ''],
     'checkstyle': [checkstyle, ''],
-    'sigtest': [mx_sigtest.sigtest, ''],
     'clean': [clean, ''],
-    'eclipseinit': [eclipseinit_cli, ''],
+    'deploy-binary' : [deploy_binary, ''],
     'eclipseformat': [eclipseformat, ''],
+    'eclipseinit': [eclipseinit_cli, ''],
+    'envs': [show_envs, '[options]'],
     'exportlibs': [exportlibs, ''],
     'findbugs': [mx_findbugs.findbugs, ''],
     'findclass': [findclass, ''],
@@ -15043,22 +15061,30 @@ _commands = {
     'intellijinit': [intellijinit, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
-    'archive': [_archive, '[options]'],
-    'unstrip': [_unstrip, '[options]'],
-    'maven-install' : [maven_install, ''],
+    'java': [java_command, '[-options] class [args...]'],
+    'javadoc': [javadoc, '[options]'],
+    'javap': [javap, '[options] <class name patterns>'],
     'maven-deploy' : [maven_deploy, ''],
-    'deploy-binary' : [deploy_binary, ''],
+    'maven-install' : [maven_install, ''],
+    'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
+    'minheap' : [run_java_min_heap, ''],
+    'netbeansinit': [netbeansinit, ''],
     'projectgraph': [projectgraph, ''],
-    'sclone': [sclone, '[options]'],
+    'projects': [show_projects, ''],
+    'pylint': [pylint, ''],
     'sbookmarkimports': [sbookmarkimports, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
+    'sclone': [sclone, '[options]'],
     'scloneimports': [scloneimports, '[options]'],
     'sforceimports': [sforceimports, ''],
+    'sha1': [sha1, ''],
+    'sigtest': [mx_sigtest.sigtest, ''],
     'sincoming': [sincoming, ''],
     'spull': [spull, '[options]'],
     'stip': [stip, ''],
-    'sversions': [sversions, '[options]'],
+    'suites': [show_suites, ''],
     'supdate': [supdate, ''],
+    'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'hg': [hg_command, '[options]'],
@@ -15751,7 +15777,7 @@ def main():
         _check_dependency_cycles()
 
     if len(commandAndArgs) == 0:
-        _argParser.print_help()
+        print_simple_help()
         return
 
     command = commandAndArgs[0]

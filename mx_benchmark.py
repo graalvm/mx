@@ -1647,7 +1647,7 @@ def splitArgs(args, separator):
 
 
 def benchmark(args):
-    """Run benchmark suite.
+    """run benchmark suite with given name
 
     :Example:
 
