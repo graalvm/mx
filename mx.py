@@ -1042,6 +1042,9 @@ class JARDistribution(Distribution, ClasspathDependency):
         """
         Creates the jar file(s) defined by this JARDistribution.
         """
+        if isinstance(self.suite, BinarySuite):
+            return
+
         # are sources combined into main archive?
         unified = self.original_path() == self.sourcesPath
         snippetsPattern = None
@@ -10336,6 +10339,8 @@ def archive(args):
         if name.startswith('@'):
             dname = name[1:]
             d = distribution(dname)
+            if isinstance(d.suite, BinarySuite):
+                abort('Cannot re-build archive for distribution {} from binary suite {}'.format(dname, d.suite.name))
             d.make_archive()
             archives.append(d.path)
             if args.parsable:
@@ -14733,7 +14738,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.1")
+version = VersionSpec("5.68.2")
 
 currentUmask = None
 
