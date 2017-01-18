@@ -172,7 +172,7 @@ class VmRegistry(object):
     def add_vm(self, vm, suite=None, priority=0):
         key = (vm.name(), vm.config_name())
         if key in self._vms:
-            mx.abort("{} and config '{0}' already exist.".format(self.vm_type_name, key))
+            mx.abort("{} and config '{}' already exist.".format(self.vm_type_name, key))
         self._vms[key] = vm
         self._vms_suite[key] = suite
         self._vms_priority[key] = priority
@@ -180,7 +180,7 @@ class VmRegistry(object):
     def get_vm(self, vm_name, vm_config):
         key = (vm_name, vm_config)
         if key not in self._vms:
-            mx.abort("{} and config '{0}' do not exist.".format(self.vm_type_name, key))
+            mx.abort("{} and config '{}' do not exist.".format(self.vm_type_name, key))
         return self._vms[key]
 
 
