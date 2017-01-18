@@ -6636,6 +6636,12 @@ class Suite:
             return 'In definition of suite {} in {}'.format(self.name, path)
         return None
 
+    def isBinarySuite(self):
+        return isinstance(self, BinarySuite)
+
+    def isSourceSuite(self):
+        return isinstance(self, SourceSuite)
+
 def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, existingImporter, otherImport, otherImportingSuite):
     conflict_resolution = _opts.version_conflict_resolution
     if otherImport.dynamicImport and (not existingSuite or not existingSuite.dynamicallyImported) and conflict_resolution != 'latest_all':
@@ -12611,6 +12617,8 @@ def _intellij_suite(args, suite, refreshOnly=False):
     antXml.element('arg', attributes={'value': 'archive'})
 
     for dist in sorted_dists():
+        if dist.suite.isBinarySuite():
+            continue
         antXml.element('arg', attributes={'value': '@' + dist.name})
 
     antXml.close('exec')
@@ -14738,7 +14746,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.2")
+version = VersionSpec("5.68.3")
 
 currentUmask = None
 
