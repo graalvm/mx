@@ -288,6 +288,11 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
+
+        # This is required to access jdk.internal.module.Modules for supporting
+        # the @AddExports annotation.
+        vmArgs = vmArgs + ['--add-exports=java.base/jdk.internal.module=ALL-UNNAMED']
+
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
         mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
