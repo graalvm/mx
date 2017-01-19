@@ -61,7 +61,7 @@ import filecmp
 from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace, FileType
+from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
 from tempfile import mkdtemp
 import fnmatch
@@ -8014,7 +8014,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
-        return """""" + ArgumentParser.format_help(self) + """
+        return ArgumentParser.format_help(self) + """
 environment variables:
   JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
@@ -8032,7 +8032,7 @@ environment variables:
         self.parsed = False
         if not parents:
             parents = []
-        ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0)
+        ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0, formatter_class=lambda prog: HelpFormatter(prog, max_help_position=32, width=120))
 
         if len(parents) != 0:
             # Arguments are inherited from the parents
@@ -8177,13 +8177,8 @@ environment variables:
             return commandAndArgs
 
 def _format_commands():
-    msg = '\navailable commands:\n\n'
-    for cmd in sorted([k for k in _commands.iterkeys() if ':' not in k]) + sorted([k for k in _commands.iterkeys() if ':' in k]):
-        c, _ = _commands[cmd][:2]
-        doc = c.__doc__
-        if doc is None:
-            doc = ''
-        msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+    msg = '\navailable commands:\n'
+    msg += list_commands(sorted([k for k in _commands.iterkeys() if ':' not in k]) + sorted([k for k in _commands.iterkeys() if ':' in k]))
     return msg + '\n'
 
 """
@@ -10656,7 +10651,7 @@ class Archiver(SafeFileCreation):
             SafeFileCreation.__exit__(self, exc_type, exc_value, traceback)
 
 def _unstrip(args):
-    """using obfuscation mappings of a file to unstrip the contents of another file
+    """use stripping mappings of a file to unstrip the contents of another file
 
     Arguments are mapping file and content file.
     Directly passes the arguments to proguard-retrace.jar. For more details see: http://proguard.sourceforge.net/manual/retrace/usage.html"""
@@ -14658,108 +14653,6 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extra
 
     return (myDir, binDir)
 
-def assessannotationprocessors(args):
-    """assess correctness of annotation processor declarations
-
-    This process automatically analyzes annotation processors annotated
-    with @SupportedAnnotationTypes. Extra annotation processor dependencies
-    and the annotation types they support can be supplied on the command line.
-    Note that this tool is only based on heuristics and may thus result in
-    incorrect suggestions. For example, two different annotations that have
-    the same unqualified name (e.g. @NodeInfo) will cause misleading suggestions
-    about missing annotation processors.
-    """
-    parser = ArgumentParser(prog='mx assesaps')
-    parser.add_argument('apspecs', help='annotation processor spec with the format <name>:<ap>,... where <name> is a ' +
-                        'substring matching the name of a unique dependency defining one or more annotation processors ' +
-                        'and the list of comma separated <ap>\'s are annotation types processed by <name>', nargs='*', metavar='apspec')
-
-    args = parser.parse_args(args)
-
-    allProjects = [p for p in dependencies() if p.isJavaProject()]
-    apDists = [d for d in dependencies() if d.isJARDistribution() and d.definedAnnotationProcessors]
-    packageToProject = {}
-    for p in allProjects:
-        for pkg in p.defined_java_packages():
-            packageToProject[pkg] = p
-
-    def pkgAndClass(fqn):
-        """Partitions a fully qualified class name into a package name and class name.
-        Assumes package components always start with a lower case letter and class names
-        start with an upper case letter."""
-        m = re.search(r'\.[A-Z]', fqn)
-        assert m, fqn
-        return fqn[0:m.start()], fqn[m.start() + 1:]
-
-    apdepToAnnotations = {}
-    supportedAnnotationTypesRE = re.compile(r'@SupportedAnnotationTypes\({?([^}\)]+)}?\)')
-    annotationRE = re.compile(r'"([^"]+)"')
-
-    for apDist in apDists:
-        for p in [p for p in apDist.deps if p.isJavaProject()]:
-            matches = p.find_classes_with_annotations(None, ['@SupportedAnnotationTypes'])
-            if matches:
-                for apFqn, pathAndLineNo in matches.iteritems():
-                    pkg, _ = pkgAndClass(apFqn)
-                    apProject = packageToProject[pkg]
-                    assert apProject, apFqn
-                    path, lineNo = pathAndLineNo
-                    with open(path) as fp:
-                        for m in supportedAnnotationTypesRE.finditer(fp.read()):
-                            sat = m.group(1)
-                            for annotation in annotationRE.finditer(sat):
-                                parts = annotation.group(1).split('.')
-                                name = None
-                                for p in reversed(parts):
-                                    name = (p + '.' + name) if name else p
-                                    if p[0].isupper():
-                                        apdepToAnnotations.setdefault(apDist, []).append(name)
-                                assert not name[0].isupper()
-                                apdepToAnnotations[apDist].append(name)
-
-    for apspec in args.apspecs:
-        if ':' not in apspec:
-            abort(apspec + ' does not contain ":"')
-        apdep, annotations = apspec.split(':', 1)
-        candidates = [d for d in dependencies() if apdep in d.name]
-        if not candidates:
-            abort(apdep + ' does not match any dependency')
-        elif len(candidates) > 1:
-            abort('"{}" matches more than one dependency: {}'.format(apdep, ', '.join([c.name for c in candidates])))
-        apdep = candidates[0]
-        annotations = annotations.split(',')
-        apdepToAnnotations[apdep] = annotations
-
-    for apdep, annotations in apdepToAnnotations.iteritems():
-        annotations = ['@' + a for a in annotations]
-        log('-- Analyzing ' + str(apdep) + ' with supported annotations ' + ','.join(annotations) + ' --')
-        for p in allProjects:
-            matches = p.find_classes_with_annotations(None, annotations)
-            apdepName = apdep.name if apdep.suite is p.suite else apdep.suite.name + ':' + apdep.name
-            if matches:
-                if apdep not in p.declaredAnnotationProcessors:
-                    context = p.__abort_context__()
-                    if context:
-                        log(context)
-                        log('"annotationProcessors" attribute should include "{}"'.format(apdepName))
-                    else:
-                        log('"annotationProcessors" attribute of {} should include "{}":'.format(p, apdepName))
-                    log("Witness:")
-                    witness = matches.popitem()
-                    (_, (path, lineNo)) = witness
-                    log(path + ':' + str(lineNo))
-                    with open(path) as fp:
-                        log(fp.readlines()[lineNo - 1])
-            else:
-                if apdep in p.declaredAnnotationProcessors:
-                    context = p.__abort_context__()
-                    if context:
-                        log(context)
-                        log('"annotationProcessors" attribute should not include {}'.format(apdepName))
-                    else:
-                        log('"annotationProcessors" attribute of {} should not include {}'.format(p, apdepName))
-                    log('Could not find any matches for these patterns: ' + ', '.join(annotations))
-
 def _add_command_primary_option(parser):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
 
@@ -14807,7 +14700,7 @@ def mvn_local_install(suite_name, dist_name, path, version, repo=None):
 def maven_install(args):
     """install the primary suite in a local maven repository for testing
 
-    this is mainly for testing as it only actually does the install if --local is set.
+    This is mainly for testing as it only actually does the install if --local is set.
     """
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
@@ -15001,28 +14894,27 @@ def warn(msg, context=None):
         print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr)
 
 def print_simple_help():
-    print('Welcome to Mx version ' + str(version))
-    print(ArgumentParser.format_help(_argParser))
-    print('Modify ./mx.<suite>/suite.py to change the project structure')
-    print('Here are common Mx commands:')
-    print('\nBuilding and testing:')
-    list_commands(_build_commands)
-    print('Testing stylistic aspects:')
-    list_commands(_style_check_commands)
-    print('Useful utilities:')
-    list_commands(_utilities_commands)
-    print('\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command')
-    
+    print 'Welcome to Mx version ' + str(version)
+    print ArgumentParser.format_help(_argParser)
+    print 'Modify mx.<suite>/suite.py in the top level directory of a suite to change the project structure'
+    print 'Here are common Mx commands:'
+    print '\nBuilding and testing:'
+    print list_commands(_build_commands)
+    print 'Checking stylistic aspects:'
+    print list_commands(_style_check_commands)
+    print 'Useful utilities:'
+    print list_commands(_utilities_commands)
+    print '\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command'
 
-def list_commands(list):
+def list_commands(l):
     msg = ""
-    for cmd in list:
+    for cmd in l:
         c, _ = _commands[cmd][:2]
         doc = c.__doc__
         if doc is None:
             doc = ''
         msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
-    print(msg)
+    return msg
 
 _build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
 _style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
@@ -15036,14 +14928,12 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 # Suite extensions should not update this table directly, but use update_commands
 _commands = {
     'archive': [_archive, '[options]'],
-    'assessaps': [assessannotationprocessors, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
-    'verifysourceinproject': [verifysourceinproject, ''],
     'checkstyle': [checkstyle, ''],
     'clean': [clean, ''],
     'deploy-binary' : [deploy_binary, ''],
@@ -15056,8 +14946,10 @@ _commands = {
     'fsckprojects': [fsckprojects, ''],
     'gate': [mx_gate.gate, '[options]'],
     'help': [help_, '[command]'],
+    'hg': [hg_command, '[options]'],
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
+    'init' : [suite_init_cmd, '[options] name'],
     'intellijinit': [intellijinit, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
@@ -15080,32 +14972,19 @@ _commands = {
     'sha1': [sha1, ''],
     'sigtest': [mx_sigtest.sigtest, ''],
     'sincoming': [sincoming, ''],
+    'site': [site, '[options]'],
     'spull': [spull, '[options]'],
     'stip': [stip, ''],
     'suites': [show_suites, ''],
     'supdate': [supdate, ''],
     'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
-    'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
-    'hg': [hg_command, '[options]'],
-    'pylint': [pylint, ''],
-    'java': [java_command, '[-options] class [args...]'],
-    'javap': [javap, '[options] <class name patterns>'],
-    'javadoc': [javadoc, '[options]'],
-    'site': [site, '[options]'],
-    'netbeansinit': [netbeansinit, ''],
-    'suites': [show_suites, ''],
-    'envs': [show_envs, '[options]'],
-    'verifylibraryurls': [verify_library_urls, ''],
-    'version': [show_version, ''],
-    'update': [update, ''],
-    'projects': [show_projects, ''],
-    'sha1': [sha1, ''],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
-    'minheap' : [run_java_min_heap, ''],
-    'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
-    'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
-    'init' : [suite_init_cmd, '[options] name'],
+    'update': [update, ''],
+    'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
+    'verifylibraryurls': [verify_library_urls, ''],
+    'verifysourceinproject': [verifysourceinproject, ''],
+    'version': [show_version, ''],
 }
 _commandsToSuite = {}
 
@@ -15823,7 +15702,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.111.4")  # Furry Enemy
+version = VersionSpec("5.112.4")  # Furry Friend
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
