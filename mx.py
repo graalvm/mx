@@ -12639,9 +12639,29 @@ def _intellij_suite(args, suite, refreshOnly=False):
     metaAntFile = join(ideaProjectDirectory, 'ant.xml')
     update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
 
+    def intellij_scm_name(vc_kind):
+        if vc_kind == 'git':
+            return 'Git'
+        elif vc_kind == 'hg':
+            return 'hg4idea'
+
+    vcsXml = XMLDoc()
+    vcsXml.open('project', attributes={'version': '4'})
+    vcsXml.open('component', attributes={'name': 'VcsDirectoryMappings'})
+
+    for s in suites():
+        if s.isSourceSuite() and s.vc is not None:
+            vcsXml.open('mapping', attributes={'directory': s.dir, 'vcs': intellij_scm_name(s.vc.kind)})
+            vcsXml.close('mapping')
+
+    vcsXml.close('component')
+    vcsXml.close('project')
+
+    vcsFile = join(ideaProjectDirectory, 'vcs.xml')
+    update_file(vcsFile, vcsXml.xml(indent='  ', newl='\n'))
 
     # TODO look into copyright settings
-    # TODO should add vcs.xml support
+
 
 def ideclean(args):
     """remove all IDE project configurations"""
@@ -14746,7 +14766,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.4")
+version = VersionSpec("5.68.5")
 
 currentUmask = None
 
