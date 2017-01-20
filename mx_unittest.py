@@ -284,14 +284,16 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         with open(testfile) as fp:
             testclasses = [l.rstrip() for l in fp.readlines()]
 
-        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=vmLauncher.jdk())
+        jdk = vmLauncher.jdk()
+        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk)
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
 
-        # This is required to access jdk.internal.module.Modules for supporting
-        # the @AddExports annotation.
-        vmArgs = vmArgs + ['--add-exports=java.base/jdk.internal.module=ALL-UNNAMED']
+        if jdk.javaCompliance > '1.8':
+            # This is required to access jdk.internal.module.Modules for supporting
+            # the @AddExports annotation.
+            vmArgs = vmArgs + ['--add-exports=java.base/jdk.internal.module=ALL-UNNAMED']
 
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
