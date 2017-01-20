@@ -10094,7 +10094,7 @@ def eclipseformat(args):
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
         # Eclipse does not (yet) run on JDK 9
-        jdk = get_jdk(versionCheck=lambda version: version <= VersionSpec('1.8'), versionDescription='<=1.8')
+        jdk = get_jdk(versionCheck=lambda version: version < VersionSpec('9'), versionDescription='<9')
 
         for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
             capture = OutputCapture()
@@ -14766,7 +14766,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.6")
+version = VersionSpec("5.68.7")
 
 currentUmask = None
 
