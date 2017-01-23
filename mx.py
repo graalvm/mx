@@ -12649,10 +12649,11 @@ def _intellij_suite(args, suite, refreshOnly=False):
     vcsXml.open('project', attributes={'version': '4'})
     vcsXml.open('component', attributes={'name': 'VcsDirectoryMappings'})
 
-    for s in suites():
-        if s.isSourceSuite() and s.vc is not None:
-            vcsXml.open('mapping', attributes={'directory': s.dir, 'vcs': intellij_scm_name(s.vc.kind)})
-            vcsXml.close('mapping')
+    sourceSuitesWithVCS = [s for s in suites() if s.isSourceSuite() and s.vc is not None]
+    uniqueSuitesVCS = set([(s.vc_dir, s.vc.kind) for s in sourceSuitesWithVCS])
+    for vcs_dir, kind in uniqueSuitesVCS:
+        vcsXml.open('mapping', attributes={'directory': vcs_dir, 'vcs': intellij_scm_name(kind)})
+        vcsXml.close('mapping')
 
     vcsXml.close('component')
     vcsXml.close('project')
@@ -14766,7 +14767,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.68.8")
+version = VersionSpec("5.68.9")
 
 currentUmask = None
 
