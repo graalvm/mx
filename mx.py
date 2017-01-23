@@ -6678,7 +6678,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc, self.vc_dir = (None, None) if internal else VC.get_vc_root(self.dir, abortOnError=False)
+        self.vc, self.vc_dir = VC.get_vc_root(self.dir, abortOnError=False)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
         self._load_suite_dict()
@@ -12705,7 +12705,7 @@ def _intellij_suite(args, s, refreshOnly=False):
     vcsXml.open('project', attributes={'version': '4'})
     vcsXml.open('component', attributes={'name': 'VcsDirectoryMappings'})
 
-    sourceSuitesWithVCS = [s for s in suites() if s.isSourceSuite() and s.vc is not None]
+    sourceSuitesWithVCS = [s for s in suites() + [_mx_suite] if s.isSourceSuite() and s.vc is not None]
     uniqueSuitesVCS = set([(s.vc_dir, s.vc.kind) for s in sourceSuitesWithVCS])
     for vcs_dir, kind in uniqueSuitesVCS:
         vcsXml.open('mapping', attributes={'directory': vcs_dir, 'vcs': intellij_scm_name(kind)})
@@ -14679,6 +14679,9 @@ def main():
     # make sure logv and logvv work as soon as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
+    global _vc_systems
+    _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
+
     global _mx_suite
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
@@ -14698,8 +14701,6 @@ def main():
     _argParser._parse_cmd_line(_opts, firstParse=True)
     vc_command = _check_vc_command()
 
-    global _vc_systems
-    _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
     global _mvn
     _mvn = MavenConfig()
 
