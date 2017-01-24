@@ -1026,7 +1026,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
-            abort('unbuilt distribution {} can not be on a class path'.format(self))
+            abort("unbuilt distribution {} can not be on a class path. Did you forget to run 'mx build'?".format(self))
         return self.path
 
     def get_ide_project_dir(self):
