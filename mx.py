@@ -12950,6 +12950,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
                      '-docletpath', snippetslib,
                      '-snippetpath', snippets,
+                     '-hiddingannotation', 'java.lang.Deprecated',
                      '-source', str(jdk.javaCompliance)] +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
@@ -13047,6 +13048,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
              '-docletpath', snippetslib,
              '-snippetpath', snippets,
+             '-hiddingannotation', 'java.lang.Deprecated',
              '-sourcepath', sp] +
              verifySincePresent +
              snippetsPatterns +
