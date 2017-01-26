@@ -23,7 +23,7 @@ gate : {
 
 bench-test : {
   run: [
-    ["./mx", "benchmark", "--results-file", "bench-results.json", "test"]
+    ["./mx", "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"]
   ]
   teardown: [
     ["bench-uploader.py", "--url", "$BENCH_SERVER_URL", "bench-results.json"]

@@ -1345,14 +1345,14 @@ class BenchmarkExecutor(object):
             }
 
         standard.update(commit_info("", mx.primary_suite()))
-        for (name, mxsuite) in mx._suites.iteritems():
+        for mxsuite in mx.suites():
             ignored = mxBenchmarkArgs.ignore_suite_commit_info
-            if ignored and name in ignored:
+            if ignored and mxsuite.name in ignored:
                 continue
-            standard.update(commit_info("extra." + name + ".", mxsuite))
+            standard.update(commit_info("extra." + mxsuite.name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
         if triggering_suite:
-            mxsuite = mx._suites[triggering_suite]
+            mxsuite = mx.suite(triggering_suite)
             standard.update(commit_info("extra.triggering-repo.", mxsuite))
         return standard
 
