@@ -334,7 +334,7 @@ def gate(args):
             if t:
                 mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
                 if mx.command_function('canonicalizeprojects')([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
+                    t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
 
         if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
             with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
