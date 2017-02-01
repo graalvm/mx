@@ -1518,11 +1518,12 @@ class TARArchiveTask(ArchiveTask):
         if exists(self.subject.path):
             os.remove(self.subject.path)
 
-        if self.subject.output:
-            for _, arcname in self.subject.get_files_to_archive(False):
-                dest = join(self.subject.suite.dir, self.subject.output, arcname)
-                if exists(dest):
-                    os.remove(dest)
+        if not forBuild:
+            if self.subject.output:
+                for _, arcname in self.subject.get_files_to_archive(False):
+                    dest = join(self.subject.suite.dir, self.subject.output, arcname)
+                    if exists(dest):
+                        os.remove(dest)
 
     def cleanForbidden(self):
         if ArchiveTask.cleanForbidden(self):
