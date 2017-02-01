@@ -64,6 +64,7 @@ from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
+from tempfile import mkdtemp
 
 import mx_unittest
 import mx_findbugs
@@ -2428,7 +2429,7 @@ class JavacLikeCompiler(JavaCompiler):
 
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
-        javacArgs = ['-g', '-source', str(compliance), '-target', str(compliance), '-classpath', classPath, '-d', outputDir]
+        javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
         if compliance >= '1.8':
             javacArgs.append('-parameters')
         if processorPath:
@@ -2436,6 +2437,10 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
         else:
             javacArgs += ['-proc:none']
+        if jdk.javaCompliance < "9":
+            javacArgs += ['-source', str(compliance), '-target', str(compliance)]
+        else:
+            javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
         hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
@@ -2444,7 +2449,8 @@ class JavacLikeCompiler(JavaCompiler):
             # complianceJdk.javaCompliance could be different from compliance
             # because of non-strict compliance mode
             if jdk.javaCompliance != complianceJdk.javaCompliance:
-                javacArgs = complianceJdk.javacLibOptions(javacArgs)
+                if complianceJdk.javaCompliance < "9" and jdk.javaCompliance < "9":
+                    javacArgs = complianceJdk.javacLibOptions(javacArgs)
             else:
                 hybridCrossCompilation = True
         if _opts.very_verbose:
@@ -2466,9 +2472,9 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
-        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles)
+        return self.prepareJavacLike(jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles)
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
         """
         `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
@@ -2483,7 +2489,7 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -2506,8 +2512,16 @@ class JavacCompiler(JavacLikeCompiler):
             lint = [l for l in lint if l in knownLints]
         if lint:
             javacArgs.append('-Xlint:' + ','.join(lint))
+        if jdk.javaCompliance >= "9":
+            unsafe_jar = _get_jdk_module_classes_jar('jdk.unsupported', primary_suite(), jdk, 'sun.misc.Unsafe')
+            idx = javacArgs.index('-classpath')
+            javacArgs[idx + 1] += os.pathsep + unsafe_jar
         if disableApiRestrictions:
-            javacArgs.append('-XDignore.symbol.file')
+            if jdk.javaCompliance < "9":
+                javacArgs.append('-XDignore.symbol.file')
+        else:
+            if jdk.javaCompliance >= "9":
+                warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
         if warningsAsErrors:
             javacArgs.append('-Werror')
         if showTasks:
@@ -2542,7 +2556,8 @@ class JavacCompiler(JavacLikeCompiler):
                             exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
-            addExportArgs(project)
+            if compliance >= "9":
+                addExportArgs(project)
             aps = project.annotation_processors()
             if aps:
                 exports = {}
@@ -2610,6 +2625,7 @@ class Daemon:
 
 class CompilerDaemon(Daemon):
     def __init__(self, jdk, jvmArgs, mainClass, toolJar, buildArgs=None):
+        logv("Starting daemon for {} [{}]".format(jdk.java, ', '.join(jvmArgs)))
         self.jdk = jdk
         if not buildArgs:
             buildArgs = []
@@ -2723,7 +2739,7 @@ class ECJCompiler(JavacLikeCompiler):
             abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
         return jdk
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -3241,14 +3257,16 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     :param sourcePath: a path where the sources for this library are located. A relative path is resolved against a JDK.
     :param JavaCompliance jdkStandardizedSince: the JDK version in which the resources represented by this library are automatically
            available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
+    :param module: If this JAR has been transferred to a module since JDK 9, the name of the module that contains the same classes as the JAR used to.
     """
-    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None):
+    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None, module=None):
         BaseLibrary.__init__(self, suite, name, optional, theLicense)
         ClasspathDependency.__init__(self)
         self.path = path.replace('/', os.sep)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.deps = deps
         self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance('1.2')
+        self.module = module
 
     def resolveDeps(self):
         """
@@ -3279,11 +3297,13 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
 
         :param JDKConfig jdk: the JDK to test
         """
-        path = self.get_jdk_path(jdk, self.path)
-        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(path)
+        return jdk.javaCompliance >= self.jdkStandardizedSince or exists(self.get_jdk_path(jdk, self.path))
 
     def getBuildTask(self, args):
         return NoOpTask(self, args)
+
+    def _is_jdk_module(self, jdk):
+        return jdk.javaCompliance >= self.jdkStandardizedSince and jdk.javaCompliance >= "9" and self.module
 
     def classpath_repr(self, jdk, resolve=True):
         """
@@ -3297,6 +3317,8 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         if not jdk:
             abort('A JDK is required to resolve ' + self.name)
         if jdk.javaCompliance >= self.jdkStandardizedSince:
+            if self._is_jdk_module(jdk):
+                return _get_jdk_module_jar(self.module, primary_suite(), jdk)
             return None
         path = self.get_jdk_path(jdk, self.path)
         if not exists(path):
@@ -3312,8 +3334,12 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         """
         if self.sourcePath is None:
             return None
+        if isabs(self.sourcePath):
+            return self.sourcePath
         path = self.get_jdk_path(jdk, self.sourcePath)
-        return self.sourcePath if isabs(self.sourcePath) else path
+        if not exists(path) and jdk.javaCompliance >= self.jdkStandardizedSince:
+            return self.get_jdk_path(jdk, 'lib/src.zip')
+        return path
 
     def isJar(self):
         return True
@@ -6206,7 +6232,8 @@ class Suite:
             if isinstance(optional, str):
                 optional = optional != 'false'
             jdkStandardizedSince = JavaCompliance(attrs.pop('jdkStandardizedSince', '1.2'))
-            l = JdkLibrary(self, name, path, deps, optional, theLicense, sourcePath=sourcePath, jdkStandardizedSince=jdkStandardizedSince)
+            module = attrs.pop('module', None)
+            l = JdkLibrary(self, name, path, deps, optional, theLicense, sourcePath=sourcePath, jdkStandardizedSince=jdkStandardizedSince, module=module)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -8994,6 +9021,12 @@ class JavaCompliance:
     def __hash__(self):
         return self.value.__hash__()
 
+    def to_str(self, compliance):
+        if compliance < "9":
+            return str(self)
+        else:
+            return str(self.value)
+
     def exactMatch(self, version):
         assert isinstance(version, VersionSpec)
         if len(version.parts) > 0:
@@ -9285,7 +9318,7 @@ class JDKConfig:
             return []
         if not hasattr(self, '.modules'):
             jdkModules = join(self.home, 'lib', 'modules')
-            cache = join(ensure_dir_exists(join('.jdk' + str(self.version))), 'listmodules')
+            cache = join(ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk' + str(self.version))), 'listmodules')
             isJDKImage = exists(jdkModules)
             if not exists(cache) or not isJDKImage or TimeStampFile(jdkModules).isNewerThan(cache) or TimeStampFile(__file__).isNewerThan(cache):
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
@@ -11185,6 +11218,41 @@ def _get_eclipse_output_path(p, linkedResources=None):
         return outputDirName
     else:
         return outputDirRel
+
+def _get_jdk_module_classes_jar(module, suite, jdk, classes):
+    if isinstance(classes, types.StringTypes):
+        classes = [classes]
+    assert len(classes) > 0
+    module_jar = _get_jdk_module_jar(module, suite, jdk)
+    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
+    if len(classes) == 1:
+        jarClassName = classes[0]
+    else:
+        jarClassName = classes[0] + "_" + hashlib.sha1(':'.join(classes)).hexdigest()
+
+    jarName = module + '_' + jarClassName + '.jar'
+    jarPath = join(jdkOutputDir, jarName)
+    jdkExplodedModule = join(jdk.home, 'modules', module)
+    jdkModules = join(jdk.home, 'lib', 'modules')
+    if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
+        tmp_dir = None
+        try:
+            tmp_dir = mkdtemp()
+            logv("Preparing " + jarPath + " in " + tmp_dir)
+            class_files = [cls.replace('.', '/') + '.class' for cls in classes]
+            run([jdk.jar, 'xf', module_jar] + class_files, cwd=tmp_dir)
+            for class_file in class_files:
+                if not exists(join(tmp_dir, *class_file.split('/'))):
+                    abort("Could not find {} ({}) in {} ({})".format(class_file.replace('/', '.')[:-len('.class')], class_file, module, module_jar))
+            run([jdk.jar, 'cf', jarPath] + class_files, cwd=tmp_dir)
+        except BaseException as e:
+            if _opts.very_verbose:
+                tmp_dir = None
+            raise e
+        finally:
+            if tmp_dir and exists(tmp_dir):
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+    return jarPath
 
 def _get_jdk_module_jar(module, suite, jdk):
     """
@@ -13254,7 +13322,7 @@ def site(args):
     args = parser.parse_args(args)
 
     args.base = os.path.abspath(args.base)
-    tmpbase = args.tmp if args.tmp else  tempfile.mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
+    tmpbase = args.tmp if args.tmp else  mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
     unified = join(tmpbase, 'all')
 
     exclude_packages_arg = []
@@ -14940,7 +15008,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.69.3")
+version = VersionSpec("5.70.0")
 
 currentUmask = None
 
