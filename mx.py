@@ -1609,9 +1609,26 @@ class Project(Dependency):
         """
         nyi('eclipse_settings_sources', self)
 
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        nyi('netbeans_settings_sources', self)
+
     def eclipse_config_up_to_date(self, configZip):
         """
         Determines if the zipped up Eclipse configuration
+        """
+        return True
+
+    def netbeans_config_up_to_date(self, configZip):
+        """
+        Determines if the zipped up NetBeans configuration
         """
         return True
 
@@ -1797,6 +1814,23 @@ class JavaProject(Project, ClasspathDependency):
                     return False
         return True
 
+    def netbeans_config_up_to_date(self, configZip):
+        for _, sources in self.netbeans_settings_sources().iteritems():
+            for source in sources:
+                if configZip.isOlderThan(source):
+                    return False
+
+        if configZip.isOlderThan(join(self.dir, 'build.xml')):
+            return False
+
+        if configZip.isOlderThan(join(self.dir, 'nbproject/project.xml')):
+            return False
+
+        if configZip.isOlderThan(join(self.dir, 'nbproject/project.properties')):
+            return False
+
+        return True
+
     def eclipse_settings_sources(self):
         """
         Gets a dictionary from the name of an Eclipse settings file to
@@ -1818,6 +1852,25 @@ class JavaProject(Project, ClasspathDependency):
             esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
 
         return esdict
+
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        nbdict = self.suite.netbeans_settings_sources()
+
+        # check for project overrides
+        projectSettingsDir = join(self.dir, 'netbeans-settings')
+        if exists(projectSettingsDir):
+            for name in os.listdir(projectSettingsDir):
+                nbdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+
+        return nbdict
 
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
         """
@@ -6946,6 +6999,29 @@ class SourceSuite(Suite):
                 esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
         return esdict
 
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        esdict = {}
+        # start with the mxtool defaults
+        defaultNetBeansSuiteDir = join(_mx_suite.dir, 'netbeans-settings')
+        if exists(defaultNetBeansSuiteDir):
+            for name in os.listdir(defaultNetBeansSuiteDir):
+                esdict[name] = [os.path.abspath(join(defaultNetBeansSuiteDir, name))]
+
+        # append suite overrides
+        netBeansSettingsDir = join(self.mxDir, 'netbeans-settings')
+        if exists(netBeansSettingsDir):
+            for name in os.listdir(netBeansSettingsDir):
+                esdict.setdefault(name, []).append(os.path.abspath(join(netBeansSettingsDir, name)))
+        return esdict
+
 """
 A pre-built suite downloaded from a Maven repository.
 """
@@ -11055,9 +11131,15 @@ def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
         return False
 
     if ide == 'eclipse':
-        for p in [p for p in suite.projects]:
-            if not p.eclipse_config_up_to_date(configZip):
+        for proj in [p for p in suite.projects]:
+            if not proj.eclipse_config_up_to_date(configZip):
                 return False
+
+    if ide == 'netbeans':
+        for proj in [p for p in suite.projects]:
+            if not proj.netbeans_config_up_to_date(configZip):
+                return False
+
     return True
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
@@ -12027,7 +12109,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('target')
     out.close('project')
     update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
-    if files:
+    if files is not None:
         files.append(join(p.dir, 'build.xml'))
 
     out = XMLDoc()
@@ -12074,7 +12156,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('configuration')
     out.close('project')
     update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
-    if files:
+    if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
     out = StringIO.StringIO()
@@ -12110,6 +12192,8 @@ annotation.processing.processors.list=
 annotation.processing.run.all.processors=true
 application.title=""" + p.name + """
 application.vendor=mx
+auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsEnabled=true
+auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsFile=nbproject/cfg_hints.xml
 build.classes.dir=${build.dir}
 build.classes.excludes=**/*.java,**/*.form
 # This directory is removed when the project is cleaned:
@@ -12274,8 +12358,17 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
     out.close()
-    if files:
+
+    if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.properties'))
+
+    for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
+        with open(source) as fp:
+            content = fp.read()
+    update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
+
+    if files is not None:
+        files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
 def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
     mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
@@ -14847,7 +14940,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.69.1")
+version = VersionSpec("5.69.2")
 
 currentUmask = None
 
