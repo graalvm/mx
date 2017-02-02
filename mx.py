@@ -1609,6 +1609,17 @@ class Project(Dependency):
         """
         nyi('eclipse_settings_sources', self)
 
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        nyi('netbeans_settings_sources', self)
+
     def eclipse_config_up_to_date(self, configZip):
         """
         Determines if the zipped up Eclipse configuration
@@ -1818,6 +1829,25 @@ class JavaProject(Project, ClasspathDependency):
             esdict.pop("org.eclipse.jdt.apt.core.prefs", None)
 
         return esdict
+
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        nbdict = self.suite.netbeans_settings_sources()
+
+        # check for project overrides
+        projectSettingsDir = join(self.dir, 'netbeans-settings')
+        if exists(projectSettingsDir):
+            for name in os.listdir(projectSettingsDir):
+                nbdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
+
+        return nbdict
 
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
         """
@@ -6944,6 +6974,29 @@ class SourceSuite(Suite):
         if exists(eclipseSettingsDir):
             for name in os.listdir(eclipseSettingsDir):
                 esdict.setdefault(name, []).append(os.path.abspath(join(eclipseSettingsDir, name)))
+        return esdict
+
+    def netbeans_settings_sources(self):
+        """
+        Gets a dictionary from the name of an NetBeans settings file to
+        the list of files providing its generated content, in overriding order
+        (i.e., settings from files later in the list override settings from
+        files earlier in the list).
+        A new dictionary is created each time this method is called so it's
+        safe for the caller to modify it.
+        """
+        esdict = {}
+        # start with the mxtool defaults
+        defaultNetBeansSuiteDir = join(_mx_suite.dir, 'netbeans-settings')
+        if exists(defaultNetBeansSuiteDir):
+            for name in os.listdir(defaultNetBeansSuiteDir):
+                esdict[name] = [os.path.abspath(join(defaultNetBeansSuiteDir, name))]
+
+        # append suite overrides
+        netBeansSettingsDir = join(self.mxDir, 'netbeans-settings')
+        if exists(netBeansSettingsDir):
+            for name in os.listdir(netBeansSettingsDir):
+                esdict.setdefault(name, []).append(os.path.abspath(join(netBeansSettingsDir, name)))
         return esdict
 
 """
@@ -12279,7 +12332,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     if files:
         files.append(join(p.dir, 'nbproject', 'project.properties'))
 
-    for source in p.suite.eclipse_settings_sources().get('cfg_hints.xml'):
+    for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
         with open(source) as fp:
             content = fp.read()
     update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
