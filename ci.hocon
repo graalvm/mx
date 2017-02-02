@@ -1,5 +1,5 @@
 # overlay version
-overlay = ca7616b74ad83f0e7f55bef69eb396e775b6d5e7
+overlay = c8f5c8d553b577d72e82027242642150bca61634
 
 gate : {
   packages : {
@@ -23,7 +23,7 @@ gate : {
 
 bench-test : {
   run: [
-    ["./mx", "benchmark", "--results-file", "bench-results.json", "test"]
+    ["./mx", "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"]
   ]
   teardown: [
     ["bench-uploader.py", "--url", "$BENCH_SERVER_URL", "bench-results.json"]

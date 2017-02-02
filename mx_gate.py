@@ -31,6 +31,7 @@ import xml.dom.minidom
 
 import mx
 import mx_microbench
+import sys
 
 """
 Predefined Task tags.
@@ -57,8 +58,28 @@ class Task:
 
     tags = None
     tagsExclude = False
+    # map from tag to a pair [from(inclusive), to(exclusive)]
+    tags_range = dict()
+    # map from tag to count
+    tags_count = dict()
 
     verbose = False
+
+
+    def tag_matches(self, _tags):
+        for t in _tags:
+            if t in Task.tags:
+                if t not in Task.tags_range:
+                    # no range restriction
+                    return True
+                else:
+                    frm, to = Task.tags_range[t]
+                    cnt = Task.tags_count[t]
+                    # increment counter
+                    Task.tags_count[t] += 1
+                    if frm <= cnt and cnt < to:
+                        return True
+        return False
 
     def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None):
         self.tasks = tasks
@@ -89,7 +110,7 @@ class Task:
                     self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
                 else:
                     _tags = self.tags if self.tags else []
-                    self.skipped = not any([t in Task.tags for t in _tags])
+                    self.skipped = not self.tag_matches(_tags)
         if not self.skipped:
             self.start = time.time()
             self.end = None
@@ -206,6 +227,30 @@ def _warn_or_abort(msg, strict_mode):
     reporter = mx.abort if strict_mode else mx.warn
     reporter(msg)
 
+
+def parse_tags_argument(tags_arg, exclude):
+    pattern = re.compile(r"^(?P<tag>[^:]*)(?::(?P<from>\d+):(?P<to>\d+)?)?$")
+    tags = tags_arg.split(',')
+    Task.tags = []
+    for tag_spec in tags:
+        m = pattern.match(tag_spec)
+        if not m:
+            mx.abort('--tags option requires the format `name[:from:[to]]`: {0}'.format(tag_spec))
+        (tag, t_from, t_to) = m.groups()
+        if t_from:
+            if exclude:
+                mx.abort('-x option cannot be used tag ranges: {0}'.format(tag_spec))
+            frm = int(t_from)
+            to = int(t_to) if t_to else sys.maxsize
+            # insert range tuple
+            Task.tags_range[tag] = (frm, to)
+            # sanity check
+            if to <= frm:
+                mx.abort('`from` must be less than `to` for tag ranges: {0}'.format(tag_spec))
+            # init counter
+            Task.tags_count[tag] = 0
+        Task.tags.append(tag)
+
 def gate(args):
     """run the tests used to validate a push
 
@@ -222,7 +267,8 @@ def gate(args):
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
-    filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run')
+    filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run. Tags can have a range specifier `name[:from:[to]]`.'
+                           'If present only the [from,to) tasks are executed. If `to` is omitted all tasks starting with `from` are executed.')
     for a, k in _extra_gate_arguments:
         parser.add_argument(*a, **k)
 
@@ -238,7 +284,7 @@ def gate(args):
         Task.filters = args.task_filter.split(',')
         Task.filtersExclude = args.x
     elif args.tags:
-        Task.tags = args.tags.split(',')
+        parse_tags_argument(args.tags, args.x)
         Task.tagsExclude = args.x
         if not Task.tagsExclude:
             # implicitly include 'always'
@@ -288,7 +334,7 @@ def gate(args):
             if t:
                 mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
                 if mx.command_function('canonicalizeprojects')([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and check-in the modified mx/suite*.py files.')
+                    t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
 
         if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
             with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:

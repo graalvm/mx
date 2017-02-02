@@ -33,8 +33,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Finds classes in given jar files that contain methods annotated by a given set
- * of annotations.
+ * Finds classes in given jar files that contain methods annotated by a given set of annotations.
  */
 public class FindClassesByAnnotatedMethods {
 
@@ -71,13 +70,14 @@ public class FindClassesByAnnotatedMethods {
             JarFile jarFile = new JarFile(jarFilePath);
             Enumeration<JarEntry> e = jarFile.entries();
             int unsupportedClasses = 0;
+            System.out.print(jarFilePath);
             while (e.hasMoreElements()) {
                 JarEntry je = e.nextElement();
                 if (je.isDirectory() || !je.getName().endsWith(".class")) {
                     continue;
                 }
                 Set<String> methodAnnotationTypes = new HashSet<>();
-                DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je)));
+                DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je), (int) je.getSize()));
                 try {
                     readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
@@ -87,7 +87,7 @@ public class FindClassesByAnnotatedMethods {
                 for (String annotationType : methodAnnotationTypes) {
                     if (!qualifiedAnnotations.isEmpty()) {
                         if (qualifiedAnnotations.contains(annotationType)) {
-                            System.out.println(className + " " + jarFilePath);
+                            System.out.print(" " + className);
                         }
                     }
                     if (!unqualifiedAnnotations.isEmpty()) {
@@ -99,7 +99,7 @@ public class FindClassesByAnnotatedMethods {
                                 simpleName = simpleName.substring(lastDollar + 1);
                             }
                             if (unqualifiedAnnotations.contains(simpleName)) {
-                                System.out.println(className + " " + jarFilePath);
+                                System.out.print(" " + className);
                             }
                         }
                     }
@@ -108,6 +108,7 @@ public class FindClassesByAnnotatedMethods {
             if (unsupportedClasses != 0) {
                 System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n", jarFilePath, unsupportedClasses);
             }
+            System.out.println();
         }
     }
 

@@ -33,11 +33,11 @@ import uuid
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 import os.path
+from collections import OrderedDict
 
 import mx
 
 
-_bm_suite_java_vms = {}
 _bm_suites = {}
 _benchmark_executor = None
 
@@ -45,33 +45,152 @@ _benchmark_executor = None
 # Contains an argument parser and its description.
 class ParserEntry(object):
     def __init__(self, parser, description):
+        """
+        :param ArgumentParser parser: the parser
+        :param str description: the description
+        """
         self.parser = parser
         self.description = description
 
 
 # Parsers used by different `mx benchmark` commands.
 parsers = {}
-
-
-# Java suite parsers.
 _mx_benchmark_usage_example = "mx benchmark <suite>:<bench>"
-parsers["java_benchmark_suite_jvm"] = ParserEntry(
-    ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
-    "\n\nJVM selection flags, specified in the benchmark suite arguments:\n"
-)
-parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm", default=None,
-    help="JVM to run the benchmark with, for example 'server' or 'client'.")
-parsers["java_benchmark_suite_jvm"].parser.add_argument("--jvm-config", default=None,
-    help="JVM configuration for the selected JVM, for example 'graal-core'.")
+
+
+def add_parser(name, parser_entry):
+    """Add a named parser to be used in benchmark suites.
+    :param str name: the name of the parser
+    :param ParserEntry parser_entry: the parser and description
+    :return:
+    """
+    if name in parsers:
+        mx.abort("There is already a parser called '{}'".format(name))
+    parsers[name] = parser_entry
+
+
+def get_parser(name):
+    """Gets the named parser
+    :param str name: the name of the parser
+    :rtype: ArgumentParser
+    """
+    return parsers[name].parser
+
+
+class VmRegistry(object):
+    def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None, known_host_registries=None):
+        """
+
+        :param str vm_type_name: full VM type name (e.g., "Java")
+        :param str short_vm_type_name:
+        :param default_vm: a callable which, given a config name gives a default VM name
+        :param list[VmRegistry] known_host_registries: a list of known host VM registries
+        """
+        self.vm_type_name = vm_type_name + " VM"
+        self.short_vm_type_name = short_vm_type_name if short_vm_type_name else vm_type_name.lower() + "-vm"
+        assert default_vm is None or callable(default_vm)
+        self.default_vm = default_vm
+        assert re.compile(r"\A[a-z-]+\Z").match(self.short_vm_type_name)
+        self._vms = OrderedDict()
+        self._vms_suite = {}
+        self._vms_priority = {}
+        self._known_host_registries = known_host_registries or []
+        add_parser(self.get_parser_name(), ParserEntry(
+            ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
+            "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(self.vm_type_name)
+        ))
+        get_parser(self.get_parser_name()).add_argument("--{}".format(self.short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
+        get_parser(self.get_parser_name()).add_argument("--{}-config".format(self.short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
+
+    def get_parser_name(self):
+        return self.vm_type_name + "_parser"
+
+    def get_known_guest_registries(self):
+        return self._known_host_registries
+
+    def get_default_vm(self, config):
+        if self.default_vm:
+            return self.default_vm(config, self._vms)
+        return None
+
+    def get_vm_from_suite_args(self, bmSuiteArgs):
+        """
+        Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
+
+        Suites that might need this should add `java_vm_parser_name` to their `parserNames`.
+
+        :param list[str] bmSuiteArgs: the suite args provided by mx benchmark
+        :return: a Vm as configured by the `bmSuiteArgs`.
+        :rtype: Vm
+        """
+        args, _ = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
+        arg_vm_type_name = self.short_vm_type_name.replace('-', '_')
+        vm = getattr(args, arg_vm_type_name)
+        vm_config = getattr(args, arg_vm_type_name + '_config')
+        if vm is None:
+            vm = self.get_default_vm(vm_config)
+            if vm is None:
+                vms = [(vm,
+                         self._vms_suite[(vm, config)] == mx.primary_suite(),
+                         self._vms_priority[(vm, config)]
+                         ) for (vm, config) in self._vms if vm_config is None or config == vm_config]
+                if not vms:
+                    mx.abort("Could not find a {} to default to.".format(self.vm_type_name))
+                vms.sort(key=lambda t: t[1:], reverse=True)
+                vm = vms[0][0]
+                if len(vms) == 1:
+                    notice = mx.log
+                    choice = vm
+                else:
+                    notice = mx.warn
+                    seen = set()
+                    choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+                notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
+        if vm_config is None:
+            vm_configs = [(config,
+                            self._vms_suite[(vm, config)] == mx.primary_suite(),
+                            self._vms_priority[(vm, config)]
+                            ) for (j, config) in self._vms if j == vm]
+            if not vm_configs:
+                mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{}'.".format(vm=vm, vm_type=self.vm_type_name))
+            vm_configs.sort(key=lambda t: t[1:], reverse=True)
+            vm_config = vm_configs[0][0]
+            if len(vm_configs) == 1:
+                notice = mx.log
+                choice = vm_config
+            else:
+                notice = mx.warn
+                seen = set()
+                choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
+            notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
+        vm_object = self.get_vm(vm, vm_config)
+        if isinstance(vm_object, GuestVm):
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs)
+            vm_object = vm_object.with_host_vm(host_vm)
+        return vm_object
+
+    def add_vm(self, vm, suite=None, priority=0):
+        key = (vm.name(), vm.config_name())
+        if key in self._vms:
+            mx.abort("{} and config '{}' already exist.".format(self.vm_type_name, key))
+        self._vms[key] = vm
+        self._vms_suite[key] = suite
+        self._vms_priority[key] = priority
+
+    def get_vm(self, vm_name, vm_config):
+        key = (vm_name, vm_config)
+        if key not in self._vms:
+            mx.abort("{} and config '{}' do not exist.".format(self.vm_type_name, key))
+        return self._vms[key]
 
 
 # JMH suite parsers.
-parsers["jmh_jar_benchmark_suite_vm"] = ParserEntry(
+add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
     "\n\nVM selection flags for JMH benchmark suites:\n"
-)
-parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-jar", default=None)
-parsers["jmh_jar_benchmark_suite_vm"].parser.add_argument("--jmh-name", default=None)
+))
+get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-jar", default=None)
+get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-name", default=None)
 
 
 class BenchmarkSuite(object):
@@ -111,9 +230,9 @@ class BenchmarkSuite(object):
     def benchmarkList(self, bmSuiteArgs):
         """Returns the list of the benchmarks provided by this suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
-        :rtype: list
+        :rtype: list[str]
         """
         # TODO: Remove old-style benchmarks after updating downstream suites.
         return self.benchmarks()
@@ -133,18 +252,18 @@ class BenchmarkSuite(object):
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: A list of string flags that are VM flags.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
     def runArgs(self, bmSuiteArgs):
         """Extracts the run flags from the list of arguments passed to the suite.
 
-        :param list bmSuiteArgs: List of string arguments to the suite.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: A list of string flags that are arguments for the suite.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
@@ -171,6 +290,7 @@ class BenchmarkSuite(object):
 
         This is used to more accurately show command line options tied to a specific
         benchmark suite.
+        :rtype: list[str]
         """
         return []
 
@@ -699,7 +819,80 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
-class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
+class VmBenchmarkSuite(StdOutBenchmarkSuite):
+    def vmArgs(self, bmSuiteArgs):
+        args = self.vmAndRunArgs(bmSuiteArgs)[0]
+        for parser_name in self.parserNames():
+            parser = get_parser(parser_name)
+            _, args = parser.parse_known_args(args)
+        return args
+
+    def parserNames(self):
+        names = []
+
+        def _acc(reg):
+            names.append(reg.get_parser_name())
+            for guest_reg in reg.get_known_guest_registries():
+                _acc(guest_reg)
+        _acc(self.get_vm_registry())
+        return names
+
+    def vmAndRunArgs(self, bmSuiteArgs):
+        return splitArgs(bmSuiteArgs, "--")
+
+    def runArgs(self, bmSuiteArgs):
+        return self.vmAndRunArgs(bmSuiteArgs)[1]
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        return self.createVmCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
+
+    def createVmCommandLineArgs(self, benchmarks, runArgs):
+        """" Creates the arguments that need to be passed to the VM to run the benchamrks.
+        :rtype: list
+        """
+        raise NotImplementedError()
+
+    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
+        command = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        if command is None:
+            return 0, "", {}
+        vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
+        t = vm.run(cwd, command)
+        if len(t) == 2:
+            ret_code, out = t
+            vm_dims = {}
+        else:
+            ret_code, out, vm_dims = t
+        host_vm = None
+        if isinstance(vm, GuestVm):
+            host_vm = vm.host_vm()
+            assert host_vm
+        dims = {
+            "vm": vm.name(),
+            "host-vm": host_vm.name() if host_vm else vm.name(),
+            "host-vm-config": host_vm.config_name() if host_vm else vm.config_name(),
+            "guest-vm": vm.name() if host_vm else "none",
+            "guest-vm-config": vm.config_name() if host_vm else "default",
+        }
+        for key, value in vm_dims.items():
+            if key in dims and value != dims[key]:
+                if value == 'none':
+                    mx.warn("VM {}:{} ({}) tried overwriting {}='{original}' with '{}', keeping '{original}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, value, original=dims[key]))
+                    continue
+                else:
+                    mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
+            dims[key] = value
+        return ret_code, out, dims
+
+    def get_vm_registry(self):
+        """" Gets the VM registry used to run this type of benchmarks.
+        :rtype: VmRegistry
+        """
+        raise NotImplementedError()
+
+
+class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     """Convenience suite used for benchmarks running on the JDK.
 
     This suite relies on the `--jvm-config` flag to specify which JVM must be used to
@@ -710,21 +903,18 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
-        :param list benchmarks: List of benchmarks from the suite to execute.
-        :param list bmSuiteArgs: Arguments passed to the suite.
+        :param list[str] benchmarks: List of benchmarks from the suite to execute.
+        :param list[str] bmSuiteArgs: Arguments passed to the suite.
         :return: A list of command-line arguments.
-        :rtype: list
+        :rtype: list[str]
         """
         raise NotImplementedError()
 
-    def parserNames(self):
-        return ["java_benchmark_suite_jvm"]
-
-    def vmAndRunArgs(self, bmSuiteArgs):
-        return splitArgs(bmSuiteArgs, "--")
+    def get_vm_registry(self):
+        return java_vm_registry
 
     def splitJvmConfigArg(self, bmSuiteArgs):
-        parser = parsers["java_benchmark_suite_jvm"].parser
+        parser = get_parser(java_vm_registry.get_parser_name())
         args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
         return args.jvm, args.jvm_config, remainder
 
@@ -736,43 +926,15 @@ class JavaBenchmarkSuite(StdOutBenchmarkSuite): #pylint: disable=R0922
         """Returns the value of the `--jvm-config` argument or `None` if not present."""
         return self.splitJvmConfigArg(bmSuiteArgs)[1]
 
-    def vmArgs(self, bmSuiteArgs):
-        """Returns the VM arguments for the benchmark."""
-        return self.splitJvmConfigArg(bmSuiteArgs)[2]
-
-    def runArgs(self, bmSuiteArgs):
-        """Returns the run arguments for the benchmark."""
-        return self.vmAndRunArgs(bmSuiteArgs)[1]
-
     def getJavaVm(self, bmSuiteArgs):
-        jvm = self.jvm(bmSuiteArgs)
-        jvmConfig = self.jvmConfig(bmSuiteArgs)
-        if jvm is None:
-            if mx.get_opts().vm is not None:
-                mx.log("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
-                jvm = mx.get_opts().vm
-            else:
-                mx.log("Defaulting the JVM to 'server'.")
-                jvm = "server"
-        if jvmConfig is None:
-            mx.log("Defaulting --jvm-config to 'default'. Consider adding --jvm-config.")
-            jvmConfig = "default"
-        return get_java_vm(jvm, jvmConfig)
+        return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
-        with mx.DisableJavaDebuggging():
+        with mx.DisableJavaDebugging():
             self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
-    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
-        jvm = self.getJavaVm(bmSuiteArgs)
-        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
-        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        if args is None:
-            return 0, "", {}
-        return jvm.run(cwd, args)
 
-
-class JavaVm(object): #pylint: disable=R0922
+class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
     def name(self):
@@ -790,11 +952,50 @@ class JavaVm(object): #pylint: disable=R0922
         extra dimensions to incorporate into the datapoints.
 
         :param str cwd: Current working directory.
-        :param list args: List of command-line arguments for the VM.
+        :param list[str] args: List of command-line arguments for the VM.
         :return: A tuple with an exit-code, stdout, and a dict with extra dimensions.
         :rtype: tuple
         """
         raise NotImplementedError()
+
+
+class GuestVm(Vm): #pylint: disable=R0921
+    def __init__(self, host_vm=None):
+        self._host_vm = host_vm
+
+    def hosting_registry(self):
+        """Returns the Host VM registry.
+        :rtype: VmRegistry
+        """
+        raise NotImplementedError()
+
+    def with_host_vm(self, host_vm):
+        """Returns a copy of this VM with the host VM set to `host_vm`.
+        :param Vm host_vm: the host VM to set in the returned object.
+        :rtype: GuestVm
+        """
+        return self.__class__(host_vm)
+
+    def host_vm(self):
+        """Returns the Host VM.
+
+        :rtype: Vm
+        """
+        return self._host_vm
+
+
+class JavaVm(Vm):
+    pass
+
+
+def _get_default_java_vm(jvm_config, vms):
+    if mx.get_opts().vm is not None and (jvm_config is None or (mx.get_opts().vm, jvm_config) in vms):
+        mx.warn("Defaulting --jvm to the deprecated --vm value. Please use --jvm.")
+        return mx.get_opts().vm
+    return None
+
+
+java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
 
 
 class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
@@ -805,8 +1006,10 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         raise NotImplementedError()
 
     def dimensions(self, cwd, args, code, out):
-        """Returns a list of additional dimensions to put into every datapoint."""
-        raise NotImplementedError()
+        """Returns a dict of additional dimensions to put into every datapoint.
+        :rtype: dict
+        """
+        return {}
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
@@ -836,12 +1039,6 @@ class DefaultJavaVm(OutputCapturingJavaVm):
     def post_process_command_line_args(self, args):
         return args
 
-    def dimensions(self, cwd, args, code, out):
-        return {
-            "host-vm": self.name(),
-            "host-vm-config": self.config_name(),
-        }
-
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
 
@@ -857,18 +1054,12 @@ class DummyJavaVm(OutputCapturingJavaVm):
     pass
 
 
-def add_java_vm(javavm):
-    key = (javavm.name(), javavm.config_name())
-    if key in _bm_suite_java_vms:
-        raise RuntimeError("Java VM and config '{0}' already exist.".format(key))
-    _bm_suite_java_vms[key] = javavm
+def add_java_vm(javavm, suite=None, priority=0):
+    java_vm_registry.add_vm(javavm, suite, priority)
 
 
 def get_java_vm(vm_name, jvmconfig):
-    key = (vm_name, jvmconfig)
-    if not key in _bm_suite_java_vms:
-        raise RuntimeError("Java VM and config '{0}' do not exist.".format(key))
-    return _bm_suite_java_vms[key]
+    return java_vm_registry.get_vm(vm_name, jvmconfig)
 
 
 class TestBenchmarkSuite(JavaBenchmarkSuite):
@@ -912,7 +1103,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     def extraVmArgs(self):
         return []
 
-    def getJMHEntry(self):
+    def getJMHEntry(self, bmSuiteArgs):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
@@ -920,14 +1111,14 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
             benchmarks = []
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry() + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
+        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
 
     def benchmarkList(self, bmSuiteArgs):
         benchmarks = None
         jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        _, out, _ = jvm.run(cwd, args +  ["-l"])
+        _, out, _ = jvm.run(cwd, args + ["-l"])
         benchs = out.splitlines()
         assert benchs[0].startswith("Benchmarks:")
         return benchs[1:]
@@ -939,7 +1130,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
                 re.MULTILINE)
         ]
 
-    def benchSuiteName(self):
+    def benchSuiteName(self, bmSuiteArgs):
         return self.name()
 
     def failurePatterns(self):
@@ -949,7 +1140,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return []
 
     def rules(self, out, benchmarks, bmSuiteArgs):
-        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName())]
+        return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
 
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
@@ -963,7 +1154,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
                 jmhProjects.append(p)
         return mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk())
 
-    def getJMHEntry(self):
+    def getJMHEntry(self, bmSuiteArgs):
         return ["org.openjdk.jmh.Main"]
 
 
@@ -976,33 +1167,33 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     specifies the path to the JMH jar files. The later is the name suffix that is use
     for the bench-suite property.
     """
+    jmh_jar_parser_name = "jmh_jar_benchmark_suite_vm"
 
-    def benchSuiteName(self):
-        return "jmh-" + self.jmhName()
+    def benchSuiteName(self, bmSuiteArgs):
+        return "jmh-" + self.jmhName(bmSuiteArgs)
 
     def parserNames(self):
-        return ["jmh_jar_benchmark_suite_vm"]
+        return super(JMHJarBenchmarkSuite, self).parserNames() + [JMHJarBenchmarkSuite.jmh_jar_parser_name]
 
-    def vmArgs(self, bmSuiteArgs):
-        vmArgs = super(JMHJarBenchmarkSuite, self).vmArgs(bmSuiteArgs)
-        parser = parsers["jmh_jar_benchmark_suite_vm"].parser
-        args, remaining = parser.parse_known_args(vmArgs)
-        self.jmh_jar = args.jmh_jar
-        self.jmh_name = args.jmh_name
-        return remaining
+    def getJMHEntry(self, bmSuiteArgs):
+        return ["-jar", self.jmhJAR(bmSuiteArgs)]
 
-    def getJMHEntry(self):
-        return ["-jar", self.jmhJAR()]
+    def jmhArgs(self, bmSuiteArgs):
+        vmAndSuiteArgs = self.vmAndRunArgs(bmSuiteArgs)[0]
+        args, _ = get_parser(JMHJarBenchmarkSuite.jmh_jar_parser_name).parse_known_args(vmAndSuiteArgs)
+        return args
 
-    def jmhName(self):
-        if self.jmh_name is None:
+    def jmhName(self, bmSuiteArgs):
+        jmh_name = self.jmhArgs(bmSuiteArgs).jmh_name
+        if jmh_name is None:
             mx.abort("Please use the --jmh-name benchmark suite argument to set the name of the JMH suite.")
-        return self.jmh_name
+        return jmh_name
 
-    def jmhJAR(self):
-        if self.jmh_jar is None:
+    def jmhJAR(self, bmSuiteArgs):
+        jmh_jar = self.jmhArgs(bmSuiteArgs).jmh_jar
+        if jmh_jar is None:
             mx.abort("Please use the --jmh-jar benchmark suite argument to set the JMH jar file.")
-        jmh_jar = os.path.expanduser(self.jmh_jar)
+        jmh_jar = os.path.expanduser(jmh_jar)
         if not os.path.exists(jmh_jar):
             mx.abort("The --jmh-jar argument points to a non-existing file: " + jmh_jar)
         return jmh_jar
@@ -1154,14 +1345,14 @@ class BenchmarkExecutor(object):
             }
 
         standard.update(commit_info("", mx.primary_suite()))
-        for (name, mxsuite) in mx._suites.iteritems():
+        for mxsuite in mx.suites():
             ignored = mxBenchmarkArgs.ignore_suite_commit_info
-            if ignored and name in ignored:
+            if ignored and mxsuite.name in ignored:
                 continue
-            standard.update(commit_info("extra." + name + ".", mxsuite))
+            standard.update(commit_info("extra." + mxsuite.name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
         if triggering_suite:
-            mxsuite = mx._suites[triggering_suite]
+            mxsuite = mx.suite(triggering_suite)
             standard.update(commit_info("extra.triggering-repo.", mxsuite))
         return standard
 
@@ -1243,7 +1434,7 @@ class BenchmarkExecutor(object):
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
             "--list", default=None, action="store_true",
-            help="When set, just prints the list of all available benchmark suites.")
+            help="When set, just prints the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
@@ -1253,10 +1444,15 @@ class BenchmarkExecutor(object):
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         if mxBenchmarkArgs.list:
-            print "The following benchmark suites are available:\n"
-            for name in bm_suite_valid_keys():
-                print "  " + name
-            mx.abort("")
+            if mxBenchmarkArgs.benchmark and suite:
+                print "The following benchmarks are available in suite {}:\n".format(suite.name())
+                for name in suite.benchmarkList(bmSuiteArgs):
+                    print "  " + name
+            else:
+                print "The following benchmark suites are available:\n"
+                for name in bm_suite_valid_keys():
+                    print "  " + name
+            return 0
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
@@ -1264,7 +1460,7 @@ class BenchmarkExecutor(object):
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
                     print entry.description
                     entry.parser.print_help()
-            mx.abort("")
+            return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()
 
@@ -1305,7 +1501,7 @@ _benchmark_executor = BenchmarkExecutor()
 
 def init_benchmark_suites():
     """Called after mx initialization if mx is the primary suite."""
-    add_java_vm(DefaultJavaVm("server", "default"))
+    add_java_vm(DefaultJavaVm("server", "default"), priority=-1)
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
     add_bm_suite(TestBenchmarkSuite())
 

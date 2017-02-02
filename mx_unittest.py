@@ -32,27 +32,81 @@ import re
 import tempfile
 import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError
-from os.path import exists, join
+from os.path import exists, join, basename
 
+def _read_cached_testclasses(cachesDir, jar):
+    """
+    Reads the cached list of test classes in `jar`.
+
+    :param str cachesDir: directory containing files with cached test lists
+    :return: the cached list of test classes in `jar` or None if the cache doesn't
+             exist or is out of date
+    """
+    cache = join(cachesDir, basename(jar) + '.testclasses')
+    if exists(cache) and mx.TimeStampFile(cache).isNewerThan(jar):
+        # Only use the cached result if the source jar is older than the cache file
+        try:
+            with open(cache) as fp:
+                return [line.strip() for line in fp.readlines()]
+        except IOError as e:
+            mx.warn('Error reading from ' + cache + ': ' + str(e))
+    return None
+
+def _write_cached_testclasses(cachesDir, jar, testclasses):
+    """
+    Writes `testclasses` to a cache file specific to `jar`.
+
+    :param str cachesDir: directory containing files with cached test lists
+    :param list testclasses: a list of test class names
+    """
+    cache = join(cachesDir, basename(jar) + '.testclasses')
+    try:
+        with open(cache, 'w') as fp:
+            for classname in testclasses:
+                print >> fp, classname
+    except IOError as e:
+        mx.warn('Error writing to ' + cache + ': ' + str(e))
 
 def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
     if len(dists) == 0:
         return {}
 
     candidates = {}
-    # Ensure Java support class is built
-    mx.build(['--dependencies', 'com.oracle.mxtool.junit'])
-    # Create map from jar file to the binary suite distribution defining it
-    jars = {d.classpath_repr(): d for d in dists}
-    cp = mx.classpath(['com.oracle.mxtool.junit'] + [d.name for d in dists], jdk=jdk)
-    out = mx.OutputCapture()
-    mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jars.keys(), out=out, addDefaultArgs=False)
-    for line in out.data.strip().split('\n'):
-        name, jar = line.split(' ')
-        # Record class name to the binary suite distribution containing it
-        candidates[name] = jars[jar]
-    return candidates
 
+    # Create map from jar file to the binary suite distribution defining it
+    jarsToDists = {d.classpath_repr(): d for d in dists}
+
+    primarySuite = mx.primary_suite()
+    cachesDir = None
+    jarsToParse = []
+    if primarySuite and primarySuite != mx._mx_suite:
+        cachesDir = mx.ensure_dir_exists(join(primarySuite.get_output_root(), 'unittest'))
+        for d in dists:
+            jar = d.classpath_repr()
+            testclasses = _read_cached_testclasses(cachesDir, jar)
+            if testclasses is not None:
+                for classname in testclasses:
+                    candidates[classname] = jarsToDists[jar]
+            else:
+                jarsToParse.append(jar)
+
+    if jarsToParse:
+        # Ensure Java support class is built
+        mx.build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.junit'])
+
+        cp = mx.classpath(['com.oracle.mxtool.junit'] + jarsToDists.values(), jdk=jdk)
+        out = mx.LinesOutputCapture()
+        mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jarsToParse, out=out, addDefaultArgs=False)
+
+        for line in out.lines:
+            parts = line.split(' ')
+            jar = parts[0]
+            testclasses = parts[1:] if len(parts) > 1 else []
+            if cachesDir:
+                _write_cached_testclasses(cachesDir, jar, testclasses)
+            for classname in testclasses:
+                candidates[classname] = jarsToDists[jar]
+    return candidates
 
 def _find_classes_with_annotations(p, pkgRoot, annotations, includeInnerClasses=False):
     """
@@ -78,7 +132,6 @@ class _VMLauncher(object):
             return self._jdk()
         return self._jdk
 
-
 def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
@@ -87,7 +140,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
 
     # this is what should be used
     compat_suite = suite if suite else mx.primary_suite()
-    if compat_suite.getMxCompatibility().useDistsForUnittest():
+    if suite != mx._mx_suite and compat_suite.getMxCompatibility().useDistsForUnittest():
         jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and (not suite or d.suite == suite)]
         # find a corresponding distribution for each test
         candidates = _find_classes_by_annotated_methods(annotations, jar_distributions, vmLauncher.jdk())
@@ -175,7 +228,7 @@ def set_vm_launcher(name, launcher, jdk=None):
     :param str name: a descriptive name for the launcher
     :param callable launcher: a function taking 3 positional arguments; the first is a list of the
            arguments to go before the main class name on the JVM command line, the second is the
-           name of the main class to run run and the third is a list of the arguments to go after
+           name of the main class to run and the third is a list of the arguments to go after
            the main class name on the JVM command line
     :param jdk: a `JDKConfig` or no-arg callable that produces a `JDKConfig` object denoting
            the JDK containing the JVM that will be executed. This is used to resolve JDK
@@ -231,10 +284,17 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         with open(testfile) as fp:
             testclasses = [l.rstrip() for l in fp.readlines()]
 
-        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=vmLauncher.jdk())
+        jdk = vmLauncher.jdk()
+        vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk)
 
         # suppress menubar and dock when running on Mac
         vmArgs = prefixArgs + ['-Djava.awt.headless=true'] + vmArgs
+
+        if jdk.javaCompliance > '1.8':
+            # This is required to access jdk.internal.module.Modules for supporting
+            # the @AddExports annotation.
+            vmArgs = vmArgs + ['--add-exports=java.base/jdk.internal.module=ALL-UNNAMED']
+
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
         mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
@@ -242,7 +302,6 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         config = (vmArgs, mainClass, mainClassArgs)
         for p in _config_participants:
             config = p(config)
-
         vmLauncher.launcher(*config)
 
     vmLauncher = _vm_launcher

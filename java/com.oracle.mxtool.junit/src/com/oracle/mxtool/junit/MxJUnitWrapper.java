@@ -22,18 +22,36 @@
  */
 package com.oracle.mxtool.junit;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import junit.runner.*;
+import org.junit.internal.JUnitSystem;
+import org.junit.internal.RealSystem;
+import org.junit.runner.Description;
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Request;
+import org.junit.runner.Result;
+import org.junit.runner.Runner;
+import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunNotifier;
+import org.junit.runners.ParentRunner;
+import org.junit.runners.model.RunnerScheduler;
 
-import org.junit.internal.*;
-import org.junit.runner.*;
-import org.junit.runner.notification.*;
-import org.junit.runners.*;
-import org.junit.runners.model.*;
+import junit.runner.Version;
 
 public class MxJUnitWrapper {
 
@@ -198,6 +216,11 @@ public class MxJUnitWrapper {
             mxListener = new GCAfterTestDecorator(mxListener);
         }
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
+
+        if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
+            addExports(classes, system.out());
+        }
+
         Request request;
         if (methodName == null) {
             request = Request.classes(classes.toArray(new Class<?>[0]));
@@ -233,6 +256,91 @@ public class MxJUnitWrapper {
             result.getFailures().add(each);
         }
         System.exit(result.wasSuccessful() ? 0 : 1);
+    }
+
+    private static final Pattern MODULE_PACKAGE_RE = Pattern.compile("([^/]+)/(.+)");
+
+    /**
+     * Adds the super types of {@code cls} to {@code supertypes}.
+     */
+    private static void gatherSupertypes(Class<?> cls, Set<Class<?>> supertypes) {
+        if (!supertypes.contains(cls)) {
+            supertypes.add(cls);
+            Class<?> superclass = cls.getSuperclass();
+            if (superclass != null) {
+                gatherSupertypes(superclass, supertypes);
+            }
+            for (Class<?> iface : cls.getInterfaces()) {
+                gatherSupertypes(iface, supertypes);
+            }
+        }
+    }
+
+    /**
+     * Updates modules specified in {@code AddExport} annotations on {@code classes} to export
+     * concealed packages to the annotation classes' declaring modules.
+     */
+    private static void addExports(List<Class<?>> classes, PrintStream out) {
+        Set<Class<?>> types = new HashSet<>();
+        for (Class<?> cls : classes) {
+            gatherSupertypes(cls, types);
+        }
+        for (Class<?> cls : types) {
+            Annotation[] annos = cls.getAnnotations();
+            for (Annotation a : annos) {
+                Class<? extends Annotation> annotationType = a.annotationType();
+                if (annotationType.getSimpleName().equals("AddExports")) {
+                    Optional<String[]> value = getElement("value", String[].class, a);
+                    if (value.isPresent()) {
+                        for (String export : value.get()) {
+                            Matcher m = MODULE_PACKAGE_RE.matcher(export);
+                            if (m.matches()) {
+                                String moduleName = m.group(1);
+                                String packageName = m.group(2);
+                                JLRModule module = JLRModule.find(moduleName);
+                                if (module == null) {
+                                    out.printf("%s: Cannot find module named %s specified in \"AddExports\" annotation: %s%n", cls.getName(), moduleName, a);
+                                } else {
+                                    module.addExports(packageName, JLRModule.fromClass(cls));
+                                    module.addOpens(packageName, JLRModule.fromClass(cls));
+                                }
+                            } else {
+                                out.printf("%s: Ignoring \"AddExports\" annotation with value not matching <module>/<package> pattern: %s%n", cls.getName(), a);
+                            }
+                        }
+                    } else {
+                        out.printf("%s: Ignoring \"AddExports\" annotation without `String value` element: %s%n", cls.getName(), a);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the value of the element named {@code name} of type {@code type} from {@code annotation}
+     * if present.
+     *
+     * @return the requested element value wrapped in an {@link Optional} or
+     *         {@link Optional#empty()} if {@code annotation} has no element named {@code name}
+     * @throws AssertionError if {@code annotation} has an element of the given name but whose type
+     *             is not {@code type} or if there's some problem reading the value via reflection
+     */
+    private static <T> Optional<T> getElement(String name, Class<T> type, Annotation annotation) {
+        Class<? extends Annotation> annotationType = annotation.annotationType();
+        Method valueAccessor = null;
+        try {
+            valueAccessor = annotationType.getMethod(name);
+            if (!valueAccessor.getReturnType().equals(type)) {
+                throw new AssertionError(String.format("Element %s of %s is of type %s, not %s ", name, annotationType.getName(), valueAccessor.getReturnType().getName(), type.getName()));
+            }
+        } catch (NoSuchMethodException e) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(type.cast(valueAccessor.invoke(annotation)));
+        } catch (Exception e) {
+            throw new AssertionError(String.format("Could not read %f element from %s", name, annotation), e);
+        }
     }
 
     /**
