@@ -1626,6 +1626,12 @@ class Project(Dependency):
         """
         return True
 
+    def netbeans_config_up_to_date(self, configZip):
+        """
+        Determines if the zipped up NetBeans configuration
+        """
+        return True
+
     def get_javac_lint_overrides(self):
         """
         Gets a string to be added to the -Xlint javac option.
@@ -1806,6 +1812,23 @@ class JavaProject(Project, ClasspathDependency):
             for source in sources:
                 if configZip.isOlderThan(source):
                     return False
+        return True
+
+    def netbeans_config_up_to_date(self, configZip):
+        for _, sources in self.netbeans_settings_sources().iteritems():
+            for source in sources:
+                if configZip.isOlderThan(source):
+                    return False
+
+        if configZip.isOlderThan(join(self.dir, 'build.xml')):
+            return False
+
+        if configZip.isOlderThan(join(self.dir, 'nbproject/project.xml')):
+            return False
+
+        if configZip.isOlderThan(join(self.dir, 'nbproject/project.properties')):
+            return False
+
         return True
 
     def eclipse_settings_sources(self):
@@ -11108,9 +11131,15 @@ def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
         return False
 
     if ide == 'eclipse':
-        for p in [p for p in suite.projects]:
-            if not p.eclipse_config_up_to_date(configZip):
+        for proj in [p for p in suite.projects]:
+            if not proj.eclipse_config_up_to_date(configZip):
                 return False
+
+    if ide == 'netbeans':
+        for proj in [p for p in suite.projects]:
+            if not proj.netbeans_config_up_to_date(configZip):
+                return False
+
     return True
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
@@ -12080,7 +12109,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('target')
     out.close('project')
     update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
-    if files:
+    if files is not None:
         files.append(join(p.dir, 'build.xml'))
 
     out = XMLDoc()
@@ -12127,7 +12156,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('configuration')
     out.close('project')
     update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
-    if files:
+    if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
     out = StringIO.StringIO()
@@ -12329,14 +12358,16 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
     out.close()
-    if files:
+
+    if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.properties'))
 
     for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
         with open(source) as fp:
             content = fp.read()
     update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
-    if files:
+
+    if files is not None:
         files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
 def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
@@ -14909,7 +14940,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.69.1")
+version = VersionSpec("5.69.2")
 
 currentUmask = None
 
