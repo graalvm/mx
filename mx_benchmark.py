@@ -1479,7 +1479,11 @@ class BenchmarkExecutor(object):
                 failures_seen = True
                 mx.log(traceback.format_exc())
         end_time = time.time()
-        suite.after(bmSuiteArgs)
+        try:
+            suite.after(bmSuiteArgs)
+        except RuntimeError:
+            failures_seen = True
+
 
         for result in results:
             result["benchmarking.start-ts"] = int(start_time)
