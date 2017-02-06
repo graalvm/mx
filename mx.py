@@ -14620,7 +14620,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print 'WARNING: ' + msg
+        print colorize('WARNING: ' + msg, color='yellow')
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
