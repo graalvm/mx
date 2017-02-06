@@ -9489,20 +9489,47 @@ def log(msg=None):
     else:
         print msg
 
+# https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+_ansi_color_table = {
+    'black' : '30',
+    'red' : '31',
+    'green' : '32',
+    'yellow' : '33',
+    'blue' : '34',
+    'magenta' : '35',
+    'cyan' : '36'
+    }
+
+def colorize(msg, color='red', bright=True):
+    """
+    Wraps `msg` in ANSI escape sequences to make it print with foreground font color `color` and
+    brightness `bright` on the terminal. This method returns `msg` unchanged if it is None,
+    if it already starts with the designated escape sequence or the execution environment does
+    not support color printing on the terminal.
+    """
+    if msg is None:
+        return None
+    isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
+    code = _ansi_color_table.get(color, None)
+    if code is None:
+        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.iterkeys()))
+    if bright:
+        code += ';1'
+    color_on = '\033[' + code + 'm'
+    if isUnix and sys.stderr.isatty() and not msg.startswith(color_on):
+        return color_on + msg + '\033[0m'
+    return msg
+
 def log_error(msg=None):
     """
     Write an error message to the console.
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
-    isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
     if msg is None:
         print >> sys.stderr
-    elif isUnix and sys.stderr.isatty():
-        # On unix systems, we can use ANSI escape sequences
-        print >> sys.stderr, '\033[91m' + str(msg) + '\033[0m'
     else:
-        print >> sys.stderr, str(msg)
+        print >> sys.stderr, colorize(str(msg))
 
 def expand_project_in_class_path_arg(cpArg):
     """
@@ -13937,10 +13964,10 @@ def stip(args):
 
 def _sversions_rev(rev, isdirty, with_color):
     if with_color:
-        color_on, color_off = '\033[93m', '\033[0m'
+        label = colorize(rev[0:12], color='yellow')
     else:
-        color_on = color_off = ''
-    return color_on + rev[0:12] + color_off + rev[12:] + ' +'[int(isdirty)]
+        label = rev[0:12]
+    return label + ' +'[int(isdirty)]
 
 def sversions(args):
     """print working directory revision for primary suite and all imports"""
