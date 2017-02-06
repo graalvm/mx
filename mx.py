@@ -9500,24 +9500,25 @@ _ansi_color_table = {
     'cyan' : '36'
     }
 
-def colorize(msg, color='red', bright=True):
+def colorize(msg, color='red', bright=True, stream=sys.stderr):
     """
-    Wraps `msg` in ANSI escape sequences to make it print with foreground font color `color` and
-    brightness `bright` on the terminal. This method returns `msg` unchanged if it is None,
+    Wraps `msg` in ANSI escape sequences to make it print to `stream` with foreground font color
+    `color` and brightness `bright`. This method returns `msg` unchanged if it is None,
     if it already starts with the designated escape sequence or the execution environment does
-    not support color printing on the terminal.
+    not support color printing on `stream`.
     """
     if msg is None:
         return None
-    isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
     code = _ansi_color_table.get(color, None)
     if code is None:
         abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.iterkeys()))
     if bright:
         code += ';1'
     color_on = '\033[' + code + 'm'
-    if isUnix and sys.stderr.isatty() and not msg.startswith(color_on):
-        return color_on + msg + '\033[0m'
+    if not msg.startswith(color_on):
+        isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
+        if isUnix and hasattr(stream, 'isatty') and stream.isatty():
+            return color_on + msg + '\033[0m'
     return msg
 
 def log_error(msg=None):
@@ -9529,7 +9530,7 @@ def log_error(msg=None):
     if msg is None:
         print >> sys.stderr
     else:
-        print >> sys.stderr, colorize(str(msg))
+        print >> sys.stderr, colorize(str(msg), stream=sys.stderr)
 
 def expand_project_in_class_path_arg(cpArg):
     """
@@ -14620,7 +14621,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print colorize('WARNING: ' + msg, color='yellow')
+        print colorize('WARNING: ' + msg, color='yellow', stream=sys.stdout)
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -15035,7 +15036,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.70.1")
+version = VersionSpec("5.70.2")
 
 currentUmask = None
 
