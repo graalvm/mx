@@ -9467,9 +9467,9 @@ def log_error(msg=None):
         print >> sys.stderr
     elif isUnix and sys.stderr.isatty():
         # On unix systems, we can use ANSI escape sequences
-        print >> sys.stderr, '\033[91m' + msg + '\033[0m'
+        print >> sys.stderr, '\033[91m' + str(msg) + '\033[0m'
     else:
-        print >> sys.stderr, msg
+        print >> sys.stderr, str(msg)
 
 def expand_project_in_class_path_arg(cpArg):
     """
