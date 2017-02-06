@@ -1349,7 +1349,7 @@ class BenchmarkExecutor(object):
             ignored = mxBenchmarkArgs.ignore_suite_commit_info
             if ignored and mxsuite.name in ignored:
                 continue
-            standard.update(commit_info("extra." + mxsuite.name + ".", mxsuite))
+            standard.update(commit_info(mxsuite.name + ".", mxsuite))
         triggering_suite = self.triggeringSuite(mxBenchmarkArgs)
         if triggering_suite:
             mxsuite = mx.suite(triggering_suite)
@@ -1482,8 +1482,8 @@ class BenchmarkExecutor(object):
         suite.after(bmSuiteArgs)
 
         for result in results:
-            result["extra.benchmarking.start-ts"] = int(start_time)
-            result["extra.benchmarking.end-ts"] = int(end_time)
+            result["benchmarking.start-ts"] = int(start_time)
+            result["benchmarking.end-ts"] = int(end_time)
 
         topLevelJson = {
           "queries": results
