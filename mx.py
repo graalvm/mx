@@ -9489,20 +9489,48 @@ def log(msg=None):
     else:
         print msg
 
+# https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+_ansi_color_table = {
+    'black' : '30',
+    'red' : '31',
+    'green' : '32',
+    'yellow' : '33',
+    'blue' : '34',
+    'magenta' : '35',
+    'cyan' : '36'
+    }
+
+def colorize(msg, color='red', bright=True, stream=sys.stderr):
+    """
+    Wraps `msg` in ANSI escape sequences to make it print to `stream` with foreground font color
+    `color` and brightness `bright`. This method returns `msg` unchanged if it is None,
+    if it already starts with the designated escape sequence or the execution environment does
+    not support color printing on `stream`.
+    """
+    if msg is None:
+        return None
+    code = _ansi_color_table.get(color, None)
+    if code is None:
+        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.iterkeys()))
+    if bright:
+        code += ';1'
+    color_on = '\033[' + code + 'm'
+    if not msg.startswith(color_on):
+        isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
+        if isUnix and hasattr(stream, 'isatty') and stream.isatty():
+            return color_on + msg + '\033[0m'
+    return msg
+
 def log_error(msg=None):
     """
     Write an error message to the console.
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
-    isUnix = sys.platform.startswith('linux') or sys.platform in ['darwin', 'freebsd']
     if msg is None:
         print >> sys.stderr
-    elif isUnix and sys.stderr.isatty():
-        # On unix systems, we can use ANSI escape sequences
-        print >> sys.stderr, '\033[91m' + str(msg) + '\033[0m'
     else:
-        print >> sys.stderr, str(msg)
+        print >> sys.stderr, colorize(str(msg), stream=sys.stderr)
 
 def expand_project_in_class_path_arg(cpArg):
     """
@@ -13937,10 +13965,10 @@ def stip(args):
 
 def _sversions_rev(rev, isdirty, with_color):
     if with_color:
-        color_on, color_off = '\033[93m', '\033[0m'
+        label = colorize(rev[0:12], color='yellow')
     else:
-        color_on = color_off = ''
-    return color_on + rev[0:12] + color_off + rev[12:] + ' +'[int(isdirty)]
+        label = rev[0:12]
+    return label + ' +'[int(isdirty)]
 
 def sversions(args):
     """print working directory revision for primary suite and all imports"""
@@ -14593,7 +14621,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print 'WARNING: ' + msg
+        print colorize('WARNING: ' + msg, color='yellow', stream=sys.stdout)
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -15008,7 +15036,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.70.1")
+version = VersionSpec("5.70.2")
 
 currentUmask = None
 
