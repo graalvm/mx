@@ -142,8 +142,7 @@ class JavaModuleDescriptor(object):
         for use in sorted(self.uses):
             print >> out, '    uses ' + use + ';'
         for service, providers in sorted(self.provides.iteritems()):
-            for provider in providers:
-                print >> out, '    provides ' + service + ' with ' + provider + ';'
+            print >> out, '    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';'
         for pkg in sorted(self.conceals):
             print >> out, '    // conceals: ' + pkg
         if self.jarpath:
