@@ -1,5 +1,10 @@
 # overlay version
-overlay = 7c0af2a1add50d92fe6e7a00ca0349f74c8e6493
+overlay = 0edd74cfb471019c0f528dd8aeca68ad09d88fcc
+
+# These are used in the overlay
+java7 : {name : oraclejdk, version : "7",    platformspecific: true}
+java8 : {name : labsjdk, version : "8u121-jvmci-0.25", platformspecific: true}
+java9 : {name : labsjdk, version : "9-SNAPSHOT", platformspecific: true}
 
 gate : {
   packages : {
