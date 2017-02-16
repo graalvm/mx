@@ -3416,13 +3416,16 @@ class Library(BaseLibrary, ClasspathDependency):
         else:
             return NotImplemented
 
+    def get_urls(self):
+        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
 
         bootClassPathAgent = getattr(self, 'bootClassPathAgent').lower() == 'true' if hasattr(self, 'bootClassPathAgent') else False
 
-        urls = [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        urls = self.get_urls()
         return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
 
     def _check_download_needed(self):
@@ -9675,7 +9678,7 @@ def _suggest_http_proxy_error(e):
         defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
         log('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
 
-def download(path, urls, verbose=False, abortOnError=True):
+def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
@@ -9691,12 +9694,23 @@ def download(path, urls, verbose=False, abortOnError=True):
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
     progress = not _opts.no_download_progress and sys.stderr.isatty()
     for url in urls:
-        log('Downloading ' + url + ' to ' + path)
+        if not verifyOnly:
+            log('Downloading ' + url + ' to ' + path)
         m = jarURLPattern.match(url)
         jarEntryName = None
         if m:
             url = m.group(1)
             jarEntryName = m.group(2)
+
+        if verifyOnly:
+            try:
+                conn = urllib2.urlopen(url, timeout=10)
+                conn.close()
+                return True
+            except (IOError, socket.timeout) as e:
+                pass
+            continue
+
 
         # Use a temp file while downloading to avoid multiple threads
         # overwriting the same file.
@@ -14258,6 +14272,20 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
+def verify_library_urls(args):
+    """verify that all suite libraries are reachable from at least one of the URLs
+
+    usage: mx verifylibraryurls
+    """
+    ok = True
+    for s in suites(True):
+        for lib in s.libs:
+            if not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
+                ok = False
+                log('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
+    if not ok:
+        abort('Some libraries are not reachable')
+
 def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None):
     myDir = join(_mx_home, 'java') if myDir is None else myDir
     binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
@@ -14686,6 +14714,7 @@ _commands = {
     'netbeansinit': [netbeansinit, ''],
     'suites': [show_suites, ''],
     'envs': [show_envs, '[options]'],
+    'verifylibraryurls': [verify_library_urls, ''],
     'version': [show_version, ''],
     'update': [update, ''],
     'projects': [show_projects, ''],
@@ -15042,7 +15071,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.2")
+version = VersionSpec("5.72.3")
 
 currentUmask = None
 

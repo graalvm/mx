@@ -375,6 +375,10 @@ def gate(args):
             if t and mx.command_function('findbugs')([]) != 0:
                 t.abort('FindBugs warnings were found')
 
+        with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
+            if t:
+                mx.command_function('verifylibraryurls')([])
+
         if mx._primary_suite is mx._mx_suite:
             with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
                 if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
