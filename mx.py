@@ -9530,6 +9530,8 @@ def log_error(msg=None):
     if msg is None:
         print >> sys.stderr
     else:
+        if type(msg) is unicode:
+            msg = msg.encode('utf-8')
         print >> sys.stderr, colorize(str(msg), stream=sys.stderr)
 
 def expand_project_in_class_path_arg(cpArg):
