@@ -2542,7 +2542,7 @@ class JavacCompiler(JavacLikeCompiler):
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 """
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
-                    if module == 'jdk.vm.ci' and project.suite.name == 'jvmci':
+                    if module == 'jdk.internal.vm.ci' and project.suite.name == 'jvmci':
                         # A JVMCI project may refer to a JVMCI API under development which
                         # can differ with the signature of the JVMCI API in the JDK used
                         # for compilation. As such, a normal class path reference to the
@@ -11318,7 +11318,7 @@ def _get_jdk_module_jar(module, suite, jdk):
         classes = _classes_dir(jdk.home)
         sourcesDirs = []
         if classes:
-            if module == 'jdk.vm.ci':
+            if module == 'jdk.internal.vm.ci':
                 for subdir in os.listdir(classes):
                     src = join(classes, subdir, 'src')
                     if exists(src):
@@ -11447,13 +11447,13 @@ def _eclipseinit_project(p, files=None, libFiles=None):
         if eclipseJavaCompliance < '9':
             # If this project imports any JVMCI packages and Eclipse does not yet
             # support JDK9, then the generated Eclipse project needs to see the classes
-            # in the jdk.vm.ci module. Further down, a stub containing the classes
+            # in the jdk.internal.vm.ci module. Further down, a stub containing the classes
             # in this module will be added as a library to generated project.
             # Fortunately this works even when the class files are at version 53 (JDK9)
             # even though Eclipse can only run on class files with verison 52 (JDK8).
             for pkg in p.imported_java_packages(projectDepsOnly=False):
                 if pkg.startswith('jdk.vm.ci.'):
-                    moduleDeps.add('jdk.vm.ci')
+                    moduleDeps.add('jdk.internal.vm.ci')
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -15036,7 +15036,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.70.3")
+version = VersionSpec("5.71.0")
 
 currentUmask = None
 
