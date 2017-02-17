@@ -2512,10 +2512,22 @@ class JavacCompiler(JavacLikeCompiler):
             lint = [l for l in lint if l in knownLints]
         if lint:
             javacArgs.append('-Xlint:' + ','.join(lint))
+
+        def _classpath_append(elements):
+            if not elements:
+                return
+            if isinstance(elements, basestring):
+                elements = [elements]
+            idx = javacArgs.index('-classpath')
+            if idx >= 0:
+                elements = [e for e in elements if e not in javacArgs[idx + 1]]
+                javacArgs[idx + 1] += os.pathsep + os.pathsep.join(elements)
+            else:
+                javacArgs.extend(['-classpath', os.pathsep.join(elements)])
+
         if jdk.javaCompliance >= "9":
             unsafe_jar = _get_jdk_module_classes_jar('jdk.unsupported', primary_suite(), jdk, 'sun.misc.Unsafe')
-            idx = javacArgs.index('-classpath')
-            javacArgs[idx + 1] += os.pathsep + unsafe_jar
+            _classpath_append(unsafe_jar)
         if disableApiRestrictions:
             if jdk.javaCompliance < "9":
                 javacArgs.append('-XDignore.symbol.file')
@@ -2558,6 +2570,13 @@ class JavacCompiler(JavacLikeCompiler):
 
             if compliance >= "9":
                 addExportArgs(project)
+            else:
+                # We use --release n with n < 9 so we need to create JARs for JdkLibraries that are in modules and did not exist in JDK n
+                complianceJdk = self._get_compliance_jdk(compliance)
+                jdk_module_libraries = (e for e in classpath_entries(project.name, includeSelf=False)
+                                                if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince)
+                module_jars = set((_get_jdk_module_jar(lib.module, primary_suite(), complianceJdk) for lib in jdk_module_libraries))
+                _classpath_append(module_jars)
             aps = project.annotation_processors()
             if aps:
                 exports = {}
@@ -3322,9 +3341,6 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     def getBuildTask(self, args):
         return NoOpTask(self, args)
 
-    def _is_jdk_module(self, jdk):
-        return jdk.javaCompliance >= self.jdkStandardizedSince and jdk.javaCompliance >= "9" and self.module
-
     def classpath_repr(self, jdk, resolve=True):
         """
         Gets the absolute path of this library in `jdk` or None if this library is available
@@ -3337,8 +3353,6 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         if not jdk:
             abort('A JDK is required to resolve ' + self.name)
         if jdk.javaCompliance >= self.jdkStandardizedSince:
-            if self._is_jdk_module(jdk):
-                return _get_jdk_module_jar(self.module, primary_suite(), jdk)
             return None
         path = self.get_jdk_path(jdk, self.path)
         if not exists(path):
