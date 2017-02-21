@@ -678,6 +678,14 @@ class JMHJsonRule(Rule):
         return r
 
 
+class BenchmarkFailureError(RuntimeError):
+    """Thrown when a benchmark execution results in an error."""
+
+    def __init__(self, message, partialResults):
+        super(BenchmarkFailureError, self).__init__(message)
+        self.partialResults = partialResults
+
+
 class StdOutBenchmarkSuite(BenchmarkSuite):
     """Convenience suite for benchmarks that need to parse standard output.
 
@@ -705,6 +713,27 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         return self.validateStdoutWithDimensions(
             out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
 
+    def repairDatapoints(self, benchmarks, bmSuiteArgs, partialResults):
+        """Repairs output results after a benchmark fails.
+
+        Subclasses should override this method when they need to add failed datapoints.
+
+        This method is called when the benchmark suite invocation completes abnormally,
+        due to a non-zero exit code, a failure pattern in the standard output, or a
+        missing success pattern. The benchmark suite must go through the partial list of
+        datapoints, and add missing datapoints to it if necessary.
+
+        The `error` field of each datapoint should not be modified in this benchmark,
+        as it will be overwritten with the appropriate error message.
+        """
+        pass
+
+    def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
+        self.repairDatapoints(benchmarks, bmSuiteArgs, partialResults)
+        for result in partialResults:
+            result["error"] = message
+        raise BenchmarkFailureError(message, partialResults)
+
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, *args, **kwargs):
         """Validate out against the parse rules and create data points.
@@ -730,27 +759,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             mx.warn("Benchmark skipped, flaky pattern found. Benchmark(s): {0}".format(benchmarks))
             return []
 
-        flaky = False
-        for pat in self.flakySuccessPatterns():
-            if compiled(pat).search(out):
-                flaky = True
-        if not flaky:
-            if retcode:
-                if not self.validateReturnCode(retcode):
-                    raise RuntimeError(
-                        "Benchmark failed, exit code: {0}".format(retcode))
-            for pat in self.failurePatterns():
-                if compiled(pat).search(out):
-                    raise RuntimeError("Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
-            success = False
-            for pat in self.successPatterns():
-                if compiled(pat).search(out):
-                    success = True
-            if len(self.successPatterns()) == 0:
-                success = True
-            if not success:
-                raise RuntimeError("Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
-
         datapoints = []
         for rule in self.rules(out, benchmarks, bmSuiteArgs):
             # pass working directory to rule without changing the signature of parse
@@ -759,6 +767,30 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             for datapoint in parsedpoints:
                 datapoint.update(dims)
             datapoints.extend(parsedpoints)
+
+        flaky = False
+        for pat in self.flakySuccessPatterns():
+            if compiled(pat).search(out):
+                flaky = True
+        if not flaky:
+            if retcode:
+                if not self.validateReturnCode(retcode):
+                    self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
+                        "Benchmark failed, exit code: {0}".format(retcode))
+            for pat in self.failurePatterns():
+                if compiled(pat).search(out):
+                    self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
+                        "Benchmark failed, failure pattern found. Benchmark(s): {0}".format(benchmarks))
+            success = False
+            for pat in self.successPatterns():
+                if compiled(pat).search(out):
+                    success = True
+            if len(self.successPatterns()) == 0:
+                success = True
+            if not success:
+                self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
+                    "Benchmark failed, success pattern not found. Benchmark(s): {0}".format(benchmarks))
+
         return datapoints
 
     def validateReturnCode(self, retcode):
@@ -1475,6 +1507,10 @@ class BenchmarkExecutor(object):
                 partialResults = self.execute(
                     suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                 results.extend(partialResults)
+            except BenchmarkFailureError as error:
+                results.extend(error.partialResults)
+                failures_seen = True
+                mx.log(traceback.format_exc())
             except RuntimeError:
                 failures_seen = True
                 mx.log(traceback.format_exc())
