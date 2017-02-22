@@ -74,20 +74,38 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     assert len(repoUrls) > 0
     workDir = join(suite.get_output_root(), 'testdownstream')
 
-    # A mirror of the current suite is created with symlinks
-    mirror = join(workDir, suite.name)
-    if exists(mirror):
-        shutil.rmtree(mirror)
-    mx.ensure_dir_exists(mirror)
-    for f in os.listdir(suite.dir):
-        subDir = join(suite.dir, f)
-        if subDir == suite.get_output_root():
-            continue
-        src = join(suite.dir, f)
-        dst = join(mirror, f)
-        mx.logv('[Creating symlink from {} to {}]'.format(dst, src))
-        relsrc = os.path.relpath(src, os.path.dirname(dst))
-        os.symlink(relsrc, dst)
+    # A mirror of each suites in the same repo as `suite` is created with symlinks
+    rel_mirror = os.path.relpath(suite.dir, mx.SuiteModel.siblings_dir(suite.dir))
+    in_subdir = os.sep in rel_mirror
+    suites_in_repo = [suite]
+    if in_subdir:
+        base = os.path.dirname(suite.dir)
+        for e in os.listdir(base):
+            candidate = join(base, e)
+            if candidate != suite.dir:
+                mxDir = mx._is_suite_dir(candidate)
+                if mxDir:
+                    matches = [s for s in mx.suites() if s.dir == candidate]
+                    if len(matches) == 0:
+                        suites_in_repo.append(mx.SourceSuite(mxDir, primary=False, load=False))
+                    else:
+                        suites_in_repo.append(matches[0])
+
+    for suite_in_repo in suites_in_repo:
+        rel_mirror = os.path.relpath(suite_in_repo.dir, mx.SuiteModel.siblings_dir(suite_in_repo.dir))
+        mirror = join(workDir, rel_mirror)
+        if exists(mirror):
+            shutil.rmtree(mirror)
+        mx.ensure_dir_exists(mirror)
+        for f in os.listdir(suite_in_repo.dir):
+            subDir = join(suite_in_repo.dir, f)
+            if subDir == suite_in_repo.get_output_root():
+                continue
+            src = join(suite_in_repo.dir, f)
+            dst = join(mirror, f)
+            mx.logv('[Creating symlink from {} to {}]'.format(dst, src))
+            relsrc = os.path.relpath(src, os.path.dirname(dst))
+            os.symlink(relsrc, dst)
 
     targetDir = None
     for repoUrl in repoUrls:
@@ -106,7 +124,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
         else:
             git.clone(repoUrl, repoWorkDir)
 
-        # See if there's a matching (non-master) branch downstream and use it if there is
+        # See if there's a matching (non-master) branch and use it if there is
         if not branch:
             branch = git.git_command(suite.dir, ['rev-parse', '--abbrev-ref', 'HEAD']).strip()
         if branch != 'master':
