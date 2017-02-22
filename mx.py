@@ -8778,6 +8778,11 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
         else:
             commands += ['-p', suite.dir]
             cwd = suite.dir
+    if get_opts().verbose:
+        if get_opts().very_verbose:
+            commands.append('-V')
+        else:
+            commands.append('-v')
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def _get_new_progress_group_args():
@@ -15036,7 +15041,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.0")
+version = VersionSpec("5.72.1")
 
 currentUmask = None
 
