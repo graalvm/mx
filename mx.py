@@ -9090,6 +9090,7 @@ A JDKConfig object encapsulates info about an installed or deployed JDK.
 """
 class JDKConfig:
     def __init__(self, home, tag=None):
+        home = os.path.abspath(home)
         self.home = home
         self.tag = tag
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
@@ -15042,7 +15043,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.2")
+version = VersionSpec("5.72.3")
 
 currentUmask = None
 
