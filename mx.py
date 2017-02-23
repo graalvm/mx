@@ -11311,12 +11311,13 @@ def _get_jdk_module_jar(module, suite, jdk):
             ancestors of `start` and looking for ``*/src/<module>/share/classes``.
             """
             d = start
-            while d != os.sep:
+            while len(d) != 0 and d != os.sep:
                 for subdir in os.listdir(d):
                     classes = join(d, subdir, 'src', module, 'share', 'classes')
                     if exists(classes):
                         return classes
                 d = dirname(d)
+            return None
 
         # Try find the sources for `module` based on the assumption `jdk.home` is in the
         # build/ directory of a JDK9 repo.
@@ -15041,7 +15042,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.1")
+version = VersionSpec("5.72.2")
 
 currentUmask = None
 
