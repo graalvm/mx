@@ -8473,7 +8473,7 @@ def ask_persist_env(varName, value, valueSeparator=None):
 _os_jdk_locations = {
     'darwin': {
         'bases': ['/Library/Java/JavaVirtualMachines'],
-        'suffix': 'Contents/Home'
+        'suffixes': ['Contents/Home', '']
     },
     'linux': {
         'bases': [
@@ -8499,9 +8499,9 @@ def _find_available_jdks(versionCheck):
         jdkLocations = _os_jdk_locations[os_name]
         for base in jdkLocations['bases']:
             if exists(base):
-                if 'suffix' in jdkLocations:
-                    suffix = jdkLocations['suffix']
-                    candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
+                if 'suffixes' in jdkLocations:
+                    for suffix in jdkLocations['suffixes']:
+                        candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
                 else:
                     candidateJdks += [join(base, n) for n in os.listdir(base)]
 
@@ -9090,6 +9090,7 @@ A JDKConfig object encapsulates info about an installed or deployed JDK.
 """
 class JDKConfig:
     def __init__(self, home, tag=None):
+        home = os.path.abspath(home)
         self.home = home
         self.tag = tag
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
@@ -15042,7 +15043,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.2")
+version = VersionSpec("5.72.3")
 
 currentUmask = None
 
