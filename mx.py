@@ -8473,7 +8473,7 @@ def ask_persist_env(varName, value, valueSeparator=None):
 _os_jdk_locations = {
     'darwin': {
         'bases': ['/Library/Java/JavaVirtualMachines'],
-        'suffix': 'Contents/Home'
+        'suffixes': ['Contents/Home', '']
     },
     'linux': {
         'bases': [
@@ -8499,9 +8499,9 @@ def _find_available_jdks(versionCheck):
         jdkLocations = _os_jdk_locations[os_name]
         for base in jdkLocations['bases']:
             if exists(base):
-                if 'suffix' in jdkLocations:
-                    suffix = jdkLocations['suffix']
-                    candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
+                if 'suffixes' in jdkLocations:
+                    for suffix in jdkLocations['suffixes']:
+                        candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
                 else:
                     candidateJdks += [join(base, n) for n in os.listdir(base)]
 
