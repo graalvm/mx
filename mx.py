@@ -9559,7 +9559,7 @@ def log_error(msg=None):
     else:
         print >> sys.stderr, colorize(str(msg), stream=sys.stderr)
 
-def expand_project_in_class_path_arg(cpArg):
+def expand_project_in_class_path_arg(cpArg, jdk=None):
     """
     Replaces each "@" prefixed element in the class path `cpArg` with
     the class path for the dependency named by the element without the "@" prefix.
@@ -9567,14 +9567,16 @@ def expand_project_in_class_path_arg(cpArg):
     if '@' not in cpArg:
         return cpArg
     cp = []
+    if jdk is None:
+        jdk = get_jdk(tag='default')
     for part in cpArg.split(os.pathsep):
         if part.startswith('@'):
-            cp += classpath(part[1:]).split(os.pathsep)
+            cp += classpath(part[1:], jdk=jdk).split(os.pathsep)
         else:
             cp.append(part)
     return os.pathsep.join(cp)
 
-def expand_project_in_args(args, insitu=True):
+def expand_project_in_args(args, insitu=True, jdk=None):
     """
     Looks for the first -cp or -classpath argument in `args` and
     calls expand_project_in_class_path_arg on it. If `insitu` is true,
@@ -9586,7 +9588,7 @@ def expand_project_in_args(args, insitu=True):
             if i + 1 < len(args):
                 if not insitu:
                     args = list(args) # clone args
-                args[i + 1] = expand_project_in_class_path_arg(args[i + 1])
+                args[i + 1] = expand_project_in_class_path_arg(args[i + 1], jdk=jdk)
             break
     return args
 
@@ -15090,7 +15092,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.73.2")
+version = VersionSpec("5.73.3")
 
 currentUmask = None
 
