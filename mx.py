@@ -2866,7 +2866,7 @@ class NativeBuildTask(ProjectBuildTask):
     def __str__(self):
         return 'Building {} with GNU Make'.format(self.subject.name)
 
-    def build(self):
+    def _build_run_args(self):
         env = os.environ.copy()
         all_deps = self.subject.canonical_deps()
         if hasattr(self.subject, 'buildDependencies'):
@@ -2884,11 +2884,19 @@ class NativeBuildTask(ProjectBuildTask):
             cwd = self.subject.dir
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
+        return cmdline, cwd, env
+
+    def build(self):
+        cmdline, cwd, env = self._build_run_args()
         run(cmdline, cwd=cwd, env=env)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
-        return (True, None)  # let make decide
+        cmdline, cwd, env = self._build_run_args()
+        cmdline += ['--question']
+        ret_code = run(cmdline, cwd=cwd, env=env, nonZeroIsFatal=False)
+        needsBuild = ret_code != 0
+        return (needsBuild, None)  # let make decide
 
     def buildForbidden(self):
         if ProjectBuildTask.buildForbidden(self):
@@ -15072,7 +15080,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.72.3")
+version = VersionSpec("5.73.0")
 
 currentUmask = None
 
