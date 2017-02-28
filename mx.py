@@ -2892,11 +2892,21 @@ class NativeBuildTask(ProjectBuildTask):
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
+        logv('Checking whether to build {} with GNU Make'.format(self.subject.name))
         cmdline, cwd, env = self._build_run_args()
         cmdline += ['--question']
-        ret_code = run(cmdline, cwd=cwd, env=env, nonZeroIsFatal=False)
-        needsBuild = ret_code != 0
-        return (needsBuild, None)  # let make decide
+
+        if _opts.verbose:
+            # default out/err stream
+            ret_code = run(cmdline, cwd=cwd, env=env, nonZeroIsFatal=False)
+        else:
+            with open(os.devnull, 'w') as fnull:
+                # suppress out/err (redirect to null device)
+                ret_code = run(cmdline, cwd=cwd, env=env, nonZeroIsFatal=False, out=fnull, err=fnull)
+
+        if ret_code != 0:
+            return (True, "rebuild needed by GNU Make")
+        return (False, "up to date according to GNU Make")
 
     def buildForbidden(self):
         if ProjectBuildTask.buildForbidden(self):
