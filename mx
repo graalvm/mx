@@ -29,7 +29,15 @@ dir=`/bin/pwd`
 
 # Resolve location of this script so that mx.py can be found in the same directory
 source="${BASH_SOURCE[0]}"
-while [ -h "$source" ] ; do source="$(readlink "$source")"; done
+while [ -h "$source" ] ; do
+  prev_source="$source"
+  source="$(readlink "$source")";
+  if [[ "$source" != /* ]]; then
+    # if the link was relative, it was relative to where it came from
+    dir="$( cd -P "$( dirname "$prev_source" )" && pwd )"
+    source="$dir/$source"
+  fi
+done
 dir="$( cd -P "$( dirname "$source" )" && pwd )"
 
 if [ ! -f "$dir/mx.py" ]; then
