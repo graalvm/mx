@@ -1499,26 +1499,28 @@ class BenchmarkExecutor(object):
         results = []
 
         failures_seen = False
-        suite.before(bmSuiteArgs)
-        start_time = time.time()
-        for benchnames in benchNamesList:
-            suite.validateEnvironment()
+        try:
+            suite.before(bmSuiteArgs)
+            start_time = time.time()
+            for benchnames in benchNamesList:
+                suite.validateEnvironment()
+                try:
+                    partialResults = self.execute(
+                        suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+                    results.extend(partialResults)
+                except BenchmarkFailureError as error:
+                    results.extend(error.partialResults)
+                    failures_seen = True
+                    mx.log(traceback.format_exc())
+                except RuntimeError:
+                    failures_seen = True
+                    mx.log(traceback.format_exc())
+            end_time = time.time()
+        finally:
             try:
-                partialResults = self.execute(
-                    suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
-                results.extend(partialResults)
-            except BenchmarkFailureError as error:
-                results.extend(error.partialResults)
-                failures_seen = True
-                mx.log(traceback.format_exc())
+                suite.after(bmSuiteArgs)
             except RuntimeError:
                 failures_seen = True
-                mx.log(traceback.format_exc())
-        end_time = time.time()
-        try:
-            suite.after(bmSuiteArgs)
-        except RuntimeError:
-            failures_seen = True
 
 
         for result in results:
