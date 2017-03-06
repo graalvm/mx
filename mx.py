@@ -14551,7 +14551,7 @@ def show_envs(args):
         if args.all or key.startswith('MX'):
             print '{0}: {1}'.format(key, value)
 
-_primary_suite_exempt.append('version')
+_suite_context_free.append('version')
 def show_version(args):
     """print mx version"""
 
