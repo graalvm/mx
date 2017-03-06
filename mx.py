@@ -14301,7 +14301,7 @@ def verify_library_urls(args):
     ok = True
     for s in suites(True):
         for lib in s.libs:
-            if not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
+            if isinstance(lib, Library) and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
                 ok = False
                 log('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
