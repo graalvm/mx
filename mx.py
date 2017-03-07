@@ -15092,7 +15092,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.73.3")
+version = VersionSpec("5.74.0")
 
 currentUmask = None
 

@@ -74,7 +74,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     assert len(repoUrls) > 0
     workDir = join(suite.get_output_root(), 'testdownstream')
 
-    # A mirror of each suites in the same repo as `suite` is created with symlinks
+    # A mirror of each suites in the same repo as `suite` is created via copying
     rel_mirror = os.path.relpath(suite.dir, mx.SuiteModel.siblings_dir(suite.dir))
     in_subdir = os.sep in rel_mirror
     suites_in_repo = [suite]
@@ -96,16 +96,15 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
         mirror = join(workDir, rel_mirror)
         if exists(mirror):
             shutil.rmtree(mirror)
-        mx.ensure_dir_exists(mirror)
-        for f in os.listdir(suite_in_repo.dir):
-            subDir = join(suite_in_repo.dir, f)
-            if subDir == suite_in_repo.get_output_root():
-                continue
-            src = join(suite_in_repo.dir, f)
-            dst = join(mirror, f)
-            mx.logv('[Creating symlink from {} to {}]'.format(dst, src))
-            relsrc = os.path.relpath(src, os.path.dirname(dst))
-            os.symlink(relsrc, dst)
+
+        output_root = suite_in_repo.get_output_root()
+        def ignore_output_root(d, names):
+            mx.log('Copying ' + d)
+            if d == os.path.dirname(output_root):
+                mx.log('Omitting ' + output_root)
+                return [os.path.basename(output_root)]
+            return []
+        shutil.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root)
 
     targetDir = None
     for repoUrl in repoUrls:
