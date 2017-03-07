@@ -6101,7 +6101,7 @@ class Suite:
             self.requiredMxVersion = mx_compat.minVersion()
             warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
         elif self.requiredMxVersion > version:
-            abort("The {} suite requires mx version {} while your current mx version is {}. Please update mx.".format(self.name, self.requiredMxVersion, version))
+            abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"mx update\"".format(self.name, self.requiredMxVersion, version))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
