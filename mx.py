@@ -14676,7 +14676,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print colorize('WARNING: ' + msg, color='magenta', bright=False, stream=sys.stdout)
+        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=False, stream=sys.stderr)
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -15092,7 +15092,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.74.0")
+version = VersionSpec("5.74.1")
 
 currentUmask = None
 
