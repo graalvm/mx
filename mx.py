@@ -4683,7 +4683,8 @@ class GitConfig(VC):
             output = out.data
             suffix = '({0})'.format(name)
             for line in output.split(os.linesep):
-                if line.strip().endswith(suffix):
+                line = line.strip()
+                if line.startswith('origin') and line.endswith(suffix):
                     return line.split()[1]
         if abortOnError:
             abort("no '{0}' path for repository {1}".format(name, vcdir))
@@ -15092,7 +15093,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.75.0")
+version = VersionSpec("5.75.1")
 
 currentUmask = None
 
