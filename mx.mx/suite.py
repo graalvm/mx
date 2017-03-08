@@ -38,21 +38,21 @@ suite = {
 
     "JUNIT" : {
       "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.11.jar",
-        "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11.jar",
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.12.jar",
+        "https://search.maven.org/remotecontent?filepath=junit/junit/4.12/junit-4.12.jar",
       ],
-      "sha1" : "4e031bb61df09069aeb2bffb4019e7a5034a4ee0",
+      "sha1" : "2973d150c0dc1fefe998f834810d68f278ea58ec",
       "sourceUrls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.11-sources.jar",
-        "https://search.maven.org/remotecontent?filepath=junit/junit/4.11/junit-4.11-sources.jar",
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.12-sources.jar",
+        "https://search.maven.org/remotecontent?filepath=junit/junit/4.12/junit-4.12-sources.jar",
       ],
-      "sourceSha1" : "28e0ad201304e4a4abf999ca0570b7cffc352c3c",
+      "sourceSha1" : "a6c32b40bf3d76eca54e3c601e5d1470c86fcdfa",
       "dependencies" : ["HAMCREST"],
       "licence" : "CPL",
       "maven" : {
-      	"groupId" : "junit",
-    	"artifactId" : "junit",
-    	"version" : "4.11",
+        "groupId" : "junit",
+        "artifactId" : "junit",
+        "version" : "4.12",
       }
     },
 
