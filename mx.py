@@ -11461,8 +11461,8 @@ public class %(className)s {
             # pick them up from the classpath and compile them.
             # http://mail.openjdk.java.net/pipermail/jigsaw-dev/2017-March/011577.html
             srcZipPath = join(jdkOutputDir, module + '.src.zip')
-            sourceDirs = [srcZipPath] + sourcesDirs
-        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourceDirs)
+            sourcesDirs = [srcZipPath] + sourcesDirs
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
     return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None):
@@ -15128,7 +15128,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.76.0")
+version = VersionSpec("5.76.1")
 
 currentUmask = None
 
