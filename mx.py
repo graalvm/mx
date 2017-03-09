@@ -2882,6 +2882,8 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
+        if hasattr(self.subject, "makeTarget"):
+            cmdline += [self.subject.makeTarget]
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
         return cmdline, cwd, env
@@ -15093,7 +15095,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.75.1")
+version = VersionSpec("5.75.2")
 
 currentUmask = None
 
