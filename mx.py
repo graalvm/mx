@@ -5221,8 +5221,8 @@ class MavenRepo:
             release = versioning.find('release')
             versions = versioning.find('versions')
             versionStrings = [v.text for v in versions.iter('version')]
-            releaseVersionString = release.text if release else None
-            if latest:
+            releaseVersionString = release.text if len(release) != 0 else None
+            if len(latest) != 0:
                 latestVersionString = latest.text
             else:
                 logv('Element \'latest\' not specified in metadata. Fallback: Find latest via \'versions\'.')
@@ -11397,6 +11397,8 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
@@ -11425,23 +11427,28 @@ public class %(className)s {
                     }
                 });
             }
-            for (int i = 1; i < args.length; i++) {
-                Path sourceDir = Paths.get(args[i]);
-                int sourceDirLength = sourceDir.toString().length();
-                try (Stream<Path> stream = Files.walk(sourceDir)) {
-                    stream.forEach(p -> {
-                        if (!p.toFile().isDirectory()) {
-                            String path = p.toString().substring(sourceDirLength + 1);
-                            JarEntry je = new JarEntry(path.replace(File.separatorChar, '/'));
-                            try {
-                                jos.putNextEntry(je);
-                                jos.write(Files.readAllBytes(p));
-                                jos.closeEntry();
-                            } catch (IOException e) {
-                                e.printStackTrace();
+        }
+        if (args.length > 1) {
+            String srcZipPath = args[1];
+            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(srcZipPath))) {
+                for (int i = 2; i < args.length; i++) {
+                    Path sourceDir = Paths.get(args[i]);
+                    int sourceDirLength = sourceDir.toString().length();
+                    try (Stream<Path> stream = Files.walk(sourceDir)) {
+                        stream.forEach(p -> {
+                            if (!p.toFile().isDirectory()) {
+                                String path = p.toString().substring(sourceDirLength + 1);
+                                ZipEntry ze = new ZipEntry(path.replace(File.separatorChar, '/'));
+                                try {
+                                    zos.putNextEntry(ze);
+                                    zos.write(Files.readAllBytes(p));
+                                    zos.closeEntry();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             }
         }
@@ -11449,7 +11456,13 @@ public class %(className)s {
 }
 """ % {"module" : module, "className" : className}
         run([jdk.javac, '-d', jdkOutputDir, javaSource])
-        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
+        if len(sourcesDirs) != 0:
+            # Sources need to go into a separate archive otherwise javac can
+            # pick them up from the classpath and compile them.
+            # http://mail.openjdk.java.net/pipermail/jigsaw-dev/2017-March/011577.html
+            srcZipPath = join(jdkOutputDir, module + '.src.zip')
+            sourceDirs = [srcZipPath] + sourcesDirs
+        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourceDirs)
     return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None):
@@ -11498,10 +11511,10 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     jdkLibraryDeps = set()
     projectDeps = set()
     jdk = get_jdk(p.javaCompliance)
-    moduleDeps = None
+    moduleDeps = {}
 
     if jdk.javaCompliance >= '1.9':
-        moduleDeps = set(p.get_concealed_imported_packages().iterkeys())
+        moduleDeps = p.get_concealed_imported_packages()
         if eclipseJavaCompliance < '9':
             # If this project imports any JVMCI packages and Eclipse does not yet
             # support JDK9, then the generated Eclipse project needs to see the classes
@@ -11511,7 +11524,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             # even though Eclipse can only run on class files with verison 52 (JDK8).
             for pkg in p.imported_java_packages(projectDepsOnly=False):
                 if pkg.startswith('jdk.vm.ci.'):
-                    moduleDeps.add('jdk.internal.vm.ci')
+                    moduleDeps.setdefault('jdk.internal.vm.ci', []).append(pkg)
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -11577,14 +11590,20 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             if libFiles:
                 libFiles.append(path)
 
+    allProjectPackages = set()
     for dep in sorted(projectDeps):
         if not dep.isNativeProject():
+            allProjectPackages.update(dep.defined_java_packages())
             out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
-    if moduleDeps:
-        for module in sorted(moduleDeps):
-            moduleJar = _get_jdk_module_jar(module, p.suite, jdk)
-            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
+    if len(moduleDeps) != 0:
+        for module, pkgs in sorted(moduleDeps.iteritems()):
+            # Ignore modules (such as jdk.internal.vm.compiler) that define packages
+            # that are also defined by project deps as the latter will have the most
+            # recent API we care about.
+            if allProjectPackages.isdisjoint(pkgs):
+                moduleJar = _get_jdk_module_jar(module, p.suite, jdk)
+                out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
     out.close('classpath')
@@ -15109,7 +15128,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.75.2")
+version = VersionSpec("5.76.0")
 
 currentUmask = None
 
