@@ -2425,6 +2425,11 @@ class JavacLikeCompiler(JavaCompiler):
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
     def _get_compliance_jdk(self, compliance):
+        """
+        Gets the JDK selected based on `compliance`. The returned
+        JDK will have compliance at least equal to `compliance` but may be higher
+        if ``--strict-compliance`` is not in effect.
+        """
         return get_jdk(compliance)
 
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
@@ -2446,8 +2451,6 @@ class JavacLikeCompiler(JavaCompiler):
             # cross-compilation
             assert jdk.javaCompliance > compliance
             complianceJdk = self._get_compliance_jdk(compliance)
-            # complianceJdk.javaCompliance could be different from compliance
-            # because of non-strict compliance mode
             if jdk.javaCompliance != complianceJdk.javaCompliance:
                 if complianceJdk.javaCompliance < "9" and jdk.javaCompliance < "9":
                     javacArgs = complianceJdk.javacLibOptions(javacArgs)
@@ -2571,11 +2574,12 @@ class JavacCompiler(JavacLikeCompiler):
             if compliance >= "9":
                 addExportArgs(project)
             else:
-                # We use --release n with n < 9 so we need to create JARs for JdkLibraries that are in modules and did not exist in JDK n
-                complianceJdk = self._get_compliance_jdk(compliance)
+                # We use --release n with n < 9 so we need to create JARs for JdkLibraries
+                # that are in modules and did not exist in JDK n
+                assert '--release' in javacArgs
                 jdk_module_libraries = (e for e in classpath_entries(project.name, includeSelf=False)
                                                 if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince)
-                module_jars = set((_get_jdk_module_jar(lib.module, primary_suite(), complianceJdk) for lib in jdk_module_libraries))
+                module_jars = set((_get_jdk_module_jar(lib.module, primary_suite(), jdk) for lib in jdk_module_libraries))
                 _classpath_append(module_jars)
             aps = project.annotation_processors()
             if aps:
@@ -15128,7 +15132,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.76.1")
+version = VersionSpec("5.76.2")
 
 currentUmask = None
 
