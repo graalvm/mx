@@ -12887,8 +12887,8 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 print >> out, '# GENERATED -- DO NOT EDIT'
                 for source in corePrefsSources:
                     print >> out, '# Source:', source
-                    with open(source) as f:
-                        for line in f:
+                    with open(source) as fileName:
+                        for line in fileName:
                             if line.startswith('org.eclipse.jdt.core.formatter.'):
                                 print >> out, line.strip()
                 formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
@@ -12899,8 +12899,8 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                     print >> out, '# GENERATED -- DO NOT EDIT'
                     for source in uiPrefsSources:
                         print >> out, '# Source:', source
-                        with open(source) as f:
-                            for line in f:
+                        with open(source) as fileName:
+                            for line in fileName:
                                 if line.startswith('org.eclipse.jdt.ui.importorder') \
                                         or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
                                         or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
@@ -12956,36 +12956,72 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
 
             # mx integration
-            # 1) Make an ant file for archiving the project.
+            def antTargetName(dist):
+                return 'archive_' + dist.name
+            def artifactFileName(dist):
+                return dist.name + '.xml'
+            validDistributions = [dist for dist in sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
+
+            # 1) Make an ant file for archiving the distributions.
             antXml = XMLDoc()
             antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
-            antXml.open('target', attributes={'name': 'archive'})
-            antXml.open('exec', attributes={'executable': sys.executable})
-            antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
-            antXml.element('arg', attributes={'value': 'archive'})
-
-            for dist in sorted_dists():
-                if dist.suite.isBinarySuite():
-                    continue
+            for dist in validDistributions:
+                antXml.open('target', attributes={'name': antTargetName(dist)})
+                antXml.open('exec', attributes={'executable': sys.executable})
+                antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
+                antXml.element('arg', attributes={'value': 'archive'})
                 antXml.element('arg', attributes={'value': '@' + dist.name})
+                antXml.close('exec')
+                antXml.close('target')
 
-            antXml.close('exec')
-            antXml.close('target')
             antXml.close('project')
             antFile = join(ideaProjectDirectory, 'ant-mx-archive.xml')
             update_file(antFile, antXml.xml(indent='  ', newl='\n'))
 
             # 2) Tell IDEA that there is an ant-build.
+            ant_mx_archive_xml = 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'
             metaAntXml = XMLDoc()
             metaAntXml.open('project', attributes={'version': '4'})
             metaAntXml.open('component', attributes={'name': 'AntConfiguration'})
-            metaAntXml.open('buildFile', attributes={'url': 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'})
-            metaAntXml.element('executeOn', attributes={'event': 'afterCompilation', 'target': 'archive'})
+            metaAntXml.open('buildFile', attributes={'url': ant_mx_archive_xml})
             metaAntXml.close('buildFile')
             metaAntXml.close('component')
             metaAntXml.close('project')
             metaAntFile = join(ideaProjectDirectory, 'ant.xml')
             update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
+
+            # 3) Make an artifact for every distribution
+            validArtifactNames = set([artifactFileName(dist) for dist in validDistributions])
+            artifactsDir = join(ideaProjectDirectory, 'artifacts')
+            ensure_dir_exists(artifactsDir)
+            for fileName in os.listdir(artifactsDir):
+                filePath = join(artifactsDir, fileName)
+                if os.path.isfile(filePath) and fileName not in validArtifactNames:
+                    os.remove(filePath)
+
+            for dist in validDistributions:
+                artifactXML = XMLDoc()
+                artifactXML.open('component', attributes={'name': 'ArtifactManager'})
+                artifactXML.open('artifact', attributes={'build-on-make': 'true', 'name': dist.name})
+                artifactXML.open('output-path', data='$PROJECT_DIR$/mxbuild/artifacts/' + dist.name)
+                artifactXML.close('output-path')
+                artifactXML.open('properties', attributes={'id': 'ant-postprocessing'})
+                artifactXML.open('options', attributes={'enabled': 'true'})
+                artifactXML.open('file', data=ant_mx_archive_xml)
+                artifactXML.close('file')
+                artifactXML.open('target', data=antTargetName(dist))
+                artifactXML.close('target')
+                artifactXML.close('options')
+                artifactXML.close('properties')
+                artifactXML.open('root', attributes={'id': 'root'})
+                for javaProject in [dep for dep in dist.deps if dep.isJavaProject()]:
+                    artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
+                artifactXML.close('root')
+                artifactXML.close('artifact')
+                artifactXML.close('component')
+
+                artifactFile = join(artifactsDir, artifactFileName(dist))
+                update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
 
         def intellij_scm_name(vc_kind):
             if vc_kind == 'git':
