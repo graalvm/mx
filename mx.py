@@ -14366,7 +14366,7 @@ def verify_library_urls(args):
     ok = True
     for s in suites(True):
         for lib in s.libs:
-            if isinstance(lib, Library) and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
                 ok = False
                 log('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -15157,7 +15157,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.77.0")
+version = VersionSpec("5.77.1")
 
 currentUmask = None
 
