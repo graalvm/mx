@@ -3084,19 +3084,8 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             if exists(cachePath):
                 log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
 
-            def _findLegacyCachePath():
-                for e in os.listdir(cacheDir):
-                    if sha1 in e and sha1OfFile(join(cacheDir, e)) == sha1:
-                        return join(cacheDir, e)
-                return None
-
-            legacyCachePath = _findLegacyCachePath()
-            if legacyCachePath:
-                # Try symlink non-legacy cache path to legacy cache path
-                _copy_or_symlink(legacyCachePath, cachePath)
-            else:
-                log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
-                download(cachePath, urls)
+            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
+            download(cachePath, urls)
 
         if path != cachePath:
             d = dirname(path)
@@ -15168,7 +15157,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.76.2")
+version = VersionSpec("5.77.0")
 
 currentUmask = None
 
