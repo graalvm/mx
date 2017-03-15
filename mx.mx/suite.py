@@ -103,12 +103,69 @@ suite = {
       }
     },
 
+    "COMMONS_MATH3" : {
+      "urls" : [
+        "https://search.maven.org/remotecontent?filepath=org/apache/commons/commons-math3/3.2/commons-math3-3.2.jar"
+      ],
+      "sha1" : "ec2544ab27e110d2d431bdad7d538ed509b21e62",
+      "sourceUrls" : [
+        "https://search.maven.org/remotecontent?filepath=org/apache/commons/commons-math3/3.2/commons-math3-3.2-sources.jar"
+      ],
+      "sourceSha1" : "cd098e055bf192a60c81d81893893e6e31a6482f",
+      "licence" : "Apache-2.0",
+      "maven" : {
+        "groupId" : "org.apache.commons",
+        "artifactId" : "commons-math3",
+        "version" : "3.2"
+      }
+    },
+
+    "JOPTSIMPLE" : {
+      "urls" : [
+        "https://search.maven.org/remotecontent?filepath=net/sf/jopt-simple/jopt-simple/6.0-alpha-1/jopt-simple-6.0-alpha-1.jar"
+      ],
+      "sha1" : "be0a64a073f82f6cb6797ef3ad8acc5c405ea25f",
+      "sourceUrls" : [
+        "https://search.maven.org/remotecontent?filepath=net/sf/jopt-simple/jopt-simple/6.0-alpha-1/jopt-simple-6.0-alpha-1-sources.jar"
+      ],
+      "sourceSha1" : "6884ff7bda14e88aa369f1dc3315b5c24106ac2f",
+      "licence": "MIT",
+      "maven" : {
+        "groupId" : "net.sf.jopt-simple",
+        "artifactId" : "jopt-simple",
+        "version" : "4.6"
+      }
+    },
+
+    "JMH_GENERATOR_ANNPROCESS" : {
+      "urls": [
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.13/jmh-generator-annprocess-1.13.jar"
+      ],
+      "sha1": "bc3353e8ede1b7c642c8f13a50fd2ba0830c71d3",
+      "sourceUrls" : [
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.13/jmh-generator-annprocess-1.13-sources.jar"
+      ],
+      "sourceSha1" : "ac352c61e99377cef630643bb7859e115a6ad319",
+      "licence": "GPLv2-CPE",
+      "maven" : {
+        "groupId" : "org.openjdk.jmh",
+        "artifactId" : "jmh-generator-annprocess",
+        "version" : "1.13",
+      }
+    },
+
     "JMH" : {
-      "sha1" : "df111ae8e92bfd84fe135b844c4e3a910e1b8497",
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12.jar"],
-      "sourceSha1" : "b8c0f381c83c08b36244ab116025f87841e6b251",
-      "sourceUrls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
-      "licence" : "GPLv2-CPE",
+      "sha1": "9877ca0bb75df9ab94fddb49478755e42cd06d2b",
+      "urls": ["http://repo1.maven.org/maven2/org/openjdk/jmh/jmh-core/1.13/jmh-core-1.13.jar"],
+      "sourceSha1": "f47afc7a4d95ee4e28967597dab38b2604853e85",
+      "sourceUrls": ["http://repo1.maven.org/maven2/org/openjdk/jmh/jmh-core/1.13/jmh-core-1.13-sources.jar"],
+      "licence": "GPLv2-CPE",
+      "dependencies" : ["JOPTSIMPLE", "JMH_GENERATOR_ANNPROCESS", "COMMONS_MATH3"],
+      "maven" : {
+        "groupId" : "org.openjdk.jmh",
+        "artifactId" : "jmh-core",
+        "version" : "1.13",
+      }
     },
 
     "JACKPOT" : {
@@ -151,6 +208,14 @@ suite = {
     "LGPLv21" : {
       "name" : "GNU Lesser General Public License, version 2.1",
       "url" : "http://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"
+    },
+    "MIT" : {
+      "name" : "MIT License",
+      "url" : "http://opensource.org/licenses/MIT"
+    },
+    "Apache-2.0" : {
+      "name" : "Apache License 2.0",
+      "url" : "https://opensource.org/licenses/Apache-2.0"
     },
   },
 
