@@ -139,32 +139,36 @@ suite = {
 
     "JMH_GENERATOR_ANNPROCESS" : {
       "urls": [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.13/jmh-generator-annprocess-1.13.jar"
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.18/jmh-generator-annprocess-1.18.jar"
       ],
-      "sha1": "bc3353e8ede1b7c642c8f13a50fd2ba0830c71d3",
+      "sha1": "b852fb028de645ad2852bbe998e084d253f450a5",
       "sourceUrls" : [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.13/jmh-generator-annprocess-1.13-sources.jar"
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.18/jmh-generator-annprocess-1.18-sources.jar"
       ],
-      "sourceSha1" : "ac352c61e99377cef630643bb7859e115a6ad319",
+      "sourceSha1" : "d455b0dc6108b5e6f1fb4f6cf1c7b4cbedbecc97",
       "licence": "GPLv2-CPE",
       "maven" : {
         "groupId" : "org.openjdk.jmh",
         "artifactId" : "jmh-generator-annprocess",
-        "version" : "1.13",
+        "version" : "1.18",
       }
     },
 
     "JMH" : {
-      "sha1": "9877ca0bb75df9ab94fddb49478755e42cd06d2b",
-      "urls": ["http://repo1.maven.org/maven2/org/openjdk/jmh/jmh-core/1.13/jmh-core-1.13.jar"],
-      "sourceSha1": "f47afc7a4d95ee4e28967597dab38b2604853e85",
-      "sourceUrls": ["http://repo1.maven.org/maven2/org/openjdk/jmh/jmh-core/1.13/jmh-core-1.13-sources.jar"],
+      "urls": [
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-core/1.18/jmh-core-1.18.jar"
+      ],
+      "sha1": "0174aa0077e9db596e53d7f9ec37556d9392d5a6",
+      "sourceUrls": [
+        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-core/1.18/jmh-core-1.18-sources.jar"
+      ],
+      "sourceSha1": "7ff1e1aafea436b6aa8b29a8b8f1c2d66be26f5b",
       "licence": "GPLv2-CPE",
       "dependencies" : ["JOPTSIMPLE", "JMH_GENERATOR_ANNPROCESS", "COMMONS_MATH3"],
       "maven" : {
         "groupId" : "org.openjdk.jmh",
         "artifactId" : "jmh-core",
-        "version" : "1.13",
+        "version" : "1.18",
       }
     },
 
