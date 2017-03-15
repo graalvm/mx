@@ -6541,19 +6541,15 @@ class Suite:
                 if not type(maven) is dict or not all(x in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
 
-            def _maven_download_url(groupId, artifactId, version, native=None, sourceUrl=False):
+            def _maven_download_url(groupId, artifactId, version, suffix=None):
                 args = {
                     "groupId": groupId.replace('.', '/'),
                     "artifactId": artifactId,
                     "version": version
                 }
-                if native:
-                    base = "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}-{native}".format(native=native, **args)
-                else:
-                    base = "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}".format(**args)
-                if sourceUrl:
-                    return base + '-sources.jar'
-                return base + ".jar"
+                if suffix:
+                    return "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}-{suffix}.jar".format(suffix=suffix, **args)
+                return "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}.jar".format(**args)
 
             if path is None:
                 if not urls:
@@ -6572,7 +6568,9 @@ class Suite:
             if sourcePath is None:
                 if not sourceUrls and maven is not None and sourceSha1:
                     _check_maven(maven)
-                    sourceUrls = [_maven_download_url(sourceUrl=True, **maven)]
+                    if 'suffix' in maven:
+                        abort('Cannot download sources for "maven" library with "suffix" attribute', context)
+                    sourceUrls = [_maven_download_url(suffix='source', **maven)]
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
