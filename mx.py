@@ -6542,19 +6542,22 @@ class Suite:
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
 
             def _maven_download_url(groupId, artifactId, version, native=None, sourceUrl=False):
+                args = {
+                    "groupId": groupId.replace('.', '/'),
+                    "artifactId": artifactId,
+                    "version": version
+                }
                 if native:
-                    args = (groupId.replace('.', '/'), artifactId, version, artifactId, version, native)
-                    base = "https://search.maven.org/remotecontent?filepath=%s/%s/%s/%s-%s-%s" % args
+                    base = "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}-{native}".format(native=native, **args)
                 else:
-                    args = (groupId.replace('.', '/'), artifactId, version, artifactId, version)
-                    base = "https://search.maven.org/remotecontent?filepath=%s/%s/%s/%s-%s" % args
+                    base = "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}".format(**args)
                 if sourceUrl:
                     return base + '-sources.jar'
                 return base + ".jar"
 
             if path is None:
                 if not urls:
-                    if maven:
+                    if maven is not None:
                         _check_maven(maven)
                         urls = [_maven_download_url(**maven)]
                     else:
@@ -6567,7 +6570,7 @@ class Suite:
             sourceSha1 = attrs.pop('sourceSha1', None)
             sourceExt = attrs.pop('sourceExt', None)
             if sourcePath is None:
-                if not sourceUrls and maven and sourceSha1:
+                if not sourceUrls and maven is not None and sourceSha1:
                     _check_maven(maven)
                     sourceUrls = [_maven_download_url(sourceUrl=True, **maven)]
                 if sourceUrls:
