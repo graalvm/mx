@@ -6567,11 +6567,13 @@ class Suite:
             sourceSha1 = attrs.pop('sourceSha1', None)
             sourceExt = attrs.pop('sourceExt', None)
             if sourcePath is None:
-                if not sourceUrls and maven is not None and sourceSha1:
-                    _check_maven(maven)
-                    if 'suffix' in maven:
-                        abort('Cannot download sources for "maven" library with "suffix" attribute', context)
-                    sourceUrls = [_maven_download_url(suffix='source', **maven)]
+                if sourceSha1 and not sourceUrls:
+                    # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
+                    if maven:
+                        _check_maven(maven)
+                        if 'suffix' in maven:
+                            abort('Cannot download sources for "maven" library with "suffix" attribute', context)
+                        sourceUrls = [_maven_download_url(suffix='source', **maven)]
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
