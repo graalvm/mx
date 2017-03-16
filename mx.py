@@ -170,6 +170,8 @@ _dists = dict()
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
+_mavenRepoBaseURL = "https://search.maven.org/remotecontent?filepath="
+
 
 """
 Map from the name of a removed dependency to the reason it was removed.
@@ -6541,15 +6543,14 @@ class Suite:
                 if not type(maven) is dict or not all(x in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
 
-            def _maven_download_url(groupId, artifactId, version, suffix=None):
+            def _maven_download_url(groupId, artifactId, version, suffix=None, baseURL=_mavenRepoBaseURL):
                 args = {
-                    "groupId": groupId.replace('.', '/'),
-                    "artifactId": artifactId,
-                    "version": version
+                    'groupId': groupId.replace('.', '/'),
+                    'artifactId': artifactId,
+                    'version': version,
+                    'suffix' : '-{0}'.format(suffix) if suffix else ''
                 }
-                if suffix:
-                    return "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}-{suffix}.jar".format(suffix=suffix, **args)
-                return "https://search.maven.org/remotecontent?filepath={groupId}/{artifactId}/{version}/{artifactId}-{version}.jar".format(**args)
+                return "{baseURL}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(baseURL=baseURL, **args)
 
             if path is None:
                 if not urls:
