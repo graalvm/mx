@@ -74,6 +74,33 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
+
+    ignoredClasses = set()
+    for p in nonTestProjects:
+        ignore = getattr(p, 'findbugsIgnoresGenerated', False)
+        if not isinstance(ignore, bool):
+            mx.abort('Value of attribute "findbugsIgnoresGenerated" must be True or False', context=p)
+        if ignore is True:
+            sourceDir = p.source_gen_dir()
+            for root, _, files in os.walk(sourceDir):
+                for name in files:
+                    if name.endswith('.java') and '-info' not in name:
+                        pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                        cls = pkg + '.' + name[:-len('.java')]
+                        ignoredClasses.add(cls)
+
+    with tempfile.NamedTemporaryFile(suffix='.xml', prefix='findbugs_exclude_filter.', mode='w', delete=False) as fp:
+        findbugsExcludeFilterFile = fp.name
+        xmlDoc = mx.XMLDoc()
+        xmlDoc.open('FindBugsFilter')
+        for cls in ignoredClasses:
+            xmlDoc.open('Match')
+            xmlDoc.element('Class', attributes={'name' : '~' + cls + '.*'})
+            xmlDoc.close('Match')
+        xmlDoc.close('FindBugsFilter')
+        xml = xmlDoc.xml(indent='  ', newl='\n')
+        print >> fp, xml
+
     outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in nonTestProjects])
     javaCompliance = max([p.javaCompliance for p in nonTestProjects])
     jdk = mx.get_jdk(javaCompliance)
@@ -86,8 +113,12 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
     if fbArgs is None:
         fbArgs = defaultFindbugsArgs()
     cmd = ['-jar', mx._cygpathU2W(findbugsJar)] + fbArgs
+    cmd = cmd + ['-exclude', findbugsExcludeFilterFile]
     cmd = cmd + ['-auxclasspath', mx._separatedCygpathU2W(mx.classpath([p.name for p in nonTestProjects], jdk=jdk)), '-output', mx._cygpathU2W(findbugsResults), '-exitcode'] + args + outputDirs
-    exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=jdk)
+    try:
+        exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=jdk)
+    finally:
+        os.unlink(findbugsExcludeFilterFile)
     if exitcode != 0:
         with open(findbugsResults) as fp:
             mx.log(fp.read())
