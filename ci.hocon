@@ -35,7 +35,15 @@ bench-test : {
   ]
 }
 
+verifylibraryurls : {
+  run : [
+    ["./mx", "--strict-compliance", "-v", "verifylibraryurls"]
+  ]
+  timelimit : "10:00"
+}
+
 builds = [
-  ${gate} {capabilities : [linux, amd64, gate], name: "gate-linux-amd64"}
-  ${bench-test} {capabilities : [linux, amd64, gate], name: "bench-linux-amd64"}
+  ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
+  ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
+  ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
 ]
