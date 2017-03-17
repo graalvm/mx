@@ -9725,7 +9725,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
     progress = not _opts.no_download_progress and sys.stderr.isatty()
     for url in urls:
-        if not verifyOnly:
+        if not verifyOnly or verbose:
             log('Downloading ' + url + ' to ' + path)
         m = jarURLPattern.match(url)
         jarEntryName = None
@@ -14361,12 +14361,19 @@ def show_suites(args):
 def verify_library_urls(args):
     """verify that all suite libraries are reachable from at least one of the URLs
 
-    usage: mx verifylibraryurls
+    usage: mx verifylibraryurls [--include-mx]
     """
+    parser = ArgumentParser(prog='mx verifylibraryurls')
+    parser.add_argument('--include-mx', help='', action='store_true', default=primary_suite() == _mx_suite)
+    args = parser.parse_args(args)
+
     ok = True
-    for s in suites(True):
+    _suites = suites(True)
+    if args.include_mx:
+        _suites.append(_mx_suite)
+    for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
