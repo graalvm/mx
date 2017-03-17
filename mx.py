@@ -7709,7 +7709,7 @@ def dependency(name, fatalIfMissing=True, context=None):
     if d is None:
         d = _dists.get(name)
     if d is None and fatalIfMissing:
-        if name in _opts.ignored_projects:
+        if hasattr(_opts, 'ignored_projects') and name in _opts.ignored_projects:
             abort('dependency named ' + name + ' is ignored', context=context)
         abort(_missing_dep_message(name, 'dependency'), context=context)
     return d
