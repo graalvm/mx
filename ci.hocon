@@ -6,14 +6,17 @@ java7 : {name : oraclejdk, version : "7",    platformspecific: true}
 java8 : {name : labsjdk, version : "8u121-jvmci-0.25", platformspecific: true}
 java9 : {name : labsjdk, version : "9-SNAPSHOT", platformspecific: true}
 
+downloads.java : {
+    JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
+}
+
 gate : {
   packages : {
     "pip:astroid" : "==1.1.0"
     "pip:pylint" : "==1.1.0"
   }
   # need pyhocon fix
-  downloads : {
-    JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
+  downloads : ${downloads.java} {
     JDT : {name: ecj, version: "4.5.1", platformspecific: false}
     ECLIPSE : {name: eclipse, version: "4.3.0", platformspecific: true}
   }
@@ -35,6 +38,16 @@ bench-test : {
   ]
 }
 
+jmh-test : {
+  downloads : ${downloads.java}
+  setup:  [
+    ["./mx", "build"]
+  ]
+  run: [
+    ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-mx:*"]
+  ]
+}
+
 verifylibraryurls : {
   run : [
     ["./mx", "--strict-compliance", "-v", "verifylibraryurls"]
@@ -45,5 +58,6 @@ verifylibraryurls : {
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
+  ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
 ]
