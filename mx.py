@@ -12195,42 +12195,72 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
     out.element('arg', {'value' : os.path.abspath(__file__)})
     out.element('arg', {'value' : 'build'})
-    buildOnly = p.name
+    dependsOn = p.name
     for d in dists:
-        buildOnly = buildOnly + ',' + d.name
+        dependsOn = dependsOn + ',' + d.name
     out.element('arg', {'value' : '--only'})
-    out.element('arg', {'value' : buildOnly})
+    out.element('arg', {'value' : dependsOn})
     out.element('arg', {'value' : '--force-javac'})
     out.element('arg', {'value' : '--no-native'})
     out.element('arg', {'value' : '--no-daemon'})
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'package', 'depends' : 'init'})
+    uniqueId = ''
+    for d in dists:
+        if d.isDistribution():
+            out.element('touch', {'file' : '${java.io.tmpdir}/' + d.name})
+            out.element('echo', {'message' : d.name + ' set to now${line.separator}', 'append' : 'true', 'output' : join(p.suite.get_output_root(), 'netbeans.log')})
     out.open('copy', {'todir' : '${build.classes.dir}', 'overwrite' : 'true'})
     out.element('resources', {'refid' : 'changed.files'})
     out.close('copy')
-    out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
-    out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
-    out.element('arg', {'value' : os.path.abspath(__file__)})
-    out.element('arg', {'value' : 'build'})
-    buildOnly = ''
+    out.open('exec', {'executable' : '${ant.home}/bin/ant', 'spawn' : 'true'})
+    out.element('arg', {'value' : '-f'})
+    out.element('arg', {'value' : '${ant.file}'})
+    out.element('arg', {'value' : 'packagelater'})
+    out.close('exec')
+    out.close('target')
+    for d in dists:
+        if d.isDistribution():
+            out.open('target', {'name' : 'checkpackage-' + d.name})
+            out.open('tstamp')
+            out.element('format', {'pattern' : 'S', 'unit' : 'millisecond', 'property' : 'at.' + d.name})
+            out.close('tstamp')
+            out.element('touch', {'file' : '${java.io.tmpdir}/' + d.name, 'millis' : '${at.' + d.name + '}0000'})
+            out.element('echo', {'message' : d.name + ' touched to ${at.' + d.name + '}0000${line.separator}', 'append' : 'true', 'output' : join(p.suite.get_output_root(), 'netbeans.log')})
+            out.element('sleep', {'seconds' : '3'})
+            out.open('condition', {'property' : 'mx.' + d.name, 'value' : sys.executable})
+            out.open('islastmodified', {'millis' : '${at.' + d.name + '}0000', 'mode' : 'equals'})
+            out.element('file', {'file' : '${java.io.tmpdir}/' + d.name})
+            out.close('islastmodified')
+            out.close('condition')
+            out.element('echo', {'message' : d.name + ' defined as ' + '${mx.' + d.name + '}${line.separator}', 'append' : 'true', 'output' : join(p.suite.get_output_root(), 'netbeans.log')})
+            out.close('target')
+            out.open('target', {'name' : 'packagelater-' + d.name, 'depends' : 'checkpackage-' + d.name, 'if' : 'mx.' + d.name})
+            out.open('exec', {'executable' : '${mx.' + d.name + '}', 'failonerror' : 'true', 'dir' : execDir, 'output' : join(p.suite.get_output_root(), 'netbeans.log'), 'append' : 'true'})
+            out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
+            out.element('arg', {'value' : os.path.abspath(__file__)})
+            out.element('arg', {'value' : 'build'})
+            out.element('arg', {'value' : '-f'})
+            out.element('arg', {'value' : '--only'})
+            out.element('arg', {'value' : d.name})
+            out.element('arg', {'value' : '--force-javac'})
+            out.element('arg', {'value' : '--no-native'})
+            out.element('arg', {'value' : '--no-daemon'})
+            out.close('exec')
+            out.close('target')
+    dependsOn = ''
     sep = ''
     for d in dists:
-        buildOnly = buildOnly + sep + d.name
+        dependsOn = dependsOn + sep + 'packagelater-' + d.name
         sep = ','
-    out.element('arg', {'value' : '-f'})
-    out.element('arg', {'value' : '--only'})
-    out.element('arg', {'value' : buildOnly})
-    out.element('arg', {'value' : '--force-javac'})
-    out.element('arg', {'value' : '--no-native'})
-    out.element('arg', {'value' : '--no-daemon'})
-    out.close('exec')
+    out.open('target', {'name' : 'packagelater', 'depends' : dependsOn})
     out.close('target')
     out.open('target', {'name' : 'jar', 'depends' : 'compile'})
     out.close('target')
     out.element('target', {'name' : 'test', 'depends' : 'run'})
     out.element('target', {'name' : 'test-single', 'depends' : 'run'})
-    out.open('target', {'name' : 'run', 'depends' : 'compile'})
+    out.open('target', {'name' : 'run'})
     out.element('property', {'name' : 'test.class', 'value' : p.name})
     out.open('exec', {'executable' : sys.executable, 'failonerror' : 'true', 'dir' : execDir})
     out.element('env', {'key' : 'JAVA_HOME', 'value' : jdk.home})
@@ -12240,7 +12270,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('exec')
     out.close('target')
     out.element('target', {'name' : 'debug-test', 'depends' : 'debug'})
-    out.open('target', {'name' : 'debug', 'depends' : 'init,compile'})
+    out.open('target', {'name' : 'debug', 'depends' : 'init'})
     out.element('property', {'name' : 'test.class', 'value' : p.name})
     out.open('nbjpdastart', {'addressproperty' : 'jpda.address', 'name' : p.name})
     out.open('classpath')
