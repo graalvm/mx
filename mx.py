@@ -1084,6 +1084,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if os.path.basename(arcname).startswith('.'):
                         logv('Excluding dotfile: ' + source)
                         return True
+                    elif arcname == "META-INF/MANIFEST.MF": # Do not inherit the manifest from other jars
+                        logv('Excluding META-INF/MANIFEST.MF from ' + source)
+                        return True
                     if not hasattr(zf, '_provenance'):
                         zf._provenance = {}
                     existingSource = zf._provenance.get(arcname, None)
@@ -1138,8 +1141,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 if self.mainClass:
                     manifest = "Manifest-Version: 1.0\nMain-Class: %s\n\n" % (self.mainClass)
-                    if not overwriteCheck(arc.zf, "META-INF/MANIFEST.MF", "project files"):
-                        arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
+                    arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
 
                 for dep in self.archived_deps():
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
@@ -15164,7 +15166,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.80.1")
+version = VersionSpec("5.80.2")
 
 currentUmask = None
 
