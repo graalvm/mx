@@ -1087,13 +1087,13 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if not hasattr(zf, '_provenance'):
                         zf._provenance = {}
                     existingSource = zf._provenance.get(arcname, None)
-                    isOverwrite = False
                     if existingSource and existingSource != source:
                         if arcname[-1] != os.path.sep:
                             warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
-                        isOverwrite = True
-                    zf._provenance[arcname] = source
-                    return isOverwrite
+                        return True
+                    else:
+                        zf._provenance[arcname] = source
+                        return False
 
                 def addFromJAR(jarPath):
                     with zipfile.ZipFile(jarPath, 'r') as lp:
