@@ -12206,7 +12206,6 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'package', 'depends' : 'init'})
-    uniqueId = ''
     for d in dists:
         if d.isDistribution():
             out.element('touch', {'file' : '${java.io.tmpdir}/' + d.name})
