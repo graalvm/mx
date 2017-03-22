@@ -1229,7 +1229,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
         self.notify_updated()
         jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '1.9':
+        if jdk.javaCompliance >= '9':
             jmd = make_java_module(self, jdk)
             if jmd:
                 setattr(self, '.javaModule', jmd)
@@ -1309,7 +1309,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             if res:
                 return res
         jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '1.9':
+        if jdk.javaCompliance >= '9':
             info = get_java_module_info(self)
             if info:
                 _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
@@ -2530,14 +2530,14 @@ class JavacCompiler(JavacLikeCompiler):
             else:
                 javacArgs.extend(['-classpath', os.pathsep.join(elements)])
 
-        if jdk.javaCompliance >= "9":
+        if jdk.javaCompliance >= '9':
             unsafe_jar = _get_jdk_module_classes_jar('jdk.unsupported', primary_suite(), jdk, 'sun.misc.Unsafe')
             _classpath_append(unsafe_jar)
         if disableApiRestrictions:
-            if jdk.javaCompliance < "9":
+            if jdk.javaCompliance < '9':
                 javacArgs.append('-XDignore.symbol.file')
         else:
-            if jdk.javaCompliance >= "9":
+            if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
         if warningsAsErrors:
             javacArgs.append('-Werror')
@@ -2546,24 +2546,52 @@ class JavacCompiler(JavacLikeCompiler):
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
 
-        if jdk.javaCompliance >= '1.9':
+        if jdk.javaCompliance >= '9':
+            jdkModulesOnClassPath = set()
+            declaringJdkModule = None
+
+            def getDeclaringJDKModule(proj):
+                """
+                Gets the JDK module, if any, declaring at least one package in `proj`.
+                """
+                m = getattr(proj, '.declaringJDKModule', None)
+                if m is None:
+                    modulepath = jdk.get_modules()
+                    for package in proj.defined_java_packages():
+                        jmd, _ = lookup_package(modulepath, package, "<unnamed>")
+                        if jmd:
+                            m = jmd.name
+                            break
+                    if m is None:
+                        # Use proj to denote that proj is not declared by any JDK module
+                        m = proj
+                    setattr(proj, '.declaringJDKModule', m)
+                if m is proj:
+                    return None
+                return m
+
+            declaringJdkModule = getDeclaringJDKModule(project)
+            if declaringJdkModule is not None:
+                jdkModulesOnClassPath.add(declaringJdkModule)
+                # If compiling sources for a JDK module, javac needs to know this via -Xmodule
+                javacArgs.append('-Xmodule:' + declaringJdkModule)
+
             def addExportArgs(dep, exports=None, prefix='', jdk=None):
                 """
                 Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
-                :param :class:`mx.JavaProject` dep: a Java project that may dependent on private JDK modules
+                :param mx.JavaProject dep: a Java project that may be dependent on private JDK modules
                 :param exports: either None or a set of exports per module for which ``--add-exports`` args
                    have already been added to `javacArgs`
-                :type exports: None or dict
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
+                :param JDKConfig jdk: the JDK to be searched for concealed packages
                 """
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
-                    if module == 'jdk.internal.vm.ci' and project.suite.name == 'jvmci':
-                        # A JVMCI project may refer to a JVMCI API under development which
-                        # can differ with the signature of the JVMCI API in the JDK used
-                        # for compilation. As such, a normal class path reference to the
-                        # JVMCI API must be used instead of an --add-exports option.
+                    if module in jdkModulesOnClassPath:
+                        # If the classes in a JDK module declaring the dependency are also
+                        # resolvable on the class path, then do not export the module
+                        # as the class path classes are more recent than the module classes
                         continue
                     for package in packages:
                         exportedPackages = None if exports is None else exports.setdefault(module, set())
@@ -2573,22 +2601,31 @@ class JavacCompiler(JavacLikeCompiler):
                             exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
-            if compliance >= "9":
+            if compliance >= '9':
                 addExportArgs(project)
             else:
                 # We use --release n with n < 9 so we need to create JARs for JdkLibraries
                 # that are in modules and did not exist in JDK n
                 assert '--release' in javacArgs
-                jdk_module_libraries = (e for e in classpath_entries(project.name, includeSelf=False)
-                                                if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince)
-                module_jars = set((_get_jdk_module_jar(lib.module, primary_suite(), jdk) for lib in jdk_module_libraries))
-                _classpath_append(module_jars)
+                jdk_module_jars = set()
+                for e in classpath_entries(project.name, includeSelf=False):
+                    if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince:
+                        jdkModulesOnClassPath.add(e.module)
+                        jdk_module_jars.add(_get_jdk_module_jar(e.module, primary_suite(), jdk))
+                    else:
+                        m = getDeclaringJDKModule(e)
+                        if m:
+                            jdkModulesOnClassPath.add(m)
+                _classpath_append(jdk_module_jars)
             aps = project.annotation_processors()
             if aps:
                 exports = {}
 
                 for dep in classpath_entries(aps, preferProjects=True):
                     if dep.isJavaProject():
+                        m = getDeclaringJDKModule(dep)
+                        if m:
+                            jdkModulesOnClassPath.add(m)
                         addExportArgs(dep, exports, '-J', jdk)
 
                 # An annotation processor may have a dependency on other annotation
@@ -2605,18 +2642,16 @@ class JavacCompiler(JavacLikeCompiler):
                 if exports:
                     javacArgs.append('-J--add-modules=' + ','.join(exports.iterkeys()))
 
-            # If compiling sources that are in an existing module, javac needs to know this via -Xmodule
-            modulepath = jdk.get_modules()
-            xmodule = None
-            for package in project.defined_java_packages():
-                jmd, _ = lookup_package(modulepath, package, "<unnamed>")
-                if jmd:
-                    if xmodule:
-                        if xmodule != jmd.name:
-                            abort('Cannot compile sources for more than multiple existing modules:' + xmodule + ' and ' + jmd.name)
-                    else:
-                        xmodule = jmd.name
-                        javacArgs.append('-Xmodule:' + jmd.name)
+                if len(jdkModulesOnClassPath) != 0:
+                    # We want annotation processors to use classes on the class path
+                    # instead of those the module(s) since the module classes may not
+                    # be in exported packages and/or may have different signatures.
+                    # Unfortunately, there's no VM option for hiding modules, only the
+                    # --limit-modules option for restricting modules observability.
+                    # We limit module observability to those required by javac and
+                    # the module declaring sun.misc.Unsafe which is used by annotation
+                    # processors such as JMH.
+                    javacArgs.append('-J--limit-modules=jdk.compiler,java.compiler,jdk.zipfs,jdk.unsupported')
 
         return javacArgs
 
@@ -11508,7 +11543,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
     jdk = get_jdk(p.javaCompliance)
     moduleDeps = {}
 
-    if jdk.javaCompliance >= '1.9':
+    if jdk.javaCompliance >= '9':
         moduleDeps = p.get_concealed_imported_packages()
         if eclipseJavaCompliance < '9':
             # If this project imports any JVMCI packages and Eclipse does not yet
@@ -15166,7 +15201,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.80.2")
+version = VersionSpec("5.81.0")
 
 currentUmask = None
 
