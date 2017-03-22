@@ -8836,6 +8836,22 @@ def _parse_http_proxy(envVarNames):
                 abort("Value of " + name + " is not valid:  " + value)
     return (None, None)
 
+def _java_no_proxy(env_vars=None):
+    if env_vars is None:
+        env_vars = ['no_proxy', 'NO_PROXY']
+    java_items = []
+    for name in env_vars:
+        value = get_env(name)
+        if value:
+            items = value.split(',')
+            for item in items:
+                item = item.strip()
+                if item == '*':
+                    java_items += [item]
+                else:
+                    java_items += [item, '*.' + item]
+    return '|'.join(java_items)
+
 def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
     proxyArgs = []
     def add_proxy_property(name, value):
@@ -8848,11 +8864,13 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     host, port = _parse_http_proxy(["HTTPS_PROXY", "https_proxy"])
     add_proxy_property('https.proxyHost', host)
     add_proxy_property('https.proxyPort', port)
+    add_proxy_property('http.nonProxyHosts', _java_no_proxy())
+
     if proxyArgs:
         proxyArgs.append('-DproxySet=true')
 
     mavenCommand = 'mvn'
-    mavenHome = os.getenv('MAVEN_HOME')
+    mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
@@ -15231,7 +15249,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.82.0")
+version = VersionSpec("5.82.1")
 
 currentUmask = None
 
