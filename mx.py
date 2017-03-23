@@ -6540,7 +6540,7 @@ class Suite:
 
             def _check_maven(maven):
                 maven_attrs = ['groupId', 'artifactId', 'version']
-                if not type(maven) is dict or not all(x in maven for x in maven_attrs):
+                if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
 
             def _maven_download_url(groupId, artifactId, version, suffix=None, baseURL=_mavenRepoBaseURL):
