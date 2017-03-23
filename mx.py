@@ -170,6 +170,8 @@ _dists = dict()
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
+_mavenRepoBaseURL = "https://search.maven.org/remotecontent?filepath="
+
 
 """
 Map from the name of a removed dependency to the reason it was removed.
@@ -6534,9 +6536,29 @@ class Suite:
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
             ext = attrs.pop('ext', None)
+            maven = attrs.pop('maven', None)
+
+            def _check_maven(maven):
+                maven_attrs = ['groupId', 'artifactId', 'version']
+                if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
+                    abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
+
+            def _maven_download_url(groupId, artifactId, version, suffix=None, baseURL=_mavenRepoBaseURL):
+                args = {
+                    'groupId': groupId.replace('.', '/'),
+                    'artifactId': artifactId,
+                    'version': version,
+                    'suffix' : '-{0}'.format(suffix) if suffix else ''
+                }
+                return "{baseURL}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(baseURL=baseURL, **args)
+
             if path is None:
                 if not urls:
-                    abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
+                    if maven is not None:
+                        _check_maven(maven)
+                        urls = [_maven_download_url(**maven)]
+                    else:
+                        abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
                 path = _get_path_in_cache(name, sha1, urls, ext)
@@ -6544,10 +6566,18 @@ class Suite:
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
             sourceExt = attrs.pop('sourceExt', None)
-            if sourcePath is None and sourceUrls:
-                if not sourceSha1:
-                    abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
-                sourcePath = _get_path_in_cache(name + '.sources', sourceSha1, sourceUrls, sourceExt)
+            if sourcePath is None:
+                if sourceSha1 and not sourceUrls:
+                    # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
+                    if maven is not None:
+                        _check_maven(maven)
+                        if 'suffix' in maven:
+                            abort('Cannot download sources for "maven" library with "suffix" attribute', context)
+                        sourceUrls = [_maven_download_url(suffix='source', **maven)]
+                if sourceUrls:
+                    if not sourceSha1:
+                        abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
+                    sourcePath = _get_path_in_cache(name + '.sources', sourceSha1, sourceUrls, sourceExt)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
@@ -15201,7 +15231,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.81.0")
+version = VersionSpec("5.82.0")
 
 currentUmask = None
 
