@@ -6569,7 +6569,7 @@ class Suite:
             if sourcePath is None:
                 if sourceSha1 and not sourceUrls:
                     # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
-                    if maven:
+                    if maven is not None:
                         _check_maven(maven)
                         if 'suffix' in maven:
                             abort('Cannot download sources for "maven" library with "suffix" attribute', context)
