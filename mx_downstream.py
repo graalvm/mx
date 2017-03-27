@@ -92,8 +92,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                         suites_in_repo.append(matches[0])
 
     for suite_in_repo in suites_in_repo:
-        rel_mirror = os.path.relpath(suite_in_repo.dir, mx.SuiteModel.siblings_dir(suite_in_repo.dir))
-        mirror = join(workDir, rel_mirror)
+        mirror = join(workDir, suite_in_repo.name)
         if exists(mirror):
             shutil.rmtree(mirror)
 
