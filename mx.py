@@ -6536,7 +6536,7 @@ class Suite:
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
             ext = attrs.pop('ext', None)
-            maven = attrs.pop('maven', None)
+            maven = attrs.get('maven', None)
 
             def _check_maven(maven):
                 maven_attrs = ['groupId', 'artifactId', 'version']
