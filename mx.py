@@ -13973,7 +13973,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
         abort(msg)
     if importedVersion != suite_import.version and suite_import.version is not None:
         print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
-        if exists(importing_suite.suite_py()) and is_interactive() and ask_yes_no('Update ' + importing_suite.suite_py()):
+        if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
             with open(importing_suite.suite_py()) as fp:
                 contents = fp.read()
             if contents.count(str(suite_import.version)) == 1:
