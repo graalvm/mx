@@ -26,7 +26,7 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
-from os.path import join, exists, isabs
+from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
 from urlparse import urlparse
 import shutil
@@ -92,7 +92,10 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                         suites_in_repo.append(matches[0])
 
     for suite_in_repo in suites_in_repo:
-        mirror = join(workDir, suite_in_repo.name)
+        if suite_in_repo.vc_dir and suite_in_repo.dir != suite_in_repo.vc_dir:
+            mirror = join(workDir, basename(suite_in_repo.vc_dir), suite_in_repo.name)
+        else:
+            mirror = join(workDir, suite_in_repo.name)
         if exists(mirror):
             shutil.rmtree(mirror)
 
