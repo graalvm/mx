@@ -1,5 +1,5 @@
 # overlay version
-overlay = 0edd74cfb471019c0f528dd8aeca68ad09d88fcc
+overlay = 7f61beba78be546164eb0bb4cdd7ed67b92f9d3a
 
 # These are used in the overlay
 java7 : {name : oraclejdk, version : "7",    platformspecific: true}
