@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 
 import mx
+import mx_benchmark
 from argparse import ArgumentParser
 
 _microbench_executor = None
@@ -48,6 +49,8 @@ class MicrobenchExecutor(object):
                                 usage="%(prog)s [command options|VM options] [-- [JMH options]]")
         parser.add_argument('--jar', help='Explicitly specify micro-benchmark location')
         self.add_arguments(parser)
+
+        mx.warn("`mx microbench` is deprecated! Consider moving to `mx_benchmark.JMHRunnerBenchmarkSuite`")
 
         known_args, args = parser.parse_known_args(args)
 
@@ -76,10 +79,8 @@ class MicrobenchExecutor(object):
             self.javaCompliance = mx.JavaCompliance('1.8')
         else:
             # find all projects with a direct JMH dependency
-            jmhProjects = []
-            for p in mx.projects_opt_limit_to_suites():
-                if 'JMH' in [x.name for x in p.deps]:
-                    jmhProjects.append(p)
+            projects_dict = mx_benchmark.JMHRunnerBenchmarkSuite.get_jmh_projects_dict()
+            jmhProjects = projects_dict['JMH'] if 'JMH' in projects_dict else []
             # get java compliance - 1.8 is minimum since we build jmh-runner with java 8
             self.javaCompliance = max([p.javaCompliance for p in jmhProjects] + [mx.JavaCompliance('1.8')])
             cpArgs = mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk(self.javaCompliance))

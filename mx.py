@@ -7709,7 +7709,7 @@ def dependency(name, fatalIfMissing=True, context=None):
     if d is None:
         d = _dists.get(name)
     if d is None and fatalIfMissing:
-        if name in _opts.ignored_projects:
+        if hasattr(_opts, 'ignored_projects') and name in _opts.ignored_projects:
             abort('dependency named ' + name + ' is ignored', context=context)
         abort(_missing_dep_message(name, 'dependency'), context=context)
     return d
@@ -15281,7 +15281,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.82.3")
+version = VersionSpec("5.83.0")
 
 currentUmask = None
 

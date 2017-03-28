@@ -1145,16 +1145,6 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
         return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
 
-    def benchmarkList(self, bmSuiteArgs):
-        benchmarks = None
-        jvm = self.getJavaVm(bmSuiteArgs)
-        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
-        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        _, out, _ = jvm.run(cwd, args + ["-l"])
-        benchs = out.splitlines()
-        assert benchs[0].startswith("Benchmarks:")
-        return benchs[1:]
-
     def successPatterns(self):
         return [
             re.compile(
@@ -1178,13 +1168,40 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
 
+    def benchmarkList(self, bmSuiteArgs):
+        """Return all different JMH versions found."""
+        return list(JMHRunnerBenchmarkSuite.get_jmh_projects_dict().iterkeys())
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if benchmarks is None:
+            mx.abort("JMH Suite runs only a single JMH version.")
+        if len(benchmarks) != 1:
+            mx.abort("JMH Suite runs only a single JMH version, got: {0}".format(benchmarks))
+        self._jmh_version = benchmarks[0]
+        return super(JMHRunnerBenchmarkSuite, self).createCommandLineArgs(benchmarks, bmSuiteArgs)
+
     def extraVmArgs(self):
-        # find all projects with a direct JMH dependency
-        jmhProjects = []
-        for p in mx.projects_opt_limit_to_suites():
-            if 'JMH' in [x.name for x in p.deps]:
-                jmhProjects.append(p)
+        if not self._jmh_version:
+            mx.abort("No JMH version selected!")
+        jmhProjects = JMHRunnerBenchmarkSuite.get_jmh_projects_dict()[self._jmh_version]
+        if not jmhProjects:
+            mx.abort("No JMH benchmark projects found!")
         return mx.get_runtime_jvm_args([p.name for p in jmhProjects], jdk=mx.get_jdk())
+
+    @staticmethod
+    def get_jmh_projects_dict():
+        # find all projects with a direct JMH dependency
+        jmhProjects = {}
+        projects = mx.projects_opt_limit_to_suites()
+        if mx.primary_suite() == mx._mx_suite:
+            projects = [p for p in mx._projects.itervalues() if p.suite == mx._mx_suite]
+        for p in projects:
+            for x in p.deps:
+                if x.name.startswith('JMH'):
+                    if x.name not in jmhProjects:
+                        jmhProjects[x.name] = []
+                    jmhProjects[x.name].append(p)
+        return jmhProjects
 
     def getJMHEntry(self, bmSuiteArgs):
         return ["org.openjdk.jmh.Main"]
@@ -1200,6 +1217,16 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
     for the bench-suite property.
     """
     jmh_jar_parser_name = "jmh_jar_benchmark_suite_vm"
+
+    def benchmarkList(self, bmSuiteArgs):
+        benchmarks = None
+        jvm = self.getJavaVm(bmSuiteArgs)
+        cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
+        args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
+        _, out, _ = jvm.run(cwd, args + ["-l"])
+        benchs = out.splitlines()
+        assert benchs[0].startswith("Benchmarks:")
+        return benchs[1:]
 
     def benchSuiteName(self, bmSuiteArgs):
         return "jmh-" + self.jmhName(bmSuiteArgs)
