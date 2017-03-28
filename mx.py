@@ -6667,7 +6667,8 @@ class Suite:
                                         s.vc.update(s.vc_dir, rev=resolved, mayPull=True)
                 return s
 
-        searchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        initialSearchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
+        searchMode = initialSearchMode
         version = suite_import.version
         # experimental code to ignore versions, aka pull the tip
         if _suites_ignore_versions:
@@ -6755,7 +6756,10 @@ class Suite:
 
         if importMxDir is None:
             if fatalIfMissing:
-                abort("Import suite '{0}' not found (binary or source)".format(suite_import.name))
+                suffix = ''
+                if initialSearchMode == 'binary' and not any((urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos)):
+                    suffix = " No binary URLs in {} for import of '{}' into '{}'.".format(importing_suite.suite_py(), suite_import.name, importing_suite.name)
+                abort("Import suite '{}' not found (binary or source).{}".format(suite_import.name, suffix))
             else:
                 return None
 
@@ -15281,7 +15285,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.83.0")
+version = VersionSpec("5.83.1")
 
 currentUmask = None
 
