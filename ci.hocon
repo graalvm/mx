@@ -1,10 +1,14 @@
 # overlay version
-overlay = 0edd74cfb471019c0f528dd8aeca68ad09d88fcc
+overlay = e3fa1b48a0c90d742f02ffa99194d7389ba15be0
 
 # These are used in the overlay
 java7 : {name : oraclejdk, version : "7",    platformspecific: true}
 java8 : {name : labsjdk, version : "8u121-jvmci-0.25", platformspecific: true}
-java9 : {name : labsjdk, version : "9-SNAPSHOT", platformspecific: true}
+java9 : {name : labsjdk, version : "9-20170328-160617", platformspecific: true}
+
+downloads.java : {
+    JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
+}
 
 gate : {
   packages : {
@@ -12,8 +16,7 @@ gate : {
     "pip:pylint" : "==1.1.0"
   }
   # need pyhocon fix
-  downloads : {
-    JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
+  downloads : ${downloads.java} {
     JDT : {name: ecj, version: "4.5.1", platformspecific: false}
     ECLIPSE : {name: eclipse, version: "4.3.0", platformspecific: true}
   }
@@ -35,7 +38,26 @@ bench-test : {
   ]
 }
 
+jmh-test : {
+  downloads : ${downloads.java}
+  setup:  [
+    ["./mx", "build"]
+  ]
+  run: [
+    ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-mx:*"]
+  ]
+}
+
+verifylibraryurls : {
+  run : [
+    ["./mx", "--strict-compliance", "-v", "verifylibraryurls"]
+  ]
+  timelimit : "10:00"
+}
+
 builds = [
-  ${gate} {capabilities : [linux, amd64, gate], name: "gate-linux-amd64"}
-  ${bench-test} {capabilities : [linux, amd64, gate], name: "bench-linux-amd64"}
+  ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
+  ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
+  ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
+  ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
 ]
