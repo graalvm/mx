@@ -12295,7 +12295,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.close('exec')
     out.close('target')
     out.open('target', {'name' : 'package', 'depends' : 'init'})
-    out.element('loadfile', {'srcFile' : join(p.suite.get_output_root(), 'netbeans.log'), 'property' : 'netbeans.log'})
+    out.element('loadfile', {'srcFile' : join(p.suite.get_output_root(), 'netbeans.log'), 'property' : 'netbeans.log', 'failonerror' : 'false'})
     out.element('echo', {'message' : '...truncated...${line.separator}', 'output' : join(p.suite.get_output_root(), 'netbeans.log')})
     out.element('echo', {'message' : '${netbeans.log}'})
     for d in dists:
