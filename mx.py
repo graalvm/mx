@@ -1290,6 +1290,13 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 run_java(strip_command)
 
+    def remoteName(self):
+        base_name = super(JARDistribution, self).remoteName()
+        if self.is_stripped():
+            return base_name + "_stripped"
+        else:
+            return base_name
+
     def getBuildTask(self, args):
         return JARArchiveTask(args, self)
 
@@ -15285,7 +15292,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.83.1")
+version = VersionSpec("5.83.2")
 
 currentUmask = None
 
