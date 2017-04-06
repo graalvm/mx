@@ -5920,21 +5920,25 @@ class SuiteImport:
         self.in_subdir = in_subdir
 
     @staticmethod
-    def parse_specification(import_dict, context, dynamicImport=False, importer_in_subdir=False):
+    def parse_specification(import_dict, context, importer_version, dynamicImport=False, importer_in_subdir=False):
         name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute', context=context)
-        # missing defaults to the tip
-        version = import_dict.get("version")
+
         urls = import_dict.get("urls")
         in_subdir = import_dict.get("subdir", False)
+        version = import_dict.get("version")
+        if version is None:
+            if not in_subdir:
+                abort("In import for '{}': No version given and not a 'subdir' suite".format(name), context=context)
+            version = importer_version
         if urls is None:
             if not in_subdir:
                 if import_dict.get("subdir") is None and importer_in_subdir:
                     warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
                     in_subdir = True
                 else:
-                    abort("In import for '{}':No urls given and not a 'subdir' suite".format(name), context=context)
+                    abort("In import for '{}': No urls given and not a 'subdir' suite".format(name), context=context)
             return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir)
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
@@ -6399,7 +6403,7 @@ class Suite:
                     abort('suite import entry must be a dict')
 
                 import_dict = entry
-                suite_import = SuiteImport.parse_specification(import_dict, context=self, dynamicImport=self.dynamicallyImported, importer_in_subdir=self.dir != self.vc_dir)
+                suite_import = SuiteImport.parse_specification(import_dict, context=self, importer_version=self.version(), dynamicImport=self.dynamicallyImported, importer_in_subdir=self.dir != self.vc_dir)
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
                 if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
                     _jdkProvidedSuites.add(suite_import.name)
@@ -15292,7 +15296,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.84.0")
+version = VersionSpec("5.84.1")
 
 currentUmask = None
 
