@@ -6580,7 +6580,7 @@ class Suite:
                         _check_maven(maven)
                         if 'suffix' in maven:
                             abort('Cannot download sources for "maven" library with "suffix" attribute', context)
-                        sourceUrls = [_maven_download_url(suffix='source', **maven)]
+                        sourceUrls = [_maven_download_url(suffix='sources', **maven)]
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
@@ -15292,7 +15292,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.83.2")
+version = VersionSpec("5.83.3")
 
 currentUmask = None
 
