@@ -104,13 +104,7 @@ suite = {
     },
 
     "COMMONS_MATH3_3_2" : {
-      "urls" : [
-        "https://search.maven.org/remotecontent?filepath=org/apache/commons/commons-math3/3.2/commons-math3-3.2.jar"
-      ],
       "sha1" : "ec2544ab27e110d2d431bdad7d538ed509b21e62",
-      "sourceUrls" : [
-        "https://search.maven.org/remotecontent?filepath=org/apache/commons/commons-math3/3.2/commons-math3-3.2-sources.jar"
-      ],
       "sourceSha1" : "cd098e055bf192a60c81d81893893e6e31a6482f",
       "licence" : "Apache-2.0",
       "maven" : {
@@ -121,13 +115,7 @@ suite = {
     },
 
     "JOPTSIMPLE_4_6" : {
-      "urls" : [
-        "https://search.maven.org/remotecontent?filepath=net/sf/jopt-simple/jopt-simple/6.0-alpha-1/jopt-simple-6.0-alpha-1.jar"
-      ],
       "sha1" : "be0a64a073f82f6cb6797ef3ad8acc5c405ea25f",
-      "sourceUrls" : [
-        "https://search.maven.org/remotecontent?filepath=net/sf/jopt-simple/jopt-simple/6.0-alpha-1/jopt-simple-6.0-alpha-1-sources.jar"
-      ],
       "sourceSha1" : "6884ff7bda14e88aa369f1dc3315b5c24106ac2f",
       "licence": "MIT",
       "maven" : {
@@ -138,13 +126,7 @@ suite = {
     },
 
     "JMH_GENERATOR_ANNPROCESS_1_18" : {
-      "urls": [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.18/jmh-generator-annprocess-1.18.jar"
-      ],
       "sha1": "b852fb028de645ad2852bbe998e084d253f450a5",
-      "sourceUrls" : [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-generator-annprocess/1.18/jmh-generator-annprocess-1.18-sources.jar"
-      ],
       "sourceSha1" : "d455b0dc6108b5e6f1fb4f6cf1c7b4cbedbecc97",
       "licence": "GPLv2-CPE",
       "maven" : {
@@ -155,13 +137,7 @@ suite = {
     },
 
     "JMH_1_18" : {
-      "urls": [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-core/1.18/jmh-core-1.18.jar"
-      ],
       "sha1": "0174aa0077e9db596e53d7f9ec37556d9392d5a6",
-      "sourceUrls": [
-        "https://search.maven.org/remotecontent?filepath=org/openjdk/jmh/jmh-core/1.18/jmh-core-1.18-sources.jar"
-      ],
       "sourceSha1": "7ff1e1aafea436b6aa8b29a8b8f1c2d66be26f5b",
       "licence": "GPLv2-CPE",
       "dependencies" : ["JOPTSIMPLE_4_6", "JMH_GENERATOR_ANNPROCESS_1_18", "COMMONS_MATH3_3_2"],
