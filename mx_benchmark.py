@@ -1418,8 +1418,12 @@ class BenchmarkExecutor(object):
     def getSuiteAndBenchNames(self, args, bmSuiteArgs):
         argparts = args.benchmark.split(":")
         suitename = argparts[0]
+        exclude = False
         if len(argparts) == 2:
             benchspec = argparts[1]
+            if benchspec.startswith('~'):
+                benchspec = benchspec[1:]
+                exclude = True
         else:
             benchspec = ""
         suite = _bm_suites.get(suitename)
@@ -1431,10 +1435,13 @@ class BenchmarkExecutor(object):
             return (suite, [None])
         else:
             benchspec = benchspec.split(",")
+            benchmark_list = suite.benchmarkList(bmSuiteArgs)
             for bench in benchspec:
-                if not bench in suite.benchmarkList(bmSuiteArgs):
+                if not bench in benchmark_list:
                     mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
-                        bench, suitename, suite.benchmarkList(bmSuiteArgs)))
+                        bench, suitename, benchmark_list))
+            if exclude:
+                return (suite, [[bench] for bench in benchmark_list if bench not in benchspec])
             return (suite, [benchspec])
 
     def applyScoreFunction(self, datapoint):
@@ -1606,10 +1613,12 @@ def benchmark(args):
         List of arguments (see below).
 
         `bmSuiteName`: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
-        `benchName`: Name of particular benchmar within the benchmark suite
+        `benchName`: Name of particular benchmark within the benchmark suite
             (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that
             all the benchmarks need to be executed as separate runs. If omitted, all the
-            benchmarks must be executed as part of one run.
+            benchmarks must be executed as part of one run. If `benchName` starts with
+            `~`, then all the specified benchmarks are excluded and the unspecified
+            benchmarks are executed as part of one run.
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Path to the file into which to dump the benchmark results.
