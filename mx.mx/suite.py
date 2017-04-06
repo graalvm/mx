@@ -115,8 +115,8 @@ suite = {
     },
 
     "JOPTSIMPLE_4_6" : {
-      "sha1" : "be0a64a073f82f6cb6797ef3ad8acc5c405ea25f",
-      "sourceSha1" : "6884ff7bda14e88aa369f1dc3315b5c24106ac2f",
+      "sha1" : "306816fb57cf94f108a43c95731b08934dcae15c",
+      "sourceSha1" : "9cd14a61d7aa7d554f251ef285a6f2c65caf7b65",
       "licence": "MIT",
       "maven" : {
         "groupId" : "net.sf.jopt-simple",
