@@ -297,12 +297,16 @@ public class MxJUnitWrapper {
                             if (m.matches()) {
                                 String moduleName = m.group(1);
                                 String packageName = m.group(2);
-                                JLRModule module = JLRModule.find(moduleName);
+                                JLModule module = JLModule.find(moduleName);
                                 if (module == null) {
                                     out.printf("%s: Cannot find module named %s specified in \"AddExports\" annotation: %s%n", cls.getName(), moduleName, a);
                                 } else {
-                                    module.addExports(packageName, JLRModule.fromClass(cls));
-                                    module.addOpens(packageName, JLRModule.fromClass(cls));
+                                    if (packageName.equals("*")) {
+                                        module.exportAllPackagesTo(JLModule.fromClass(cls));
+                                    } else {
+                                        module.addExports(packageName, JLModule.fromClass(cls));
+                                        module.addOpens(packageName, JLModule.fromClass(cls));
+                                    }
                                 }
                             } else {
                                 out.printf("%s: Ignoring \"AddExports\" annotation with value not matching <module>/<package> pattern: %s%n", cls.getName(), a);

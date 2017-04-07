@@ -23,17 +23,18 @@
 package com.oracle.mxtool.junit;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Set;
 
 /**
- * Facade for the {@code java.lang.reflect.Module} class introduced in JDK9 that allows tests to be
+ * Facade for the {@code java.lang.Module} class introduced in JDK9 that allows tests to be
  * developed against JDK8 but use module logic if deployed on JDK9.
  */
-public class JLRModule {
+public class JLModule {
 
     private final Object realModule;
 
-    public JLRModule(Object module) {
+    public JLModule(Object module) {
         this.realModule = module;
     }
 
@@ -52,9 +53,9 @@ public class JLRModule {
     private static final Method addOpensMethod;
     static {
         try {
-            moduleClass = Class.forName("java.lang.reflect.Module");
+            moduleClass = findModuleClass();
             Class<?> modulesClass = Class.forName("jdk.internal.module.Modules");
-            layerClass = Class.forName("java.lang.reflect.Layer");
+            layerClass = findModuleLayerClass();
             bootMethod = layerClass.getMethod("boot");
             modulesMethod = layerClass.getMethod("modules");
             getModuleMethod = Class.class.getMethod("getModule");
@@ -70,6 +71,24 @@ public class JLRModule {
         }
     }
 
+    // API change http://hg.openjdk.java.net/jdk9/dev/hotspot/rev/afedee84773e.
+    protected static Class<?> findModuleClass() throws ClassNotFoundException {
+        try {
+            return Class.forName("java.lang.Module");
+        } catch (ClassNotFoundException e) {
+            return Class.forName("java.lang.reflect.Module");
+        }
+    }
+
+    // API change http://hg.openjdk.java.net/jdk9/dev/hotspot/rev/afedee84773e.
+    protected static Class<?> findModuleLayerClass() throws ClassNotFoundException {
+        try {
+            return Class.forName("java.lang.ModuleLayer");
+        } catch (ClassNotFoundException e) {
+            return Class.forName("java.lang.reflect.Layer");
+        }
+    }
+
     private static Method getDeclaredMethodOptional(Class<?> declaringClass, String name, Class<?>... parameterTypes) {
         try {
             return declaringClass.getDeclaredMethod(name, parameterTypes);
@@ -78,21 +97,21 @@ public class JLRModule {
         }
     }
 
-    public static JLRModule fromClass(Class<?> cls) {
+    public static JLModule fromClass(Class<?> cls) {
         try {
-            return new JLRModule(getModuleMethod.invoke(cls));
+            return new JLModule(getModuleMethod.invoke(cls));
         } catch (Exception e) {
             throw new AssertionError(e);
         }
     }
 
     @SuppressWarnings("unchecked")
-    public static JLRModule find(String name) {
+    public static JLModule find(String name) {
         try {
             Object bootLayer = bootMethod.invoke(null);
             Set<Object> modules = (Set<Object>) modulesMethod.invoke(bootLayer);
             for (Object m : modules) {
-                JLRModule module = new JLRModule(m);
+                JLModule module = new JLModule(m);
                 String mname = module.getName();
                 if (mname.equals(name)) {
                     return module;
@@ -104,9 +123,9 @@ public class JLRModule {
         return null;
     }
 
-    public static JLRModule getUnnamedModuleFor(ClassLoader cl) {
+    public static JLModule getUnnamedModuleFor(ClassLoader cl) {
         try {
-            return new JLRModule(getUnnamedModuleMethod.invoke(cl));
+            return new JLModule(getUnnamedModuleMethod.invoke(cl));
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -123,7 +142,7 @@ public class JLRModule {
     /**
      * Exports all packages in this module to a given module.
      */
-    public void exportAllPackagesTo(JLRModule module) {
+    public void exportAllPackagesTo(JLModule module) {
         if (this != module) {
             for (String pkg : getPackages()) {
                 // Export all JVMCI packages dynamically instead
@@ -131,14 +150,21 @@ public class JLRModule {
                 // options on the JVM command line.
                 if (!isExported(pkg, module)) {
                     addExports(pkg, module);
+                    addOpens(pkg, module);
                 }
             }
         }
     }
 
-    public String[] getPackages() {
+    @SuppressWarnings("unchecked")
+    public Iterable<String> getPackages() {
         try {
-            return (String[]) getPackagesMethod.invoke(realModule);
+            // API change http://hg.openjdk.java.net/jdk9/dev/hotspot/rev/afedee84773e#l1.15
+            Object res = getPackagesMethod.invoke(realModule);
+            if (res instanceof String[]) {
+                return Arrays.asList((String[]) res);
+            }
+            return (Set<String>) res;
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -152,7 +178,7 @@ public class JLRModule {
         }
     }
 
-    public boolean isExported(String pn, JLRModule other) {
+    public boolean isExported(String pn, JLModule other) {
         try {
             return (Boolean) isExported2Method.invoke(realModule, pn, other.realModule);
         } catch (Exception e) {
@@ -160,7 +186,7 @@ public class JLRModule {
         }
     }
 
-    public void addExports(String pn, JLRModule other) {
+    public void addExports(String pn, JLModule other) {
         try {
             addExportsMethod.invoke(null, realModule, pn, other.realModule);
         } catch (Exception e) {
@@ -168,7 +194,7 @@ public class JLRModule {
         }
     }
 
-    public void addOpens(String pn, JLRModule other) {
+    public void addOpens(String pn, JLModule other) {
         if (addOpensMethod != null) {
             try {
                 addOpensMethod.invoke(null, realModule, pn, other.realModule);

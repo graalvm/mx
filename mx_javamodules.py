@@ -312,7 +312,7 @@ def make_java_module(dist, jdk):
     allmodules = modulepath + jdkModules
 
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
-    
+
     # Collect packages in the module first
     packages = set()
     for dep in javaprojects:
