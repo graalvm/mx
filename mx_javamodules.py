@@ -312,26 +312,33 @@ def make_java_module(dist, jdk):
     allmodules = modulepath + jdkModules
 
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
-    packages = []
+
+    # Collect packages in the module first
+    packages = set()
+    for dep in javaprojects:
+        packages.update(dep.defined_java_packages())
+
     for dep in javaprojects:
         uses.update(getattr(dep, 'uses', []))
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
-            depModule, visibility = lookup_package(allmodules, pkg, moduleName)
-            if depModule and depModule.name != moduleName:
-                requires.setdefault(depModule.name, set())
-                if visibility == 'exported':
-                    # A distribution based module does not re-export its imported JDK packages
-                    usedModules.add(depModule)
-                else:
-                    assert visibility == 'concealed'
-                    concealedRequires.setdefault(depModule.name, set()).add(pkg)
-                    usedModules.add(depModule)
+            # Only consider packages not defined by the module we're creating. This handles the
+            # case where we're creating a module that will upgrade an existing upgradeable
+            # module in the JDK such as jdk.internal.vm.compiler.
+            if pkg not in packages:
+                depModule, visibility = lookup_package(allmodules, pkg, moduleName)
+                if depModule and depModule.name != moduleName:
+                    requires.setdefault(depModule.name, set())
+                    if visibility == 'exported':
+                        # A distribution based module does not re-export its imported JDK packages
+                        usedModules.add(depModule)
+                    else:
+                        assert visibility == 'concealed'
+                        concealedRequires.setdefault(depModule.name, set()).add(pkg)
+                        usedModules.add(depModule)
 
         # If an "exports" attribute is not present, all packages are exported
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
             exports.setdefault(package, [])
-
-        packages.extend(dep.defined_java_packages())
 
     provides = {}
     if exists(moduleDir):

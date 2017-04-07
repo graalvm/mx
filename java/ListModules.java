@@ -20,8 +20,6 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-import java.lang.reflect.Module;
-import java.lang.reflect.Layer;
 import java.lang.module.ModuleDescriptor;
 import java.lang.module.ModuleReference;
 import java.lang.module.ModuleFinder;
@@ -56,12 +54,29 @@ public class ListModules {
         return false;
     }
 
+    private static Set<ModuleDescriptor> bootModules() throws Throwable {
+        Set<ModuleDescriptor> bootModules = new HashSet<>();
+        Object bootLayer;
+        // Use reflection to support backward incompatible module API change
+        // http://hg.openjdk.java.net/jdk9/dev/jdk/rev/fa3c4a60a616#l7.152
+        try {
+            bootLayer = Class.forName("java.lang.ModuleLayer").getMethod("boot").invoke(null);
+        } catch (ClassNotFoundException e) {
+            bootLayer = Class.forName("java.lang.reflect.Layer").getMethod("boot").invoke(null);
+        }
+        
+        Set<Object> modules = (Set<Object>) bootLayer.getClass().getMethod("modules").invoke(bootLayer);
+        Method getDescriptor = modules.iterator().next().getClass().getMethod("getDescriptor");
+        for (Object module : modules) {
+        	ModuleDescriptor md = (ModuleDescriptor) getDescriptor.invoke(module);
+        	bootModules.add(md);
+        }
+        return bootModules;
+    }
+    
     public static void main(String[] args) throws Throwable {
         PrintStream out = System.out;
-        Set<ModuleDescriptor> bootModules = new HashSet<>();
-        for (Module module : Layer.boot().modules()) {
-        	bootModules.add(module.getDescriptor());
-        }
+        Set<ModuleDescriptor> bootModules = bootModules();
 
         // Use reflection to support backward incompatible module API change
         // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l20.679
