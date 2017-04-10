@@ -201,7 +201,6 @@ _check_global_structures = True  # can be set False to allow suites with duplica
 _vc_systems = []
 _mvn = None
 _binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
-_suites_ignore_versions = None # as per _binary_suites, ignore versions on clone
 _urlrewrites = [] # list of URLRewrite objects
 _original_environ = dict(os.environ)
 _jdkProvidedSuites = set()
@@ -6700,11 +6699,6 @@ class Suite:
 
         initialSearchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
         searchMode = initialSearchMode
-        version = suite_import.version
-        # experimental code to ignore versions, aka pull the tip
-        if _suites_ignore_versions:
-            if len(_suites_ignore_versions) == 0 or suite_import.name in _suites_ignore_versions:
-                version = None
 
         # The following two functions abstract state that varies between binary and source suites
         def _is_binary_mode():
@@ -6753,7 +6747,7 @@ class Suite:
                         clone_kwargs['suite_name'] = suite_import.name
 
                     importDir = _get_import_dir()
-                    if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
+                    if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False, **clone_kwargs):
                         importMxDir = _find_suite_dir()
                         if importMxDir is None:
                             # wasn't a suite after all, this is an error
@@ -15296,16 +15290,6 @@ def main():
                 else:
                     _binary_suites = []
 
-            # support advanced use where import version ids are ignored (so get head)
-            # experimental, not observed in all commands
-            global _suites_ignore_versions
-            igv = os.environ.get('MX_IGNORE_VERSIONS')
-            if igv  is not None:
-                if len(igv) > 0:
-                    _suites_ignore_versions = igv.split(',')
-                else:
-                    _suites_ignore_versions = []
-
             # This will load all explicitly imported suites, unless it's a vc command
             _init_primary_suite(PrimarySuite(primarySuiteMxDir, load=not vc_command))
         else:
@@ -15391,7 +15375,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.95.1")  # Spiders everywhere!
+version = VersionSpec("5.96.0")  # 100% pure!
 
 currentUmask = None
 
