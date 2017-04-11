@@ -58,8 +58,7 @@ import difflib
 import glob
 import urllib2, urlparse
 import filecmp
-from collections import Callable
-from collections import OrderedDict, namedtuple
+from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType
@@ -180,7 +179,6 @@ A reason may be the name of another removed dependency, forming a causality chai
 _removedDeps = {}
 
 _suites = dict()
-_loadedSuites = []
 """
 Map of the environment variables loaded by parsing the suites.
 """
@@ -200,8 +198,8 @@ _default_java_home = None
 _check_global_structures = True  # can be set False to allow suites with duplicate definitions to load without aborting
 _vc_systems = []
 _mvn = None
-_binary_suites = None # source suites only if None, [] means all binary, otherwise specific list
-_urlrewrites = [] # list of URLRewrite objects
+_binary_suites = None  # source suites only if None, [] means all binary, otherwise specific list
+_urlrewrites = []  # list of URLRewrite objects
 _original_environ = dict(os.environ)
 _jdkProvidedSuites = set()
 
@@ -4391,7 +4389,7 @@ class GitConfig(VC):
         self.missing = 'No Git executable found. You must install Git in order to proceed!'
         self.has_git = None
         self.object_cache_mode = get_env('MX_GIT_CACHE') or None
-        if not self.object_cache_mode in [None, 'reference', 'dissociated']:
+        if self.object_cache_mode not in [None, 'reference', 'dissociated']:
             abort("MX_GIT_CACHE was '{}' expected '', 'reference', or 'dissociated'")
 
     def check(self, abortOnError=True):
@@ -6063,11 +6061,12 @@ class SCMMetadata(object):
         self.read = read
         self.write = write
 
-"""
-Command state and methods for all suite subclasses
-"""
-class Suite:
-    def __init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=False):
+
+class Suite(object):
+    """
+    Command state and methods for all suite subclasses
+    """
+    def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
@@ -6079,7 +6078,6 @@ class Suite:
         self.jdkLibs = []
         self.suite_imports = []
         self.extensions = None
-        self.primary = primary
         self.requiredMxVersion = None
         self.dists = []
         self._metadata_initialized = False
@@ -6092,10 +6090,14 @@ class Suite:
         self.versionConflictResolution = 'none' if importing_suite is None else importing_suite.versionConflictResolution
         self.dynamicallyImported = dynamicallyImported
         self.scm = None
-        if self.name in _suites and _suites[self.name].dir != self.dir:
-            abort('cannot override suite {} in {} with suite of the same name in {}'.format(self.name, _suites[self.name].dir, self.dir))
-        _suites[self.name] = self
         self._outputRoot = None
+        self._preloaded_suite_dict = None
+        self.vc = vc
+        self.vc_dir = vc_dir
+        self._preload_suite_dict()
+        self._init_imports()
+        if load:
+            self._load()
 
     def __str__(self):
         return self.name
@@ -6104,16 +6106,16 @@ class Suite:
         """
         Calls _parse_env and _load_extensions
         """
-        # load suites depth first
-        self.loading_imports = True
-        self.visit_imports(self._find_and_loadsuite)
-        self.loading_imports = False
+        logvv("Loading suite " + self.name)
+        self._load_suite_dict()
         self._parse_env()
         self._load_extensions()
-        _loadedSuites.append(self)
 
     def getMxCompatibility(self):
         return mx_compat.getMxCompatibility(self.requiredMxVersion)
+
+    def _parse_env(self):
+        nyi('_parse_env', self)
 
     def get_output_root(self):
         """
@@ -6137,29 +6139,11 @@ class Suite:
         """
         return join(self.get_output_root(), basename(self.mxDir))
 
-    def _load_suite_dict(self):
+    def _preload_suite_dict(self):
         dictName = 'suite'
-
-        def expand(value, context):
-            if isinstance(value, types.DictionaryType):
-                for n, v in value.iteritems():
-                    value[n] = expand(v, context + [n])
-            elif isinstance(value, types.ListType):
-                for i in range(len(value)):
-                    value[i] = expand(value[i], context + [str(i)])
-            elif isinstance(value, types.StringTypes):
-                value = expandvars(value)
-                if '$' in value or '%' in value:
-                    abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
-            elif isinstance(value, types.BooleanType):
-                pass
-            else:
-                abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
-
-            return value
-
         moduleName = 'suite'
-        modulePath = join(self.mxDir, moduleName + '.py')
+        modulePath = self.suite_py()
+        assert modulePath.endswith(moduleName + ".py")
         if not exists(modulePath):
             abort('{} is missing'.format(modulePath))
 
@@ -6188,9 +6172,29 @@ class Suite:
         # revert the Python path
         del sys.path[0]
 
+        def expand(value, context):
+            if isinstance(value, types.DictionaryType):
+                for n, v in value.iteritems():
+                    value[n] = expand(v, context + [n])
+            elif isinstance(value, types.ListType):
+                for i in range(len(value)):
+                    value[i] = expand(value[i], context + [str(i)])
+            elif isinstance(value, types.StringTypes):
+                value = expandvars(value)
+                if '$' in value or '%' in value:
+                    abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
+            elif isinstance(value, types.BooleanType):
+                pass
+            else:
+                abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
+
+            return value
+
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
-        d = expand(getattr(module, dictName), [dictName])
+        self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
+
+    def _load_suite_dict(self):
         supported = [
             'imports',
             'projects',
@@ -6214,6 +6218,9 @@ class Suite:
             'urlrewrites',
             'scm'
         ]
+        if self._preloaded_suite_dict is None:
+            self._preload_suite_dict()
+        d = self._preloaded_suite_dict
 
         if self.name == 'mx':
             self.requiredMxVersion = version
@@ -6262,9 +6269,10 @@ class Suite:
             unknown.remove(suiteExtensionAttributePrefix + n)
 
         if unknown:
-            abort(modulePath + ' defines unsupported suite attribute: ' + ', '.join(unknown))
+            abort(self.suite_py() + ' defines unsupported suite attribute: ' + ', '.join(unknown))
 
         self.suiteDict = d
+        self._preloaded_suite_dict = None
 
     def _register_metadata(self):
         """
@@ -6459,7 +6467,11 @@ class Suite:
                 self.extensions = mod
 
     def _init_imports(self):
-        importsMap = self._check_suiteDict("imports")
+        importsMap = {}
+        if self._preloaded_suite_dict is not None:
+            importsMap = self._preloaded_suite_dict.get("imports", importsMap)
+        else:
+            importsMap = self.suiteDict.get("imports", importsMap)
         suiteImports = importsMap.get("suites")
         if suiteImports:
             if not isinstance(suiteImports, list):
@@ -6501,7 +6513,7 @@ class Suite:
         stale import data from the updated suite.py file
         """
         self.suite_imports = []
-        self._load_suite_dict()
+        self._preload_suite_dict()
         self._init_imports()
 
     def _load_distributions(self, distsMap):
@@ -6686,6 +6698,13 @@ class Suite:
             r.__dict__.update(attrs)
             self.repositoryDefs.append(r)
 
+    def recursive_post_init(self):
+        """depth first _post_init driven by imports graph"""
+        self.visit_imports(Suite._init_metadata_visitor)
+        self._init_metadata()
+        self.visit_imports(Suite._post_init_visitor)
+        self._post_init()
+
     @staticmethod
     def _init_metadata_visitor(importing_suite, suite_import, **extra_args):
         imported_suite = suite(suite_import.name)
@@ -6710,137 +6729,6 @@ class Suite:
     def _post_init(self):
         self._post_init_finish()
 
-    @staticmethod
-    def _find_and_loadsuite(importing_suite, suite_import, fatalIfMissing=True, **extra_args):
-        """
-        Attempts to locate a suite using the information in suite_import and _binary_suites
-
-        If _binary_suites is None, (the usual case in development), tries to resolve
-        an import as a local source suite first, using the SuiteModel in effect.
-        If that fails uses the urlsinfo in suite_import to try to locate the suite in
-        a source repository and download it. 'binary' urls are ignored.
-
-        If _binary_suites == [a,b,...], then the listed suites are searched for
-        using binary urls and no attempt is made to search source urls.
-
-        If _binary_suites == [], source urls are completely ignored.
-        """
-        # Loaded already? Check for cycles and mismatched versions
-        # N.B. Currently only check the versions stated in the suite.py files and not the head version
-        # of a source suite as that can and will change during development. I.e, the version
-        # in the suite_import is only used when we actually need to download a suite
-        for s in _suites.itervalues():
-            if s.name == suite_import.name:
-                if s.loading_imports:
-                    abort("import cycle on suite '{0}' detected in suite '{1}'".format(s.name, importing_suite.name))
-                if not extra_args.has_key('noLoad'):
-                    # check that all other importers use the same version
-                    for otherImporter in s.imported_by:
-                        for imported in otherImporter.suite_imports:
-                            if imported.name == s.name:
-                                if imported.version != suite_import.version:
-                                    resolved = _resolve_suite_version_conflict(s.name, s, imported.version, otherImporter, suite_import, importing_suite)
-                                    if resolved:
-                                        s.vc.update(s.vc_dir, rev=resolved, mayPull=True)
-                return s
-
-        initialSearchMode = 'binary' if _binary_suites is not None and (len(_binary_suites) == 0 or suite_import.name in _binary_suites) else 'source'
-        searchMode = initialSearchMode
-
-        # The following two functions abstract state that varies between binary and source suites
-        def _is_binary_mode():
-            return searchMode == 'binary'
-
-        def _find_suite_dir():
-            """
-            Attempts to locate an existing suite in the local context
-            Returns the path to the mx.name dir if found else None
-            """
-            if _is_binary_mode():
-                # binary suites are always stored relative to the importing suite in mx-private directory
-                return importing_suite._find_binary_suite_dir(suite_import.name)
-            else:
-                # use the SuiteModel to locate a local source copy of the suite
-                return _suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
-
-        def _get_import_dir():
-            """Return directory where the suite will be cloned to"""
-            if _is_binary_mode():
-                return importing_suite.binary_suite_dir(suite_import.name)
-            else:
-                importDir, _ = _suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
-                if exists(importDir):
-                    abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
-                return importDir
-
-        def _clone_kwargs():
-            if _is_binary_mode():
-                return dict(result=dict())
-            else:
-                return dict()
-
-        def _try_clone():
-            clone_kwargs = _clone_kwargs()
-            importMxDir = _find_suite_dir()
-            if importMxDir is None:
-                # No local copy, so use the URLs in order to "download" one
-                fail = True
-                urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
-                for urlinfo in urlinfos:
-                    if not urlinfo.vc.check(abortOnError=False):
-                        continue
-                    if _is_binary_mode():
-                        # pass extra necessary extra info
-                        clone_kwargs['suite_name'] = suite_import.name
-
-                    importDir = _get_import_dir()
-                    if urlinfo.vc.clone(urlinfo.url, importDir, suite_import.version, abortOnError=False, **clone_kwargs):
-                        importMxDir = _find_suite_dir()
-                        if importMxDir is None:
-                            # wasn't a suite after all, this is an error
-                            pass
-                        else:
-                            fail = False
-                        # we are done searching either way
-                        break
-                    else:
-                        # it is possible that the clone partially populated the target
-                        # which will mess up further attempts, so we "clean" it
-                        if exists(importDir):
-                            shutil.rmtree(importDir)
-
-                # end of search
-                if fail:
-                    return None
-            return importMxDir
-
-        importMxDir = _try_clone()
-
-        if importMxDir is None:
-            if _is_binary_mode():
-                log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
-                searchMode = "source"
-                importMxDir = _try_clone()
-            elif all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
-                logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
-                searchMode = 'binary'
-                importMxDir = _try_clone()
-
-        if importMxDir is None:
-            if fatalIfMissing:
-                suffix = ''
-                if initialSearchMode == 'binary' and not any((urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos)):
-                    suffix = " No binary URLs in {} for import of '{}' into '{}'.".format(importing_suite.suite_py(), suite_import.name, importing_suite.name)
-                abort("Import suite '{}' not found (binary or source).{}".format(suite_import.name, suffix))
-            else:
-                return None
-
-        # Factory method?
-        if searchMode == 'binary':
-            return BinarySuite(importMxDir, importing_suite=importing_suite, dynamicallyImported=suite_import.dynamicImport)
-        else:
-            return SourceSuite(importMxDir, importing_suite=importing_suite, load=not extra_args.has_key('noLoad'), dynamicallyImported=suite_import.dynamicImport)
-
     def visit_imports(self, visitor, **extra_args):
         """
         Visitor support for the suite imports list
@@ -6853,10 +6741,20 @@ class Suite:
         for suite_import in self.suite_imports:
             visitor(self, suite_import, **extra_args)
 
+    def get_import(self, suite_name):
+        for suite_import in self.suite_imports:
+            if suite_import.name == suite_name:
+                return suite_import
+        return None
+
     def import_suite(self, name, version=None, urlinfos=None, kind=None):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
         suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True)
-        imported_suite = Suite._find_and_loadsuite(self, suite_import, fatalIfMissing=False)
+        imported_suite = suite(name, fatalIfMissing=False)
+        if not imported_suite:
+            imported_suite, _ = _find_suite_import(self, suite_import, fatalIfMissing=False, load=False)
+            if imported_suite:
+                imported_suite._preload_suite_dict()
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
@@ -6864,7 +6762,10 @@ class Suite:
                 if isinstance(imported_suite, BinarySuite) and updated:
                     imported_suite.reload_binary_suite()
             # TODO Add support for imports in dynamically loaded suites (no current use case)
+            if not suite(name, fatalIfMissing=False):
+                _register_suite(imported_suite)
             if not imported_suite.post_init:
+                imported_suite._load()
                 imported_suite._init_metadata()
                 imported_suite._post_init()
         return imported_suite
@@ -6896,7 +6797,7 @@ class Suite:
     def isSourceSuite(self):
         return isinstance(self, SourceSuite)
 
-def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, existingImporter, otherImport, otherImportingSuite):
+def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, existingImporter, otherImport, otherImportingSuite, dry_run=False):
     conflict_resolution = _opts.version_conflict_resolution
     if otherImport.dynamicImport and (not existingSuite or not existingSuite.dynamicallyImported) and conflict_resolution != 'latest_all':
         return None
@@ -6905,11 +6806,12 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
     if conflict_resolution == 'suite':
         if otherImportingSuite:
             conflict_resolution = otherImportingSuite.versionConflictResolution
-        else:
+        elif not dry_run:
             warn("Conflict resolution was set to 'suite' but importing suite is not available")
 
     if conflict_resolution == 'ignore':
-        warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
+        if not dry_run:
+            warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
     elif conflict_resolution == 'latest' or conflict_resolution == 'latest_all':
         if not existingSuite:
@@ -6917,7 +6819,10 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         if existingSuite.vc.kind != otherImport.kind:
             return None
         if not isinstance(existingSuite, SourceSuite):
-            abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only suported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
+            if dry_run:
+                return 'ERROR'
+            else:
+                abort("mismatched import versions on '{}' in '{}' and '{}', 'latest' conflict resolution is only supported for source suites".format(suiteName, otherImportingSuite.name, existingImporter.name if existingImporter else '?'))
         if not existingSuite.vc.exists(existingSuite.vc_dir, rev=otherImport.version):
             return otherImport.version
         resolved = existingSuite.vc.latest(existingSuite.vc_dir, otherImport.version, existingSuite.vc.parent(existingSuite.vc_dir))
@@ -6926,20 +6831,20 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             return None
         return resolved
     if conflict_resolution == 'none':
-        abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
+        if dry_run:
+            return 'ERROR'
+        else:
+            abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
+    return None
 
 """A source suite"""
 class SourceSuite(Suite):
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
-        Suite.__init__(self, mxDir, primary, internal, importing_suite, dynamicallyImported=dynamicallyImported)
-        self.vc, self.vc_dir = VC.get_vc_root(self.dir, abortOnError=False)
+        vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
+        Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
-        self._load_suite_dict()
-        self._init_imports()
         self._releaseVersion = None
-        if load:
-            self._load()
 
     def version(self, abortOnError=True):
         """
@@ -7229,16 +7134,15 @@ class SourceSuite(Suite):
 A pre-built suite downloaded from a Maven repository.
 """
 class BinarySuite(Suite):
-    def __init__(self, mxDir, importing_suite, dynamicallyImported=False):
-        Suite.__init__(self, mxDir, False, False, importing_suite, dynamicallyImported=dynamicallyImported)
+    def __init__(self, mxDir, importing_suite, dynamicallyImported=False, load=True):
+        Suite.__init__(self, mxDir, False, False, importing_suite, load, BinaryVC(), dirname(mxDir), dynamicallyImported=dynamicallyImported)
         # At this stage the suite directory is guaranteed to exist as is the mx.suitname
         # directory. For a freshly downloaded suite, the actual distribution jars
         # have not been downloaded as we need info from the suite.py for that
-        self.vc = BinaryVC()
-        self.vc_dir = self.dir
+
+    def _load(self):
         self._load_binary_suite()
-        self._init_imports()
-        self._load()
+        super(BinarySuite, self)._load()
 
     def reload_binary_suite(self):
         for d in self.dists:
@@ -7294,20 +7198,20 @@ class BinarySuite(Suite):
         for d in self.dists:
             d.deps = [dep for dep in d.deps if dep and not dep.isJavaProject()]
 
+
 class InternalSuite(SourceSuite):
     def __init__(self, mxDir):
         mxMxDir = _is_suite_dir(mxDir)
         assert mxMxDir
         SourceSuite.__init__(self, mxMxDir, internal=True)
+        _register_suite(self)
+
 
 class MXSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, _mx_home)
         self._init_metadata()
         self._post_init()
-
-    def vc_command_init(self):
-        pass
 
     def _parse_env(self):
         # Only load the env file from mx when it's the primary suite.  This can only
@@ -7319,46 +7223,10 @@ class MXSuite(InternalSuite):
                 SourceSuite._load_env_in_mxDir(self.mxDir)
         _primary_suite_deferrables.append(_deferrable)
 
+
 class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
-
-class PrimarySuite(SourceSuite):
-    def __init__(self, mxDir, load):
-        SourceSuite.__init__(self, mxDir, primary=True, load=load, importing_suite=None)
-
-    def _depth_first_post_init(self):
-        """depth first _post_init driven by imports graph"""
-        self.visit_imports(self._init_metadata_visitor)
-        self._init_metadata()
-        self.visit_imports(self._post_init_visitor)
-        self._post_init()
-
-    @staticmethod
-    def load_env(mxDir):
-        SourceSuite._load_env_in_mxDir(mxDir)
-
-    @staticmethod
-    def _find_suite(importing_suite, suite_import, **extra_args):
-        imported_suite = Suite._find_and_loadsuite(importing_suite, suite_import, **extra_args)
-        _suites[imported_suite.name] = imported_suite
-        PrimarySuite._fake_load(imported_suite)
-        imported_suite.visit_imports(PrimarySuite._find_suite, noLoad=True)
-
-    def vc_command_init(self):
-        """A short-circuit startup for vc (s*) commands that only loads the
-        import metadata from the suite.py file.
-        """
-        # so far we have just loaded the primary suite imports info
-        PrimarySuite._fake_load(self)
-        # Now visit the imports just loading import info
-        self.visit_imports(self._find_suite, noLoad=True)
-
-    @staticmethod
-    def _fake_load(s):
-        # logically this is wrong as Suite._load has not been executed but it keeps suites() happy
-        _loadedSuites.append(s)
-
 
 
 class XMLElement(xml.dom.minidom.Element):
@@ -7570,7 +7438,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
     """
     Get the list of all loaded suites.
     """
-    res = [s for s in _loadedSuites if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
+    res = [s for s in _suites.values() if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
     if opt_limit_to_suite and _opts.specific_suites:
         res = [s for s in res if s.name in _opts.specific_suites]
     return res
@@ -14193,66 +14061,20 @@ def scheckimports(args):
     for s in suites():
         s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports, ignore_uncommitted=args.ignore_uncommitted)
 
-def _sforce_imports_visitor(s, suite_import, import_map, strict_versions, **extra_args):
-    """sforceimports visitor for Suite.visit_imports"""
-    _sforce_imports(s, suite(suite_import.name), suite_import, import_map, strict_versions)
-
-def _sforce_imports(importing_suite, imported_suite, suite_import, import_map, strict_versions):
-    suite_import_version = suite_import.version
-    if imported_suite.name in import_map:
-        # we have seen this already
-        resolved = _resolve_suite_version_conflict(imported_suite.name, imported_suite, import_map[imported_suite.name], None, suite_import, importing_suite)
-        if not resolved:
-            return
-        suite_import_version = resolved
-    else:
-        import_map[imported_suite.name] = suite_import_version
-
-    if suite_import_version:
-        # normal case, a specific version
-        importedVersion = imported_suite.version()
-        if importedVersion != suite_import_version:
-            clean = True
-            if imported_suite.isDirty():
-                if is_interactive():
-                    retry = True
-                    while retry:
-                        answer = ask_question('WARNING: There are uncommited changes in {}! (a)bort, (s)how, (c)lean, (m)erge, (i)gnore?'.format(imported_suite.name),
-                                              options='[ascmi]', default='a')
-                        if answer == 'a':
-                            abort('aborting')
-                        elif answer == 's':
-                            imported_suite.vc.status(imported_suite.vc_dir)
-                        elif answer == 'c':
-                            retry = False
-                        elif answer == 'm':
-                            clean = False
-                            retry = False
-                        elif answer == 'i':
-                            return
-
-                else:
-                    abort('Uncommited changes in {}, aborting.'.format(imported_suite.name))
-            if imported_suite.vc.kind != suite_import.kind:
-                abort('Wrong VC type for {} ({}), expecting {}, got {}'.format(imported_suite.name, imported_suite.dir, suite_import.kind, imported_suite.vc.kind))
-            imported_suite.vc.update(imported_suite.vc_dir, suite_import_version, mayPull=True, clean=clean)
-    elif importing_suite and importing_suite.vc_dir == imported_suite.vc_dir:
-        pass
-    else:
-        # unusual case, no version specified, so pull the head
-        imported_suite.vc.pull(imported_suite.vc_dir, update=True)
-
-    # now (may) need to force imports of this suite if the above changed its import revs
-    # N.B. the suite_imports from the old version may now be invalid
-    imported_suite.re_init_imports()
-    imported_suite.visit_imports(_sforce_imports_visitor, import_map=import_map, strict_versions=strict_versions)
-
+@suite_context_free
 def sforceimports(args):
     """force working directory revision of imported suites to match primary suite imports"""
     parser = ArgumentParser(prog='mx sforceimports')
-    parser.add_argument('--strict-versions', action='store_true', help='strict version checking')
+    parser.add_argument('--strict-versions', action='store_true', help='DEPRECATED/IGNORED strict version checking')
     args = parser.parse_args(args)
-    _check_primary_suite().visit_imports(_sforce_imports_visitor, import_map=dict(), strict_versions=args.strict_versions)
+    if args.strict_versions:
+        warn("'--strict-versions' argument is deprecated and ignored. For version conflict resolution, see mx's '--version-conflict-resolution' flag.")
+    primary_suite_dir = _findPrimarySuiteMxDir()
+    if primary_suite_dir is None:
+        abort("Primary suite could not be found")
+    # TODO sort out suite_context_free and primary_suite_exempt
+    _suitemodel.set_primary_dir(primary_suite_dir)
+    _discover_suites(primary_suite_dir, load=False, register=False, update_existing=True)
 
 def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all, no_update):
     """pull visitor for Suite.visit_imports"""
@@ -15064,7 +14886,7 @@ def update_commands(suite, new_commands):
                 # suite but they must not override the primary definition.
                 if oldSuite == _primary_suite:
                     # ensure registered as qualified by the registering suite
-                    key = suite.name  + ':' + key
+                    key = suite.name + ':' + key
                 else:
                     qkey = oldSuite.name + ':' + key
                     _commands[qkey] = old
@@ -15214,7 +15036,7 @@ _vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 
                 'sincoming', 'soutgoing', 'spull', 'stip', 'sversions', 'supdate']
 
 def _needs_primary_suite(command):
-    return not command in _primary_suite_exempt and not command in _suite_context_free
+    return command not in _primary_suite_exempt and command not in _suite_context_free
 
 def _needs_primary_suite_check(args):
     if len(args) == 0:
@@ -15345,6 +15167,7 @@ def _remove_unsatisfied_deps():
         dep.getGlobalRegistry().pop(dep.name)
     return res
 
+
 def _get_command_property(command, propertyName):
     c = _commands.get(command)
     if c and len(c) >= 4:
@@ -15353,15 +15176,344 @@ def _get_command_property(command, propertyName):
             return props[propertyName]
     return None
 
+
 def _init_primary_suite(s):
     global _primary_suite
     assert not _primary_suite
     _primary_suite = s
+    _primary_suite.primary = True
     for deferrable in _primary_suite_deferrables:
         deferrable()
 
+
+def _register_suite(s):
+    assert s.name not in _suites, s.name
+    _suites[s.name] = s
+
+
+def _use_binary_suite(suite_name):
+    return _binary_suites is not None and (len(_binary_suites) == 0 or suite_name in _binary_suites)
+
+
+def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True):
+    initial_search_mode = 'binary' if _use_binary_suite(suite_import.name) else 'source'
+    search_mode = initial_search_mode
+
+    # The following two functions abstract state that varies between binary and source suites
+    def _is_binary_mode():
+        return search_mode == 'binary'
+
+    def _find_suite_dir():
+        """
+        Attempts to locate an existing suite in the local context
+        Returns the path to the mx.name dir if found else None
+        """
+        if _is_binary_mode():
+            # binary suites are always stored relative to the importing suite in mx-private directory
+            return importing_suite._find_binary_suite_dir(suite_import.name)
+        else:
+            # use the SuiteModel to locate a local source copy of the suite
+            return _suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
+
+    def _get_import_dir(url):
+        """Return directory where the suite will be cloned to"""
+        if _is_binary_mode():
+            return importing_suite.binary_suite_dir(suite_import.name)
+        else:
+            # Try use the URL first so that a big repo is cloned to a local
+            # directory whose named is based on the repo instead of a suite
+            # nested in the big repo.
+            root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
+            if root:
+                import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
+            else:
+                import_dir, _ = _suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+            if exists(import_dir):
+                abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(import_dir, suite_import.name))
+            return import_dir
+
+    def _clone_kwargs():
+        if _is_binary_mode():
+            return dict(result=dict(), suite_name=suite_import.name)
+        else:
+            return dict()
+
+    _clone_status = [False]
+
+    def _find_or_clone():
+        _import_mx_dir = _find_suite_dir()
+        if _import_mx_dir is None:
+            # No local copy, so use the URLs in order to "download" one
+            clone_kwargs = _clone_kwargs()
+            for urlinfo in suite_import.urlinfos:
+                if urlinfo.abs_kind() != search_mode or not urlinfo.vc.check(abortOnError=False):
+                    continue
+                import_dir = _get_import_dir(urlinfo.url)
+                if exists(import_dir):
+                    warn("Trying to clone suite '{suite_name}' but directory {import_dir} already exists and does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
+                    continue
+                if urlinfo.vc.clone(urlinfo.url, import_dir, suite_import.version, abortOnError=False, **clone_kwargs):
+                    _import_mx_dir = _find_suite_dir()
+                    if _import_mx_dir is None:
+                        warn("Cloned suite '{suite_name}' but the result ({import_dir}) does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
+                    else:
+                        _clone_status[0] = True
+                else:
+                    # it is possible that the clone partially populated the target
+                    # which will mess up further attempts, so we "clean" it
+                    if exists(import_dir):
+                        shutil.rmtree(import_dir)
+        return _import_mx_dir
+
+    import_mx_dir = _find_or_clone()
+
+    if import_mx_dir is None:
+        if _is_binary_mode():
+            log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
+            search_mode = "source"
+            import_mx_dir = _find_or_clone()
+        elif all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
+            logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
+            search_mode = 'binary'
+            import_mx_dir = _find_or_clone()
+
+    if import_mx_dir is None:
+        if fatalIfMissing:
+            suffix = ''
+            if initial_search_mode == 'binary' and not any((urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos)):
+                suffix = " No binary URLs in {} for import of '{}' into '{}'.".format(importing_suite.suite_py(), suite_import.name, importing_suite.name)
+            abort("Imported suite '{}' not found (binary or source).{}".format(suite_import.name, suffix))
+        else:
+            return None, False
+
+    # Factory method?
+    if search_mode == 'binary':
+        return BinarySuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
+    else:
+        return SourceSuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
+
+
+def _discover_suites(primary_suite_dir, load=True, register=True, update_existing=False):
+
+    def _log_discovery(msg):
+        dt = datetime.utcnow() - _mx_start_datetime
+        logvv(str(dt) + colorize(" [suite-discovery] ", color='green', stream=sys.stdout) + msg)
+    _log_discovery("Starting discovery with primary dir " + primary_suite_dir)
+    primary = SourceSuite(primary_suite_dir, load=False, primary=True)
+    discovered = {}
+    ancestor_names = {}
+    importer_names = {}
+    original_version = {}
+    vc_dir_to_suite_names = {}
+
+    worklist = deque()
+
+    def _add_discovered_suite(_discovered_suite, first_importing_suite_name):
+        if first_importing_suite_name:
+            importer_names[_discovered_suite.name] = {first_importing_suite_name}
+            ancestor_names[_discovered_suite.name] = {first_importing_suite_name} | ancestor_names[first_importing_suite_name]
+        else:
+            assert _discovered_suite == primary
+            importer_names[_discovered_suite.name] = frozenset()
+            ancestor_names[primary.name] = frozenset()
+        for _suite_import in _discovered_suite.suite_imports:
+            if _discovered_suite.name == _suite_import.name:
+                abort("Error: suite '{}' imports itself".format(_discovered_suite.name))
+            _log_discovery("Adding {discovered} -> {imported} in worklist after discovering {discovered}".format(discovered=_discovered_suite.name, imported=_suite_import.name))
+            worklist.append((_discovered_suite.name, _suite_import.name))
+        if _discovered_suite.vc_dir:
+            vc_dir_to_suite_names.setdefault(_discovered_suite.vc_dir, set()).add(_discovered_suite.name)
+        discovered[_discovered_suite.name] = _discovered_suite
+
+    _add_discovered_suite(primary, None)
+
+    def _is_imported_by_primary(_discovered_suite):
+        for _suite_name in vc_dir_to_suite_names[_discovered_suite.vc_dir]:
+            if primary.name == _suite_name:
+                return True
+            if primary.name in importer_names[_suite_name]:
+                assert primary.get_import(_suite_name), primary.name + ' ' + _suite_name
+                if not primary.get_import(_suite_name).dynamicImport:
+                    return True
+        return False
+
+    def _clear_pyc_files(_updated_suite):
+        if _updated_suite.vc_dir in vc_dir_to_suite_names:
+            _suites = set((discovered[name] for name in vc_dir_to_suite_names[_updated_suite.vc_dir]))
+        else:
+            _suites = set()
+        _suites.add(_updated_suite)
+        for collocated_suite in _suites:
+            pyc_file = collocated_suite.suite_py() + 'c'
+            if exists(pyc_file):
+                os.unlink(pyc_file)
+
+    def _was_cloned_or_updated_during_discovery(_discovered_suite):
+        return _discovered_suite.vc_dir is not None and _discovered_suite.vc_dir in original_version
+
+    def _update_repo(_discovered_suite, update_version, re_init_imports=True):
+        current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
+        if current_version == update_version:
+            return False
+        if _discovered_suite.vc_dir not in original_version:
+            # TODO should get the branch if one is checked out
+            original_version[_discovered_suite.vc_dir] = current_version
+        _discovered_suite.vc.update(_discovered_suite.vc_dir, rev=update_version, mayPull=True)
+        _clear_pyc_files(_discovered_suite)
+        if re_init_imports:
+            _discovered_suite.re_init_imports()
+        return True
+
+    def _check_and_handle_version_conflict(_suite_import, _importing_suite, _discovered_suite):
+        if _importing_suite.vc_dir == _discovered_suite.vc_dir:
+            return True
+        if _is_imported_by_primary(_discovered_suite):
+            _log_discovery("Re-reached {} from {}, nothing to do (cloned during this round: {}, imported by primary: {})".format(_suite_import.name, importing_suite.name, _was_cloned_or_updated_during_discovery(_discovered_suite), _is_imported_by_primary(discovered_suite)))
+            return True
+        # check that all other importers use the same version
+        for collocated_suite_name in vc_dir_to_suite_names[_discovered_suite.vc_dir]:
+            for other_importer_name in importer_names[collocated_suite_name]:
+                if other_importer_name == _importing_suite.name:
+                    continue
+                other_importer = discovered[other_importer_name]
+                other_importers_import = other_importer.get_import(collocated_suite_name)
+                if other_importers_import.version and _suite_import.version and other_importers_import.version != _suite_import.version:
+                    # conflict, try to resolve it
+                    if _suite_import.name == collocated_suite_name:
+                        _log_discovery("Re-reached {} from {} with conflicting version compared to {}".format(collocated_suite_name, _importing_suite.name, other_importer_name))
+                    else:
+                        _log_discovery("Re-reached {}  (collocated with {}) from {} with conflicting version compared to {}".format(collocated_suite_name, _suite_import.name, _importing_suite.name, other_importer_name))
+                    if update_existing or _was_cloned_or_updated_during_discovery(_discovered_suite):
+                        resolved = _resolve_suite_version_conflict(_discovered_suite.name, _discovered_suite, other_importers_import.version, other_importer, _suite_import, _importing_suite)
+                        if resolved and _update_repo(_discovered_suite, resolved, re_init_imports=False):
+                            # we needed to update, this may change the DAG so
+                            # "un-discover" anything that was discovered based on old information
+                            _log_discovery("Updated needed to resolve conflict: updating {} to {}".format(_discovered_suite.vc_dir, resolved))
+                            forgotten_edges = {}
+
+                            def _forget_visitor(_, __suite_import):
+                                _forget_suite(__suite_import.name)
+
+                            def _forget_suite(suite_name):
+                                _log_discovery("Forgetting {} after conflict".format(suite_name))
+                                if suite_name in ancestor_names:
+                                    del ancestor_names[suite_name]
+                                if suite_name in importer_names:
+                                    for importer_name in importer_names[suite_name]:
+                                        forgotten_edges.setdefault(importer_name, set()).add(suite_name)
+                                    del importer_names[suite_name]
+                                if suite_name in discovered:
+                                    s = discovered[suite_name]
+                                    del discovered[suite_name]
+                                    s.visit_imports(_forget_visitor)
+                                for suite_names in vc_dir_to_suite_names.values():
+                                    suite_names.discard(suite_name)
+                                new_worklist = [(_f, _t) for _f, _t in worklist if _f != suite_name]
+                                worklist.clear()
+                                worklist.extend(new_worklist)
+                                if suite_name in forgotten_edges:
+                                    del forgotten_edges[suite_name]
+
+                            for _collocated_suite_name in list(vc_dir_to_suite_names[_discovered_suite.vc_dir]):
+                                if _collocated_suite_name in discovered:
+                                    _forget_suite(_collocated_suite_name)
+                            # Add all the edges that need re-resolution
+                            for __importing_suite, imported_suite_set in forgotten_edges.items():
+                                for imported_suite in imported_suite_set:
+                                    _log_discovery("Adding {} -> {} in worklist after conflict".format(__importing_suite, imported_suite))
+                                    worklist.appendleft((__importing_suite, imported_suite))
+                            return False
+                    else:
+                        # This suite was already present
+                        resolution = _resolve_suite_version_conflict(_discovered_suite.name, _discovered_suite, other_importers_import.version, other_importer, _suite_import, _importing_suite, dry_run=True)
+                        if resolution is not None:
+                            if _suite_import.name == collocated_suite_name:
+                                warn("{importing} and {other_import} import different versions of {conflicted}: {version} vs. {other_version}".format(
+                                    conflicted=collocated_suite_name,
+                                    importing=_importing_suite.name,
+                                    other_import=other_importer_name,
+                                    version=_suite_import.version,
+                                    other_version=other_importers_import.version
+                                ))
+                            else:
+                                warn("{importing} and {other_import} import different versions of {conflicted} (collocated with {conflicted_src}): {version} vs. {other_version}".format(
+                                    conflicted=collocated_suite_name,
+                                    conflicted_src=_suite_import.name,
+                                    importing=_importing_suite.name,
+                                    other_import=other_importer_name,
+                                    version=_suite_import.version,
+                                    other_version=other_importers_import.version
+                                ))
+                else:
+                    if _suite_import.name == collocated_suite_name:
+                        _log_discovery("Re-reached {} from {} with same version as {}".format(collocated_suite_name, _importing_suite.name, other_importer_name))
+                    else:
+                        _log_discovery("Re-reached {} (collocated with {}) from {} with same version as {}".format(collocated_suite_name, _suite_import.name, _importing_suite.name, other_importer_name))
+        return True
+
+    cloned_version = "__CLONED__"
+    try:
+        while worklist:
+            importing_suite_name, imported_suite_name = worklist.popleft()
+            importing_suite = discovered[importing_suite_name]
+            suite_import = importing_suite.get_import(imported_suite_name)
+            if suite_import.name in discovered:
+                if suite_import.name in ancestor_names[importing_suite.name]:
+                    abort("Import cycle detected: {importer} imports {importee} but {importee} transitively imports {importer}".format(importer=importing_suite.name, importee=suite_import.name))
+                discovered_suite = discovered[suite_import.name]
+                assert suite_import.name in vc_dir_to_suite_names[discovered_suite.vc_dir]
+                # Update importer data after re-reaching
+                importer_names[suite_import.name].add(importing_suite.name)
+                ancestor_names[suite_import.name] |= ancestor_names[importing_suite.name]
+                _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
+            else:
+                discovered_suite, is_clone = _find_suite_import(importing_suite, suite_import, load=False)
+                _log_discovery("Discovered {} from {} ({}, newly cloned: {})".format(discovered_suite.name, importing_suite_name, discovered_suite.dir, is_clone))
+                if is_clone:
+                    original_version[discovered_suite.vc_dir] = cloned_version
+                elif discovered_suite.vc_dir in vc_dir_to_suite_names and not vc_dir_to_suite_names[discovered_suite.vc_dir]:
+                    # we re-discovered a suite that we had cloned and then "un-discovered".
+                    if suite_import.version and _update_repo(discovered_suite, suite_import.version):
+                        _log_discovery("This is a re-discovery of a previously cloned suite: updating {} to {}".format(discovered_suite.vc_dir, suite_import.version))
+                elif _was_cloned_or_updated_during_discovery(discovered_suite):
+                    # we are re-reaching a repo through a different imported suite
+                    _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
+                elif update_existing and suite_import.version and _update_repo(discovered_suite, suite_import.version):
+                    _log_discovery("Updating {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
+
+                _add_discovered_suite(discovered_suite, importing_suite.name)
+    except SystemExit as se:
+        cloned_during_discovery = [d for (d, v) in original_version.items() if v == cloned_version]
+        if cloned_during_discovery:
+            log_error("There was an error, removing " + ', '.join(("'" + d + "'" for d in cloned_during_discovery)))
+            for d in cloned_during_discovery:
+                shutil.rmtree(d)
+        for d, v in original_version.items():
+            if v != cloned_version:
+                log_error("Reverting '{}' to version '{}'".format(d, v))
+                VC.get_vc(d).update(d, v)
+        raise se
+
+    _log_discovery("Discovery finished")
+
+    if register:
+        # Register & finish loading discovered suites
+        def _register_visit(s):
+            _register_suite(s)
+            for suite_import in s.suite_imports:
+                if suite_import.name not in _suites:
+                    _register_visit(discovered[suite_import.name])
+            if load:
+                s._load()
+
+        _register_visit(primary)
+
+    _log_discovery("Registration/Loading finished")
+    return primary
+
+
 def main():
-    # make sure logv and logvv work as soon as possible
+    # make sure logv and logvv work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
     global _vc_systems
@@ -15401,12 +15553,12 @@ def main():
             SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
 
             # We explicitly load the 'env' file of the primary suite now as it might
-            # influence the suite loading logic.  During loading of the subsuites their
+            # influence the suite loading logic.  During loading of the sub-suites their
             # environment variable definitions are collected and will be placed into the
             # os.environ all at once.  This ensures that a consistent set of definitions
-            # are seen.  The PrimarySuite must have everything required for loading
+            # are seen.  The primary suite must have everything required for loading
             # defined.
-            PrimarySuite.load_env(primarySuiteMxDir)
+            SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
             global _binary_suites
             bs = os.environ.get('MX_BINARY_SUITES')
             if bs is not None:
@@ -15415,8 +15567,7 @@ def main():
                 else:
                     _binary_suites = []
 
-            # This will load all explicitly imported suites, unless it's a vc command
-            _init_primary_suite(PrimarySuite(primarySuiteMxDir, load=not vc_command))
+            _init_primary_suite(_discover_suites(primarySuiteMxDir, load=not vc_command))
         else:
             # in general this is an error, except for the _primary_suite_exempt commands,
             # and an extensions command will likely not parse in this case, as any extra arguments
@@ -15445,13 +15596,9 @@ def main():
     if _opts.mx_tests:
         MXTestsSuite()
 
-    if primarySuiteMxDir:
-        if vc_command:
-            _primary_suite.vc_command_init()
-        else:
-            if primarySuiteMxDir != _mx_suite.mxDir:
-                _primary_suite._depth_first_post_init()
-            _check_dependency_cycles()
+    if primarySuiteMxDir and not _mx_suite.primary and not vc_command:
+        primary_suite().recursive_post_init()
+        _check_dependency_cycles()
 
     if len(commandAndArgs) == 0:
         _argParser.print_help()
@@ -15460,7 +15607,7 @@ def main():
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
 
-    if not _commands.has_key(command):
+    if command not in _commands:
         hits = [c for c in _commands.iterkeys() if c.startswith(command)]
         if len(hits) == 1:
             command = hits[0]
@@ -15503,6 +15650,7 @@ def main():
 version = VersionSpec("5.100.0") # Anniversary Edition
 
 currentUmask = None
+_mx_start_datetime = datetime.utcnow()
 
 if __name__ == '__main__':
     # Capture the current umask since there's no way to query it without mutating it.
