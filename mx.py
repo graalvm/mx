@@ -229,7 +229,7 @@ def suite_context_free(func):
 """
 Names of commands that do not need a primary suite to be available.
 """
-_primary_suite_exempt = []
+_primary_suite_exempt = ['init', 'help', 'version']
 
 """
 Decorator for commands that do not need a primary suite to be available.
@@ -4066,7 +4066,7 @@ class HgConfig(VC):
         return run(*args, **kwargs)
 
     def init(self, vcdir, abortOnError=True):
-        return self.run(['hg', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+        return self.run(['hg', 'init', vcdir], nonZeroIsFatal=abortOnError) == 0
 
     def is_this_vc(self, vcdir):
         hgdir = join(vcdir, self.metadir())
@@ -4352,8 +4352,6 @@ class HgConfig(VC):
             abort('exists failed')
 
     def root(self, directory, abortOnError=True):
-        if not self.check_for_hg(abortOnError=abortOnError):
-            return None
         try:
             out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
@@ -4396,7 +4394,7 @@ class GitConfig(VC):
         return run(*args, **kwargs)
 
     def init(self, vcdir, abortOnError=True):
-        return self.run(['git', 'init'], cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
+        return self.run(['git', 'init', vcdir], nonZeroIsFatal=abortOnError) == 0
 
     def is_this_vc(self, vcdir):
         gitdir = join(vcdir, self.metadir())
@@ -14517,6 +14515,67 @@ def javap(args):
         selection = select_items(candidates)
         run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve, jdk=jdk)] + selection)
 
+
+def suite_init_cmd(args):
+    """create a suite
+
+    usage: mx init [-h] [--repository REPOSITORY] [--subdir]
+                   [--repository-kind REPOSITORY_KIND]
+                   name
+
+    positional arguments:
+      name                  the name of the suite
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --repository REPOSITORY
+                            directory for the version control repository
+      --subdir              creates the suite in a sub-directory of the repository
+                            (requires --repository)
+      --repository-kind REPOSITORY_KIND
+                            The kind of repository to create ('hg', 'git' or
+                            'none'). Defaults to 'git'
+    """
+    parser = ArgumentParser(prog='mx init')
+    parser.add_argument('--repository', help='directory for the version control repository', default=None)
+    parser.add_argument('--subdir', action='store_true', help='creates the suite in a sub-directory of the repository (requires --repository)')
+    parser.add_argument('--repository-kind', help="The kind of repository to create ('hg', 'git' or 'none'). Defaults to 'git'", default='git')
+    parser.add_argument('name', help='the name of the suite')
+    args = parser.parse_args(args)
+    if args.subdir and not args.repository:
+        abort('When using --subdir, --repository needs to be specified')
+    if args.repository:
+        vc_dir = args.repository
+    else:
+        vc_dir = args.name
+    if args.repository_kind != 'none':
+        vc = vc_system(args.repository_kind)
+        vc.init(vc_dir)
+    suite_dir = vc_dir
+    if args.subdir:
+        suite_dir = join(suite_dir, args.name)
+    suite_mx_dir = join(suite_dir, _mxDirName(args.name))
+    ensure_dir_exists(suite_mx_dir)
+    if os.listdir(suite_mx_dir):
+        abort('{} is not empty'.format(suite_mx_dir))
+    suite_py = join(suite_mx_dir, 'suite.py')
+    suite_skeleton_str = """suite = {
+  "name" : "NAME",
+  "mxversion" : "VERSION",
+  "imports" : {
+    "suites": [
+    ]
+  },
+  "libraries" : {
+  },
+  "projects" : {
+  },
+}
+""".replace('NAME', args.name).replace('VERSION', str(version))
+    with open(suite_py, 'w') as f:
+        f.write(suite_skeleton_str)
+
+
 def show_projects(args):
     """show all projects"""
     for s in suites():
@@ -14852,7 +14911,6 @@ def show_envs(args):
         if args.all or key.startswith('MX'):
             print '{0}: {1}'.format(key, value)
 
-_suite_context_free.append('version')
 def show_version(args):
     """print mx version"""
 
@@ -14874,7 +14932,7 @@ def show_version(args):
         if out:
             print 'hg:', out
 
-@suite_context_free
+@primary_suite_exempt
 def update(args):
     """update mx to the latest version"""
     parser = ArgumentParser(prog='mx update')
@@ -15042,6 +15100,7 @@ _commands = {
     'minheap' : [run_java_min_heap, ''],
     'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
+    'init' : [suite_init_cmd, '[options] name'],
 }
 _commandsToSuite = {}
 
@@ -15381,7 +15440,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.96.1")  # May contain nuts!
+version = VersionSpec("5.97.0")  # Limited edition!
 
 currentUmask = None
 
