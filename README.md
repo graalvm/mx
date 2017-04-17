@@ -16,7 +16,7 @@ mx [global options] [command] [command-specific options]
 
 If no options or command is specified, `mx` prints information on the available options and commands, which will include any suite-specfic options and commands. Help for a specific command is obtained via `mx help <command>`. Global options are expected to have wide applicability to many commands and as such precede the command to be executed.
 
-For an example of `mx` usage, you can read the [Instructions][1] for the Graal project.
+For an example of `mx` usage, see the [README][1] for the Graal project.
 
 Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.
 
@@ -180,4 +180,4 @@ we need a new minor release.
 - "I removed some commands from `mx`.  There are alternative commands now."
 This change essentially changed the API.  Thus, we require a new major release.
 
-[1]: https://wiki.openjdk.java.net/display/Graal/Instructions
+[1]: https://github.com/graalvm/graal-core/blob/master/README.md
