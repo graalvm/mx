@@ -6886,6 +6886,8 @@ class SourceSuite(Suite):
         Return the current head changeset of this suite.
         """
         # we do not cache the version because it changes in development
+        if not self.vc:
+            return None
         return self.vc.parent(self.vc_dir, abortOnError=abortOnError)
 
     def isDirty(self, abortOnError=True):
@@ -15300,7 +15302,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.86.2")
+version = VersionSpec("5.86.3")
 
 currentUmask = None
 
