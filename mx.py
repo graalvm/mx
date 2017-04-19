@@ -2583,7 +2583,8 @@ class JavacCompiler(JavacLikeCompiler):
             if declaringJdkModule is not None:
                 jdkModulesOnClassPath.add(declaringJdkModule)
                 # If compiling sources for a JDK module, javac needs to know this via -Xmodule
-                javacArgs.append('-Xmodule:' + declaringJdkModule)
+                if jdk._javacXModuleOptionExists:
+                    javacArgs.append('-Xmodule:' + declaringJdkModule)
 
             def addExportArgs(dep, exports=None, prefix='', jdk=None):
                 """
@@ -9236,6 +9237,7 @@ class JDKConfig:
         self._extdirs = None
         self._endorseddirs = None
         self._knownJavacLints = None
+        self._javacXModuleOptionExists = False
 
         if not exists(self.java):
             raise JDKConfigException('Java launcher does not exist: ' + self.java)
@@ -9432,7 +9434,9 @@ class JDKConfig:
                 inLintSection = False
                 for line in lines:
                     if not inLintSection:
-                        if line.strip() in ['-Xlint:key,...', '-Xlint:<key>(,<key>)*']:
+                        if '-Xmodule' in line:
+                            self._javacXModuleOptionExists = True
+                        elif line.strip() in ['-Xlint:key,...', '-Xlint:<key>(,<key>)*']:
                             inLintSection = True
                     else:
                         if line.startswith('         '):
@@ -15296,7 +15300,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.86.1")
+version = VersionSpec("5.86.2")
 
 currentUmask = None
 
