@@ -1139,11 +1139,9 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
-        if benchmarks is None:
-            benchmarks = []
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks
+        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs
 
     def successPatterns(self):
         return [
