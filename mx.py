@@ -12471,8 +12471,8 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     annotationProcessorSrcFolderRef = ""
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
+        ensure_dir_exists(p.source_gen_dir())
         annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), p.dir)
-        ensure_dir_exists(annotationProcessorSrcFolder)
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
