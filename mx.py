@@ -6703,12 +6703,19 @@ class Suite:
                 # use the SuiteModel to locate a local source copy of the suite
                 return _src_suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
 
-        def _get_import_dir():
+        def _get_import_dir(url):
             """Return directory where the suite will be cloned to"""
             if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
-                importDir, _ = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                # Try use the URL first so that a big repo is cloned to a local
+                # directory whose named is based on the repo instead of a suite
+                # nested in the big repo.
+                root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
+                if root:
+                    importDir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
+                else:
+                    importDir, _ = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
                 if exists(importDir):
                     abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
                 return importDir
@@ -6724,7 +6731,6 @@ class Suite:
             importMxDir = _find_suite_dir()
             if importMxDir is None:
                 # No local copy, so use the URLs in order to "download" one
-                importDir = _get_import_dir()
                 fail = True
                 urlinfos = [urlinfo for urlinfo in suite_import.urlinfos if urlinfo.abs_kind() == searchMode]
                 for urlinfo in urlinfos:
@@ -6734,6 +6740,7 @@ class Suite:
                         # pass extra necessary extra info
                         clone_kwargs['suite_name'] = suite_import.name
 
+                    importDir = _get_import_dir(urlinfo.url)
                     if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
                         importMxDir = _find_suite_dir()
                         if importMxDir is None:
@@ -15302,7 +15309,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.86.4")
+version = VersionSpec("5.87.0")
 
 currentUmask = None
 
