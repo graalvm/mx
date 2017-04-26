@@ -5666,7 +5666,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
                         for filename in filenames:
                             emptyJavadoc = False
                             src = join(dirpath, filename)
-                            dst = os.path.relpath(src, javadocDir)
+                            dst = safe_relpath(src, javadocDir)
                             arc.write(src, dst)
                 shutil.rmtree(tmpDir)
                 if emptyJavadoc:
@@ -12950,12 +12950,12 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 if library.sourcePath:
                     sourcePath = safe_relpath(library.get_source_path(True), s.dir)
             elif library.isMavenProject():
-                path = os.path.relpath(library.get_path(True), s.dir)
-                sourcePath = os.path.relpath(library.get_source_path(True), s.dir)
+                path = safe_relpath(library.get_path(True), s.dir)
+                sourcePath = safe_relpath(library.get_source_path(True), s.dir)
             elif library.isJARDistribution():
-                path = os.path.relpath(library.path, s.dir)
+                path = safe_relpath(library.path, s.dir)
                 if library.sourcesPath:
-                    sourcePath = os.path.relpath(library.sourcesPath, s.dir)
+                    sourcePath = safe_relpath(library.sourcesPath, s.dir)
             else:
                 abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
             make_library(library.name, path, sourcePath)
