@@ -6061,7 +6061,7 @@ class Suite:
             if outputRoot:
                 self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
             elif get_env('MX_ALT_OUTPUT_ROOT') is not None:
-                self._outputRoot = join(get_env('MX_ALT_OUTPUT_ROOT'), self.name)
+                self._outputRoot = os.path.realpath(_make_absolute(join(get_env('MX_ALT_OUTPUT_ROOT'), self.name), self.dir))
             else:
                 self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
         return self._outputRoot
