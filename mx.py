@@ -13166,6 +13166,85 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 artifactFile = join(artifactsDir, artifactFileName(dist))
                 update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
 
+            # JUnit configuration
+            def get_unittest_args():
+                """Gets the VM arguments used for running the unittests by doing a dry run."""
+
+                class DisabledUnittests(object):
+                    """Context manager that temporarily disables unittests from launching.
+                    
+                    It does this by replacing the mx.run with itself and examining the issued
+                    commands. If it detects the `mx_unittest_main_class` in the command, it
+                    captures the command and reports success without actually doing anything.
+                    """
+
+                    def __enter__(self):
+                        global run
+                        self.run = run
+                        run = self      # replace mx.run
+
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        global run
+                        run = self.run  # restore mx.run
+
+                    def __call__(self, args, **kwargs):
+                        if mx_unittest_main_class in args:
+                            self.cmd = args
+                            return 0
+                        return self.run(args, **kwargs)
+
+                mx_unittest_main_class = 'com.oracle.mxtool.junit.MxJUnitWrapper'
+
+                with DisabledUnittests():
+                    # dry run
+                    mx_unittest.unittest([])
+                    unittest_args = run.cmd[1:run.cmd.index(mx_unittest_main_class)]
+
+                # remove classpath from args, since IntelliJ will provide one
+                cp_index = unittest_args.index('-cp')
+                del unittest_args[cp_index:cp_index + 2]
+
+                return ' '.join(unittest_args)
+
+            # IntelliJ IDEA 2017.1 default JUnit run configuration
+            default_configuration = '''\
+                <configuration default="true" type="JUnit" factoryName="JUnit">
+                    <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
+                    <module name="" />
+                    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
+                    <option name="ALTERNATIVE_JRE_PATH" />
+                    <option name="PACKAGE_NAME" />
+                    <option name="MAIN_CLASS_NAME" />
+                    <option name="METHOD_NAME" />
+                    <option name="TEST_OBJECT" value="class" />
+                    <option name="VM_PARAMETERS" value="{vm_params}" />
+                    <option name="PARAMETERS" />
+                    <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
+                    <option name="ENV_VARIABLES" />
+                    <option name="PASS_PARENT_ENVS" value="true" />
+                    <option name="TEST_SEARCH_SCOPE">
+                        <value defaultName="singleModule" />
+                    </option>
+                    <envs />
+                    <patterns />
+                    <method />
+                </configuration>
+                '''.format(vm_params=get_unittest_args())
+
+            # remove all whitespace between tags, so that we don't end up with excess newlines in xml output
+            default_configuration = ''.join([line.strip() for line in default_configuration.splitlines()])
+
+            # until the official solution becomes available (IDEA-65915), use `workspase.xml`
+            wsXml = XMLDoc()
+            wsXml.open('project', attributes={'version': '4'})
+            wsXml.open('component', attributes={'name': 'RunManager'})
+            wsXml.current.appendChild(xml.dom.minidom.parseString(default_configuration).firstChild)
+            wsXml.close('component')
+            wsXml.close('project')
+
+            wsFile = join(ideaProjectDirectory, 'workspace.xml')
+            update_file(wsFile, wsXml.xml(indent='  ', newl='\n'))
+
         def intellij_scm_name(vc_kind):
             if vc_kind == 'git':
                 return 'Git'
