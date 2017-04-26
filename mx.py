@@ -12994,7 +12994,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                         if dep.isLibrary() or dep.isJARDistribution():
                             compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + safe_relpath(dep.path, s.dir)})
                         elif dep.isProject():
-                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.output_dir(), s.dir)})
+                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + safe_relpath(dep.output_dir(), s.dir)})
                     apDep.walk_deps(visit=processApDep)
                 compilerXml.close('processorPath')
                 for module in modules:
