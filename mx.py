@@ -9947,7 +9947,11 @@ def update_file(path, content, showDiff=False):
 # Builtin commands
 
 def _defaultEcjPath():
-    return get_env('JDT')
+    jdt = get_env('JDT')
+    # Treat empty string the same as undefined
+    if jdt:
+        return jdt
+    return None
 
 def build(args, parser=None):
     """builds the artifacts of one or more dependencies"""
@@ -15320,7 +15324,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.87.0")
+version = VersionSpec("5.87.1")
 
 currentUmask = None
 
