@@ -13172,20 +13172,18 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
                 class DisabledUnittests(object):
                     """Context manager that temporarily disables unittests from launching.
-                    
+
                     It does this by replacing the mx.run with itself and examining the issued
                     commands. If it detects the `mx_unittest_main_class` in the command, it
                     captures the command and reports success without actually doing anything.
                     """
 
                     def __enter__(self):
-                        global run
                         self.run = run
-                        run = self      # replace mx.run
+                        globals()['run'] = self      # replace mx.run
 
                     def __exit__(self, exc_type, exc_val, exc_tb):
-                        global run
-                        run = self.run  # restore mx.run
+                        globals()['run'] = self.run  # restore mx.run
 
                     def __call__(self, args, **kwargs):
                         if mx_unittest_main_class in args:
@@ -13234,7 +13232,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             # remove all whitespace between tags, so that we don't end up with excess newlines in xml output
             default_configuration = ''.join([line.strip() for line in default_configuration.splitlines()])
 
-            # until the official solution becomes available (IDEA-65915), use `workspase.xml`
+            # until the official solution becomes available (IDEA-65915), use `workspace.xml`
             wsXml = XMLDoc()
             wsXml.open('project', attributes={'version': '4'})
             wsXml.open('component', attributes={'name': 'RunManager'})
