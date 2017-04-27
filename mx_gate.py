@@ -336,6 +336,12 @@ def gate(args):
                 if mx.command_function('canonicalizeprojects')([]) != 0:
                     t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
 
+        with Task('Verify Java Sources in Project', tasks, tags=[Tags.style]) as t:
+            if t:
+                mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring all Java sources are in a Java project directory...'))
+                if mx.command_function('verifysourceinproject')([]) != 0:
+                    t.abort('Move or delete the Java sources that are not in a Java project directory.')
+
         if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
             with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
                 if t:
