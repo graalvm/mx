@@ -13304,8 +13304,11 @@ def fsckprojects(args):
 
 
 def verifysourceinproject(args):
-    """find any Java source files that are outside any known Java projects"""
-    unmanagedSources = []
+    """find any Java source files that are outside any known Java projects
+
+    Returns the number of suites with an mxversion >= 5.88.0 that have Java sources not in projects.
+    """
+    unmanagedSources = {}
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
@@ -13334,13 +13337,20 @@ def verifysourceinproject(args):
                 if len(javaSources) != 0:
                     javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
                     javaSourcesInVC = suite.vc.locate(suite.vc_dir, javaSources)
-                    unmanagedSources = unmanagedSources + javaSourcesInVC
+                    unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+
     if len(unmanagedSources) > 0:
         log('The following files are managed but not in any project:')
-        for file in unmanagedSources:
-            log(file)
-        return True
-    return False
+        for suite, sources in unmanagedSources.iteritems():
+            for source in sources:
+                log(suite.name + ': ' + source)
+
+    retcode = 0
+    for suite, sources in unmanagedSources.iteritems():
+        if suite.getMxCompatibility().requiresSourceInProjects():
+            retcode += 1
+
+    return retcode
 
 def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     """
@@ -15364,7 +15374,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.87.1")
+version = VersionSpec("5.88.0")
 
 currentUmask = None
 
