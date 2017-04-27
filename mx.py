@@ -10076,7 +10076,9 @@ def build(args, parser=None):
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
-    assert not delayedTasks
+    while len(delayedTasks) != 0:
+        logv('[Flushing disconnected delayed tasks: ' + str([d.name for d in delayedTasks.keys()]) + ']')
+        walk_deps(visit=_createTask, visitEdge=_registerDep, roots=delayedTasks.keys(), ignoredEdges=[DEP_EXCLUDED])
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
@@ -15272,7 +15274,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.90.0")
+version = VersionSpec("5.90.1")
 
 currentUmask = None
 
