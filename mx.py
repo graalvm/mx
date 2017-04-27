@@ -3055,12 +3055,17 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+def user_home():
+    return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+
+def dot_mx_dir():
+    return join(user_home(), '.mx')
+
 def _get_path_in_cache(name, sha1, urls, ext=None):
     """
     Gets the path an artifact has (or would have) in the download cache.
     """
     assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
-    userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
@@ -3074,7 +3079,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
-    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(userHome, '.mx', 'cache')))
+    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
     return join(cacheDir, name + '_' + sha1 + ext)
@@ -3108,7 +3113,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if len(urls) is 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
-        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
+        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
         ensure_dir_exists(cacheDir)
 
         _, ext = os.path.splitext(path)
@@ -15337,8 +15342,7 @@ def main():
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
             _suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
-            userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
-            SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
+            SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
 
             # We explicitly load the 'env' file of the primary suite now as it might
             # influence the suite loading logic.  During loading of the subsuites their
