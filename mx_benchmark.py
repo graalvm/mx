@@ -113,7 +113,7 @@ class VmRegistry(object):
             return self.default_vm(config, self._vms)
         return None
 
-    def get_vm_from_suite_args(self, bmSuiteArgs):
+    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
 
@@ -132,6 +132,7 @@ class VmRegistry(object):
             if vm is None:
                 vms = [(vm,
                          self._vms_suite[(vm, config)] == mx.primary_suite(),
+                         ('hosted' in config) == hosted,
                          self._vms_priority[(vm, config)]
                          ) for (vm, config) in self._vms if vm_config is None or config == vm_config]
                 if not vms:
@@ -149,6 +150,7 @@ class VmRegistry(object):
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
+                            ('hosted' in config) == hosted,
                             self._vms_priority[(vm, config)]
                             ) for (j, config) in self._vms if j == vm]
             if not vm_configs:
@@ -165,7 +167,7 @@ class VmRegistry(object):
             notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
         if isinstance(vm_object, GuestVm):
-            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs)
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
 
