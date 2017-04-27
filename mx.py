@@ -13303,6 +13303,45 @@ def fsckprojects(args):
                     log('Deleted ' + relative_file_path)
 
 
+def verifysourceinproject(args):
+    """find any Java source files that are outside any known Java projects"""
+    unmanagedSources = []
+    for suite in suites(True, includeBinary=False):
+        projectDirs = [p.dir for p in suite.projects]
+        distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
+        for dirpath, dirnames, files in os.walk(suite.dir):
+            if dirpath == suite.dir:
+                # no point in traversing vc metadata dir, lib, .workspace
+                # if there are nested source suites must not scan those now, as they are not in projectDirs (but contain .project files)
+                omitted = [suite.mxDir, 'lib', '.workspace', 'mx.imports']
+                if suite.vc:
+                    omitted.append(suite.vc.metadir())
+                dirnames[:] = [d for d in dirnames if d not in omitted]
+            elif dirpath == suite.get_output_root():
+                # don't want to traverse output dir
+                dirnames[:] = []
+            elif dirpath == suite.mxDir:
+                # don't want to traverse mx.name as it contains a .project
+                dirnames[:] = []
+            elif dirpath in projectDirs:
+                # don't traverse subdirs of an existing project in this suite
+                dirnames[:] = []
+            elif dirpath in distIdeDirs:
+                # don't traverse subdirs of an existing distribution in this suite
+                dirnames[:] = []
+            else:
+                javaSources = [x for x in files if x.endswith('.java')]
+                if len(javaSources) != 0:
+                    javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
+                    javaSourcesInVC = suite.vc.locate(suite.vc_dir, javaSources)
+                    unmanagedSources = unmanagedSources + javaSourcesInVC
+    if len(unmanagedSources) > 0:
+        log('The following files are managed but not in any project:')
+        for file in unmanagedSources:
+            log(file)
+        return True
+    return False
+
 def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     """
     Finds the set of packages defined by a project.
@@ -14923,6 +14962,7 @@ _commands = {
     'checkcopyrights': [checkcopyrights, '[options]'],
     'checkheaders': [mx_gate.checkheaders, ''],
     'checkoverlap': [checkoverlap, ''],
+    'verifysourceinproject': [verifysourceinproject, ''],
     'checkstyle': [checkstyle, ''],
     'sigtest': [mx_sigtest.sigtest, ''],
     'clean': [clean, ''],
