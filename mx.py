@@ -8457,6 +8457,8 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
     if result:
+        if source == '--java-home' and os.environ.get('JAVA_HOME'):
+            os.environ['JAVA_HOME'] = _opts.java_home
         return result
 
     candidateJdks = []
