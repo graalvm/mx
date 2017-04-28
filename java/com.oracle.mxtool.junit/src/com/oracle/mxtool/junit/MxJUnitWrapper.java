@@ -33,6 +33,7 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -113,7 +114,7 @@ public class MxJUnitWrapper {
         JUnitCore junitCore = new JUnitCore();
         system.out().println("MxJUnitCore");
         system.out().println("JUnit version " + Version.id());
-        List<Class<?>> classes = new ArrayList<>();
+        Set<Class<?>> classes = new LinkedHashSet<>();
         String methodName = null;
         List<Failure> missingClasses = new ArrayList<>();
         boolean verbose = false;
@@ -246,7 +247,7 @@ public class MxJUnitWrapper {
             if (failFast) {
                 system.out().println("Single method selected - fail fast not supported");
             }
-            request = Request.method(classes.get(0), methodName);
+            request = Request.method(classes.iterator().next(), methodName);
         }
         if (repeatCount != 1) {
             request = new RepeatingRequest(request, repeatCount);
@@ -280,7 +281,7 @@ public class MxJUnitWrapper {
      * Updates modules specified in {@code AddExport} annotations on {@code classes} to export
      * concealed packages to the annotation classes' declaring modules.
      */
-    private static void addExports(List<Class<?>> classes, PrintStream out) {
+    private static void addExports(Set<Class<?>> classes, PrintStream out) {
         Set<Class<?>> types = new HashSet<>();
         for (Class<?> cls : classes) {
             gatherSupertypes(cls, types);
