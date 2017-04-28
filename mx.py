@@ -641,8 +641,10 @@ class BuildTask(object):
         if exists(savedDepsFile):
             with open(savedDepsFile) as fp:
                 savedDeps = [l.strip() for l in fp.readlines()]
-            if savedDeps != [d.subject.name for d in self.deps]:
+            if savedDeps != currentDeps:
                 outOfDate = True
+            else:
+                return False
 
         if len(currentDeps) == 0:
             if exists(savedDepsFile):
@@ -10061,14 +10063,11 @@ def build(args, parser=None):
                         return
                     else:
                         t.deps.append(taskMap[build_dep])
-            if onlyDeps:
-                if t.subject.name in onlyDeps:
-                    sortedTasks.append(t)
-            else:
+            if onlyDeps is None or t.subject.name in onlyDeps:
                 sortedTasks.append(t)
-                lst = depsMap.setdefault(t.subject, [])
-                for d in lst:
-                    t.deps.append(taskMap[d])
+            lst = depsMap.setdefault(t.subject, [])
+            for d in lst:
+                t.deps.append(taskMap[d])
 
         if dep in delayedTasks:
             candidates = delayedTasks[dep]
@@ -10095,6 +10094,11 @@ def build(args, parser=None):
                 log(str(task))
         log("-- Serialized build plan --")
 
+    if len(sortedTasks) == 1:
+        # Spinning up a daemon for a single task doesn't make sense
+        if not args.no_daemon:
+            logv('[Disabling use of compile daemon for single build task]')
+            args.no_daemon = True
     daemons = {}
     if args.parallelize and onlyDeps is None:
         def joinTasks(tasks):
