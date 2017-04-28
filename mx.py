@@ -13319,12 +13319,22 @@ def fsckprojects(args):
 def verifysourceinproject(args):
     """find any Java source files that are outside any known Java projects
 
-    Returns the number of suites with an mxversion >= 5.88.0 that have Java sources not in projects.
+    Returns the number of suites with requireSourceInProjects == True that have Java sources not in projects.
     """
     unmanagedSources = {}
+    suiteDirs = set()
+    suiteVcDirs = {}
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
+        suiteDirs.add(suite.dir)
+        # all suites in the same repository must have the same setting for requiresSourceInProjects
+        if suiteVcDirs.get(suite.vc_dir) == None:
+            suiteVcDirs[suite.vc_dir] = suite
+        elif suiteVcDirs.get(suite.vc_dir).getMxCompatibility().requiresSourceInProjects() != suite.getMxCompatibility().requiresSourceInProjects():
+            log('All suites in the same repository must have the same requiresSourceInProjects setting.')
+            abort('Update the suite for {} to enable verifysourceinproject.'.format(suite.name if not suite.getMxCompatibility().requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
+
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
                 # no point in traversing vc metadata dir, lib, .workspace
@@ -13345,18 +13355,44 @@ def verifysourceinproject(args):
             elif dirpath in distIdeDirs:
                 # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
+            elif 'pom.xml' in files:
+                # skip maven suites
+                dirnames[:] = []
             else:
                 javaSources = [x for x in files if x.endswith('.java')]
                 if len(javaSources) != 0:
                     javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
                     javaSourcesInVC = suite.vc.locate(suite.vc_dir, javaSources)
-                    unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+                    if len(javaSourcesInVC) > 0:
+                        unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
 
-    if len(unmanagedSources) > 0:
+    # also check for files that are outside of suites
+    unmanagedSourcesNoSuite = []
+    for vcDir, suite in suiteVcDirs.iteritems():
+        for dirpath, dirnames, files in os.walk(vcDir):
+            if dirpath in suiteDirs:
+                # skip known suites
+                dirnames[:] = []
+            elif exists(join(dirpath, 'mx.' + basename(dirpath), 'suite.py')):
+                # skip unknown suites
+                dirnames[:] = []
+            elif 'pom.xml' in files:
+                # skip maven suites
+                dirnames[:] = []
+            else:
+                javaSources = [x for x in files if x.endswith('.java')]
+                if len(javaSources) != 0:
+                    javaSources = [os.path.relpath(join(dirpath, i), vcDir) for i in javaSources]
+                    javaSourcesInVC = suite.vc.locate(vcDir, javaSources)
+                    unmanagedSourcesNoSuite = unmanagedSourcesNoSuite + javaSourcesInVC
+
+    if len(unmanagedSources) > 0 or len(unmanagedSourcesNoSuite) > 0:
         log('The following files are managed but not in any project:')
         for suite, sources in unmanagedSources.iteritems():
             for source in sources:
                 log(suite.name + ': ' + source)
+        for source in unmanagedSourcesNoSuite:
+            log('No suite: ' + source)
 
     retcode = 0
     for suite, sources in unmanagedSources.iteritems():
@@ -15284,7 +15320,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.90.1")
+version = VersionSpec("5.90.2")
 
 currentUmask = None
 
