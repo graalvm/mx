@@ -193,8 +193,7 @@ _mx_suite = None
 _mx_tests_suite = None
 _primary_suite_path = None
 _primary_suite = None
-_src_suitemodel = None
-_dst_suitemodel = None
+_suitemodel = None
 _opts = Namespace()
 _extra_java_homes = []
 _default_java_home = None
@@ -5751,12 +5750,11 @@ class MavenConfig:
 class SuiteModel:
     """
     Defines how to locate a URL/path for a suite, including imported suites.
-    Conceptually a SuiteModel is defined by a kind (src,dst), a primary suite URL/path,
+    Conceptually a SuiteModel is defined a primary suite URL/path,
     and a map from suite name to URL/path for imported suites.
     Subclasses define a specfic implementation.
     """
-    def __init__(self, kind):
-        self.kind = kind
+    def __init__(self):
         self.primaryDir = None
         self.suitenamemap = {}
 
@@ -5793,24 +5791,23 @@ class SuiteModel:
                 return sd
 
     def _check_exists(self, suite_import, path, check_alternate=True):
-        if check_alternate and self.kind == "src" and suite_import.urlinfos is not None and not exists(path):
+        if check_alternate and suite_import.urlinfos is not None and not exists(path):
             return suite_import.urlinfos
         return path
 
     @staticmethod
-    def create_suitemodel(opts, kind):
-        envKey = 'MX_' + kind.upper() + '_SUITEMODEL'
-        optsKey = kind + '_suitemodel'
+    def create_suitemodel(opts):
+        envKey = 'MX__SUITEMODEL'
         default = os.environ.get(envKey, 'sibling')
-        name = getattr(opts, optsKey) or default
+        name = getattr(opts, 'suitemodel') or default
 
         # Communicate the suite model to mx subprocesses
         os.environ[envKey] = name
 
         if name.startswith('sibling'):
-            return SiblingSuiteModel(kind, _primary_suite_path, name)
+            return SiblingSuiteModel(_primary_suite_path, name)
         elif name.startswith('nested'):
-            return NestedImportsSuiteModel(kind, _primary_suite_path, name)
+            return NestedImportsSuiteModel(_primary_suite_path, name)
         else:
             abort('unknown suitemodel type: ' + name)
 
@@ -5844,8 +5841,8 @@ class SuiteModel:
 
 class SiblingSuiteModel(SuiteModel):
     """All suites are siblings in the same parent directory, recorded as _suiteRootDir"""
-    def __init__(self, kind, suiteRootDir, option):
-        SuiteModel.__init__(self, kind)
+    def __init__(self, suiteRootDir, option):
+        SuiteModel.__init__(self)
         self._suiteRootDir = suiteRootDir
 
     def find_suite_dir(self, name, in_subdir):
@@ -5862,7 +5859,20 @@ class SiblingSuiteModel(SuiteModel):
         suitename = suite_import.name
         if self.suitenamemap.has_key(suitename):
             suitename = self.suitenamemap[suitename]
-        path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
+
+        # Try use the URL first so that a big repo is cloned to a local
+        # directory whose named is based on the repo instead of a suite
+        # nested in the big repo.
+        base = None
+        for urlinfo in suite_import.urlinfos:
+            if urlinfo.abs_kind() == 'source':
+                # 'https://github.com/graalvm/graal.git' -> 'graal'
+                base, _ = os.path.splitext(basename(urlparse.urlparse(urlinfo.url).path))
+                if base: break
+        if base:
+            path = join(SiblingSuiteModel.siblings_dir(importer_dir), base)
+        else:
+            path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
         checked = self._check_exists(suite_import, path, check_alternate)
         return SuiteModel._checked_to_importee_tuple(checked, suite_import)
 
@@ -5872,8 +5882,8 @@ class NestedImportsSuiteModel(SuiteModel):
     def _imported_suites_dirname():
         return join('mx.imports', 'source')
 
-    def __init__(self, kind, primaryDir, option):
-        SuiteModel.__init__(self, kind)
+    def __init__(self, primaryDir, option):
+        SuiteModel.__init__(self)
         self._primaryDir = primaryDir
 
     def find_suite_dir(self, name, in_subdir):
@@ -6701,21 +6711,14 @@ class Suite:
                 return importing_suite._find_binary_suite_dir(suite_import.name)
             else:
                 # use the SuiteModel to locate a local source copy of the suite
-                return _src_suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
+                return _suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
 
-        def _get_import_dir(url):
+        def _get_import_dir():
             """Return directory where the suite will be cloned to"""
             if _is_binary_mode():
                 return importing_suite.binary_suite_dir(suite_import.name)
             else:
-                # Try use the URL first so that a big repo is cloned to a local
-                # directory whose named is based on the repo instead of a suite
-                # nested in the big repo.
-                root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
-                if root:
-                    importDir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
-                else:
-                    importDir, _ = _src_suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
+                importDir, _ = _suitemodel.importee_dir(importing_suite.dir, suite_import, check_alternate=False)
                 if exists(importDir):
                     abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(importDir, suite_import.name))
                 return importDir
@@ -6740,7 +6743,7 @@ class Suite:
                         # pass extra necessary extra info
                         clone_kwargs['suite_name'] = suite_import.name
 
-                    importDir = _get_import_dir(urlinfo.url)
+                    importDir = _get_import_dir()
                     if urlinfo.vc.clone(urlinfo.url, importDir, version, abortOnError=False, **clone_kwargs):
                         importMxDir = _find_suite_dir()
                         if importMxDir is None:
@@ -8066,8 +8069,7 @@ environment variables:
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', metavar='<name>', default=[])
-        self.add_argument('--src-suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
-        self.add_argument('--dst-suitemodel', help='mechanism for placing cloned/pushed suites', metavar='<arg>')
+        self.add_argument('--suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
         self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
@@ -8154,9 +8156,8 @@ environment variables:
             if _primary_suite_path:
                 _primary_suite_path = os.path.abspath(_primary_suite_path)
 
-            global _src_suitemodel, _dst_suitemodel
-            _src_suitemodel = SuiteModel.create_suitemodel(opts, 'src')
-            _dst_suitemodel = SuiteModel.create_suitemodel(opts, 'dst')
+            global _suitemodel
+            _suitemodel = SuiteModel.create_suitemodel(opts)
 
             # Communicate primary suite path to mx subprocesses
             if _primary_suite_path:
@@ -13834,9 +13835,8 @@ def sclone(args):
             dest = dest[:-len('.git')]
 
     dest = os.path.abspath(dest)
-    # We can now set the primary dir for the src/dst suitemodel
-    _dst_suitemodel.set_primary_dir(dest)
-    _src_suitemodel.set_primary_dir(source)
+    # We can now set the primary dir for the suitemodel
+    _suitemodel.set_primary_dir(source)
     dest_dir = join(dest, args.subdir) if args.subdir else dest
     _sclone(source, dest, dest_dir, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version, rev=args.revision)
 
@@ -13898,8 +13898,8 @@ def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
 
 def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
     # clone first, then visit imports once we can locate them
-    importee_source, _ = _src_suitemodel.importee_dir(source, suite_import)
-    importee_dest, importee_dest_dir = _dst_suitemodel.importee_dir(s.dir, suite_import)
+    importee_source, _ = _suitemodel.importee_dir(source, suite_import)
+    importee_dest, importee_dest_dir = _suitemodel.importee_dir(s.dir, suite_import, check_alternate=False)
     if exists(importee_dest):
         # already exists in the suite model, but may be wrong version
         importee_suite = _scloneimports_suitehelper(importee_dest_dir, dynamicallyImported=suite_import.dynamicImport)
@@ -13943,81 +13943,10 @@ def scloneimports(args):
 
     default_path = vcs.default_pull(source)
 
-    # We can now set the primary directory for the dst suitemodel
+    # We can now set the primary directory for the suitemodel
     # N.B. source is effectively the destination and the default_path is the (original) source
-    _dst_suitemodel.set_primary_dir(source)
+    _suitemodel.set_primary_dir(source)
     s.visit_imports(_scloneimports_visitor, source=default_path, manual={} if args.manual else None, ignoreVersion=args.ignore_version)
-
-def _spush_import_visitor(s, suite_import, dest, checks, clonemissing, **extra_args):
-    """push visitor for Suite.visit_imports"""
-    if dest is not None:
-        dest, _ = _dst_suitemodel.importee_dir(dest, suite_import)
-    _spush(suite(suite_import.name), suite_import, dest, checks, clonemissing)
-
-def _spush_check_import_visitor(s, suite_import, **extra_args):
-    """push check visitor for Suite.visit_imports"""
-    importedVersion = suite(suite_import.name).version()
-    if importedVersion != suite_import.version:
-        abort('imported version of ' + suite_import.name + ' in suite ' + s.name + ' does not match tip')
-
-def _spush(s, suite_import, dest, checks, clonemissing):
-    vcs = s.vc
-    if checks['on']:
-        if not vcs.can_push(s.vc_dir, checks['strict'], abortOnError=False):
-            abort('working directory ' + s.vc_dir + ' contains uncommitted changes, push aborted')
-
-    # check imports first
-    if checks['on']:
-        s.visit_imports(_spush_check_import_visitor)
-
-    # ok, push imports
-    s.visit_imports(_spush_import_visitor, dest=dest, checks=checks, clonemissing=clonemissing)
-
-    dest_exists = True
-
-    if clonemissing:
-        if not os.path.exists(dest):
-            dest_exists = False
-
-    def get_version():
-        if suite_import is not None and suite_import.version is not None:
-            return suite_import.version
-        else:
-            return None
-
-    if dest_exists:
-        vcs.push(s.vc_dir, rev=get_version(), dest=dest)
-    else:
-        vcs.clone(s.vc_dir, rev=get_version(), dest=dest)
-
-def spush(args):
-    """push primary suite and all its imports"""
-    parser = ArgumentParser(prog='mx spush')
-    parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
-    parser.add_argument('--no-checks', action='store_true', help='checks on status, versions are disabled')
-    parser.add_argument('--no-strict', action='store_true', help='allows not tracked files')
-    parser.add_argument('--clonemissing', action='store_true', help='clone missing imported repos at destination (forces --no-checks)')
-    parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
-    args = parser.parse_args(args)
-    if args.dest is None:
-        args.dest = _kwArg(args.nonKWArgs)
-    if len(args.nonKWArgs) > 0:
-        abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
-
-    s = _check_primary_suite()
-
-    if args.clonemissing:
-        if args.dest is None:
-            abort('--dest required with --clonemissing')
-        args.nochecks = True
-
-    if args.dest is not None:
-        _dst_suitemodel.set_primary_dir(args.dest)
-
-    checks = dict()
-    checks['on'] = not args.no_checks
-    checks['strict'] = not args.no_strict
-    _spush(s, None, args.dest, checks, args.clonemissing)
 
 def _supdate_import_visitor(s, suite_import, **extra_args):
     _supdate(suite(suite_import.name), suite_import)
@@ -14232,35 +14161,6 @@ def hg_command(args):
     """Run a Mercurial command in every suite"""
     s = _check_primary_suite()
     _hg_command(s, None, args=args)
-
-def _soutgoing_import_visitor(s, suite_import, dest, **extra_args):
-    if dest is not None:
-        dest, _ = _dst_suitemodel.importee_dir(dest, suite_import)
-    _soutgoing(suite(suite_import.name), suite_import, dest)
-
-def _soutgoing(s, suite_import, dest):
-    s.visit_imports(_soutgoing_import_visitor, dest=dest)
-
-    output = s.vc.outgoing(s.vc_dir, dest)
-    if output:
-        print output
-
-def soutgoing(args):
-    """check outgoing for primary suite and all imports"""
-    parser = ArgumentParser(prog='mx soutgoing')
-    parser.add_argument('--dest', help='url/path of repo to push to (default as per hg push)', metavar='<path>')
-    parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
-    args = parser.parse_args(args)
-    if args.dest is None:
-        args.dest = _kwArg(args.nonKWArgs)
-    if len(args.nonKWArgs) > 0:
-        abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
-    s = _check_primary_suite()
-
-    if args.dest is not None:
-        _dst_suitemodel.set_primary_dir(args.dest)
-
-    _soutgoing(s, None, args.dest)
 
 def _stip_import_visitor(s, suite_import, **extra_args):
     _stip(suite(suite_import.name), suite_import)
@@ -15001,9 +14901,7 @@ _commands = {
     'scloneimports': [scloneimports, '[options]'],
     'sforceimports': [sforceimports, ''],
     'sincoming': [sincoming, ''],
-    'soutgoing': [soutgoing, '[options]'],
     'spull': [spull, '[options]'],
-    'spush': [spush, '[options]'],
     'stip': [stip, ''],
     'sversions': [sversions, '[options]'],
     'supdate': [supdate, ''],
@@ -15075,7 +14973,7 @@ def _check_primary_suite():
 # vc (suite) commands only perform a partial load of the suite metadata, to avoid
 # problems with suite invariant checks aborting the operation
 _vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
-                'sincoming', 'soutgoing', 'spull', 'spush', 'stip', 'sversions', 'supdate']
+                'sincoming', 'soutgoing', 'spull', 'stip', 'sversions', 'supdate']
 
 def _needs_primary_suite(command):
     return not command in _primary_suite_exempt and not command in _suite_context_free
@@ -15261,7 +15159,7 @@ def main():
             _init_primary_suite(_mx_suite)
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
-            _src_suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
+            _suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
             userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
             SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
 
@@ -15374,7 +15272,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.88.0")
+version = VersionSpec("5.89.0")
 
 currentUmask = None
 
