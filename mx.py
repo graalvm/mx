@@ -14680,7 +14680,7 @@ def maven_install(args):
         only = args.only.split(',')
     for dist in s.dists:
         # ignore non-exported dists
-        if not dist.internal and not dist.name.startswith('COM_ORACLE') and dist.maven:
+        if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
             if len(only) is 0 or dist.name in only:
                 arcdists.append(dist)
 
