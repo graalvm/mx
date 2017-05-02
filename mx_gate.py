@@ -313,7 +313,7 @@ def gate(args):
         buildTasks = [task for task in tasks if not task.skipped and Tags.build in task.tags]
         nonBuildTasks = [task for task in tasks if not task.skipped and Tags.build not in task.tags]
 
-        partialTasks = [nonBuildTasks[i::total] for i in xrange(total)][selected]
+        partialTasks = nonBuildTasks[selected::total]
         runTaskNames = [task.title for task in buildTasks + partialTasks]
 
         # we have already ran the filters in the dry run when collecting
