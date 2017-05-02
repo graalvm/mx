@@ -113,7 +113,7 @@ class VmRegistry(object):
             return self.default_vm(config, self._vms)
         return None
 
-    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False):
+    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
 
@@ -146,7 +146,8 @@ class VmRegistry(object):
                     notice = mx.warn
                     seen = set()
                     choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
-                notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
+                if not quiet:
+                    notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
@@ -164,10 +165,11 @@ class VmRegistry(object):
                 notice = mx.warn
                 seen = set()
                 choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
-            notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
+            if not quiet:
+                notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
         if isinstance(vm_object, GuestVm):
-            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True)
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True, quiet=quiet)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
 
