@@ -220,14 +220,6 @@ class MxCompatibility5680(MxCompatibility5590):#pylint: disable=too-many-ancesto
     def excludeDisableJavaDebuggging(self):
         return True
 
-class MxCompatibility5880(MxCompatibility5680):#pylint: disable=too-many-ancestors
-    @staticmethod
-    def version():
-        return mx.VersionSpec("5.88.0")
-
-    def requiresSourceInProjects(self):
-        return True
-
 def minVersion():
     _ensureCompatLoaded()
     return _versionsMap.keys()[0]
