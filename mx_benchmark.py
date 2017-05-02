@@ -739,7 +739,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message, partialResults)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -749,6 +749,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """
         if dims is None:
             dims = {}
+        if extraRules is None:
+            extraRules = []
 
         def compiled(pat):
             if type(pat) is str:
@@ -764,7 +766,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             return []
 
         datapoints = []
-        for rule in self.rules(out, benchmarks, bmSuiteArgs):
+        rules = self.rules(out, benchmarks, bmSuiteArgs) + extraRules
+
+        for rule in rules:
             # pass working directory to rule without changing the signature of parse
             rule._cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
             parsedpoints = rule.parse(out)
@@ -921,6 +925,17 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             dims[key] = value
         return ret_code, out, dims
 
+    def validateStdoutWithDimensions(
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+
+        if extraRules is None:
+            extraRules = []
+
+        vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs, quiet=True)
+        extraRules += vm.rules(out, benchmarks, bmSuiteArgs)
+
+        return super(VmBenchmarkSuite, self).validateStdoutWithDimensions(out=out, benchmarks=benchmarks, bmSuiteArgs=bmSuiteArgs, retcode=retcode, dims=dims, extraRules=extraRules)
+
     def get_vm_registry(self):
         """" Gets the VM registry used to run this type of benchmarks.
         :rtype: VmRegistry
@@ -980,6 +995,17 @@ class Vm(object): #pylint: disable=R0922
     def config_name(self):
         """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
+
+    def rules(self, output, benchmarks, bmSuiteArgs):
+        """Returns a list of rules required to parse the standard output.
+
+        :param string output: Contents of the standard output.
+        :param list benchmarks: List of benchmarks that were run.
+        :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
+        :return: List of StdOutRule parse rules.
+        :rtype: list
+        """
+        return []
 
     def run(self, cwd, args):
         """Runs the JVM with the specified args.
