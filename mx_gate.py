@@ -267,6 +267,7 @@ def gate(args):
     parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
+    parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
     parser.add_argument('-p', '--partial', help='run only a subset of the tasks in the gate (index/total). Eg. "--partial 2/5" runs the second fifth of the tasks in the gate. Tasks with tag build are repeated for each run.')
     filtering = parser.add_mutually_exclusive_group()
@@ -411,14 +412,21 @@ def _run_gate(cleanArgs, args, tasks):
     if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
         with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
+                defaultBuildArgs = ['-p']
+                if not args.no_warning_as_error:
+                    defaultBuildArgs += ['--warning-as-error']
                 if mx.get_env('JDT'):
-                    mx.command_function('build')(['-p', '--warning-as-error'] + args.extra_build_args)
+                    mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
                     gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                 else:
                     _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
 
     with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
-        if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'] + args.extra_build_args)
+        if t:
+            defaultBuildArgs = ['-p']
+            if not args.no_warning_as_error:
+                defaultBuildArgs += ['--warning-as-error']
+            mx.command_function('build')(defaultBuildArgs + ['--force-javac'] + args.extra_build_args)
 
     with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
         if t:
