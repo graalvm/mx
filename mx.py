@@ -641,8 +641,10 @@ class BuildTask(object):
         if exists(savedDepsFile):
             with open(savedDepsFile) as fp:
                 savedDeps = [l.strip() for l in fp.readlines()]
-            if savedDeps != [d.subject.name for d in self.deps]:
+            if savedDeps != currentDeps:
                 outOfDate = True
+            else:
+                return False
 
         if len(currentDeps) == 0:
             if exists(savedDepsFile):
@@ -10024,10 +10026,11 @@ def build(args, parser=None):
                     abort('Specified Eclipse compiler does not include annotation processing support. ' +
                           'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
                           'from within the plugins/ directory of an Eclipse IDE installation.')
+    onlyDeps = None
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
-        names = args.only.split(',')
-        roots = [dependency(name) for name in names]
+        onlyDeps = set(args.only.split(','))
+        roots = [dependency(name) for name in onlyDeps]
     elif args.dependencies is not None:
         if len(args.dependencies) == 0:
             abort('The value of the --dependencies argument cannot be the empty string')
@@ -10049,7 +10052,8 @@ def build(args, parser=None):
 
     def _createTask(dep, edge):
         task = dep.getBuildTask(args)
-        assert task.subject not in taskMap
+        if task.subject in taskMap:
+            return
         taskMap[dep] = task
         def try_link_task(t):
             if hasattr(t.subject, 'buildDependencies'):
@@ -10059,7 +10063,8 @@ def build(args, parser=None):
                         return
                     else:
                         t.deps.append(taskMap[build_dep])
-            sortedTasks.append(t)
+            if onlyDeps is None or t.subject.name in onlyDeps:
+                sortedTasks.append(t)
             lst = depsMap.setdefault(t.subject, [])
             for d in lst:
                 t.deps.append(taskMap[d])
@@ -10076,7 +10081,9 @@ def build(args, parser=None):
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
-    assert not delayedTasks
+    while len(delayedTasks) != 0:
+        logv('[Flushing disconnected delayed tasks: ' + str([d.name for d in delayedTasks.keys()]) + ']')
+        walk_deps(visit=_createTask, visitEdge=_registerDep, roots=delayedTasks.keys(), ignoredEdges=[DEP_EXCLUDED])
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
@@ -10087,8 +10094,13 @@ def build(args, parser=None):
                 log(str(task))
         log("-- Serialized build plan --")
 
+    if len(sortedTasks) == 1:
+        # Spinning up a daemon for a single task doesn't make sense
+        if not args.no_daemon:
+            logv('[Disabling use of compile daemon for single build task]')
+            args.no_daemon = True
     daemons = {}
-    if args.parallelize:
+    if args.parallelize and onlyDeps is None:
         def joinTasks(tasks):
             failed = []
             for t in tasks:
@@ -15272,7 +15284,7 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.90.0")
+version = VersionSpec("5.90.1")
 
 currentUmask = None
 
