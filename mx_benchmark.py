@@ -911,9 +911,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         dims = {
             "vm": vm.name(),
             "host-vm": host_vm.name() if host_vm else vm.name(),
-            "host-vm-config": host_vm.config_name() if host_vm else vm.config_name(),
+            "host-vm-config": self.host_vm_config_name(host_vm, vm),
             "guest-vm": vm.name() if host_vm else "none",
-            "guest-vm-config": vm.config_name() if host_vm else "default",
+            "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
         }
         for key, value in vm_dims.items():
             if key in dims and value != dims[key]:
@@ -924,6 +924,12 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
             dims[key] = value
         return ret_code, out, dims
+
+    def host_vm_config_name(self, host_vm, vm):
+        return host_vm.config_name() if host_vm else vm.config_name()
+
+    def guest_vm_config_name(self, host_vm, vm):
+        return vm.config_name() if host_vm else "default"
 
     def validateStdoutWithDimensions(
         self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
