@@ -869,9 +869,8 @@ class Distribution(Dependency):
             def _visitDists(dep, edges):
                 if dep is not self:
                     excluded.add(dep)
-                    if hasattr(dep, 'overlaps'):
-                        overlaps = dep.overlaps
-                        for o in overlaps:
+                    if dep.isDistribution():
+                        for o in dep.overlapped_distribution_names():
                             excluded.add(distribution(o))
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
@@ -929,6 +928,14 @@ class Distribution(Dependency):
             if group_id:
                 return group_id
         return _mavenGroupId(self.suite)
+
+    def overlapped_distribution_names(self):
+        if hasattr(self, 'overlaps'):
+            overlaps = self.overlaps
+            if not isinstance(overlaps, list):
+                abort('Attribute "overlaps" must be a list', self)
+            return overlaps
+        return []
 
 class JARDistribution(Distribution, ClasspathDependency):
     """
@@ -7761,7 +7768,7 @@ def library(name, fatalIfMissing=True, context=None):
     Gets the library for a given name. This will abort if the named library does
     not exist and 'fatalIfMissing' is true.
     """
-    l = _libs.get(name)
+    l = _libs.get(name) or _jreLibs.get(name) or _jdkLibs.get(name)
     if l is None and fatalIfMissing:
         if _projects.get(name):
             abort(name + ' is a project, not a library', context=context)
@@ -10703,12 +10710,9 @@ def checkoverlap(args):
         if len(ds) > 1:
             remove = []
             for d in ds:
-                if hasattr(d, 'overlaps'):
-                    overlaps = d.overlaps
-                    if not isinstance(overlaps, list):
-                        abort('Attribute "overlaps" must be a list', d)
-                    if len([o for o in ds if o.name in overlaps]) != 0:
-                        remove.append(d)
+                overlaps = d.overlapped_distribution_names()
+                if len([o for o in ds if o.name in overlaps]) != 0:
+                    remove.append(d)
             ds = [d for d in ds if d not in remove]
             if len(ds) > 1:
                 print '{} is in more than one distribution: {}'.format(p, [d.name for d in ds])
@@ -11115,6 +11119,8 @@ def projectgraph(args, suite=None):
     args = parser.parse_args(args)
 
     if args.igv or args.igv_format:
+        if args.dists:
+            abort("--dist is not supported in combination with IGV output")
         ids = {}
         nextToIndex = {}
         igv = XMLDoc()
@@ -11159,40 +11165,104 @@ def projectgraph(args, suite=None):
     def should_ignore(name):
         return any((ignored in name for ignored in args.ignore))
 
+    def print_edge(from_dep, to_dep, attributes=None):
+        edge_str = ''
+        attributes = attributes or {}
+        def node_str(_dep):
+            _node_str = '"' + _dep.name
+            if args.dist and _dep.isDistribution():
+                _node_str += ':DUMMY'
+            _node_str += '"'
+            return _node_str
+        edge_str += node_str(from_dep)
+        edge_str += '->'
+        edge_str += node_str(to_dep)
+        if args.dist and from_dep.isDistribution() or to_dep.isDistribution():
+            attributes['color'] = 'blue'
+            if to_dep.isDistribution():
+                attributes['lhead'] = 'cluster_' + to_dep.name
+            if from_dep.isDistribution():
+                attributes['ltail'] = 'cluster_' + from_dep.name
+        if attributes:
+            edge_str += ' [' + ', '.join((k + '="' + v + '"' for k, v in attributes.items())) + ']'
+        edge_str += ';'
+        print edge_str
+
     print 'digraph projects {'
     print 'rankdir=BT;'
     print 'node [shape=rect];'
+    print 'splines=true;'
+    print 'ranksep=1;'
     if args.dist:
+        print 'compound=true;'
+        started_dists = set()
+
+        used_libraries = set()
+        for p in projects():
+            if should_ignore(p.name):
+                continue
+            for dep in p.deps:
+                if dep.isLibrary():
+                    used_libraries.add(dep)
         for d in sorted_dists():
             if should_ignore(d.name):
                 continue
-            print 'subgraph "cluster_' + d.name + '" {'
-            print 'label="' + d.name + '";'
-            print 'color=blue;'
-            print '"' + d.name + ':DUMMY" [shape=point style=invis]'
+            for dep in d.excludedLibs:
+                used_libraries.add(dep)
 
-            if d.isJARDistribution():
-                for p in d.archived_deps():
-                    if p.isProject():
+        for l in used_libraries:
+            if not should_ignore(l.name):
+                print '"' + l.name + '";'
+
+        def print_distribution(_d):
+            if should_ignore(_d.name):
+                return
+            if _d in started_dists:
+                warn("projectgraph does not support non-strictly nested distributions, result may be inaccurate around " + _d.name)
+                return
+            started_dists.add(_d)
+            print 'subgraph "cluster_' + _d.name + '" {'
+            print 'label="' + _d.name + '";'
+            print 'color=blue;'
+            print '"' + _d.name + ':DUMMY" [shape=point, style=invis];'
+
+            if _d.isDistribution():
+                overlapped_deps = set()
+                for overlapped in _d.overlapped_distribution_names():
+                    print_distribution(distribution(overlapped))
+                    overlapped_deps.update(distribution(overlapped).archived_deps())
+                for p in _d.archived_deps():
+                    if p.isProject() and p not in overlapped_deps:
                         if should_ignore(p.name):
                             continue
                         print '"' + p.name + '";'
+                        print '"' + _d.name + ':DUMMY"->"' + p.name + '" [style="invis"];'
             print '}'
+            for dep in _d.deps:
+                if dep.isDistribution():
+                    print_edge(_d, dep)
+            for dep in _d.excludedLibs:
+                print_edge(_d, dep)
+
+        in_overlap = set()
+        for d in sorted_dists():
+            in_overlap.update(d.overlapped_distribution_names())
+        for d in sorted_dists():
+            if d not in started_dists and d.name not in in_overlap:
+                print_distribution(d)
+
     for p in projects():
         if should_ignore(p.name):
             continue
-        for dep in p.canonical_deps():
+        for dep in p.deps:
             if should_ignore(dep.name):
                 continue
-            if args.dist and dep.isDistribution():
-                print '"' + p.name + '"->"' + dep.name + ':DUMMY" [lhead=cluster_' + dep.name + ' color=blue];'
-            else:
-                print '"' + p.name + '"->"' + dep.name + '";'
-        if p is JavaProject:
+            print_edge(p, dep)
+        if p.isJavaProject():
             for apd in p.declaredAnnotationProcessors:
                 if should_ignore(apd.name):
                     continue
-                print '"' + p.name + '"->"' + apd.name + '" [style="dashed"];'
+                print_edge(p, apd, {"style": "dashed"})
     print '}'
 
 def _source_locator_memento(deps, jdk=None):
@@ -15321,7 +15391,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.95.0")  # it's a kind of magic!
+version = VersionSpec("5.95.1")  # Spiders everywhere!
 
 currentUmask = None
 
