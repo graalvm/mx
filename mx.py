@@ -15320,7 +15320,8 @@ def main():
         # no need to show the stack trace when the user presses CTRL-C
         abort(1, killsig=signal.SIGINT)
 
-version = VersionSpec("5.92.0")
+# The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
+version = VersionSpec("5.93.0")  # It's a kind of magic!
 
 currentUmask = None
 
