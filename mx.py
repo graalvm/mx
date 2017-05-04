@@ -14044,7 +14044,8 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
                 contents = fp.read()
             if contents.count(str(suite_import.version)) == 1:
                 newContents = contents.replace(suite_import.version, str(importedVersion))
-                update_file(importing_suite.suite_py(), newContents, showDiff=True)
+                if not update_file(importing_suite.suite_py(), newContents, showDiff=True):
+                    abort("Updating {} failed: update didn't change anything".format(importing_suite.suite_py()))
                 suite_import.version = importedVersion
                 if bookmark_imports:
                     _sbookmark_visitor(importing_suite, suite_import)
