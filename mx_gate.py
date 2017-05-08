@@ -40,6 +40,7 @@ class Tags:
     always = 'always'       # special tag that is always implicitly selected
     style = 'style'         # code style checks (without build)
     build = 'build'         # build
+    ecjbuild = 'ecjbuild'   # build with ecj only
     fullbuild = 'fullbuild' # full build (including warnings, findbugs and ide init)
 
 """
@@ -390,7 +391,7 @@ def _run_gate(cleanArgs, args, tasks):
             if mx.command_function('pylint')(['--primary']) != 0:
                 _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
 
-    gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild])
+    gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
 
     with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
         if t:
@@ -410,14 +411,16 @@ def _run_gate(cleanArgs, args, tasks):
                 t.abort('Move or delete the Java sources that are not in a Java project directory.')
 
     if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
-        with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
+        with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
                 defaultBuildArgs = ['-p']
                 if not args.no_warning_as_error:
                     defaultBuildArgs += ['--warning-as-error']
                 if mx.get_env('JDT'):
                     mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
-                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
+                    fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
+                    if fullbuild:
+                        gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                 else:
                     _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
 
