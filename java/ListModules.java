@@ -74,6 +74,20 @@ public class ListModules {
         return bootModules;
     }
     
+    private static ModuleFinder bootstrapFinder() {
+        try {
+            return (ModuleFinder) ModuleBootstrap.class.getMethod("finder").invoke(null);
+        } catch (Exception e) {
+            try {
+	            // Use reflection to support backward incompatible module API change
+	            // http://hg.openjdk.java.net/jdk9/dev/jdk/rev/73113c19a5df#l16.26
+	            return (ModuleFinder) ModuleBootstrap.class.getMethod("unlimitedFinder").invoke(null);
+            } catch (Exception e2) {
+               throw new RuntimeException(e);
+            }
+        }
+    }
+
     public static void main(String[] args) throws Throwable {
         PrintStream out = System.out;
         Set<ModuleDescriptor> bootModules = bootModules();
@@ -86,7 +100,7 @@ public class ListModules {
         // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l18.37
         out.println(providesIsSet ? "transitive" : "public");
 
-        for (ModuleReference moduleRef : ModuleBootstrap.finder().findAll()) {
+        for (ModuleReference moduleRef : bootstrapFinder().findAll()) {
             ModuleDescriptor md = moduleRef.descriptor();
             if (!matches(md.name(), args)) {
                 continue;
