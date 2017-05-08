@@ -414,11 +414,12 @@ def _run_gate(cleanArgs, args, tasks):
         with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
                 defaultBuildArgs = ['-p']
-                if not args.no_warning_as_error:
+                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
+                # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
+                if not args.no_warning_as_error and fullbuild:
                     defaultBuildArgs += ['--warning-as-error']
                 if mx.get_env('JDT'):
                     mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
-                    fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
                     if fullbuild:
                         gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
                 else:
