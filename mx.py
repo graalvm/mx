@@ -13108,10 +13108,13 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             # 1) Make an ant file for archiving the distributions.
             antXml = XMLDoc()
             antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
+            antXml.element('dirname', attributes={'file': '${java.home}', 'property': 'java_home'})
             for dist in validDistributions:
                 antXml.open('target', attributes={'name': antTargetName(dist)})
-                antXml.open('exec', attributes={'executable': sys.executable})
+                antXml.open('exec', attributes={'executable': sys.executable, 'failonerror': 'true'})
                 antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
+                antXml.element('arg', attributes={'value': '--java-home'})
+                antXml.element('arg', attributes={'value': '${java_home}'})
                 antXml.element('arg', attributes={'value': 'archive'})
                 antXml.element('arg', attributes={'value': '@' + dist.name})
                 antXml.close('exec')
@@ -13274,10 +13277,13 @@ def ideclean(args):
         if exists(path):
             os.remove(path)
 
+    rm(join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml'))
+
     for s in suites() + [_mx_suite]:
         rm(join(s.get_mx_output_dir(), 'eclipse-config.zip'))
         rm(join(s.get_mx_output_dir(), 'netbeans-config.zip'))
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
+        rm(join(s.mxDir, basename(s.mxDir) + '.iml'))
 
     for p in projects() + _mx_suite.projects:
         if not p.isJavaProject():
