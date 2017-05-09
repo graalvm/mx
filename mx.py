@@ -9844,15 +9844,22 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
             contextMsg = context.__abort_context__()
         else:
             contextMsg = str(context)
+    else:
+        contextMsg = ""
 
-        if contextMsg:
-            if isinstance(codeOrMessage, int):
-                # Log the context separately so that SystemExit
-                # communicates the intended exit status
-                log(contextMsg)
-            else:
-                codeOrMessage = contextMsg + ":\n" + codeOrMessage
-    raise SystemExit(codeOrMessage)
+    if isinstance(codeOrMessage, int):
+        # Log the context separately so that SystemExit
+        # communicates the intended exit status
+        error_message = contextMsg
+        error_code = codeOrMessage
+    elif contextMsg:
+        error_message = contextMsg + ":\n" + codeOrMessage
+        error_code = 1
+    else:
+        error_message = codeOrMessage
+        error_code = 1
+    log_error(error_message)
+    raise SystemExit(error_code)
 
 def _suggest_http_proxy_error(e):
     """
