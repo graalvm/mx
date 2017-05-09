@@ -4047,31 +4047,31 @@ class TeeOutputCapture:
         self.underlying(data)
 
 class HgConfig(VC):
+    has_hg = None
     """
     Encapsulates access to Mercurial (hg)
     """
     def __init__(self):
         VC.__init__(self, 'hg', 'Mercurial')
         self.missing = 'no hg executable found'
-        self.has_hg = None
 
     def check(self, abortOnError=True):
         # Mercurial does lazy checking before use of the hg command itself
         return self
 
     def check_for_hg(self, abortOnError=True):
-        if self.has_hg is None:
+        if HgConfig.has_hg is None:
             try:
                 subprocess.check_output(['hg'])
-                self.has_hg = True
+                HgConfig.has_hg = True
             except OSError:
-                self.has_hg = False
+                HgConfig.has_hg = False
 
-        if not self.has_hg:
+        if not HgConfig.has_hg:
             if abortOnError:
                 abort(self.missing)
 
-        return self if self.has_hg else None
+        return self if HgConfig.has_hg else None
 
     def run(self, *args, **kwargs):
         # Ensure hg exists before executing the command
@@ -4365,29 +4365,32 @@ class HgConfig(VC):
             abort('exists failed')
 
     def root(self, directory, abortOnError=True):
-        if not self.check_for_hg(abortOnError=abortOnError):
-            metadata = VC._find_metadata_dir(directory, '.hg')
-            if metadata:
-                abort('Mercurial repository found in {} but Mercurial is not installed'.format(dirname(metadata)))
-            return None
-        try:
-            out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
-            return out.strip()
-        except subprocess.CalledProcessError:
+        metadata = VC._find_metadata_dir(directory, '.hg')
+        if metadata:
+            try:
+                out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
+                return out.strip()
+            except subprocess.CalledProcessError:
+                if abortOnError:
+                    self.check_for_hg()
+                    abort('hg root failed')
+                else:
+                    return None
+        else:
             if abortOnError:
-                abort('hg root failed')
+                abort('No .hg directory')
             else:
                 return None
 
 
 class GitConfig(VC):
+    has_git = None
     """
     Encapsulates access to Git (git)
     """
     def __init__(self):
         VC.__init__(self, 'git', 'Git')
         self.missing = 'No Git executable found. You must install Git in order to proceed!'
-        self.has_git = None
         self.object_cache_mode = get_env('MX_GIT_CACHE') or None
         if self.object_cache_mode not in [None, 'reference', 'dissociated']:
             abort("MX_GIT_CACHE was '{}' expected '', 'reference', or 'dissociated'")
@@ -4396,18 +4399,18 @@ class GitConfig(VC):
         return self
 
     def check_for_git(self, abortOnError=True):
-        if self.has_git is None:
+        if GitConfig.has_git is None:
             try:
                 subprocess.check_output(['git', '--version'])
-                self.has_git = True
+                GitConfig.has_git = True
             except OSError:
-                self.has_git = False
+                GitConfig.has_git = False
 
-        if not self.has_git:
+        if not GitConfig.has_git:
             if abortOnError:
                 abort(self.missing)
 
-        return self if self.has_git else None
+        return self if GitConfig.has_git else None
 
     def run(self, *args, **kwargs):
         # Ensure git exists before executing the command
