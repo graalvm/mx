@@ -6765,6 +6765,9 @@ class Suite(object):
                 if isinstance(imported_suite, BinarySuite) and updated:
                     imported_suite.reload_binary_suite()
             # TODO Add support for imports in dynamically loaded suites (no current use case)
+            for suite_import in imported_suite.suite_imports:
+                if not suite(suite_import.name, fatalIfMissing=False):
+                    warn("Programmatically imported suite '{}' imports '{}' which is not loaded.".format(name, suite_import.name))
             if not suite(name, fatalIfMissing=False):
                 _register_suite(imported_suite)
             if not imported_suite.post_init:
