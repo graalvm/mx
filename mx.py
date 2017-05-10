@@ -15075,7 +15075,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=False, stream=sys.stderr)
+        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr)
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -15481,7 +15481,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.98.0")  # Reticulating splines!
+version = VersionSpec("5.98.1")  # One of a kind!
 
 currentUmask = None
 
