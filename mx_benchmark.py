@@ -887,7 +887,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return self.createVmCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
 
     def createVmCommandLineArgs(self, benchmarks, runArgs):
-        """" Creates the arguments that need to be passed to the VM to run the benchamrks.
+        """" Creates the arguments that need to be passed to the VM to run the benchmarks.
         :rtype: list
         """
         raise NotImplementedError()

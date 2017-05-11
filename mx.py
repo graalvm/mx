@@ -3055,12 +3055,17 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+def user_home():
+    return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+
+def dot_mx_dir():
+    return join(user_home(), '.mx')
+
 def _get_path_in_cache(name, sha1, urls, ext=None):
     """
     Gets the path an artifact has (or would have) in the download cache.
     """
     assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
-    userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
@@ -3074,7 +3079,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
-    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(userHome, '.mx', 'cache')))
+    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
     return join(cacheDir, name + '_' + sha1 + ext)
@@ -3108,7 +3113,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if len(urls) is 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
-        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(_opts.user_home, '.mx', 'cache')))
+        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
         ensure_dir_exists(cacheDir)
 
         _, ext = os.path.splitext(path)
@@ -4370,6 +4375,9 @@ class GitConfig(VC):
         VC.__init__(self, 'git', 'Git')
         self.missing = 'No Git executable found. You must install Git in order to proceed!'
         self.has_git = None
+        self.object_cache_mode = get_env('MX_GIT_CACHE') or None
+        if not self.object_cache_mode in [None, 'reference', 'dissociated']:
+            abort("MX_GIT_CACHE was '{}' expected '', 'reference', or 'dissociated'")
 
     def check(self, abortOnError=True):
         return self
@@ -4393,8 +4401,12 @@ class GitConfig(VC):
         self.check_for_git()
         return run(*args, **kwargs)
 
-    def init(self, vcdir, abortOnError=True):
-        return self.run(['git', 'init', vcdir], nonZeroIsFatal=abortOnError) == 0
+    def init(self, vcdir, abortOnError=True, bare=False):
+        cmd = ['git', 'init']
+        if bare:
+            cmd.append('--bare')
+        cmd.append(vcdir)
+        return self.run(cmd, nonZeroIsFatal=abortOnError) == 0
 
     def is_this_vc(self, vcdir):
         gitdir = join(vcdir, self.metadir())
@@ -4557,10 +4569,22 @@ class GitConfig(VC):
     def metadir(self):
         return '.git'
 
+    def _local_cache_repo(self):
+        cache_path = join(dot_mx_dir(), 'git-cache')
+        if not exists(cache_path):
+            self.init(cache_path, bare=True)
+        return cache_path
+
     def _clone(self, url, dest=None, branch=None, abortOnError=True, **extra_args):
         cmd = ['git', 'clone']
         if branch:
             cmd += ['--branch', branch]
+        if self.object_cache_mode:
+            cache = self._local_cache_repo()
+            self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashlib.sha1(url).hexdigest() + '/*')
+            cmd += ['--reference', cache]
+            if self.object_cache_mode == 'dissociated':
+                cmd += ['--dissociate']
         cmd.append(url)
         if dest:
             cmd.append(dest)
@@ -4612,9 +4636,15 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, abortOnError=True):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True):
         try:
-            return subprocess.check_call(['git', 'fetch'], cwd=vcdir)
+            cmd = ['git', 'fetch']
+            if repository:
+                cmd.append(repository)
+            if refspec:
+                cmd.append(refspec)
+            logvv(' '.join(map(pipes.quote, cmd)))
+            return subprocess.check_call(cmd, cwd=vcdir)
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git fetch failed')
@@ -8028,6 +8058,11 @@ environment variables:
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
+  MX_GIT_CACHE          Use a cache for git objects during clones. Setting it to `reference` will clone
+                        repositories using the cache and let them reference the cache (if the cache gets
+                        deleted these repositories will be incomplete). Setting it to `dissociated` will
+                        clone using the cache but then dissociate the repository from the cache. The cache
+                        is located at `~/.mx/git-cache`.
 """ +_format_commands()
 
 
@@ -15337,8 +15372,7 @@ def main():
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
             _suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
-            userHome = _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
-            SourceSuite._load_env_file(join(userHome, '.mx', 'env'))
+            SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
 
             # We explicitly load the 'env' file of the primary suite now as it might
             # influence the suite loading logic.  During loading of the subsuites their
@@ -15440,7 +15474,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.97.0")  # Limited edition!
+version = VersionSpec("5.98.0")  # Reticulating splines!
 
 currentUmask = None
 
