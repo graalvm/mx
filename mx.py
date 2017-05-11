@@ -4734,7 +4734,7 @@ class GitConfig(VC):
             logvv(out.data)
             return rc == 0
         else:
-            rc = self._fetch(vcdir, abortOnError)
+            rc = self._fetch(vcdir, abortOnError=abortOnError)
             if rc == 0:
                 if rev and update:
                     return self.update(vcdir, rev=rev, mayPull=False, clean=False, abortOnError=abortOnError)
