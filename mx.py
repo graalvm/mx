@@ -9844,15 +9844,22 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
             contextMsg = context.__abort_context__()
         else:
             contextMsg = str(context)
+    else:
+        contextMsg = ""
 
-        if contextMsg:
-            if isinstance(codeOrMessage, int):
-                # Log the context separately so that SystemExit
-                # communicates the intended exit status
-                log(contextMsg)
-            else:
-                codeOrMessage = contextMsg + ":\n" + codeOrMessage
-    raise SystemExit(codeOrMessage)
+    if isinstance(codeOrMessage, int):
+        # Log the context separately so that SystemExit
+        # communicates the intended exit status
+        error_message = contextMsg
+        error_code = codeOrMessage
+    elif contextMsg:
+        error_message = contextMsg + ":\n" + codeOrMessage
+        error_code = 1
+    else:
+        error_message = codeOrMessage
+        error_code = 1
+    log_error(error_message)
+    raise SystemExit(error_code)
 
 def _suggest_http_proxy_error(e):
     """
@@ -15068,7 +15075,7 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=False, stream=sys.stderr)
+        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr)
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -15474,7 +15481,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.98.0")  # Reticulating splines!
+version = VersionSpec("5.98.1")  # One of a kind!
 
 currentUmask = None
 
