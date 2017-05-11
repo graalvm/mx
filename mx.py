@@ -9631,6 +9631,12 @@ def logv(msg=None):
         log(msg)
 
 def logvv(msg=None):
+    if vars(_opts).get('very_verbose') == None:
+        def _deferrable():
+            logvv(msg)
+        _opts_parsed_deferrables.append(_deferrable)
+        return
+
     if _opts.very_verbose:
         log(msg)
 
@@ -15375,7 +15381,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.96.0")  # 100% pure!
+version = VersionSpec("5.96.1")  # May contain nuts!
 
 currentUmask = None
 
