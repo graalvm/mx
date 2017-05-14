@@ -13169,7 +13169,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 artifactFile = join(artifactsDir, artifactFileName(dist))
                 update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
 
-            # JUnit configuration
+            # Default JUnit run configuration
             def get_unittest_args():
                 """Gets the VM arguments used for running the unittests by doing a dry run."""
 
@@ -13207,42 +13207,17 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
                 return ' '.join(unittest_args)
 
-            # IntelliJ IDEA 2017.1 default JUnit run configuration
-            default_configuration = '''\
-                <configuration default="true" type="JUnit" factoryName="JUnit">
-                    <extension name="coverage" enabled="false" merge="false" sample_coverage="true" runner="idea" />
-                    <module name="" />
-                    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
-                    <option name="ALTERNATIVE_JRE_PATH" />
-                    <option name="PACKAGE_NAME" />
-                    <option name="MAIN_CLASS_NAME" />
-                    <option name="METHOD_NAME" />
-                    <option name="TEST_OBJECT" value="class" />
-                    <option name="VM_PARAMETERS" value="{vm_params}" />
-                    <option name="PARAMETERS" />
-                    <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
-                    <option name="ENV_VARIABLES" />
-                    <option name="PASS_PARENT_ENVS" value="true" />
-                    <option name="TEST_SEARCH_SCOPE">
-                        <value defaultName="singleModule" />
-                    </option>
-                    <envs />
-                    <patterns />
-                    <method />
-                </configuration>
-                '''.format(vm_params=get_unittest_args())
-
-            # remove all whitespace between tags, so that we don't end up with excess newlines in xml output
-            default_configuration = ''.join([line.strip() for line in default_configuration.splitlines()])
-
-            # until the official solution becomes available (IDEA-65915), use `workspace.xml`
+            # generate the minimum configuration and let IntelliJ fill in the rest
             wsXml = XMLDoc()
             wsXml.open('project', attributes={'version': '4'})
             wsXml.open('component', attributes={'name': 'RunManager'})
-            wsXml.current.appendChild(xml.dom.minidom.parseString(default_configuration).firstChild)
+            wsXml.open('configuration', attributes={'default': 'true', 'type': 'JUnit', 'factoryName': 'JUnit'})
+            wsXml.element('option', attributes={'name': 'VM_PARAMETERS', 'value': get_unittest_args()})
+            wsXml.close('configuration')
             wsXml.close('component')
             wsXml.close('project')
 
+            # until the official solution becomes available (IDEA-65915), use `workspace.xml`
             wsFile = join(ideaProjectDirectory, 'workspace.xml')
             update_file(wsFile, wsXml.xml(indent='  ', newl='\n'))
 
