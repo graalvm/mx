@@ -197,9 +197,9 @@ public class MxJUnitWrapper {
         }
         final TextRunListener textListener;
         if (veryVerbose) {
-            textListener = new VerboseTextListener(system, VerboseTextListener.SHOW_ALL_TESTS);
+            textListener = new VerboseTextListener(system, classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
         } else if (verbose) {
-            textListener = new VerboseTextListener(system);
+            textListener = new VerboseTextListener(system, classes.size());
         } else {
             textListener = new TextRunListener(system);
         }
