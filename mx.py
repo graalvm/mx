@@ -15481,7 +15481,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.98.1")  # One of a kind!
+version = VersionSpec("5.99.0")  # GR-4082
 
 currentUmask = None
 
