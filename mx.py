@@ -3786,6 +3786,16 @@ class VC(object):
             next_version[-1] += 1
             return version_str(next_version) + '-' + snapshotSuffix
 
+    @staticmethod
+    def _find_metadata_dir(start, name):
+        d = start
+        while len(d) != 0 and d != os.sep:
+            subdir = join(d, name)
+            if exists(subdir):
+                return subdir
+            d = dirname(d)
+        return None
+
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
         Clone the repo at `url` to `dest` using `rev`
@@ -4357,6 +4367,11 @@ class HgConfig(VC):
             abort('exists failed')
 
     def root(self, directory, abortOnError=True):
+        if not self.check_for_hg(abortOnError=abortOnError):
+            metadata = VC._find_metadata_dir(directory, '.hg')
+            if metadata:
+                abort('Mercurial repository found in {} but Mercurial is not installed'.format(dirname(metadata)))
+            return None
         try:
             out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
             return out.strip()
@@ -4971,6 +4986,9 @@ class GitConfig(VC):
 
     def root(self, directory, abortOnError=True):
         if not self.check_for_git(abortOnError=abortOnError):
+            metadata = VC._find_metadata_dir(directory, '.git')
+            if metadata:
+                abort('Git repository found in {} but Git is not installed'.format(dirname(metadata)))
             return None
         try:
             out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
