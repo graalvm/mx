@@ -6256,7 +6256,6 @@ class Suite(object):
                     def _error(msg):
                         abort(msg, context=self)
                     mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
-            mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
@@ -15547,6 +15546,8 @@ def main():
 
     global _mvn
     _mvn = MavenConfig()
+
+    mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
     primarySuiteMxDir = None
     if len(_argParser.initialCommandAndArgs) == 0 or _argParser.initialCommandAndArgs[0] not in _suite_context_free:
