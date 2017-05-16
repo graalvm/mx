@@ -6197,6 +6197,10 @@ class Suite(object):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
 
+        conflictResolution = self._preloaded_suite_dict.get('versionConflictResolution')
+        if conflictResolution:
+            self.versionConflictResolution = conflictResolution
+
     def _load_suite_dict(self):
         supported = [
             'imports',
@@ -6241,10 +6245,6 @@ class Suite(object):
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
-        conflictResolution = d.get('versionConflictResolution')
-        if conflictResolution:
-            self.versionConflictResolution = conflictResolution
-
         javacLintOverrides = d.get('javac.lint.overrides', None)
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
@@ -6256,7 +6256,6 @@ class Suite(object):
                     def _error(msg):
                         abort(msg, context=self)
                     mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
-            mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
@@ -8856,6 +8855,8 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
             commands.append('-V')
         else:
             commands.append('-v')
+    if _opts.version_conflict_resolution != 'suite':
+        commands += ['--version-conflict-resolution', _opts.version_conflict_resolution]
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def _get_new_progress_group_args():
@@ -15548,6 +15549,8 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
+    mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
+
     primarySuiteMxDir = None
     if len(_argParser.initialCommandAndArgs) == 0 or _argParser.initialCommandAndArgs[0] not in _suite_context_free:
         primary_suite_error = 'no primary suite found'
@@ -15654,7 +15657,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.101.0")  # 12 herbs and spices!
+version = VersionSpec("5.101.1")  # Bread is pain!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
