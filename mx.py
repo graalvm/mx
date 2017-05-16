@@ -6197,6 +6197,10 @@ class Suite(object):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
         self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
 
+        conflictResolution = self._preloaded_suite_dict.get('versionConflictResolution')
+        if conflictResolution:
+            self.versionConflictResolution = conflictResolution
+
     def _load_suite_dict(self):
         supported = [
             'imports',
@@ -6240,10 +6244,6 @@ class Suite(object):
             abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"mx update\"".format(self.name, self.requiredMxVersion, version))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
-
-        conflictResolution = d.get('versionConflictResolution')
-        if conflictResolution:
-            self.versionConflictResolution = conflictResolution
 
         javacLintOverrides = d.get('javac.lint.overrides', None)
         if javacLintOverrides:
