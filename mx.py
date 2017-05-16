@@ -8855,6 +8855,8 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
             commands.append('-V')
         else:
             commands.append('-v')
+    if _opts.version_conflict_resolution != 'suite':
+        commands += ['--version-conflict-resolution', _opts.version_conflict_resolution]
     return run(commands + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def _get_new_progress_group_args():
