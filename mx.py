@@ -6195,11 +6195,19 @@ class Suite(object):
 
         if not hasattr(module, dictName):
             abort(modulePath + ' must define a variable named "' + dictName + '"')
+
         self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
 
         conflictResolution = self._preloaded_suite_dict.get('versionConflictResolution')
         if conflictResolution:
             self.versionConflictResolution = conflictResolution
+
+        _imports = self._preloaded_suite_dict.get('imports', {})
+        _suites = _imports.get('suites', [])
+        for _suite in _suites:
+            context = "suite import '" + _suite.get('name', '<undefined>') + "'"
+            os_arch = Suite._pop_os_arch(_suite, context)
+            Suite._merge_os_arch_attrs(_suite, os_arch, context)
 
     def _load_suite_dict(self):
         supported = [
@@ -6483,6 +6491,9 @@ class Suite(object):
                     abort('suite import entry must be a dict')
 
                 import_dict = entry
+                if import_dict.get('ignore', False):
+                    log("Ignoring '{}' on your platform ({}/{})".format(import_dict.get('name', '<unknown>'), get_os(), get_arch()))
+                    continue
                 suite_import = SuiteImport.parse_specification(import_dict, context=self, importer_version=self.version(), dynamicImport=self.dynamicallyImported, importer_in_subdir=self.dir != self.vc_dir)
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
                 if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
@@ -6598,9 +6609,9 @@ class Suite(object):
                 if arch_attrs:
                     return arch_attrs
                 else:
-                    warn('{} is not available on your architecture ({})'.format(context, get_arch()))
+                    warn("No platform-specific definition is available for {} for your architecture ({})".format(context, get_arch()))
             else:
-                warn('{} is not available on your os ({})'.format(context, get_os()))
+                warn("No platform-specific definition is available for {} for your OS ({})".format(context, get_os()))
         return None
 
     @staticmethod
