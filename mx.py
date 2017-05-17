@@ -6126,8 +6126,7 @@ class Suite(object):
         suite such as class files and annotation generated sources should be placed.
         """
         if not self._outputRoot:
-            suiteDict = self.suiteDict
-            outputRoot = suiteDict.get('outputRoot')
+            outputRoot = self._get_early_suite_dict_property('outputRoot')
             if outputRoot:
                 self._outputRoot = os.path.realpath(_make_absolute(outputRoot.replace('/', os.sep), self.dir))
             elif get_env('MX_ALT_OUTPUT_ROOT') is not None:
@@ -6476,12 +6475,14 @@ class Suite(object):
                     mod.mx_init(self)
                 self.extensions = mod
 
-    def _init_imports(self):
-        importsMap = {}
+    def _get_early_suite_dict_property(self, name, default=None):
         if self._preloaded_suite_dict is not None:
-            importsMap = self._preloaded_suite_dict.get("imports", importsMap)
+            return self._preloaded_suite_dict.get(name, default)
         else:
-            importsMap = self.suiteDict.get("imports", importsMap)
+            return self.suiteDict.get(name, default)
+
+    def _init_imports(self):
+        importsMap = self._get_early_suite_dict_property('imports', {})
         suiteImports = importsMap.get("suites")
         if suiteImports:
             if not isinstance(suiteImports, list):
@@ -15668,7 +15669,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.102.0")  # Grumpy Cat!
+version = VersionSpec("5.102.1")  # Try it!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

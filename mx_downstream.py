@@ -100,6 +100,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
             shutil.rmtree(mirror)
 
         output_root = suite_in_repo.get_output_root()
+
         def ignore_output_root(d, names):
             mx.log('Copying ' + d)
             if d == os.path.dirname(output_root):
