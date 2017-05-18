@@ -5863,8 +5863,8 @@ class SuiteModel:
         self.primaryDir = None
         self.suitenamemap = {}
 
-    def find_suite_dir(self, suitename, subdir):
-        """locates the URL/path for suitename or None if not found"""
+    def find_suite_dir(self, suite_import):
+        """locates the URL/path for suite_import or None if not found"""
         abort('find_suite_dir not implemented')
 
     def set_primary_dir(self, d):
@@ -5883,15 +5883,20 @@ class SuiteModel:
         """Returns the dirname that contains any nested suites if the model supports that"""
         return None
 
-    def _search_dir(self, searchDir, name, in_subdir):
+    def _search_dir(self, searchDir, suite_import):
+        if suite_import.suite_dir:
+            sd = _is_suite_dir(suite_import.suite_dir, _mxDirName(suite_import.name))
+            assert sd
+            return sd
+
         if not exists(searchDir):
             return None
         for dd in os.listdir(searchDir):
-            if in_subdir:
-                candidate = join(searchDir, dd, name)
+            if suite_import.in_subdir:
+                candidate = join(searchDir, dd, suite_import.name)
             else:
                 candidate = join(searchDir, dd)
-            sd = _is_suite_dir(candidate, _mxDirName(name))
+            sd = _is_suite_dir(candidate, _mxDirName(suite_import.name))
             if sd is not None:
                 return sd
 
@@ -5950,15 +5955,15 @@ class SiblingSuiteModel(SuiteModel):
         SuiteModel.__init__(self)
         self._suiteRootDir = suiteRootDir
 
-    def find_suite_dir(self, name, in_subdir):
-        logvv("find_suite_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, name))
-        return self._search_dir(self._suiteRootDir, name, in_subdir)
+    def find_suite_dir(self, suite_import):
+        logvv("find_suite_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, suite_import))
+        return self._search_dir(self._suiteRootDir, suite_import)
 
     def set_primary_dir(self, d):
         logvv("set_primary_dir(SiblingSuiteModel({}), {})".format(self._suiteRootDir, d))
         SuiteModel.set_primary_dir(self, d)
         self._suiteRootDir = SuiteModel.siblings_dir(d)
-        logvv("self._suiteRootDir = {})".format(self._suiteRootDir))
+        logvv("self._suiteRootDir = {}".format(self._suiteRootDir))
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
@@ -5991,8 +5996,8 @@ class NestedImportsSuiteModel(SuiteModel):
         SuiteModel.__init__(self)
         self._primaryDir = primaryDir
 
-    def find_suite_dir(self, name, in_subdir):
-        return self._search_dir(join(self._primaryDir, NestedImportsSuiteModel._imported_suites_dirname()), name, in_subdir)
+    def find_suite_dir(self, suite_import):
+        return self._search_dir(join(self._primaryDir, NestedImportsSuiteModel._imported_suites_dirname()), suite_import)
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
@@ -6027,7 +6032,7 @@ class SuiteImportURLInfo:
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
-    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None):
+    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None, suite_dir=None):
         self.name = name
         self.version = version
         self.version_from = version_from
@@ -6035,6 +6040,10 @@ class SuiteImport:
         self.dynamicImport = dynamicImport
         self.kind = kind
         self.in_subdir = in_subdir
+        self.suite_dir = suite_dir
+
+    def __str__(self):
+        return self.name
 
     @staticmethod
     def parse_specification(import_dict, context, importer, dynamicImport=False):
@@ -6045,12 +6054,14 @@ class SuiteImport:
         urls = import_dict.get("urls")
         in_subdir = import_dict.get("subdir", False)
         version = import_dict.get("version")
+        suite_dir = None
         version_from = import_dict.get("versionFrom")
         if version_from and version:
             abort("In import for '{}': 'version' and 'versionFrom' can not be both set".format(name), context=context)
         if version is None and version_from is None:
             if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite))):
                 abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
+            suite_dir = join(context.vc_dir, name)
             version = importer.version()
         if urls is None:
             if not in_subdir:
@@ -6059,7 +6070,7 @@ class SuiteImport:
                     in_subdir = True
                 else:
                     abort("In import for '{}': No urls given and not a 'subdir' suite".format(name), context=context)
-            return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from)
+            return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir)
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
             abort('suite import urls must be a list', context=context)
@@ -6083,7 +6094,7 @@ class SuiteImport:
             vc_kind = mainKind
         elif urlinfos:
             vc_kind = 'binary'
-        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from)
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -14285,7 +14296,7 @@ def sversions(args):
         if s.vc == None:
             print 'No version control info for suite ' + s.name
         else:
-            print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name
+            print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir
         s.visit_imports(_sversions_import_visitor)
 
     if not isinstance(primary_suite(), MXSuite):
@@ -15200,7 +15211,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             return importing_suite._find_binary_suite_dir(suite_import.name)
         else:
             # use the SuiteModel to locate a local source copy of the suite
-            return _suitemodel.find_suite_dir(suite_import.name, suite_import.in_subdir)
+            return _suitemodel.find_suite_dir(suite_import)
 
     def _get_import_dir(url):
         """Return directory where the suite will be cloned to"""
@@ -15702,7 +15713,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.112.4")  # Furry Friend
+version = VersionSpec("5.112.5")  # Little mx
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
