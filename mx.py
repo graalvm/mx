@@ -15606,6 +15606,9 @@ def main():
             if os.environ.get(envVar) != value:
                 logv('Setting environment variable %s=%s' % (envVar, value))
                 os.environ[envVar] = value
+        if _opts.java_home:
+            logv('Setting environment variable %s=%s from --java-home' % ('JAVA_HOME', _opts.java_home))
+            os.environ['JAVA_HOME'] = _opts.java_home
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
@@ -15671,7 +15674,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.102.2")  # Next please
+version = VersionSpec("5.102.3")  # Thank you sir may I have another
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
