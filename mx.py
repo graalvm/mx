@@ -14028,34 +14028,41 @@ def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
         _sclone(importee_source, importee_dest, importee_dest_dir, suite_import, manual=manual, ignoreVersion=ignoreVersion, importingSuite=s)
         # _clone handles the recursive visit of the new imports
 
+
 @primary_suite_exempt
 def scloneimports(args):
     """clone the imports of an existing suite"""
     parser = ArgumentParser(prog='mx scloneimports')
-    parser.add_argument('--source', help='url/path of repo containing suite', metavar='<url>')
-    parser.add_argument('--manual', action='store_true', help='does not actually do the clones but prints the necessary clones')
+    parser.add_argument('--source', help='path to primary suite')
+    parser.add_argument('--manual', action='store_true', help='this option has no effect, it is deprecated')
     parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
-    parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
+    parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source')
     args = parser.parse_args(args)
+
+    warn("The scloneimports command is deprecated and is scheduled for removal.")
+
     # check for non keyword args
     if args.source is None:
         args.source = _kwArg(args.nonKWArgs)
     if not args.source:
-        abort('scloneimports: url/path of repo containing suite missing')
-
+        abort('scloneimports: path to primary suite missing')
     if not os.path.isdir(args.source):
         abort(args.source + ' is not a directory')
 
+    if args.nonKWArgs:
+        warn("Some extra arguments were ignored: " + ' '.join((pipes.quote(a) for a in args.nonKWArgs)))
+
+    if args.manual:
+        warn("--manual argument is deprecated and has been ignored")
+    if args.ignore_version:
+        _opts.version_conflict_resolution = 'ignore'
+
     source = os.path.realpath(args.source)
-    vcs, _ = VC.get_vc_root(source)
-    s = _scloneimports_suitehelper(source, primary=True)
+    mxDir = _is_suite_dir(source)
+    if not mxDir:
+        abort("'{}' is not an mx suite".format(source))
+    _discover_suites(mxDir, load=False, register=False, update_existing=True)
 
-    default_path = vcs.default_pull(source)
-
-    # We can now set the primary directory for the suitemodel
-    # N.B. source is effectively the destination and the default_path is the (original) source
-    _suitemodel.set_primary_dir(source)
-    s.visit_imports(_scloneimports_visitor, source=default_path, manual={} if args.manual else None, ignoreVersion=args.ignore_version)
 
 def _supdate_import_visitor(s, suite_import, **extra_args):
     _supdate(suite(suite_import.name), suite_import)
