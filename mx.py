@@ -1655,7 +1655,7 @@ class Project(Dependency):
         """
         nyi('get_javac_lint_overrides', self)
 
-    def _eclipseinit(self, files=None, libFiles=None):
+    def _eclipseinit(self, files=None, libFiles=None, absolutePaths=False):
         """
         Generates an Eclipse project configuration for this project if Eclipse
         supports projects of this type.
@@ -2088,11 +2088,11 @@ class JavaProject(Project, ClasspathDependency):
                     arc.zf.write(join(root, f), arcname)
         return path
 
-    def _eclipseinit(self, files=None, libFiles=None):
+    def _eclipseinit(self, files=None, libFiles=None, absolutePaths=False):
         """
         Generates an Eclipse project configuration for this project.
         """
-        _eclipseinit_project(self, files=files, libFiles=libFiles)
+        _eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
@@ -11359,13 +11359,14 @@ def eclipseinit_cli(args):
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
     parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
+    parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True) + [_mx_suite]:
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths)
 
     wsroot = generate_eclipse_workingsets()
 
@@ -11606,7 +11607,7 @@ public class %(className)s {
         run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
     return jarPath
 
-def _eclipseinit_project(p, files=None, libFiles=None):
+def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
 
     ensure_dir_exists(p.dir)
@@ -11829,7 +11830,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             out.open('link')
             out.element('name', data=lr.name)
             out.element('type', data=lr.type)
-            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir))
+            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir) if not absolutePaths else lr.location)
             out.close('link')
         out.close('linkedResources')
     out.close('projectDescription')
@@ -11919,15 +11920,16 @@ def _get_ide_envvars():
             result[name] = value
     return result
 
-def _capture_eclipse_settings(logToConsole):
+def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Capture interesting settings which drive the output of the projects.
     # Changes to these values should cause regeneration of the project files.
     settings = 'logToConsole=%s\n' % logToConsole
+    settings = settings + 'absolutePaths=%s\n' % absolutePaths
     for name, value in _get_ide_envvars().iteritems():
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False):
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -11940,7 +11942,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         return
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
-    update_file(settingsFile, _capture_eclipse_settings(logToConsole))
+    update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
     if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
         logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
@@ -11951,7 +11953,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         files += _processorjars_suite(suite)
 
     for p in suite.projects:
-        p._eclipseinit(files, libFiles)
+        p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
 
     jdk = get_jdk(tag='default')
     _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
@@ -12005,7 +12007,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.open('link')
         out.element('name', data=basename(dist.path))
         out.element('type', data=str(IRESOURCE_FILE))
-        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir))
+        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir) if not absolutePaths else dist.path)
         out.close('link')
         out.close('linkedResources')
         out.close('projectDescription')
@@ -15669,7 +15671,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.102.1")  # Try it!
+version = VersionSpec("5.102.2")  # Next please
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
