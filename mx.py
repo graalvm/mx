@@ -6219,6 +6219,7 @@ class Suite(object):
             'name',
             'outputRoot',
             'mxversion',
+            'sourceinprojectwhitelist',
             'versionConflictResolution',
             'developer',
             'url',
@@ -6369,6 +6370,9 @@ class Suite(object):
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
 
+        self.sourceInProjectWhiteList = self.suiteDict.get('sourceinprojectwhitelist')
+        self.sourceInProjectWhiteListPaths = None
+
         if scmDict:
             try:
                 read = scmDict.pop('read')
@@ -6416,6 +6420,19 @@ class Suite(object):
         self._load_licenses(licenseDefs)
         self._load_repositories(repositoryDefs)
 
+    def requiresSourceInProjects(self):
+        return self.sourceInProjectWhiteList != None
+
+    def isWhiteListedPath(self, path):
+        if self.sourceInProjectWhiteList == None:
+            return False
+        if self.sourceInProjectWhiteListPaths == None:
+            if self.vc_dir != self.dir:
+                relPath = os.path.relpath(self.dir, self.vc_dir)
+                self.sourceInProjectWhiteListPaths = [join(relPath, x) for x in self.sourceInProjectWhiteList]
+            else:
+                self.sourceInProjectWhiteListPaths = self.sourceInProjectWhiteList
+        return path in self.sourceInProjectWhiteListPaths
 
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
@@ -13349,9 +13366,9 @@ def verifysourceinproject(args):
         # all suites in the same repository must have the same setting for requiresSourceInProjects
         if suiteVcDirs.get(suite.vc_dir) == None:
             suiteVcDirs[suite.vc_dir] = suite
-        elif suiteVcDirs.get(suite.vc_dir).getMxCompatibility().requiresSourceInProjects() != suite.getMxCompatibility().requiresSourceInProjects():
-            log('All suites in the same repository must have the same requiresSourceInProjects setting.')
-            abort('Update the suite for {} to enable verifysourceinproject.'.format(suite.name if not suite.getMxCompatibility().requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
+        elif suiteVcDirs.get(suite.vc_dir).requiresSourceInProjects() != suite.requiresSourceInProjects():
+            log('All suites in the same repository must have requiresSourceInProjects enabled.')
+            abort('Update the suite for {} to enable checking of sources in projects.'.format(suite.name if not suite.requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
 
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
@@ -13364,28 +13381,43 @@ def verifysourceinproject(args):
             elif dirpath == suite.get_output_root():
                 # don't want to traverse output dir
                 dirnames[:] = []
+                continue
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
+                continue
             elif dirpath in projectDirs:
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
+                continue
             elif dirpath in distIdeDirs:
                 # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
+                continue
             elif 'pom.xml' in files:
                 # skip maven suites
                 dirnames[:] = []
-            else:
-                javaSources = [x for x in files if x.endswith('.java')]
-                if len(javaSources) != 0:
-                    javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
-                    javaSourcesInVC = suite.vc.locate(suite.vc_dir, javaSources)
-                    if len(javaSourcesInVC) > 0:
-                        unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+                continue
+            elif suite.isWhiteListedPath(os.path.relpath(dirpath, suite.vc_dir)):
+                # skip whitelisted directories
+                dirnames[:] = []
+                continue
+
+            javaSources = [x for x in files if x.endswith('.java')]
+            if len(javaSources) != 0:
+                javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
+                javaSourcesInVC = [x for x in suite.vc.locate(suite.vc_dir, javaSources) if not suite.isWhiteListedPath(x)]
+                if len(javaSourcesInVC) > 0:
+                    unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+
+    retcode = 0
+    for suite, sources in unmanagedSources.iteritems():
+        if suite.requiresSourceInProjects():
+            retcode += 1
 
     # also check for files that are outside of suites
     unmanagedSourcesNoSuite = []
+    errorSuites = set()
     for vcDir, suite in suiteVcDirs.iteritems():
         for dirpath, dirnames, files in os.walk(vcDir):
             if dirpath in suiteDirs:
@@ -13403,6 +13435,10 @@ def verifysourceinproject(args):
                     javaSources = [os.path.relpath(join(dirpath, i), vcDir) for i in javaSources]
                     javaSourcesInVC = suite.vc.locate(vcDir, javaSources)
                     unmanagedSourcesNoSuite = unmanagedSourcesNoSuite + javaSourcesInVC
+                    if len(javaSourcesInVC) > 0 and suite.requiresSourceInProjects():
+                        errorSuites.add(suite)
+
+    retcode += len(errorSuites)
 
     if len(unmanagedSources) > 0 or len(unmanagedSourcesNoSuite) > 0:
         log('The following files are managed but not in any project:')
@@ -13411,11 +13447,6 @@ def verifysourceinproject(args):
                 log(suite.name + ': ' + source)
         for source in unmanagedSourcesNoSuite:
             log('No suite: ' + source)
-
-    retcode = 0
-    for suite, sources in unmanagedSources.iteritems():
-        if suite.getMxCompatibility().requiresSourceInProjects():
-            retcode += 1
 
     return retcode
 
@@ -15674,7 +15705,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.102.3")  # Thank you sir may I have another
+version = VersionSpec("5.103.0")  # Burma Shave
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
