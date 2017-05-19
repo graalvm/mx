@@ -15177,6 +15177,11 @@ def _remove_unsatisfied_deps():
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = reason
+        elif dep.isNativeProject():
+            if 'ignore' in dep.__dict__ and dep.__dict__['ignore']:
+                    reason = 'native project cannot be built and run on this platform: {}-{}'.format(get_os(), get_arch())
+                    logv('[' + reason + ']')
+                    removedDeps[dep] = reason
 
     walk_deps(visit=visit)
 
