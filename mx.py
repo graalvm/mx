@@ -15177,11 +15177,11 @@ def _remove_unsatisfied_deps():
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = reason
-        elif dep.isNativeProject():
-            if 'ignore' in dep.__dict__ and dep.__dict__['ignore']:
-                    reason = 'native project cannot be built and run on this platform: {}-{}'.format(get_os(), get_arch())
-                    logv('[' + reason + ']')
-                    removedDeps[dep] = reason
+        
+        if hasattr(dep, 'ignore') and getattr(dep, 'ignore').strip() != "":
+            reason = '{} removed: {}'.format(dep, getattr(dep, 'ignore'))
+            logv('[' + reason + ']')
+            removedDeps[dep] = reason
 
     walk_deps(visit=visit)
 
@@ -15674,7 +15674,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.102.1")  # Try it!
+version = VersionSpec("5.103.0")  # Try it!!!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
