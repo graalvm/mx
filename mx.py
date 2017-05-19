@@ -15177,11 +15177,19 @@ def _remove_unsatisfied_deps():
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = reason
-        
-        if hasattr(dep, 'ignore') and getattr(dep, 'ignore').strip() != "":
-            reason = '{} removed: {}'.format(dep, getattr(dep, 'ignore'))
-            logv('[' + reason + ']')
-            removedDeps[dep] = reason
+        if hasattr(dep, 'ignore'):
+            reason = getattr(dep, 'ignore')
+            if isinstance(reason, bool):
+                if reason:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
+            elif isinstance(reason, basestring):
+                if len(reason.strip()) != 0:
+                    if not reason.strip() == "false":
+                        reason = '{} removed: {}'.format(dep, getattr(dep, 'ignore'))
+                        logv('[' + reason + ']')
+                        removedDeps[dep] = reason
+                else:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
 
     walk_deps(visit=visit)
 
