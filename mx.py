@@ -15215,7 +15215,8 @@ def _remove_unsatisfied_deps():
             if isinstance(reasonAttr, bool):
                 if reasonAttr:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
-            elif isinstance(reasonAttr, basestring):
+            else: 
+                assert isinstance(reasonAttr, basestring)
                 strippedReason = reasonAttr.strip()
                 if len(strippedReason) != 0:
                     if not strippedReason == "false":
@@ -15719,7 +15720,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.104.0")  # Next bump 
+version = VersionSpec("5.104.0")  # Next bump
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
