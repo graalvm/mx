@@ -6208,6 +6208,14 @@ class Suite(object):
             os_arch = Suite._pop_os_arch(_suite, context)
             Suite._merge_os_arch_attrs(_suite, os_arch, context)
 
+    def _register_url_rewrites(self):
+        urlrewrites = self._get_early_suite_dict_property('urlrewrites')
+        if urlrewrites:
+            for urlrewrite in urlrewrites:
+                def _error(msg):
+                    abort(msg, context=self)
+                mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
+
     def _load_suite_dict(self):
         supported = [
             'imports',
@@ -6257,21 +6265,13 @@ class Suite(object):
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
 
-        if self.primary:
-            urlrewrites = d.get('urlrewrites')
-            if urlrewrites:
-                for urlrewrite in urlrewrites:
-                    def _error(msg):
-                        abort(msg, context=self)
-                    mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
-
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
 
         unknown = set(d.keys()) - frozenset(supported)
 
         suiteExtensionAttributePrefix = self.name + ':'
-        suiteSpecific = {n[len(suiteExtensionAttributePrefix):] : d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
+        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
         for n, v in suiteSpecific.iteritems():
             if hasattr(self, n):
                 abort('Cannot override built-in suite attribute "' + n + '"', context=self)
@@ -15353,6 +15353,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         logvv(str(dt) + colorize(" [suite-discovery] ", color='green', stream=sys.stdout) + msg)
     _log_discovery("Starting discovery with primary dir " + primary_suite_dir)
     primary = SourceSuite(primary_suite_dir, load=False, primary=True)
+    primary._register_url_rewrites()
     discovered = {}
     ancestor_names = {}
     importer_names = {}
