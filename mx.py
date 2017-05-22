@@ -6197,16 +6197,31 @@ class Suite(object):
 
         self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
 
+        if self.name == 'mx':
+            self.requiredMxVersion = version
+        elif 'mxversion' in self._preloaded_suite_dict:
+            try:
+                self.requiredMxVersion = VersionSpec(self._preloaded_suite_dict['mxversion'])
+            except AssertionError as ae:
+                abort('Exception while parsing "mxversion" in suite file: ' + str(ae), context=self)
+
         conflictResolution = self._preloaded_suite_dict.get('versionConflictResolution')
         if conflictResolution:
             self.versionConflictResolution = conflictResolution
 
         _imports = self._preloaded_suite_dict.get('imports', {})
-        _suites = _imports.get('suites', [])
-        for _suite in _suites:
+        for _suite in _imports.get('suites', []):
             context = "suite import '" + _suite.get('name', '<undefined>') + "'"
             os_arch = Suite._pop_os_arch(_suite, context)
             Suite._merge_os_arch_attrs(_suite, os_arch, context)
+
+    def _register_url_rewrites(self):
+        urlrewrites = self._get_early_suite_dict_property('urlrewrites')
+        if urlrewrites:
+            for urlrewrite in urlrewrites:
+                def _error(msg):
+                    abort(msg, context=self)
+                mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
 
     def _load_suite_dict(self):
         supported = [
@@ -6237,14 +6252,6 @@ class Suite(object):
             self._preload_suite_dict()
         d = self._preloaded_suite_dict
 
-        if self.name == 'mx':
-            self.requiredMxVersion = version
-        elif d.has_key('mxversion'):
-            try:
-                self.requiredMxVersion = VersionSpec(d['mxversion'])
-            except AssertionError as ae:
-                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
-
         if self.requiredMxVersion is None:
             self.requiredMxVersion = mx_compat.minVersion()
             warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
@@ -6257,21 +6264,13 @@ class Suite(object):
         if javacLintOverrides:
             self.javacLintOverrides = javacLintOverrides.split(',')
 
-        if self.primary:
-            urlrewrites = d.get('urlrewrites')
-            if urlrewrites:
-                for urlrewrite in urlrewrites:
-                    def _error(msg):
-                        abort(msg, context=self)
-                    mx_urlrewrites.register_urlrewrite(urlrewrite, onError=_error)
-
         if d.get('snippetsPattern'):
             self.snippetsPattern = d.get('snippetsPattern')
 
         unknown = set(d.keys()) - frozenset(supported)
 
         suiteExtensionAttributePrefix = self.name + ':'
-        suiteSpecific = {n[len(suiteExtensionAttributePrefix):] : d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
+        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
         for n, v in suiteSpecific.iteritems():
             if hasattr(self, n):
                 abort('Cannot override built-in suite attribute "' + n + '"', context=self)
@@ -15353,6 +15352,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         logvv(str(dt) + colorize(" [suite-discovery] ", color='green', stream=sys.stdout) + msg)
     _log_discovery("Starting discovery with primary dir " + primary_suite_dir)
     primary = SourceSuite(primary_suite_dir, load=False, primary=True)
+    primary._register_url_rewrites()
     discovered = {}
     ancestor_names = {}
     importer_names = {}
@@ -15705,7 +15705,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.103.0")  # Burma Shave
+version = VersionSpec("5.103.1")  # Caption attack
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
