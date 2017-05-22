@@ -15209,6 +15209,21 @@ def _remove_unsatisfied_deps():
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = reason
+        if hasattr(dep, 'ignore'):
+            reasonAttr = getattr(dep, 'ignore')
+            if isinstance(reasonAttr, bool):
+                if reasonAttr:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
+            else:
+                assert isinstance(reasonAttr, basestring)
+                strippedReason = reasonAttr.strip()
+                if len(strippedReason) != 0:
+                    if not strippedReason == "false":
+                        reason = '{} removed: {}'.format(dep, strippedReason)
+                        logv('[' + reason + ']')
+                        removedDeps[dep] = reason
+                else:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
 
     walk_deps(visit=visit)
 
@@ -15705,7 +15720,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.103.1")  # Caption attack
+version = VersionSpec("5.104.0")  # Next bump
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
