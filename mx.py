@@ -15215,7 +15215,7 @@ def _remove_unsatisfied_deps():
             if isinstance(reasonAttr, bool):
                 if reasonAttr:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
-            else: 
+            else:
                 assert isinstance(reasonAttr, basestring)
                 strippedReason = reasonAttr.strip()
                 if len(strippedReason) != 0:
