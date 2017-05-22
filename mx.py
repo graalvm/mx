@@ -15211,14 +15211,15 @@ def _remove_unsatisfied_deps():
                     logv('[' + reason + ']')
                     removedDeps[dep] = reason
         if hasattr(dep, 'ignore'):
-            reason = getattr(dep, 'ignore')
-            if isinstance(reason, bool):
-                if reason:
+            reasonAttr = getattr(dep, 'ignore')
+            if isinstance(reasonAttr, bool):
+                if reasonAttr:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
-            elif isinstance(reason, basestring):
-                if len(reason.strip()) != 0:
-                    if not reason.strip() == "false":
-                        reason = '{} removed: {}'.format(dep, getattr(dep, 'ignore'))
+            elif isinstance(reasonAttr, basestring):
+                strippedReason = reasonAttr.strip()
+                if len(strippedReason) != 0:
+                    if not strippedReason == "false":
+                        reason = '{} removed: {}'.format(dep, strippedReason)
                         logv('[' + reason + ']')
                         removedDeps[dep] = reason
                 else:
