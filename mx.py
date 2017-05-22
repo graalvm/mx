@@ -6197,13 +6197,20 @@ class Suite(object):
 
         self._preloaded_suite_dict = expand(getattr(module, dictName), [dictName])
 
+        if self.name == 'mx':
+            self.requiredMxVersion = version
+        elif 'mxversion' in self._preloaded_suite_dict:
+            try:
+                self.requiredMxVersion = VersionSpec(self._preloaded_suite_dict['mxversion'])
+            except AssertionError as ae:
+                abort('Exception while parsing "mxversion" in suite file: ' + str(ae), context=self)
+
         conflictResolution = self._preloaded_suite_dict.get('versionConflictResolution')
         if conflictResolution:
             self.versionConflictResolution = conflictResolution
 
         _imports = self._preloaded_suite_dict.get('imports', {})
-        _suites = _imports.get('suites', [])
-        for _suite in _suites:
+        for _suite in _imports.get('suites', []):
             context = "suite import '" + _suite.get('name', '<undefined>') + "'"
             os_arch = Suite._pop_os_arch(_suite, context)
             Suite._merge_os_arch_attrs(_suite, os_arch, context)
@@ -6244,14 +6251,6 @@ class Suite(object):
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
         d = self._preloaded_suite_dict
-
-        if self.name == 'mx':
-            self.requiredMxVersion = version
-        elif d.has_key('mxversion'):
-            try:
-                self.requiredMxVersion = VersionSpec(d['mxversion'])
-            except AssertionError as ae:
-                abort('Exception while parsing "mxversion" in project file: ' + str(ae))
 
         if self.requiredMxVersion is None:
             self.requiredMxVersion = mx_compat.minVersion()
@@ -15706,7 +15705,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.103.0")  # Burma Shave
+version = VersionSpec("5.103.1")  # Caption attack
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
