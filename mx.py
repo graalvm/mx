@@ -5979,9 +5979,10 @@ class SuiteImportURLInfo:
         return self.kind if self.kind == 'binary' else 'source'
 
 class SuiteImport:
-    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False):
+    def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None):
         self.name = name
         self.version = version
+        self.version_from = version_from
         self.urlinfos = [] if urlinfos is None else urlinfos
         self.dynamicImport = dynamicImport
         self.kind = kind
@@ -5996,9 +5997,12 @@ class SuiteImport:
         urls = import_dict.get("urls")
         in_subdir = import_dict.get("subdir", False)
         version = import_dict.get("version")
-        if version is None:
-            if not in_subdir:
-                abort("In import for '{}': No version given and not a 'subdir' suite".format(name), context=context)
+        version_from = import_dict.get("versionFrom")
+        if version_from and version:
+            abort("In import for '{}': 'version' and 'versionFrom' can not be both set".format(name), context=context)
+        if version is None and version_from is None:
+            if not (in_subdir and importer_in_subdir):
+                abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
             version = importer_version
         if urls is None:
             if not in_subdir:
@@ -6007,7 +6011,7 @@ class SuiteImport:
                     in_subdir = True
                 else:
                     abort("In import for '{}': No urls given and not a 'subdir' suite".format(name), context=context)
-            return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir)
+            return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from)
         # urls a list of alternatives defined as dicts
         if not isinstance(urls, list):
             abort('suite import urls must be a list', context=context)
@@ -6031,7 +6035,7 @@ class SuiteImport:
             vc_kind = mainKind
         elif urlinfos:
             vc_kind = 'binary'
-        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir)
+        return SuiteImport(name, version, urlinfos, vc_kind, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from)
 
     @staticmethod
     def get_source_urls(source, kind=None):
@@ -15362,6 +15366,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     importer_names = {}
     original_version = {}
     vc_dir_to_suite_names = {}
+    versions_from = {}
 
     worklist = deque()
 
@@ -15396,11 +15401,11 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
     def _clear_pyc_files(_updated_suite):
         if _updated_suite.vc_dir in vc_dir_to_suite_names:
-            _suites = set((discovered[name] for name in vc_dir_to_suite_names[_updated_suite.vc_dir]))
+            suites_to_clean = set((discovered[name] for name in vc_dir_to_suite_names[_updated_suite.vc_dir]))
         else:
-            _suites = set()
-        _suites.add(_updated_suite)
-        for collocated_suite in _suites:
+            suites_to_clean = set()
+        suites_to_clean.add(_updated_suite)
+        for collocated_suite in suites_to_clean:
             pyc_file = collocated_suite.suite_py() + 'c'
             if exists(pyc_file):
                 os.unlink(pyc_file)
@@ -15408,7 +15413,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     def _was_cloned_or_updated_during_discovery(_discovered_suite):
         return _discovered_suite.vc_dir is not None and _discovered_suite.vc_dir in original_version
 
-    def _update_repo(_discovered_suite, update_version, re_init_imports=True):
+    def _update_repo(_discovered_suite, update_version, forget=False):
         current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
         if current_version == update_version:
             return False
@@ -15417,20 +15422,93 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
             original_version[_discovered_suite.vc_dir] = current_version
         _discovered_suite.vc.update(_discovered_suite.vc_dir, rev=update_version, mayPull=True)
         _clear_pyc_files(_discovered_suite)
-        if re_init_imports:
+        if forget:
+            # we updated, this may change the DAG so
+            # "un-discover" anything that was discovered based on old information
+            _log_discovery("Updated needed to resolve conflict: updating {} to {}".format(_discovered_suite.vc_dir, update_version))
+            forgotten_edges = {}
+
+            def _forget_visitor(_, __suite_import):
+                _forget_suite(__suite_import.name)
+
+            def _forget_suite(suite_name):
+                if suite_name not in discovered:
+                    return
+                _log_discovery("Forgetting {} after conflict".format(suite_name))
+                if suite_name in ancestor_names:
+                    del ancestor_names[suite_name]
+                if suite_name in importer_names:
+                    for importer_name in importer_names[suite_name]:
+                        forgotten_edges.setdefault(importer_name, set()).add(suite_name)
+                    del importer_names[suite_name]
+                if suite_name in discovered:
+                    s = discovered[suite_name]
+                    del discovered[suite_name]
+                    s.visit_imports(_forget_visitor)
+                for suite_names in vc_dir_to_suite_names.values():
+                    suite_names.discard(suite_name)
+                new_worklist = [(_f, _t) for _f, _t in worklist if _f != suite_name]
+                worklist.clear()
+                worklist.extend(new_worklist)
+                new_versions_from = {_s: (_f, _i) for _s, (_f, _i) in versions_from.items() if _i != suite_name}
+                versions_from.clear()
+                versions_from.update(new_versions_from)
+                if suite_name in forgotten_edges:
+                    del forgotten_edges[suite_name]
+
+            for _collocated_suite_name in list(vc_dir_to_suite_names[_discovered_suite.vc_dir]):
+                _forget_suite(_collocated_suite_name)
+            # Add all the edges that need re-resolution
+            for __importing_suite, imported_suite_set in forgotten_edges.items():
+                for imported_suite in imported_suite_set:
+                    _log_discovery("Adding {} -> {} in worklist after conflict".format(__importing_suite, imported_suite))
+                    worklist.appendleft((__importing_suite, imported_suite))
+        else:
             _discovered_suite.re_init_imports()
         return True
+
+    # This is used to honor the "version_from" directives. Note that we only reach here if the importer is in a different repo.
+    # 1. we may only ignore an edge that points to a suite that has a "version_from", or to an ancestor of such a suite
+    # 2. we do not ignore an edge if the importer is one of the "from" suites (a suite that is designated by a "version_from" of an other suite)
+    # 3. otherwise if the edge points directly some something that has a "version_from", we ignore it for sure
+    # 4. and finally, we do not ignore edges that point to a "from" suite or its ancestor in the repo
+    # This give the suite mentioned in "version_from" priority
+    def _should_ignore_conflict_edge(_imported_suite, _importer_name):
+        vc_suites = vc_dir_to_suite_names[_imported_suite.vc_dir]
+        for suite_with_from, (from_suite, _) in versions_from.items():
+            if suite_with_from not in vc_suites:
+                continue
+            suite_with_from_and_ancestors = {suite_with_from}
+            suite_with_from_and_ancestors |= vc_suites & ancestor_names[suite_with_from]
+            if _imported_suite.name in suite_with_from_and_ancestors:  # 1. above
+                if _importer_name != from_suite:  # 2. above
+                    if _imported_suite.name == suite_with_from:  # 3. above
+                        _log_discovery("Ignoring {} -> {} because of version_from({}) = {} (fast-path)".format(_importer_name, _imported_suite.name, suite_with_from, from_suite))
+                        return True
+                    if from_suite not in ancestor_names:
+                        _log_discovery("Temporarily ignoring {} -> {} because of version_from({}) = {} ({} is not yet discovered)".format(_importer_name, _imported_suite.name, suite_with_from, from_suite, from_suite))
+                        return True
+                    vc_from_suite_and_ancestors = {from_suite}
+                    vc_from_suite_and_ancestors |= vc_suites & ancestor_names[from_suite]
+                    if _imported_suite.name not in vc_from_suite_and_ancestors:  # 4. above
+                        _log_discovery("Ignoring {} -> {} because of version_from({}) = {}".format(_importer_name, _imported_suite.name, suite_with_from, from_suite))
+                        return True
+        return False
 
     def _check_and_handle_version_conflict(_suite_import, _importing_suite, _discovered_suite):
         if _importing_suite.vc_dir == _discovered_suite.vc_dir:
             return True
         if _is_imported_by_primary(_discovered_suite):
-            _log_discovery("Re-reached {} from {}, nothing to do (cloned during this round: {}, imported by primary: {})".format(_suite_import.name, importing_suite.name, _was_cloned_or_updated_during_discovery(_discovered_suite), _is_imported_by_primary(discovered_suite)))
+            _log_discovery("Re-reached {} from {}, nothing to do (imported by primary)".format(_suite_import.name, importing_suite.name))
+            return True
+        if _should_ignore_conflict_edge(_discovered_suite, _importing_suite.name):
             return True
         # check that all other importers use the same version
         for collocated_suite_name in vc_dir_to_suite_names[_discovered_suite.vc_dir]:
             for other_importer_name in importer_names[collocated_suite_name]:
                 if other_importer_name == _importing_suite.name:
+                    continue
+                if _should_ignore_conflict_edge(_discovered_suite, other_importer_name):
                     continue
                 other_importer = discovered[other_importer_name]
                 other_importers_import = other_importer.get_import(collocated_suite_name)
@@ -15439,46 +15517,10 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     if _suite_import.name == collocated_suite_name:
                         _log_discovery("Re-reached {} from {} with conflicting version compared to {}".format(collocated_suite_name, _importing_suite.name, other_importer_name))
                     else:
-                        _log_discovery("Re-reached {}  (collocated with {}) from {} with conflicting version compared to {}".format(collocated_suite_name, _suite_import.name, _importing_suite.name, other_importer_name))
+                        _log_discovery("Re-reached {} (collocated with {}) from {} with conflicting version compared to {}".format(collocated_suite_name, _suite_import.name, _importing_suite.name, other_importer_name))
                     if update_existing or _was_cloned_or_updated_during_discovery(_discovered_suite):
                         resolved = _resolve_suite_version_conflict(_discovered_suite.name, _discovered_suite, other_importers_import.version, other_importer, _suite_import, _importing_suite)
-                        if resolved and _update_repo(_discovered_suite, resolved, re_init_imports=False):
-                            # we needed to update, this may change the DAG so
-                            # "un-discover" anything that was discovered based on old information
-                            _log_discovery("Updated needed to resolve conflict: updating {} to {}".format(_discovered_suite.vc_dir, resolved))
-                            forgotten_edges = {}
-
-                            def _forget_visitor(_, __suite_import):
-                                _forget_suite(__suite_import.name)
-
-                            def _forget_suite(suite_name):
-                                _log_discovery("Forgetting {} after conflict".format(suite_name))
-                                if suite_name in ancestor_names:
-                                    del ancestor_names[suite_name]
-                                if suite_name in importer_names:
-                                    for importer_name in importer_names[suite_name]:
-                                        forgotten_edges.setdefault(importer_name, set()).add(suite_name)
-                                    del importer_names[suite_name]
-                                if suite_name in discovered:
-                                    s = discovered[suite_name]
-                                    del discovered[suite_name]
-                                    s.visit_imports(_forget_visitor)
-                                for suite_names in vc_dir_to_suite_names.values():
-                                    suite_names.discard(suite_name)
-                                new_worklist = [(_f, _t) for _f, _t in worklist if _f != suite_name]
-                                worklist.clear()
-                                worklist.extend(new_worklist)
-                                if suite_name in forgotten_edges:
-                                    del forgotten_edges[suite_name]
-
-                            for _collocated_suite_name in list(vc_dir_to_suite_names[_discovered_suite.vc_dir]):
-                                if _collocated_suite_name in discovered:
-                                    _forget_suite(_collocated_suite_name)
-                            # Add all the edges that need re-resolution
-                            for __importing_suite, imported_suite_set in forgotten_edges.items():
-                                for imported_suite in imported_suite_set:
-                                    _log_discovery("Adding {} -> {} in worklist after conflict".format(__importing_suite, imported_suite))
-                                    worklist.appendleft((__importing_suite, imported_suite))
+                        if resolved and _update_repo(_discovered_suite, resolved, forget=True):
                             return False
                     else:
                         # This suite was already present
@@ -15514,7 +15556,16 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
             importing_suite_name, imported_suite_name = worklist.popleft()
             importing_suite = discovered[importing_suite_name]
             suite_import = importing_suite.get_import(imported_suite_name)
-            if suite_import.name in discovered:
+            if suite_import.version_from:
+                if imported_suite_name not in versions_from:
+                    versions_from[imported_suite_name] = suite_import.version_from, importing_suite_name
+                    _log_discovery("Setting 'version_from({imported}, {from_suite})' as requested by {importing}".format(
+                        importing=importing_suite_name, imported=imported_suite_name, from_suite=suite_import.version_from))
+                elif suite_import.version_from != versions_from[imported_suite_name][0]:
+                    _log_discovery("Ignoring 'version_from({imported}, {from_suite})' directive from {importing} because we already have 'version_from({imported}, {previous_from_suite})' from {previous_importing}".format(
+                        importing=importing_suite_name, imported=imported_suite_name, from_suite=suite_import.version_from,
+                        previous_importing=versions_from[imported_suite_name][1], previous_from_suite=versions_from[imported_suite_name][0]))
+            elif suite_import.name in discovered:
                 if suite_import.name in ancestor_names[importing_suite.name]:
                     abort("Import cycle detected: {importer} imports {importee} but {importee} transitively imports {importer}".format(importer=importing_suite.name, importee=suite_import.name))
                 discovered_suite = discovered[suite_import.name]
@@ -15534,7 +15585,9 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery("This is a re-discovery of a previously cloned suite: updating {} to {}".format(discovered_suite.vc_dir, suite_import.version))
                 elif _was_cloned_or_updated_during_discovery(discovered_suite):
                     # we are re-reaching a repo through a different imported suite
+                    _add_discovered_suite(discovered_suite, importing_suite.name)
                     _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
+                    continue
                 elif update_existing and suite_import.version and _update_repo(discovered_suite, suite_import.version):
                     _log_discovery("Updating {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
 
@@ -15557,9 +15610,9 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         # Register & finish loading discovered suites
         def _register_visit(s):
             _register_suite(s)
-            for suite_import in s.suite_imports:
-                if suite_import.name not in _suites:
-                    _register_visit(discovered[suite_import.name])
+            for _suite_import in s.suite_imports:
+                if _suite_import.name not in _suites:
+                    _register_visit(discovered[_suite_import.name])
             if load:
                 s._load()
 
@@ -15709,7 +15762,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.105.0")  # One more try
+version = VersionSpec("5.106.0")  # Six delights
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
