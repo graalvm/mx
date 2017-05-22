@@ -1655,7 +1655,7 @@ class Project(Dependency):
         """
         nyi('get_javac_lint_overrides', self)
 
-    def _eclipseinit(self, files=None, libFiles=None):
+    def _eclipseinit(self, files=None, libFiles=None, absolutePaths=False):
         """
         Generates an Eclipse project configuration for this project if Eclipse
         supports projects of this type.
@@ -2088,11 +2088,11 @@ class JavaProject(Project, ClasspathDependency):
                     arc.zf.write(join(root, f), arcname)
         return path
 
-    def _eclipseinit(self, files=None, libFiles=None):
+    def _eclipseinit(self, files=None, libFiles=None, absolutePaths=False):
         """
         Generates an Eclipse project configuration for this project.
         """
-        _eclipseinit_project(self, files=files, libFiles=libFiles)
+        _eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
@@ -6219,6 +6219,7 @@ class Suite(object):
             'name',
             'outputRoot',
             'mxversion',
+            'sourceinprojectwhitelist',
             'versionConflictResolution',
             'developer',
             'url',
@@ -6369,6 +6370,9 @@ class Suite(object):
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
 
+        self.sourceInProjectWhiteList = self.suiteDict.get('sourceinprojectwhitelist')
+        self.sourceInProjectWhiteListPaths = None
+
         if scmDict:
             try:
                 read = scmDict.pop('read')
@@ -6416,6 +6420,19 @@ class Suite(object):
         self._load_licenses(licenseDefs)
         self._load_repositories(repositoryDefs)
 
+    def requiresSourceInProjects(self):
+        return self.sourceInProjectWhiteList != None
+
+    def isWhiteListedPath(self, path):
+        if self.sourceInProjectWhiteList == None:
+            return False
+        if self.sourceInProjectWhiteListPaths == None:
+            if self.vc_dir != self.dir:
+                relPath = os.path.relpath(self.dir, self.vc_dir)
+                self.sourceInProjectWhiteListPaths = [join(relPath, x) for x in self.sourceInProjectWhiteList]
+            else:
+                self.sourceInProjectWhiteListPaths = self.sourceInProjectWhiteList
+        return path in self.sourceInProjectWhiteListPaths
 
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
@@ -11359,13 +11376,14 @@ def eclipseinit_cli(args):
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
     parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
+    parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False):
     """(re)generate Eclipse project configurations and working sets"""
     for s in suites(True) + [_mx_suite]:
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths)
 
     wsroot = generate_eclipse_workingsets()
 
@@ -11606,7 +11624,7 @@ public class %(className)s {
         run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
     return jarPath
 
-def _eclipseinit_project(p, files=None, libFiles=None):
+def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
 
     ensure_dir_exists(p.dir)
@@ -11829,7 +11847,7 @@ def _eclipseinit_project(p, files=None, libFiles=None):
             out.open('link')
             out.element('name', data=lr.name)
             out.element('type', data=lr.type)
-            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir))
+            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir) if not absolutePaths else lr.location)
             out.close('link')
         out.close('linkedResources')
     out.close('projectDescription')
@@ -11919,15 +11937,16 @@ def _get_ide_envvars():
             result[name] = value
     return result
 
-def _capture_eclipse_settings(logToConsole):
+def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Capture interesting settings which drive the output of the projects.
     # Changes to these values should cause regeneration of the project files.
     settings = 'logToConsole=%s\n' % logToConsole
+    settings = settings + 'absolutePaths=%s\n' % absolutePaths
     for name, value in _get_ide_envvars().iteritems():
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False):
+def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
     if isinstance(suite, BinarySuite):
@@ -11940,7 +11959,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         return
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
-    update_file(settingsFile, _capture_eclipse_settings(logToConsole))
+    update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
     if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
         logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
         return
@@ -11951,7 +11970,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         files += _processorjars_suite(suite)
 
     for p in suite.projects:
-        p._eclipseinit(files, libFiles)
+        p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
 
     jdk = get_jdk(tag='default')
     _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
@@ -12005,7 +12024,7 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         out.open('link')
         out.element('name', data=basename(dist.path))
         out.element('type', data=str(IRESOURCE_FILE))
-        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir))
+        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir) if not absolutePaths else dist.path)
         out.close('link')
         out.close('linkedResources')
         out.close('projectDescription')
@@ -13347,9 +13366,9 @@ def verifysourceinproject(args):
         # all suites in the same repository must have the same setting for requiresSourceInProjects
         if suiteVcDirs.get(suite.vc_dir) == None:
             suiteVcDirs[suite.vc_dir] = suite
-        elif suiteVcDirs.get(suite.vc_dir).getMxCompatibility().requiresSourceInProjects() != suite.getMxCompatibility().requiresSourceInProjects():
-            log('All suites in the same repository must have the same requiresSourceInProjects setting.')
-            abort('Update the suite for {} to enable verifysourceinproject.'.format(suite.name if not suite.getMxCompatibility().requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
+        elif suiteVcDirs.get(suite.vc_dir).requiresSourceInProjects() != suite.requiresSourceInProjects():
+            log('All suites in the same repository must have requiresSourceInProjects enabled.')
+            abort('Update the suite for {} to enable checking of sources in projects.'.format(suite.name if not suite.requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
 
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
@@ -13362,28 +13381,43 @@ def verifysourceinproject(args):
             elif dirpath == suite.get_output_root():
                 # don't want to traverse output dir
                 dirnames[:] = []
+                continue
             elif dirpath == suite.mxDir:
                 # don't want to traverse mx.name as it contains a .project
                 dirnames[:] = []
+                continue
             elif dirpath in projectDirs:
                 # don't traverse subdirs of an existing project in this suite
                 dirnames[:] = []
+                continue
             elif dirpath in distIdeDirs:
                 # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
+                continue
             elif 'pom.xml' in files:
                 # skip maven suites
                 dirnames[:] = []
-            else:
-                javaSources = [x for x in files if x.endswith('.java')]
-                if len(javaSources) != 0:
-                    javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
-                    javaSourcesInVC = suite.vc.locate(suite.vc_dir, javaSources)
-                    if len(javaSourcesInVC) > 0:
-                        unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+                continue
+            elif suite.isWhiteListedPath(os.path.relpath(dirpath, suite.vc_dir)):
+                # skip whitelisted directories
+                dirnames[:] = []
+                continue
+
+            javaSources = [x for x in files if x.endswith('.java')]
+            if len(javaSources) != 0:
+                javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
+                javaSourcesInVC = [x for x in suite.vc.locate(suite.vc_dir, javaSources) if not suite.isWhiteListedPath(x)]
+                if len(javaSourcesInVC) > 0:
+                    unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
+
+    retcode = 0
+    for suite, sources in unmanagedSources.iteritems():
+        if suite.requiresSourceInProjects():
+            retcode += 1
 
     # also check for files that are outside of suites
     unmanagedSourcesNoSuite = []
+    errorSuites = set()
     for vcDir, suite in suiteVcDirs.iteritems():
         for dirpath, dirnames, files in os.walk(vcDir):
             if dirpath in suiteDirs:
@@ -13401,6 +13435,10 @@ def verifysourceinproject(args):
                     javaSources = [os.path.relpath(join(dirpath, i), vcDir) for i in javaSources]
                     javaSourcesInVC = suite.vc.locate(vcDir, javaSources)
                     unmanagedSourcesNoSuite = unmanagedSourcesNoSuite + javaSourcesInVC
+                    if len(javaSourcesInVC) > 0 and suite.requiresSourceInProjects():
+                        errorSuites.add(suite)
+
+    retcode += len(errorSuites)
 
     if len(unmanagedSources) > 0 or len(unmanagedSourcesNoSuite) > 0:
         log('The following files are managed but not in any project:')
@@ -13409,11 +13447,6 @@ def verifysourceinproject(args):
                 log(suite.name + ': ' + source)
         for source in unmanagedSourcesNoSuite:
             log('No suite: ' + source)
-
-    retcode = 0
-    for suite, sources in unmanagedSources.iteritems():
-        if suite.getMxCompatibility().requiresSourceInProjects():
-            retcode += 1
 
     return retcode
 
@@ -15617,6 +15650,9 @@ def main():
             if os.environ.get(envVar) != value:
                 logv('Setting environment variable %s=%s' % (envVar, value))
                 os.environ[envVar] = value
+        if _opts.java_home:
+            logv('Setting environment variable %s=%s from --java-home' % ('JAVA_HOME', _opts.java_home))
+            os.environ['JAVA_HOME'] = _opts.java_home
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
@@ -15682,7 +15718,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.104.0")  # Try it!!!
+version = VersionSpec("5.104.0")  # Next bump 
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

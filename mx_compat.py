@@ -100,12 +100,6 @@ class MxCompatibility500(object):
         """
         return False
 
-    def requiresSourceInProjects(self):
-        """
-        Requires that all Java sources are in a Java project directory.
-        """
-        return False
-
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
