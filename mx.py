@@ -3030,7 +3030,7 @@ def _make_absolute(path, prefix):
         return join(prefix, path)
     return path
 
-@primary_suite_exempt
+@suite_context_free
 def sha1(args):
     """generate sha1 digest for given file"""
     parser = ArgumentParser(prog='sha1')
@@ -14867,7 +14867,7 @@ def show_version(args):
         if out:
             print 'hg:', out
 
-@primary_suite_exempt
+@suite_context_free
 def update(args):
     """update mx to the latest version"""
     parser = ArgumentParser(prog='mx update')
@@ -15720,7 +15720,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.104.0")  # Next bump
+version = VersionSpec("5.104.1")  # GR-4230
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
