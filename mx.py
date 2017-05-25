@@ -10382,7 +10382,7 @@ def eclipseformat(args):
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
         # Eclipse does not (yet) run on JDK 9
-        jdk = get_jdk(versionCheck=lambda version: version < VersionSpec('9'), versionDescription='<9')
+        #jdk = get_jdk(versionCheck=lambda version: version < VersionSpec('9'), versionDescription='<9')
 
         for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
             capture = OutputCapture()
@@ -10391,7 +10391,7 @@ def eclipseformat(args):
                 '-application',
                 '-consolelog',
                 '-data', wsroot,
-                '-vm', jdk.java,
+                #'-vm', jdk.java,
                 'org.eclipse.jdt.core.JavaCodeFormatter',
                 '-config', batch.path]
                 + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
@@ -11288,7 +11288,10 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     launch.element('mapEntry', {'key' : 'hostname', 'value' : hostname})
     launch.element('mapEntry', {'key' : 'port', 'value' : port})
     launch.close('mapAttribute')
-    launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.PROJECT_ATTR', 'value' : ''})
+
+
+    first = [p.name for p in suite.projects if p.isJavaProject()][0]
+    launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.PROJECT_ATTR', 'value' : first})
     launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.VM_CONNECTOR_ID', 'value' : 'org.eclipse.jdt.launching.socketAttachConnector'})
     launch.close('launchConfiguration')
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
@@ -11388,6 +11391,20 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=F
 
     if doFsckProjects and not refreshOnly:
         fsckprojects([])
+
+    with open(join(wsroot, 'projectList.txt'), 'w') as fp:
+        for suite in suites(True, includeBinary=False):
+            projectDirs = [p.dir for p in suite.projects if p.isJavaProject()]
+            for p in projectDirs:
+                fp.write(p)
+                fp.write('\n')
+            distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
+            for p in distIdeDirs:
+                fp.write(p)
+                fp.write('\n')
+
+            fp.write(suite.mxDir)
+            fp.write('\n')
 
     return wsroot
 
