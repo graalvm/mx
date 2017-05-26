@@ -324,6 +324,30 @@ class SuiteConstituent(object):
             return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
         return None
 
+    def _comparison_key(self):
+        return self.name, self.suite
+
+    def __cmp__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return cmp(self._comparison_key(), other._comparison_key())
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._comparison_key() == other._comparison_key()
+
+    def __ne__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._comparison_key() != other._comparison_key()
+
+    def __hash__(self):
+        return hash(self._comparison_key())
+
+    def __str__(self):
+        return self.name
+
 
 class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
@@ -331,13 +355,9 @@ class License(SuiteConstituent):
         self.fullname = fullname
         self.url = url
 
-    def __eq__(self, other):
-        if not isinstance(other, License):
-            return False
-        return self.name == other.name and self.url == other.url and self.fullname == other.fullname
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def _comparison_key(self):
+        # Licenses are equal across suites
+        return self.name, self.url, self.fullname
 
 
 """
@@ -350,21 +370,6 @@ class Dependency(SuiteConstituent):
         if isinstance(theLicense, str):
             theLicense = [theLicense]
         self.theLicense = theLicense
-
-    def __cmp__(self, other):
-        return cmp(self.name, other.name)
-
-    def __str__(self):
-        return self.name
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-    def __ne__(self, other):
-        return self.name != other.name
-
-    def __hash__(self):
-        return hash(self.name)
 
     def isBaseLibrary(self):
         return isinstance(self, BaseLibrary)
@@ -827,6 +832,13 @@ class Distribution(Dependency):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
+        overlaps = getattr(self, 'overlaps', [])
+        if not isinstance(overlaps, list):
+            abort('Attribute "overlaps" must be a list', self)
+        original_overlaps = list(overlaps)
+        self._resolveDepsHelper(overlaps)
+        self.resolved_overlaps = overlaps
+        self.overlaps = original_overlaps
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
@@ -868,8 +880,8 @@ class Distribution(Dependency):
                 if dep is not self:
                     excluded.add(dep)
                     if dep.isDistribution():
-                        for o in dep.overlapped_distribution_names():
-                            excluded.add(distribution(o))
+                        for o in dep.overlapped_distributions():
+                            excluded.add(o)
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
             deps = []
@@ -928,12 +940,10 @@ class Distribution(Dependency):
         return _mavenGroupId(self.suite)
 
     def overlapped_distribution_names(self):
-        if hasattr(self, 'overlaps'):
-            overlaps = self.overlaps
-            if not isinstance(overlaps, list):
-                abort('Attribute "overlaps" must be a list', self)
-            return overlaps
-        return []
+        return self.overlaps
+
+    def overlapped_distributions(self):
+        return self.resolved_overlaps
 
 class JARDistribution(Distribution, ClasspathDependency):
     """
@@ -3206,12 +3216,6 @@ class BaseLibrary(Dependency):
         Dependency.__init__(self, suite, name, theLicense)
         self.optional = optional
 
-    def __ne__(self, other):
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return result
-        return not result
-
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         pass
 
@@ -3267,11 +3271,8 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         ClasspathDependency.__init__(self)
         self.jar = jar
 
-    def __eq__(self, other):
-        if isinstance(other, JreLibrary):
-            return self.jar == other.jar
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.jar
 
     def is_provided_by(self, jdk):
         """
@@ -3368,11 +3369,8 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
             if not d.isJdkLibrary():
                 abort('"dependencies" attribute of a JDK library can only contain other JDK libraries: ' + d.name, context=self)
 
-    def __eq__(self, other):
-        if isinstance(other, JdkLibrary):
-            return self.path == other.path
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.path
 
     def get_jdk_path(self, jdk, path):
         # Exploded JDKs don't have a jre directory.
@@ -3494,12 +3492,8 @@ class Library(BaseLibrary, ClasspathDependency):
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
-    def __eq__(self, other):
-        if isinstance(other, Library):
-            # all that really matters is the sha1 value; the library can be stored at many urls and path is a suite specific location
-            return self.sha1 == other.sha1
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.sha1
 
     def get_urls(self):
         return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
@@ -5400,25 +5394,8 @@ class Repository(SuiteConstituent):
         self.url = url
         self.licenses = licenses
 
-    def __eq__(self, other):
-        if not isinstance(other, Repository):
-            return False
-        if self.name != other.name or self.url != other.url:
-            return False
-        if len(self.licenses) != len(other.licenses):
-            return False
-        # accept revolved and unresolved licenses
-        for a, b in zip(self.licenses, other.licenses):
-            if isinstance(a, License):
-                a = a.name
-            if isinstance(b, License):
-                b = b.name
-            if a != b:
-                return False
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def _comparison_key(self):
+        return self.name, self.url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
@@ -10660,8 +10637,8 @@ def checkoverlap(args):
         if len(ds) > 1:
             remove = []
             for d in ds:
-                overlaps = d.overlapped_distribution_names()
-                if len([o for o in ds if o.name in overlaps]) != 0:
+                overlaps = d.overlapped_distributions()
+                if len([o for o in ds if o in overlaps]) != 0:
                     remove.append(d)
             ds = [d for d in ds if d not in remove]
             if len(ds) > 1:
@@ -11178,9 +11155,9 @@ def projectgraph(args, suite=None):
 
             if _d.isDistribution():
                 overlapped_deps = set()
-                for overlapped in _d.overlapped_distribution_names():
-                    print_distribution(distribution(overlapped))
-                    overlapped_deps.update(distribution(overlapped).archived_deps())
+                for overlapped in _d.overlapped_distributions():
+                    print_distribution(overlapped)
+                    overlapped_deps.update(overlapped.archived_deps())
                 for p in _d.archived_deps():
                     if p.isProject() and p not in overlapped_deps:
                         if should_ignore(p.name):
@@ -11196,9 +11173,9 @@ def projectgraph(args, suite=None):
 
         in_overlap = set()
         for d in sorted_dists():
-            in_overlap.update(d.overlapped_distribution_names())
+            in_overlap.update(d.overlapped_distributions())
         for d in sorted_dists():
-            if d not in started_dists and d.name not in in_overlap:
+            if d not in started_dists and d not in in_overlap:
                 print_distribution(d)
 
     for p in projects():
@@ -15762,7 +15739,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.106.0")  # Six delights
+version = VersionSpec("5.106.1")  # GR-4252
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
