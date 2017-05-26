@@ -27,7 +27,6 @@
 import os, re, time, datetime
 from os.path import join, exists
 from argparse import ArgumentParser
-import xml.dom.minidom
 
 import mx
 import mx_microbench
@@ -451,10 +450,6 @@ def _run_gate(cleanArgs, args, tasks):
         if t and mx.command_function('checkstyle')(['--primary']) != 0:
             t.abort('Checkstyle warnings were found')
 
-    with Task('Checkheaders', tasks, tags=[Tags.style]) as t:
-        if t and mx.command_function('checkheaders')([]) != 0:
-            t.abort('Checkheaders warnings were found')
-
     with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
         if t and mx.command_function('findbugs')([]) != 0:
             t.abort('FindBugs warnings were found')
@@ -487,34 +482,9 @@ def _run_gate(cleanArgs, args, tasks):
 
 def checkheaders(args):
     """check Java source headers against any required pattern"""
-    failures = {}
-    for p in mx.projects():
-        if not p.isJavaProject():
-            continue
-
-        csConfig = join(mx.project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
-        if not exists(csConfig):
-            mx.log('Cannot check headers for ' + p.name + ' - ' + csConfig + ' does not exist')
-            continue
-        dom = xml.dom.minidom.parse(csConfig)
-        for module in dom.getElementsByTagName('module'):
-            if module.getAttribute('name') == 'RegexpHeader':
-                for prop in module.getElementsByTagName('property'):
-                    if prop.getAttribute('name') == 'header':
-                        value = prop.getAttribute('value')
-                        matcher = re.compile(value, re.MULTILINE)
-                        for sourceDir in p.source_dirs():
-                            for root, _, files in os.walk(sourceDir):
-                                for name in files:
-                                    if name.endswith('.java') and name != 'package-info.java':
-                                        f = join(root, name)
-                                        with open(f) as fp:
-                                            content = fp.read()
-                                        if not matcher.match(content):
-                                            failures[f] = csConfig
-    for n, v in failures.iteritems():
-        mx.log('{0}: header does not match RegexpHeader defined in {1}'.format(n, v))
-    return len(failures)
+    mx.log('The checkheaders command is obsolete.  The checkstyle or checkcopyrights command performs\n'\
+           'the required checks depending on the mx configuration.')
+    return 0
 
 _jacoco = 'off'
 

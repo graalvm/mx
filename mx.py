@@ -15793,7 +15793,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.107.0")  # One more
+version = VersionSpec("5.108.0")  # Once more with feeling
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
