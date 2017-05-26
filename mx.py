@@ -64,6 +64,7 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType
 from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
 from tempfile import mkdtemp
+import fnmatch
 
 import mx_unittest
 import mx_findbugs
@@ -6369,9 +6370,6 @@ class Suite(object):
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
 
-        self.sourceInProjectWhiteList = self.suiteDict.get('sourceinprojectwhitelist')
-        self.sourceInProjectWhiteListPaths = None
-
         if scmDict:
             try:
                 read = scmDict.pop('read')
@@ -6418,20 +6416,6 @@ class Suite(object):
         self._load_distributions(distsMap)
         self._load_licenses(licenseDefs)
         self._load_repositories(repositoryDefs)
-
-    def requiresSourceInProjects(self):
-        return self.sourceInProjectWhiteList != None
-
-    def isWhiteListedPath(self, path):
-        if self.sourceInProjectWhiteList == None:
-            return False
-        if self.sourceInProjectWhiteListPaths == None:
-            if self.vc_dir != self.dir:
-                relPath = os.path.relpath(self.dir, self.vc_dir)
-                self.sourceInProjectWhiteListPaths = [join(relPath, x) for x in self.sourceInProjectWhiteList]
-            else:
-                self.sourceInProjectWhiteListPaths = self.sourceInProjectWhiteList
-        return path in self.sourceInProjectWhiteListPaths
 
     def _check_suiteDict(self, key):
         return dict() if self.suiteDict.get(key) is None else self.suiteDict[key]
@@ -13358,17 +13342,29 @@ def verifysourceinproject(args):
     unmanagedSources = {}
     suiteDirs = set()
     suiteVcDirs = {}
+    suiteWhitelists = {}
+
+    def ignorePath(path, whitelist):
+        if whitelist == None:
+            return True
+        for entry in whitelist:
+            if fnmatch.fnmatch(path, entry):
+                return True
+        return False
+
     for suite in suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
         suiteDirs.add(suite.dir)
         # all suites in the same repository must have the same setting for requiresSourceInProjects
         if suiteVcDirs.get(suite.vc_dir) == None:
-            suiteVcDirs[suite.vc_dir] = suite
-        elif suiteVcDirs.get(suite.vc_dir).requiresSourceInProjects() != suite.requiresSourceInProjects():
-            log('All suites in the same repository must have requiresSourceInProjects enabled.')
-            abort('Update the suite for {} to enable checking of sources in projects.'.format(suite.name if not suite.requiresSourceInProjects() else suiteVcDirs.get(suite.vc_dir)))
+            suiteVcDirs[suite.vc_dir] = suite.vc
+            whitelistFile = join(suite.vc_dir, '.nonprojectsources')
+            if exists(whitelistFile):
+                with open(whitelistFile) as fp:
+                    suiteWhitelists[suite.vc_dir] = [l.strip() for l in fp.readlines()]
 
+        whitelist = suiteWhitelists.get(suite.vc_dir)
         for dirpath, dirnames, files in os.walk(suite.dir):
             if dirpath == suite.dir:
                 # no point in traversing vc metadata dir, lib, .workspace
@@ -13397,7 +13393,7 @@ def verifysourceinproject(args):
                 # skip maven suites
                 dirnames[:] = []
                 continue
-            elif suite.isWhiteListedPath(os.path.relpath(dirpath, suite.vc_dir)):
+            elif ignorePath(os.path.relpath(dirpath, suite.vc_dir), whitelist):
                 # skip whitelisted directories
                 dirnames[:] = []
                 continue
@@ -13405,19 +13401,12 @@ def verifysourceinproject(args):
             javaSources = [x for x in files if x.endswith('.java')]
             if len(javaSources) != 0:
                 javaSources = [os.path.relpath(join(dirpath, i), suite.vc_dir) for i in javaSources]
-                javaSourcesInVC = [x for x in suite.vc.locate(suite.vc_dir, javaSources) if not suite.isWhiteListedPath(x)]
+                javaSourcesInVC = [x for x in suite.vc.locate(suite.vc_dir, javaSources) if not ignorePath(x, whitelist)]
                 if len(javaSourcesInVC) > 0:
-                    unmanagedSources.setdefault(suite, []).extend(javaSourcesInVC)
-
-    retcode = 0
-    for suite, sources in unmanagedSources.iteritems():
-        if suite.requiresSourceInProjects():
-            retcode += 1
+                    unmanagedSources.setdefault(suite.vc_dir, []).extend(javaSourcesInVC)
 
     # also check for files that are outside of suites
-    unmanagedSourcesNoSuite = []
-    errorSuites = set()
-    for vcDir, suite in suiteVcDirs.iteritems():
+    for vcDir, vc in suiteVcDirs.iteritems():
         for dirpath, dirnames, files in os.walk(vcDir):
             if dirpath in suiteDirs:
                 # skip known suites
@@ -13432,20 +13421,20 @@ def verifysourceinproject(args):
                 javaSources = [x for x in files if x.endswith('.java')]
                 if len(javaSources) != 0:
                     javaSources = [os.path.relpath(join(dirpath, i), vcDir) for i in javaSources]
-                    javaSourcesInVC = suite.vc.locate(vcDir, javaSources)
-                    unmanagedSourcesNoSuite = unmanagedSourcesNoSuite + javaSourcesInVC
-                    if len(javaSourcesInVC) > 0 and suite.requiresSourceInProjects():
-                        errorSuites.add(suite)
+                    javaSourcesInVC = [x for x in vc.locate(vcDir, javaSources) if not ignorePath(x, whitelist)]
+                    if len(javaSourcesInVC) > 0:
+                        unmanagedSources.setdefault(vcDir, []).extend(javaSourcesInVC)
 
-    retcode += len(errorSuites)
-
-    if len(unmanagedSources) > 0 or len(unmanagedSourcesNoSuite) > 0:
+    retcode = 0
+    if len(unmanagedSources) > 0:
         log('The following files are managed but not in any project:')
-        for suite, sources in unmanagedSources.iteritems():
+        for vc_dir, sources in unmanagedSources.iteritems():
             for source in sources:
-                log(suite.name + ': ' + source)
-        for source in unmanagedSourcesNoSuite:
-            log('No suite: ' + source)
+                log(source)
+            if suiteWhitelists.get(vc_dir) != None:
+                retcode += 1
+                log('Since {} has a .nonprojectsources file, all Java source files must be \n'\
+                    'part of a project in a suite or the files must be listed in the .nonprojectsources.'.format(vc_dir))
 
     return retcode
 
@@ -15720,7 +15709,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.104.1")  # GR-4230
+version = VersionSpec("5.105.0")  # One more try
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
