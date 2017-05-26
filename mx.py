@@ -324,6 +324,30 @@ class SuiteConstituent(object):
             return '  File "{}", line {} in definition of {}'.format(path, lineNo, self.name)
         return None
 
+    def _comparison_key(self):
+        return self.name, self.suite
+
+    def __cmp__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return cmp(self._comparison_key(), other._comparison_key())
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._comparison_key() == other._comparison_key()
+
+    def __ne__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._comparison_key() != other._comparison_key()
+
+    def __hash__(self):
+        return hash(self._comparison_key())
+
+    def __str__(self):
+        return self.name
+
 
 class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
@@ -331,13 +355,9 @@ class License(SuiteConstituent):
         self.fullname = fullname
         self.url = url
 
-    def __eq__(self, other):
-        if not isinstance(other, License):
-            return False
-        return self.name == other.name and self.url == other.url and self.fullname == other.fullname
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def _comparison_key(self):
+        # Licenses are equal across suites
+        return self.name, self.url, self.fullname
 
 
 """
@@ -350,21 +370,6 @@ class Dependency(SuiteConstituent):
         if isinstance(theLicense, str):
             theLicense = [theLicense]
         self.theLicense = theLicense
-
-    def __cmp__(self, other):
-        return cmp(self.name, other.name)
-
-    def __str__(self):
-        return self.name
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-    def __ne__(self, other):
-        return self.name != other.name
-
-    def __hash__(self):
-        return hash(self.name)
 
     def isBaseLibrary(self):
         return isinstance(self, BaseLibrary)
@@ -3206,12 +3211,6 @@ class BaseLibrary(Dependency):
         Dependency.__init__(self, suite, name, theLicense)
         self.optional = optional
 
-    def __ne__(self, other):
-        result = self.__eq__(other)
-        if result is NotImplemented:
-            return result
-        return not result
-
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         pass
 
@@ -3267,11 +3266,8 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
         ClasspathDependency.__init__(self)
         self.jar = jar
 
-    def __eq__(self, other):
-        if isinstance(other, JreLibrary):
-            return self.jar == other.jar
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.jar
 
     def is_provided_by(self, jdk):
         """
@@ -3368,11 +3364,8 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
             if not d.isJdkLibrary():
                 abort('"dependencies" attribute of a JDK library can only contain other JDK libraries: ' + d.name, context=self)
 
-    def __eq__(self, other):
-        if isinstance(other, JdkLibrary):
-            return self.path == other.path
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.path
 
     def get_jdk_path(self, jdk, path):
         # Exploded JDKs don't have a jre directory.
@@ -3494,12 +3487,8 @@ class Library(BaseLibrary, ClasspathDependency):
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
-    def __eq__(self, other):
-        if isinstance(other, Library):
-            # all that really matters is the sha1 value; the library can be stored at many urls and path is a suite specific location
-            return self.sha1 == other.sha1
-        else:
-            return NotImplemented
+    def _comparison_key(self):
+        return self.sha1
 
     def get_urls(self):
         return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
@@ -5400,25 +5389,8 @@ class Repository(SuiteConstituent):
         self.url = url
         self.licenses = licenses
 
-    def __eq__(self, other):
-        if not isinstance(other, Repository):
-            return False
-        if self.name != other.name or self.url != other.url:
-            return False
-        if len(self.licenses) != len(other.licenses):
-            return False
-        # accept revolved and unresolved licenses
-        for a, b in zip(self.licenses, other.licenses):
-            if isinstance(a, License):
-                a = a.name
-            if isinstance(b, License):
-                b = b.name
-            if a != b:
-                return False
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def _comparison_key(self):
+        return self.name, self.url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
