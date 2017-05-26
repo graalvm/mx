@@ -832,6 +832,13 @@ class Distribution(Dependency):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
+        overlaps = getattr(self, 'overlaps', [])
+        if not isinstance(overlaps, list):
+            abort('Attribute "overlaps" must be a list', self)
+        original_overlaps = list(overlaps)
+        self._resolveDepsHelper(overlaps)
+        self.resolved_overlaps = overlaps
+        self.overlaps = original_overlaps
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
@@ -873,8 +880,8 @@ class Distribution(Dependency):
                 if dep is not self:
                     excluded.add(dep)
                     if dep.isDistribution():
-                        for o in dep.overlapped_distribution_names():
-                            excluded.add(distribution(o))
+                        for o in dep.overlapped_distributions():
+                            excluded.add(o)
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
             deps = []
@@ -933,12 +940,10 @@ class Distribution(Dependency):
         return _mavenGroupId(self.suite)
 
     def overlapped_distribution_names(self):
-        if hasattr(self, 'overlaps'):
-            overlaps = self.overlaps
-            if not isinstance(overlaps, list):
-                abort('Attribute "overlaps" must be a list', self)
-            return overlaps
-        return []
+        return self.overlaps
+
+    def overlapped_distributions(self):
+        return self.resolved_overlaps
 
 class JARDistribution(Distribution, ClasspathDependency):
     """
@@ -10632,8 +10637,8 @@ def checkoverlap(args):
         if len(ds) > 1:
             remove = []
             for d in ds:
-                overlaps = d.overlapped_distribution_names()
-                if len([o for o in ds if o.name in overlaps]) != 0:
+                overlaps = d.overlapped_distributions()
+                if len([o for o in ds if o in overlaps]) != 0:
                     remove.append(d)
             ds = [d for d in ds if d not in remove]
             if len(ds) > 1:
@@ -11150,9 +11155,9 @@ def projectgraph(args, suite=None):
 
             if _d.isDistribution():
                 overlapped_deps = set()
-                for overlapped in _d.overlapped_distribution_names():
-                    print_distribution(distribution(overlapped))
-                    overlapped_deps.update(distribution(overlapped).archived_deps())
+                for overlapped in _d.overlapped_distributions():
+                    print_distribution(overlapped)
+                    overlapped_deps.update(overlapped.archived_deps())
                 for p in _d.archived_deps():
                     if p.isProject() and p not in overlapped_deps:
                         if should_ignore(p.name):
@@ -11168,9 +11173,9 @@ def projectgraph(args, suite=None):
 
         in_overlap = set()
         for d in sorted_dists():
-            in_overlap.update(d.overlapped_distribution_names())
+            in_overlap.update(d.overlapped_distributions())
         for d in sorted_dists():
-            if d not in started_dists and d.name not in in_overlap:
+            if d not in started_dists and d not in in_overlap:
                 print_distribution(d)
 
     for p in projects():
@@ -15734,7 +15739,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.106.0")  # Six delights
+version = VersionSpec("5.106.1")  # GR-4252
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
