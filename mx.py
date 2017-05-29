@@ -3753,6 +3753,16 @@ class VC(object):
         """
         abort(self.kind + " active_branch is not implemented")
 
+    def update_to_branch(self, vcdir, branch, abortOnError=True):
+        """
+        Update to a branch a make it active.
+
+        :param str vcdir: a valid repository path
+        :param str branch: a branch name
+        :param bool abortOnError: if True abort on error
+        """
+        abort(self.kind + " update_to_branch is not implemented")
+
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
         Returns a release version derived from VC tags that match the pattern <prefix>-<number>(.<number>)*
@@ -4104,6 +4114,10 @@ class HgConfig(VC):
         if abortOnError:
             abort('no active hg bookmark found')
         return None
+
+    def update_to_branch(self, vcdir, branch, abortOnError=True):
+        cmd = ['update', branch]
+        self.hg_command(vcdir, cmd, abortOnError=abortOnError)
 
     def add(self, vcdir, path, abortOnError=True):
         return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
@@ -4679,15 +4693,16 @@ class GitConfig(VC):
 
     def active_branch(self, vcdir, abortOnError=True):
         out = OutputCapture()
-        cmd = ['git', 'branch']
-        rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
-        if rc == 0:
-            for line in out.data.splitlines():
-                if line.strip().startswith('*'):
-                    return line.split()[1].strip()
-        if abortOnError:
-            abort('no active git branch found')
-        return None
+        cmd = ['git', 'symbolic-ref', '--short', '--quiet', 'HEAD']
+        rc = self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir, out=out)
+        if rc != 0:
+            return None
+        else:
+            return out.data.rstrip('\r\n')
+
+    def update_to_branch(self, vcdir, branch, abortOnError=True):
+        cmd = ['git', 'checkout', branch, '--']
+        self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir)
 
     def incoming(self, vcdir, abortOnError=True):
         """
@@ -4859,14 +4874,14 @@ class GitConfig(VC):
             if not self.exists(vcdir, rev):
                 abort('Fetch of %s succeeded\nbut did not contain requested revision %s.\nCheck that the suite.py repository location is mentioned by \'git remote -v\'' % (vcdir, rev))
         cmd = ['git', 'checkout']
+        if clean:
+            cmd.append('-f')
         if rev:
             cmd.extend(['--detach', rev])
             if not _opts.verbose:
                 cmd.append('-q')
         else:
-            cmd.extend(['master'])
-        if clean:
-            cmd.append('-f')
+            cmd.extend(['master', '--'])
         return self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError) == 0
 
     def locate(self, vcdir, patterns=None, abortOnError=True):
@@ -5191,6 +5206,16 @@ class BinaryVC(VC):
             abort("A binary VC has no 'root'")
         return None
 
+    def active_branch(self, vcdir, abortOnError=True):
+        if abortOnError:
+            abort("A binary VC has no active branch")
+        return None
+
+    def update_to_branch(self, vcdir, branch, abortOnError=True):
+        if abortOnError:
+            abort("A binary VC has no branch")
+        return None
+
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = urllib2.urlopen(url)
@@ -5198,7 +5223,7 @@ def _hashFromUrl(url):
         return hashFile.read()
     except urllib2.URLError as e:
         _suggest_http_proxy_error(e)
-        abort('Error while retrieving sha1 {0}: {2}'.format(url, str(e)))
+        abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
     finally:
         if hashFile:
             hashFile.close()
@@ -15345,6 +15370,12 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     vc_dir_to_suite_names = {}
     versions_from = {}
 
+
+    class VersionType:
+        CLONED = 0
+        REVISION = 1
+        BRANCH = 2
+
     worklist = deque()
 
     def _add_discovered_suite(_discovered_suite, first_importing_suite_name):
@@ -15395,8 +15426,11 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         if current_version == update_version:
             return False
         if _discovered_suite.vc_dir not in original_version:
-            # TODO should get the branch if one is checked out
-            original_version[_discovered_suite.vc_dir] = current_version
+            branch = _discovered_suite.vc.active_branch(_discovered_suite.vc_dir, abortOnError=False)
+            if branch is not None:
+                original_version[_discovered_suite.vc_dir] = VersionType.BRANCH, branch
+            else:
+                original_version[_discovered_suite.vc_dir] = VersionType.REVISION, current_version
         _discovered_suite.vc.update(_discovered_suite.vc_dir, rev=update_version, mayPull=True)
         _clear_pyc_files(_discovered_suite)
         if forget:
@@ -15527,7 +15561,6 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery("Re-reached {} (collocated with {}) from {} with same version as {}".format(collocated_suite_name, _suite_import.name, _importing_suite.name, other_importer_name))
         return True
 
-    cloned_version = "__CLONED__"
     try:
         while worklist:
             importing_suite_name, imported_suite_name = worklist.popleft()
@@ -15555,7 +15588,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                 discovered_suite, is_clone = _find_suite_import(importing_suite, suite_import, load=False)
                 _log_discovery("Discovered {} from {} ({}, newly cloned: {})".format(discovered_suite.name, importing_suite_name, discovered_suite.dir, is_clone))
                 if is_clone:
-                    original_version[discovered_suite.vc_dir] = cloned_version
+                    original_version[discovered_suite.vc_dir] = VersionType.CLONED, None
                 elif discovered_suite.vc_dir in vc_dir_to_suite_names and not vc_dir_to_suite_names[discovered_suite.vc_dir]:
                     # we re-discovered a suite that we had cloned and then "un-discovered".
                     if suite_import.version and _update_repo(discovered_suite, suite_import.version):
@@ -15570,15 +15603,18 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
                 _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
-        cloned_during_discovery = [d for (d, v) in original_version.items() if v == cloned_version]
+        cloned_during_discovery = [d for (d, v, _) in original_version.items() if v == VersionType.CLONED]
         if cloned_during_discovery:
             log_error("There was an error, removing " + ', '.join(("'" + d + "'" for d in cloned_during_discovery)))
             for d in cloned_during_discovery:
                 shutil.rmtree(d)
-        for d, v in original_version.items():
-            if v != cloned_version:
+        for d, t, v in original_version.items():
+            if t == VersionType.REVISION:
                 log_error("Reverting '{}' to version '{}'".format(d, v))
                 VC.get_vc(d).update(d, v)
+            elif t == VersionType.BRANCH:
+                log_error("Reverting '{}' to branch '{}'".format(d, v))
+                VC.get_vc(d).update_to_branch(d, v)
         raise se
 
     _log_discovery("Discovery finished")
@@ -15739,7 +15775,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.106.1")  # GR-4252
+version = VersionSpec("5.106.2")  # Film wrench
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
