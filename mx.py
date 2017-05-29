@@ -226,22 +226,7 @@ def suite_context_free(func):
     _suite_context_free.append(func.__name__)
     return func
 
-
-# Names of commands that work with and without a primary suite.
-_optional_suite_context = []
-_primary_suite_exempt = _optional_suite_context
-
-
-def optional_suite_context(func):
-    """
-    Decorator for commands that work with and without a primary suite.
-    """
-    _optional_suite_context.append(func.__name__)
-    return func
-
-primary_suite_exempt = optional_suite_context
-
-# Names of commands that need a primary suite but do not suites to be loaded.
+# Names of commands that need a primary suite but don't need suites to be loaded.
 _no_suite_loading = []
 
 
@@ -252,7 +237,7 @@ def no_suite_loading(func):
     _no_suite_loading.append(func.__name__)
     return func
 
-# Names of commands that need a primary suite but do not suites to be discovered.
+# Names of commands that need a primary suite but don't need suites to be discovered.
 _no_suite_discovery = []
 
 
@@ -15705,10 +15690,8 @@ def main():
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_load_suites = not (initial_command and initial_command in _no_suite_loading)
     should_discover_suites = not (initial_command and initial_command in _no_suite_discovery)
-    is_suite_context_optional = initial_command and initial_command in _optional_suite_context
 
     assert not should_load_suites or should_discover_suites
-    assert not (is_suite_context_free and is_suite_context_optional)
     assert not (should_discover_suites and  is_suite_context_free)
 
     primarySuiteMxDir = None
@@ -15743,13 +15726,7 @@ def main():
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
             _init_primary_suite(primary)
         else:
-            # in general this is an error, except for the _primary_suite_exempt commands,
-            # and an extensions command will likely not parse in this case, as any extra arguments
-            # will not have been added to _argParser.
-            # If the command line does not contain a string matching one of the exemptions, we can safely abort,
-            # but not otherwise, as we can't be sure the string isn't in a value for some other option.
-            if not is_suite_context_optional:
-                abort('no primary suite found')
+            abort('no primary suite found')
 
         for envVar in _loadedEnv.keys():
             value = _loadedEnv[envVar]
@@ -15761,12 +15738,7 @@ def main():
             os.environ['JAVA_HOME'] = _opts.java_home
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
-
-        if primarySuiteMxDir is None:
-            if len(commandAndArgs) > 0 and not is_suite_context_optional:
-                abort('no primary suite found')
-        else:
-            os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
+        os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
 
     if _opts.mx_tests:
         MXTestsSuite()
