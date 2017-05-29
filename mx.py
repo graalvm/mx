@@ -210,31 +210,57 @@ _primary_suite_deferrables = []
 # List of functions to run after options have been parsed
 _opts_parsed_deferrables = []
 
+
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
-"""
-Names of commands that do not need suites loaded.
-"""
-_suite_context_free = ['scloneimports']
 
-"""
-Decorator for commands that do not need suites loaded.
-"""
+# Names of commands that do not need suites loaded.
+_suite_context_free = ['init', 'help', 'version']
+
+
 def suite_context_free(func):
+    """
+    Decorator for commands that do not need suites loaded.
+    """
     _suite_context_free.append(func.__name__)
     return func
 
-"""
-Names of commands that do not need a primary suite to be available.
-"""
-_primary_suite_exempt = ['init', 'help', 'version']
 
-"""
-Decorator for commands that do not need a primary suite to be available.
-"""
-def primary_suite_exempt(func):
-    _primary_suite_exempt.append(func.__name__)
+# Names of commands that work with and without a primary suite.
+_optional_suite_context = []
+_primary_suite_exempt = _optional_suite_context
+
+
+def optional_suite_context(func):
+    """
+    Decorator for commands that work with and without a primary suite.
+    """
+    _optional_suite_context.append(func.__name__)
+    return func
+
+primary_suite_exempt = optional_suite_context
+
+# Names of commands that need a primary suite but do not suites to be loaded.
+_no_suite_loading = []
+
+
+def no_suite_loading(func):
+    """
+    Decorator for commands that need a primary suite but don't need suites to be loaded.
+    """
+    _no_suite_loading.append(func.__name__)
+    return func
+
+# Names of commands that need a primary suite but do not suites to be discovered.
+_no_suite_discovery = []
+
+
+def no_suite_discovery(func):
+    """
+    Decorator for commands that need a primary suite but don't need suites to be discovered.
+    """
+    _no_suite_discovery.append(func.__name__)
     return func
 
 DEP_STANDARD = "standard dependency"
@@ -5629,11 +5655,10 @@ def deploy_binary(args):
         suites[s] = None
         s.visit_imports(import_visitor)
 
-    primary_suite = _check_primary_suite()
     if args.all_suites:
-        suite_collector(primary_suite, None)
+        suite_collector(primary_suite(), None)
     else:
-        suites[primary_suite] = None
+        suites[primary_suite()] = None
 
     for s in iter(suites):
         _deploy_binary(args, s)
@@ -10454,7 +10479,8 @@ def _processorjars_suite(s):
     build(['--dependencies', ",".join(names)])
     return [ap.path for ap in apDists]
 
-@primary_suite_exempt
+
+@no_suite_loading
 def pylint(args):
     """run pylint (if available) over Python source files (found by '<vc> locate' or by tree walk with -walk)"""
 
@@ -13899,7 +13925,7 @@ def _kwArg(kwargs):
         return kwargs.pop(0)
     return None
 
-@primary_suite_exempt
+@suite_context_free
 def sclone(args):
     """clone a suite repository, and its imported suites"""
     parser = ArgumentParser(prog='mx sclone')
@@ -14029,7 +14055,7 @@ def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
         # _clone handles the recursive visit of the new imports
 
 
-@primary_suite_exempt
+@suite_context_free
 def scloneimports(args):
     """clone the imports of an existing suite"""
     parser = ArgumentParser(prog='mx scloneimports')
@@ -14067,24 +14093,27 @@ def scloneimports(args):
 def _supdate_import_visitor(s, suite_import, **extra_args):
     _supdate(suite(suite_import.name), suite_import)
 
+
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
     s.vc.update(s.vc_dir)
 
+
+@no_suite_loading
 def supdate(args):
     """update primary suite and all its imports"""
-
     parser = ArgumentParser(prog='mx supdate')
     args = parser.parse_args(args)
-    s = _check_primary_suite()
 
-    _supdate(s, None)
+    _supdate(primary_suite(), None)
 
 def _sbookmark_visitor(s, suite_import):
     imported_suite = suite(suite_import.name)
     if isinstance(imported_suite, SourceSuite):
         imported_suite.vc.bookmark(imported_suite.vc_dir, s.name + '-import', suite_import.version)
 
+
+@no_suite_loading
 def sbookmarkimports(args):
     """place bookmarks on the imported versions of suites in version control"""
     parser = ArgumentParser(prog='mx sbookmarkimports')
@@ -14094,7 +14123,7 @@ def sbookmarkimports(args):
         for s in suites():
             s.visit_imports(_sbookmark_visitor)
     else:
-        _check_primary_suite().visit_imports(_sbookmark_visitor)
+        primary_suite().visit_imports(_sbookmark_visitor)
 
 
 def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted):
@@ -14123,6 +14152,8 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
             else:
                 print 'Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py())
 
+
+@no_suite_loading
 def scheckimports(args):
     """check that suite import versions are up to date"""
     parser = ArgumentParser(prog='mx scheckimports')
@@ -14133,7 +14164,8 @@ def scheckimports(args):
     for s in suites():
         s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports, ignore_uncommitted=args.ignore_uncommitted)
 
-@suite_context_free
+
+@no_suite_discovery
 def sforceimports(args):
     """force working directory revision of imported suites to match primary suite imports"""
     parser = ArgumentParser(prog='mx sforceimports')
@@ -14141,12 +14173,7 @@ def sforceimports(args):
     args = parser.parse_args(args)
     if args.strict_versions:
         warn("'--strict-versions' argument is deprecated and ignored. For version conflict resolution, see mx's '--version-conflict-resolution' flag.")
-    primary_suite_dir = _findPrimarySuiteMxDir()
-    if primary_suite_dir is None:
-        abort("Primary suite could not be found")
-    # TODO sort out suite_context_free and primary_suite_exempt
-    _suitemodel.set_primary_dir(primary_suite_dir)
-    _discover_suites(primary_suite_dir, load=False, register=False, update_existing=True)
+    _discover_suites(primary_suite().mxDir, load=False, register=False, update_existing=True)
 
 def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all, no_update):
     """pull visitor for Suite.visit_imports"""
@@ -14186,6 +14213,8 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
         update_versions = False
     imported_suite.visit_imports(_spull_import_visitor, update_versions=update_versions, only_imports=only_imports, update_all=update_all, no_update=no_update)
 
+
+@no_suite_loading
 def spull(args):
     """pull primary suite and all its imports"""
     parser = ArgumentParser(prog='mx spull')
@@ -14198,10 +14227,12 @@ def spull(args):
     if args.update_all and not args.update_versions:
         abort('--update-all can only be used in conjuction with --update-versions')
 
-    _spull(_check_primary_suite(), _check_primary_suite(), None, args.update_versions, args.only_imports, args.update_all, args.no_update)
+    _spull(primary_suite(), primary_suite(), None, args.update_versions, args.only_imports, args.update_all, args.no_update)
+
 
 def _sincoming_import_visitor(s, suite_import, **extra_args):
     _sincoming(suite(suite_import.name), suite_import)
+
 
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
@@ -14210,16 +14241,19 @@ def _sincoming(s, suite_import):
     if output:
         print output
 
+
+@no_suite_loading
 def sincoming(args):
     """check incoming for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
-    s = _check_primary_suite()
 
-    _sincoming(s, None)
+    _sincoming(primary_suite(), None)
+
 
 def _hg_command_import_visitor(s, suite_import, **extra_args):
     _hg_command(suite(suite_import.name), suite_import, **extra_args)
+
 
 def _hg_command(s, suite_import, **extra_args):
     s.visit_imports(_hg_command_import_visitor, **extra_args)
@@ -14228,26 +14262,31 @@ def _hg_command(s, suite_import, **extra_args):
         out = s.vc.hg_command(s.vc_dir, extra_args['args'])
         print out
 
+
+@no_suite_loading
 def hg_command(args):
     """Run a Mercurial command in every suite"""
-    s = _check_primary_suite()
-    _hg_command(s, None, args=args)
+    _hg_command(primary_suite(), None, args=args)
+
 
 def _stip_import_visitor(s, suite_import, **extra_args):
     _stip(suite(suite_import.name), suite_import)
+
 
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
     print 'tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir)
 
+
+@no_suite_loading
 def stip(args):
     """check tip for primary suite and all imports"""
     parser = ArgumentParser(prog='mx stip')
     args = parser.parse_args(args)
-    s = _check_primary_suite()
 
-    _stip(s, None)
+    _stip(primary_suite(), None)
+
 
 def _sversions_rev(rev, isdirty, with_color):
     if with_color:
@@ -14256,6 +14295,8 @@ def _sversions_rev(rev, isdirty, with_color):
         label = rev[0:12]
     return label + ' +'[int(isdirty)]
 
+
+@no_suite_loading
 def sversions(args):
     """print working directory revision for primary suite and all imports"""
     parser = ArgumentParser(prog='mx sversions')
@@ -14277,9 +14318,9 @@ def sversions(args):
             print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name
         s.visit_imports(_sversions_import_visitor)
 
-    primary_suite = _check_primary_suite()
-    if not isinstance(primary_suite, MXSuite):
-        _sversions(primary_suite, None)
+    if not isinstance(primary_suite(), MXSuite):
+        _sversions(primary_suite(), None)
+
 
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
@@ -15096,36 +15137,6 @@ def _is_suite_dir(d, mxDirName=None):
             if exists(mxDir) and isdir(mxDir) and (exists(join(mxDir, 'suite.py'))):
                 return mxDir
 
-def _check_primary_suite():
-    if _primary_suite is None:
-        abort('no primary suite found')
-    else:
-        return _primary_suite
-
-# vc (suite) commands only perform a partial load of the suite metadata, to avoid
-# problems with suite invariant checks aborting the operation
-_vc_commands = ['sclone', 'scloneimports', 'scheckimports', 'sbookmarkimports', 'sforceimports', 'spull',
-                'sincoming', 'soutgoing', 'spull', 'stip', 'sversions', 'supdate']
-
-def _needs_primary_suite(command):
-    return command not in _primary_suite_exempt and command not in _suite_context_free
-
-def _needs_primary_suite_check(args):
-    if len(args) == 0:
-        return False
-    for s in args:
-        if s in _primary_suite_exempt:
-            return False
-    return True
-
-def _check_vc_command():
-    """check for a vc command after the initial parse"""
-    for command in _argParser.initialCommandAndArgs:
-        if command and not command.startswith('-'):
-            hits = [c for c in _vc_commands if c.startswith(command)]
-            if len(hits) > 0:
-                return True
-    return False
 
 def _findPrimarySuiteMxDirFrom(d):
     """ search for a suite directory upwards from 'd' """
@@ -15684,16 +15695,26 @@ def main():
         os.environ['http_proxy'] = httpsProxy
 
     _argParser._parse_cmd_line(_opts, firstParse=True)
-    vc_command = _check_vc_command()
 
     global _mvn
     _mvn = MavenConfig()
 
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
+    initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
+    is_suite_context_free = initial_command and initial_command in _suite_context_free
+    should_load_suites = not (initial_command and initial_command in _no_suite_loading)
+    should_discover_suites = not (initial_command and initial_command in _no_suite_discovery)
+    is_suite_context_optional = initial_command and initial_command in _optional_suite_context
+
+    assert not should_load_suites or should_discover_suites
+    assert not (is_suite_context_free and is_suite_context_optional)
+    assert not (should_discover_suites and  is_suite_context_free)
+
     primarySuiteMxDir = None
-    if len(_argParser.initialCommandAndArgs) == 0 or _argParser.initialCommandAndArgs[0] not in _suite_context_free:
-        primary_suite_error = 'no primary suite found'
+    if is_suite_context_free:
+        commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
+    else:
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
             _init_primary_suite(_mx_suite)
@@ -15716,16 +15737,19 @@ def main():
                     _binary_suites = bs.split(',')
                 else:
                     _binary_suites = []
-
-            _init_primary_suite(_discover_suites(primarySuiteMxDir, load=not vc_command))
+            if should_discover_suites:
+                primary = _discover_suites(primarySuiteMxDir, load=should_load_suites)
+            else:
+                primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
+            _init_primary_suite(primary)
         else:
             # in general this is an error, except for the _primary_suite_exempt commands,
             # and an extensions command will likely not parse in this case, as any extra arguments
             # will not have been added to _argParser.
             # If the command line does not contain a string matching one of the exemptions, we can safely abort,
             # but not otherwise, as we can't be sure the string isn't in a value for some other option.
-            if _needs_primary_suite_check(_argParser.initialCommandAndArgs):
-                abort(primary_suite_error)
+            if not is_suite_context_optional:
+                abort('no primary suite found')
 
         for envVar in _loadedEnv.keys():
             value = _loadedEnv[envVar]
@@ -15739,17 +15763,15 @@ def main():
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
         if primarySuiteMxDir is None:
-            if len(commandAndArgs) > 0 and _needs_primary_suite(commandAndArgs[0]):
-                abort(primary_suite_error)
+            if len(commandAndArgs) > 0 and not is_suite_context_optional:
+                abort('no primary suite found')
         else:
             os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
-    else:
-        commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
 
     if _opts.mx_tests:
         MXTestsSuite()
 
-    if primarySuiteMxDir and not _mx_suite.primary and not vc_command:
+    if primarySuiteMxDir and not _mx_suite.primary and should_load_suites:
         primary_suite().recursive_post_init()
         _check_dependency_cycles()
 
@@ -15771,7 +15793,7 @@ def main():
 
     c, _ = _commands[command][:2]
 
-    if primarySuiteMxDir and not vc_command:
+    if primarySuiteMxDir and should_load_suites:
         if not _get_command_property(command, "keepUnsatisfiedDependencies"):
             global _removedDeps
             _removedDeps = _remove_unsatisfied_deps()
