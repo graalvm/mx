@@ -6003,7 +6003,7 @@ class SuiteImport:
         self.in_subdir = in_subdir
 
     @staticmethod
-    def parse_specification(import_dict, context, importer_version, dynamicImport=False, importer_in_subdir=False):
+    def parse_specification(import_dict, context, importer, dynamicImport=False):
         name = import_dict.get('name')
         if not name:
             abort('suite import must have a "name" attribute', context=context)
@@ -6015,12 +6015,12 @@ class SuiteImport:
         if version_from and version:
             abort("In import for '{}': 'version' and 'versionFrom' can not be both set".format(name), context=context)
         if version is None and version_from is None:
-            if not (in_subdir and importer_in_subdir):
+            if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite))):
                 abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
-            version = importer_version
+            version = importer.version()
         if urls is None:
             if not in_subdir:
-                if import_dict.get("subdir") is None and importer_in_subdir:
+                if import_dict.get("subdir") is None and importer.vc_dir != importer.dir:
                     warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
                     in_subdir = True
                 else:
@@ -6513,7 +6513,7 @@ class Suite(object):
                 if import_dict.get('ignore', False):
                     log("Ignoring '{}' on your platform ({}/{})".format(import_dict.get('name', '<unknown>'), get_os(), get_arch()))
                     continue
-                suite_import = SuiteImport.parse_specification(import_dict, context=self, importer_version=self.version(), dynamicImport=self.dynamicallyImported, importer_in_subdir=self.dir != self.vc_dir)
+                suite_import = SuiteImport.parse_specification(import_dict, context=self, importer=self, dynamicImport=self.dynamicallyImported)
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
                 if jdkProvidedSince and get_jdk(tag=DEFAULT_JDK_TAG).javaCompliance >= jdkProvidedSince:
                     _jdkProvidedSuites.add(suite_import.name)
@@ -15793,7 +15793,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.108.0")  # Once more with feeling
+version = VersionSpec("5.108.1")  # Little mx
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
