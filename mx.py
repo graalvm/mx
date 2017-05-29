@@ -3763,6 +3763,18 @@ class VC(object):
         """
         abort(self.kind + " update_to_branch is not implemented")
 
+    def is_release_from_tags(self, vcdir, prefix):
+        """
+        Returns True if the release version derived from VC tags matches the pattern <number>(.<number>)*.
+
+        :param str vcdir: a valid repository path
+        :param str prefix: the prefix
+        :return: True if release
+        :rtype: bool
+        """
+        _release_version = self.release_version_from_tags(vcdir=vcdir, prefix=prefix)
+        return True if _release_version and re.match(r'^[0-9]+[0-9.]+$', _release_version) else False
+
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
         Returns a release version derived from VC tags that match the pattern <prefix>-<number>(.<number>)*
@@ -6883,6 +6895,12 @@ class SourceSuite(Suite):
         Check whether there are pending changes in the source.
         """
         return self.vc.isDirty(self.vc_dir, abortOnError=abortOnError)
+
+    def is_release(self):
+        """
+        Returns True if the release tag from VC is known and is not a snapshot
+        """
+        return self.vc.is_release_from_tags(self.vc_dir, self.name)
 
     def release_version(self, snapshotSuffix='dev'):
         """
