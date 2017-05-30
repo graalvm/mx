@@ -13933,18 +13933,17 @@ def sclone(args):
 
     if args.source is None:
         # must be primary suite and dest is required
-        if _primary_suite is None:
+        if primary_suite() is None:
             abort('--source missing and no primary suite found')
         if args.dest is None:
             abort('--dest required when --source is not given')
-        source = _primary_suite.vc_dir
-        if _primary_suite.vc_dir != _primary_suite.dir:
-            subdir = os.path.relpath(_primary_suite.vc_dir, _primary_suite.dir)
+        source = primary_suite().vc_dir
+        if source != primary_suite().dir:
+            subdir = os.path.relpath(source, primary_suite().dir)
             if args.subdir and args.subdir != subdir:
-                abort('--subdir should be ' + subdir)
+                abort("--subdir should be '{}'".format(subdir))
             args.subdir = subdir
     else:
-        mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
         source = args.source
 
     if args.dest is not None:
@@ -13955,89 +13954,14 @@ def sclone(args):
             dest = dest[:-len('.git')]
 
     dest = os.path.abspath(dest)
-    # We can now set the primary dir for the suitemodel
-    _suitemodel.set_primary_dir(source)
     dest_dir = join(dest, args.subdir) if args.subdir else dest
-    _sclone(source, dest, dest_dir, None, args.no_imports, args.kind, primary=True, ignoreVersion=args.ignore_version, rev=args.revision)
-
-def _sclone(source, dest, dest_dir, suite_import, no_imports=False, vc_kind=None, manual=None, primary=False, ignoreVersion=False, importingSuite=None, rev=None):
-    rev = suite_import.version if suite_import is not None and suite_import.version is not None else rev
-    url_vcs = SuiteImport.get_source_urls(source, vc_kind)
-    if manual is not None:
-        assert len(url_vcs) > 0
-        revname = rev if rev else 'tip'
-        if suite_import.name in manual:
-            if manual[suite_import.name] == revname:
-                return None
-            resolved = _resolve_suite_version_conflict(suite_import.name, None, manual[suite_import.name], None, suite_import, importingSuite)
-            if not resolved:
-                return None
-            revname = resolved
-        log("Clone {} at revision {} into {}".format(' or '.join(("{} with {}".format(url_vc.url, url_vc.vc.kind) for url_vc in url_vcs)), revname, dest))
-        manual[suite_import.name] = revname
-        return None
-    for url_vc in url_vcs:
-        if url_vc.vc.clone(url_vc.url, rev=rev, dest=dest):
-            break
-
-    if not exists(dest):
-        if len(url_vcs) == 0:
-            reason = 'no url provided'
-            if suite_import.dynamicImport:
-                reason += ' for dynamic import. Dynamically imported suites should be cloned first (clone {} to {})'.format(suite_import.name, dest)
-        else:
-            reason = 'none of the urls worked'
-        warn("Could not clone {}: {}".format(suite_import.name, reason))
-        return None
-
+    source = mx_urlrewrites.rewriteurl(source)
+    vc = vc_system(args.kind)
+    vc.clone(source, dest=dest)
     mxDir = _is_suite_dir(dest_dir)
-    if mxDir is None:
-        warn(dest_dir + ' is not an mx suite')
-        return None
-
-    # create a Suite (without loading) to enable imports visitor
-    s = SourceSuite(mxDir, load=False, dynamicallyImported=suite_import.dynamicImport if suite_import else False, primary=primary)
-    if not no_imports:
-        s.visit_imports(_scloneimports_visitor, source=dest_dir, manual=manual, ignoreVersion=ignoreVersion)
-    return s
-
-def _scloneimports_visitor(s, suite_import, source, manual=None, ignoreVersion=False, **extra_args):
-    """
-    cloneimports visitor for Suite.visit_imports.
-    The destination information is encapsulated by 's'
-    """
-    _scloneimports(s, suite_import, source, manual, ignoreVersion)
-
-def _scloneimports_suitehelper(sdir, primary=False, dynamicallyImported=False):
-    mxDir = _is_suite_dir(sdir)
-    if mxDir is None:
-        abort(sdir + ' is not an mx suite')
-    else:
-        # create a Suite (without loading) to enable imports visitor
-        return SourceSuite(mxDir, primary=primary, load=False, dynamicallyImported=dynamicallyImported)
-
-def _scloneimports(s, suite_import, source, manual=None, ignoreVersion=False):
-    # clone first, then visit imports once we can locate them
-    importee_source, _ = _suitemodel.importee_dir(source, suite_import)
-    importee_dest, importee_dest_dir = _suitemodel.importee_dir(s.dir, suite_import, check_alternate=False)
-    if exists(importee_dest):
-        # already exists in the suite model, but may be wrong version
-        importee_suite = _scloneimports_suitehelper(importee_dest_dir, dynamicallyImported=suite_import.dynamicImport)
-        existingRevision = importee_suite.version()
-        if not ignoreVersion and existingRevision != suite_import.version:
-            resolved = _resolve_suite_version_conflict(suite_import.name, importee_suite, existingRevision, None, suite_import, s)
-            if resolved:
-                assert resolved != existingRevision
-                if manual:
-                    if suite_import.name not in manual or manual[suite_import.name] != resolved:
-                        log("Update {} to revision {} with {}".format(importee_dest, resolved, importee_suite.vc.kind))
-                        manual[suite_import.name] = resolved
-                else:
-                    importee_suite.vc.update(importee_dest, rev=resolved, mayPull=True)
-        importee_suite.visit_imports(_scloneimports_visitor, source=importee_dest, manual=manual, ignoreVersion=ignoreVersion)
-    else:
-        _sclone(importee_source, importee_dest, importee_dest_dir, suite_import, manual=manual, ignoreVersion=ignoreVersion, importingSuite=s)
-        # _clone handles the recursive visit of the new imports
+    if not mxDir:
+        abort("'{}' is not an mx suite".format(dest_dir))
+    _discover_suites(mxDir, load=False, register=False)
 
 
 @suite_context_free
@@ -14160,9 +14084,11 @@ def sforceimports(args):
         warn("'--strict-versions' argument is deprecated and ignored. For version conflict resolution, see mx's '--version-conflict-resolution' flag.")
     _discover_suites(primary_suite().mxDir, load=False, register=False, update_existing=True)
 
+
 def _spull_import_visitor(s, suite_import, update_versions, only_imports, update_all, no_update):
     """pull visitor for Suite.visit_imports"""
     _spull(s, suite(suite_import.name), suite_import, update_versions, only_imports, update_all, no_update)
+
 
 def _spull(importing_suite, imported_suite, suite_import, update_versions, only_imports, update_all, no_update):
     # suite_import is None if importing_suite is primary suite
@@ -15383,6 +15309,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         logvv(str(dt) + colorize(" [suite-discovery] ", color='green', stream=sys.stdout) + msg)
     _log_discovery("Starting discovery with primary dir " + primary_suite_dir)
     primary = SourceSuite(primary_suite_dir, load=False, primary=True)
+    _suitemodel.set_primary_dir(primary.dir)
     primary._register_url_rewrites()
     discovered = {}
     ancestor_names = {}
@@ -15691,8 +15618,7 @@ def main():
     should_load_suites = not (initial_command and initial_command in _no_suite_loading)
     should_discover_suites = not (initial_command and initial_command in _no_suite_discovery)
 
-    assert not should_load_suites or should_discover_suites
-    assert not (should_discover_suites and  is_suite_context_free)
+    assert not should_load_suites or should_discover_suites, initial_command
 
     primarySuiteMxDir = None
     if is_suite_context_free:
@@ -15703,7 +15629,6 @@ def main():
             _init_primary_suite(_mx_suite)
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
-            _suitemodel.set_primary_dir(dirname(primarySuiteMxDir))
             SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
 
             # We explicitly load the 'env' file of the primary suite now as it might
