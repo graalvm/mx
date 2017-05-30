@@ -15007,6 +15007,7 @@ _commands = {
     'sversions': [sversions, '[options]'],
     'supdate': [supdate, ''],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
+    'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'hg': [hg_command, '[options]'],
     'pylint': [pylint, ''],
     'java': [java_command, '[-options] class [args...]'],
@@ -15737,7 +15738,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.109.0")  # Ask only once
+version = VersionSpec("5.110.0")  # urlrewrite
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
