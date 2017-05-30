@@ -8522,7 +8522,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
     valueSeparator = os.pathsep if allowMultiple else None
-    ask_persist_env(varName, selected.home, valueSeparator)
+    varName = ask_persist_env(varName, selected.home, valueSeparator)
 
     os.environ[varName] = selected.home
 
@@ -8537,38 +8537,50 @@ def ask_persist_env(varName, value, valueSeparator=None):
         return
 
     envPath = join(_primary_suite.mxDir, 'env')
-    if is_interactive() and ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y'):
-        envLines = []
-        if exists(envPath):
-            with open(envPath) as fp:
-                append = True
-                for line in fp:
-                    if line.rstrip().startswith(varName):
-                        _, currentValue = line.split('=', 1)
-                        currentValue = currentValue.strip()
-                        if not valueSeparator and currentValue:
-                            if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, value), 'n'):
-                                return
-                            else:
-                                line = varName + '=' + value + os.linesep
-                        else:
-                            line = line.rstrip()
-                            if currentValue:
-                                line += valueSeparator
-                            line += value + os.linesep
-                        append = False
-                    if not line.endswith(os.linesep):
-                        line += os.linesep
-                    envLines.append(line)
+    if is_interactive():
+        persist = False
+        if varName == 'EXTRA_JAVA_HOMES' and not os.environ.has_key('JAVA_HOME'):
+            persist = ask_question('Persist this setting by saving it in {0} as JAVA_HOME, EXTRA_JAVA_HOMES or not'.format(envPath), '[jen]', 'j')
+            if persist == 'n':
+                persist = False
+            elif persist == 'j':
+                varName = 'JAVA_HOME'
         else:
-            append = True
+            persist = ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y')
 
-        if append:
-            envLines.append(varName + '=' + value + os.linesep)
+        if persist:
+            envLines = []
+            if exists(envPath):
+                with open(envPath) as fp:
+                    append = True
+                    for line in fp:
+                        if line.rstrip().startswith(varName):
+                            _, currentValue = line.split('=', 1)
+                            currentValue = currentValue.strip()
+                            if not valueSeparator and currentValue:
+                                if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, value), 'n'):
+                                    return
+                                else:
+                                    line = varName + '=' + value + os.linesep
+                            else:
+                                line = line.rstrip()
+                                if currentValue:
+                                    line += valueSeparator
+                                line += value + os.linesep
+                            append = False
+                        if not line.endswith(os.linesep):
+                            line += os.linesep
+                        envLines.append(line)
+            else:
+                append = True
 
-        with open(envPath, 'w') as fp:
-            for line in envLines:
-                fp.write(line)
+            if append:
+                envLines.append(varName + '=' + value + os.linesep)
+
+            with open(envPath, 'w') as fp:
+                for line in envLines:
+                    fp.write(line)
+    return varName
 
 _os_jdk_locations = {
     'darwin': {
@@ -15725,7 +15737,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.108.1")  # Little mx
+version = VersionSpec("5.109.0")  # Ask only once
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
