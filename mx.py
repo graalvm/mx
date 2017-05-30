@@ -13923,6 +13923,9 @@ def sclone(args):
     parser.add_argument('--ignore-version', action='store_true', help='ignore version mismatch for existing suites')
     parser.add_argument('nonKWArgs', nargs=REMAINDER, metavar='source [dest]...')
     args = parser.parse_args(args)
+
+    warn("The sclone command is deprecated and is scheduled for removal.")
+
     # check for non keyword args
     if args.source is None:
         args.source = _kwArg(args.nonKWArgs)
@@ -14135,6 +14138,8 @@ def spull(args):
     parser.add_argument('--no-update', action='store_true', help='only pull, without updating')
     args = parser.parse_args(args)
 
+    warn("The spull command is deprecated and is scheduled for removal.")
+
     if args.update_all and not args.update_versions:
         abort('--update-all can only be used in conjuction with --update-versions')
 
@@ -14159,6 +14164,8 @@ def sincoming(args):
     parser = ArgumentParser(prog='mx sincoming')
     args = parser.parse_args(args)
 
+    warn("The sincoming command is deprecated and is scheduled for removal.")
+
     _sincoming(primary_suite(), None)
 
 
@@ -14177,6 +14184,8 @@ def _hg_command(s, suite_import, **extra_args):
 @no_suite_loading
 def hg_command(args):
     """Run a Mercurial command in every suite"""
+
+    warn("The hg command is deprecated and is scheduled for removal.")
     _hg_command(primary_suite(), None, args=args)
 
 
@@ -14195,6 +14204,8 @@ def stip(args):
     """check tip for primary suite and all imports"""
     parser = ArgumentParser(prog='mx stip')
     args = parser.parse_args(args)
+
+    warn("The tip command is deprecated and is scheduled for removal.")
 
     _stip(primary_suite(), None)
 
@@ -14833,11 +14844,6 @@ def show_version(args):
         return
 
     print version
-    vc = VC.get_vc(_mx_home, abortOnError=False)
-    if isinstance(vc, HgConfig):
-        out = vc.hg_command(_mx_home, ['id', '-i'], abortOnError=False)
-        if out:
-            print 'hg:', out
 
 @suite_context_free
 def update(args):
