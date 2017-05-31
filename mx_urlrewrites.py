@@ -124,6 +124,11 @@ def rewriteurl(url):
             return res
     return url
 
+def urlrewrite_cli(args):
+    """rewrites the given URL using MX_URLREWRITES"""
+    assert len(args) == 1
+    print rewriteurl(args[0])
+
 class URLRewrite(object):
     """
     Represents a regular expression based rewrite rule that can be applied to a URL.
