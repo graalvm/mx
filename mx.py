@@ -4816,19 +4816,37 @@ class GitConfig(VC):
         else:
             return False
 
-    def _path(self, vcdir, name, abortOnError=True):
+    def _branch_remote(self, vcdir, branch, abortOnError=True):
         out = OutputCapture()
-        rc = self.run(['git', 'remote', '-v'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
+        rc = self.run(['git', 'config', '--get', 'branch.' + branch + '.remote'], cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
         if rc == 0:
-            output = out.data
-            suffix = '({0})'.format(name)
-            for line in output.split(os.linesep):
-                line = line.strip()
-                if line.startswith('origin') and line.endswith(suffix):
-                    return line.split()[1]
-        if abortOnError:
-            abort("no '{0}' path for repository {1}".format(name, vcdir))
+            return out.data.rstrip('\r\n')
+        assert not abortOnError
         return None
+
+    def _remote_url(self, vcdir, remote, push=False, abortOnError=True):
+        cmd = ['git', 'remote', 'get-url']
+        if push:
+            cmd += ['--push']
+        cmd += [remote]
+        out = OutputCapture()
+        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
+        if rc == 0:
+            return out.data.rstrip('\r\n')
+        assert not abortOnError
+        return None
+
+    def _path(self, vcdir, name, abortOnError=True):
+        branch = self.active_branch(vcdir, abortOnError=False)
+        if not branch:
+            branch = 'master'
+
+        remote = self._branch_remote(vcdir, branch, abortOnError=False)
+        if not remote and branch != 'master':
+            remote = self._branch_remote(vcdir, 'master', abortOnError=False)
+        if not remote:
+            remote = 'origin'
+        return self._remote_url(vcdir, remote, name == 'push', abortOnError=abortOnError)
 
     def default_push(self, vcdir, abortOnError=True):
         """
@@ -15749,7 +15767,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.5")  # GR-4315
+version = VersionSpec("5.110.6")  # Functional wrap
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
