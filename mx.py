@@ -15244,6 +15244,7 @@ def _init_primary_suite(s):
     assert not _primary_suite
     _primary_suite = s
     _primary_suite.primary = True
+    os.environ['MX_PRIMARY_SUITE_PATH'] = s.dir
     for deferrable in _primary_suite_deferrables:
         deferrable()
 
@@ -15670,11 +15671,23 @@ def main():
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
     should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
+    optional_suite_context = not initial_command
 
     assert not should_load_suites or should_discover_suites, initial_command
 
+    def _setup_binary_suites():
+        global _binary_suites
+        bs = os.environ.get('MX_BINARY_SUITES')
+        if bs is not None:
+            if len(bs) > 0:
+                _binary_suites = bs.split(',')
+            else:
+                _binary_suites = []
+
+    SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
     primarySuiteMxDir = None
     if is_suite_context_free:
+        _setup_binary_suites()
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
     else:
         primarySuiteMxDir = _findPrimarySuiteMxDir()
@@ -15682,8 +15695,6 @@ def main():
             _init_primary_suite(_mx_suite)
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
-            SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
-
             # We explicitly load the 'env' file of the primary suite now as it might
             # influence the suite loading logic.  During loading of the sub-suites their
             # environment variable definitions are collected and will be placed into the
@@ -15691,32 +15702,27 @@ def main():
             # are seen.  The primary suite must have everything required for loading
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
-            global _binary_suites
-            bs = os.environ.get('MX_BINARY_SUITES')
-            if bs is not None:
-                if len(bs) > 0:
-                    _binary_suites = bs.split(',')
-                else:
-                    _binary_suites = []
+            _setup_binary_suites()
             if should_discover_suites:
                 primary = _discover_suites(primarySuiteMxDir, load=should_load_suites)
             else:
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
             _init_primary_suite(primary)
         else:
-            abort('no primary suite found')
+            if not optional_suite_context:
+                abort('no primary suite found')
 
         for envVar in _loadedEnv.keys():
             value = _loadedEnv[envVar]
             if os.environ.get(envVar) != value:
                 logv('Setting environment variable %s=%s' % (envVar, value))
                 os.environ[envVar] = value
-        if _opts.java_home:
-            logv('Setting environment variable %s=%s from --java-home' % ('JAVA_HOME', _opts.java_home))
-            os.environ['JAVA_HOME'] = _opts.java_home
 
         commandAndArgs = _argParser._parse_cmd_line(_opts, firstParse=False)
-        os.environ['MX_PRIMARY_SUITE_PATH'] = dirname(primarySuiteMxDir)
+
+    if _opts.java_home:
+        logv('Setting environment variable %s=%s from --java-home' % ('JAVA_HOME', _opts.java_home))
+        os.environ['JAVA_HOME'] = _opts.java_home
 
     if _opts.mx_tests:
         MXTestsSuite()
