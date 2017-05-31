@@ -1434,9 +1434,12 @@ class BenchmarkExecutor(object):
             if vc is None:
                 return {}
             info = vc.parent_info(mxsuite.dir)
+            url = vc.default_pull(mxsuite.dir, abortOnError=False)
+            if not url:
+                url = "unknown"
             return {
               prefix + "commit.rev": vc.parent(mxsuite.dir),
-              prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
+              prefix + "commit.repo-url": url,
               prefix + "commit.author": info["author"],
               prefix + "commit.author-ts": info["author-ts"],
               prefix + "commit.committer": info["committer"],
