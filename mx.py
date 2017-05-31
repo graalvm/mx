@@ -12844,6 +12844,10 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True):
         fsckprojects([])
 
 
+def _intellij_library_file_name(library_name):
+    return library_name.replace('.', '_').replace('-', '_') + '.xml'
+
+
 def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
     if isinstance(s, BinarySuite):
         return
@@ -13033,7 +13037,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             libraryXml.close('library')
             libraryXml.close('component')
 
-            libraryFile = join(librariesDirectory, name + '.xml')
+            libraryFile = join(librariesDirectory, _intellij_library_file_name(name))
             update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
 
         # Setup the libraries that were used above
@@ -13365,13 +13369,15 @@ def fsckprojects(args):
         if exists(librariesDirectory):
             neededLibraries = set()
             for p in suite.projects_recursive():
+                if not p.isJavaProject():
+                    continue
                 def processDep(dep, edge):
                     if dep is p:
                         return
                     if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
-            neededLibraryFiles = frozenset([l.name + '.xml' for l in neededLibraries])
+            neededLibraryFiles = frozenset([_intellij_library_file_name(l.name) for l in neededLibraries])
             existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
             for library_file in existingLibraryFiles - neededLibraryFiles:
                 file_path = join(librariesDirectory, library_file)
@@ -15739,7 +15745,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.2")  # Comprehensive river
+version = VersionSpec("5.110.3")  # Smart deviation
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
