@@ -13065,7 +13065,8 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         if jdk_libraries:
             log("Setting up JDK libraries using {0}".format(jdk))
         for library in jdk_libraries:
-            make_library(library.name, os.path.relpath(library.classpath_repr(jdk), s.dir), os.path.relpath(library.get_source_path(jdk), s.dir))
+            if library.classpath_repr(jdk) is not None:
+                make_library(library.name, os.path.relpath(library.classpath_repr(jdk), s.dir), os.path.relpath(library.get_source_path(jdk), s.dir))
 
         # Set annotation processor profiles up, and link them to modules in compiler.xml
         compilerXml = XMLDoc()
@@ -15748,7 +15749,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.4")  # Back on track!
+version = VersionSpec("5.110.5")  # GR-4315
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
