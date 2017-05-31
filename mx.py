@@ -3504,7 +3504,7 @@ class Library(BaseLibrary, ClasspathDependency):
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
     def _comparison_key(self):
-        return self.sha1
+        return (self.sha1, self.name)
 
     def get_urls(self):
         return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
