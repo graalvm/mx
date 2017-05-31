@@ -8534,7 +8534,7 @@ def ask_persist_env(varName, value, valueSeparator=None):
             assert _primary_suite
             ask_persist_env(varName, value, valueSeparator)
         _primary_suite_deferrables.append(_deferrable)
-        return
+        return varName
 
     envPath = join(_primary_suite.mxDir, 'env')
     if is_interactive():
@@ -8559,7 +8559,7 @@ def ask_persist_env(varName, value, valueSeparator=None):
                             currentValue = currentValue.strip()
                             if not valueSeparator and currentValue:
                                 if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, value), 'n'):
-                                    return
+                                    return varName
                                 else:
                                     line = varName + '=' + value + os.linesep
                             else:
