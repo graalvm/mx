@@ -15878,6 +15878,24 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     return primary
 
 
+def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
+    """ Install a socks proxy handler so that all urllib2 requests are routed through the socks proxy. """
+    try:
+        import socks
+        from sockshandler import SocksiPyHandler
+    except ImportError:
+        warn('WARNING: Failed to load PySocks module. Try installing it with `pip install PySocks`.')
+        return
+    if proxytype == 4:
+        proxytype = socks.SOCKS4
+    elif proxytype == 5:
+        proxytype = socks.SOCKS5
+    else:
+        abort("Unknown Socks Proxy type {0}".format(proxytype))
+
+    opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    urllib2.install_opener(opener)
+
 def main():
     # make sure logv, logvv and warn work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
@@ -15890,6 +15908,34 @@ def main():
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
 
+    def _get_env_upper_or_lowercase(name):
+        return os.environ.get(name, os.environ.get(name.upper()))
+
+    def _check_socks_proxy():
+        """ Install a Socks Proxy Handler if the environment variable is set. """
+        def _read_socks_proxy_config(proxy_raw):
+            s = proxy_raw.split(':')
+            if len(s) == 1:
+                return s[0], None
+            if len(s) == 2:
+                return s[0], int(s[1])
+            abort("Can not parse Socks proxy configuration: {0}".format(proxy_raw))
+
+        def _load_socks_env():
+            proxy = _get_env_upper_or_lowercase('socks5_proxy')
+            if proxy:
+                return proxy, 5
+            proxy = _get_env_upper_or_lowercase('socks4_proxy')
+            if proxy:
+                return proxy, 4
+            return None, -1
+
+        # check for socks5_proxy/socks4_proxy env variable
+        socksproxy, socksversion = _load_socks_env()
+        if socksproxy:
+            socksaddr, socksport = _read_socks_proxy_config(socksproxy)
+            _install_socks_proxy_opener(socksversion, socksaddr, socksport)
+
     # Set the https proxy environment variable from the http proxy environment
     # variable if the former is not explicitly specified but the latter is and
     # vice versa.
@@ -15901,6 +15947,9 @@ def main():
             os.environ['https_proxy'] = httpProxy
     elif httpsProxy:
         os.environ['http_proxy'] = httpsProxy
+    else:
+        # only check for socks proxy if no http(s) has been specified
+        _check_socks_proxy()
 
     _argParser._parse_cmd_line(_opts, firstParse=True)
 
