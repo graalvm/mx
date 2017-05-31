@@ -15634,8 +15634,8 @@ def main():
 
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
     is_suite_context_free = initial_command and initial_command in _suite_context_free
-    should_load_suites = not (initial_command and initial_command in _no_suite_loading)
-    should_discover_suites = not (initial_command and initial_command in _no_suite_discovery)
+    should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
+    should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
 
     assert not should_load_suites or should_discover_suites, initial_command
 
@@ -15738,7 +15738,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.0")  # urlrewrite
+version = VersionSpec("5.110.1")  # Warning Volcano
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
