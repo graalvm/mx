@@ -100,6 +100,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def makePylintVCInputsAbsolute(self):
+        """
+        Makes pylint input paths discovered by VC absolute.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -212,6 +218,14 @@ class MxCompatibility5680(MxCompatibility5590):#pylint: disable=too-many-ancesto
         return mx.VersionSpec("5.68.0")
 
     def excludeDisableJavaDebuggging(self):
+        return True
+
+class MxCompatibility51104(MxCompatibility5680):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.110.4")
+
+    def makePylintVCInputsAbsolute(self):
         return True
 
 def minVersion():

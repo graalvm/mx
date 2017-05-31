@@ -10526,6 +10526,9 @@ def pylint(args):
                 continue
             suite_location = os.path.relpath(suite.dir, suite.vc_dir)
             files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
+            compat = suite.getMxCompatibility()
+            if compat.makePylintVCInputsAbsolute():
+                files = [join(suite.vc_dir, f) for f in files]
             for pyfile in files:
                 if exists(pyfile):
                     pyfiles.append(pyfile)
@@ -15745,7 +15748,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.3")  # Smart deviation
+version = VersionSpec("5.110.4")  # Back on track!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
