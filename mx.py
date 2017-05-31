@@ -13975,7 +13975,8 @@ def sclone(args):
     vc.clone(source, dest=dest)
     mxDir = _is_suite_dir(dest_dir)
     if not mxDir:
-        abort("'{}' is not an mx suite".format(dest_dir))
+        warn("'{}' is not an mx suite".format(dest_dir))
+        return
     _discover_suites(mxDir, load=False, register=False)
 
 
@@ -15738,7 +15739,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.1")  # Warning Volcano
+version = VersionSpec("5.110.2")  # Comprehensive river
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
