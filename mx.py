@@ -15599,12 +15599,12 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
                 _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
-        cloned_during_discovery = [d for (d, v, _) in original_version.items() if v == VersionType.CLONED]
+        cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
         if cloned_during_discovery:
             log_error("There was an error, removing " + ', '.join(("'" + d + "'" for d in cloned_during_discovery)))
             for d in cloned_during_discovery:
                 shutil.rmtree(d)
-        for d, t, v in original_version.items():
+        for d, (t, v) in original_version.items():
             if t == VersionType.REVISION:
                 log_error("Reverting '{}' to version '{}'".format(d, v))
                 VC.get_vc(d).update(d, v)
@@ -15767,7 +15767,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.110.6")  # Functional wrap
+version = VersionSpec("5.110.7")  # Quarter trot
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
