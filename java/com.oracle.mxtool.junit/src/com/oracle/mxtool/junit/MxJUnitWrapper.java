@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,6 +49,7 @@ import org.junit.runner.Request;
 import org.junit.runner.Result;
 import org.junit.runner.Runner;
 import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunListener;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.ParentRunner;
 import org.junit.runners.model.RunnerScheduler;
@@ -215,6 +217,9 @@ public class MxJUnitWrapper {
         }
         if (gcAfterTest) {
             mxListener = new GCAfterTestDecorator(mxListener);
+        }
+        for (RunListener p : ServiceLoader.load(RunListener.class)) {
+            junitCore.addListener(p);
         }
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
