@@ -15879,9 +15879,10 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
 
 def main():
-    # make sure logv and logvv work as early as possible
+    # make sure logv, logvv and warn work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
+    _opts.__dict__['warn'] = '--no-warning' not in sys.argv
     global _vc_systems
     _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
 
