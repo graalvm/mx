@@ -12021,7 +12021,12 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         files += _processorjars_suite(suite)
 
     for p in suite.projects:
-        p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
+        code = p._eclipseinit.func_code
+        if 'absolutePaths' in code.co_varnames[:code.co_argcount]:
+            p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
+        else:
+            # Support legacy signature
+            p._eclipseinit(files, libFiles)
 
     jdk = get_jdk(tag='default')
     _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
@@ -15767,7 +15772,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.111.0")  # GR-4346
+version = VersionSpec("5.111.1")  # GR-4364
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
