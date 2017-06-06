@@ -2983,6 +2983,10 @@ class NativeBuildTask(ProjectBuildTask):
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
         cmdline = [gmake_cmd()]
+        if _opts.verbose:
+            # The Makefiles should have logic to disable the @ sign
+            # so that all executed commands are visible.
+            cmdline += ["MX_VERBOSE=y"]
         if hasattr(self.subject, "vpath") and self.subject.vpath:
             env['VPATH'] = self.subject.dir
             cwd = join(self.subject.suite.dir, self.subject.getOutput())
@@ -15793,7 +15797,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.111.3")  # Furry Friend
+version = VersionSpec("5.111.4")  # Furry Enemy
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
