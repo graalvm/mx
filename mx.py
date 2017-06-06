@@ -1565,13 +1565,23 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=False):
         Dependency.__init__(self, suite, name, theLicense)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
         self.workingSets = workingSets
         self.dir = d
+        self.isTestProject = isTestProject
+        if self.isTestProject == None:
+            # The suite doesn't specify whether this is a test suite.  By default,
+            # any project ending with .test is considered a test project.  Prior
+            # to mx version 5.114.0, projects ending in .jtt are also treated this
+            # way but starting with the version any non-standard names must be
+            # explicitly marked as test projects.
+            self.isTestProject = self.name.endswith('.test')
+            if not self.isTestProject and not self.suite.getMxCompatibility().disableImportOfTestProjects():
+                self.isTestProject = self.name.endswith('.jtt')
 
         # Create directories for projects that don't yet exist
         ensure_dir_exists(d)
@@ -1696,7 +1706,7 @@ class Project(Dependency):
         pass
 
     def is_test_project(self):
-        return self.name.endswith('.test')
+        return self.isTestProject
 
 
 class ProjectBuildTask(BuildTask):
@@ -1792,8 +1802,8 @@ class MavenProject(Project, ClasspathDependency):
         return join(self.suite.dir, self.sourceDirs[0])
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, isTestProject=False):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=isTestProject)
         ClasspathDependency.__init__(self)
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
@@ -1808,6 +1818,11 @@ class JavaProject(Project, ClasspathDependency):
         for ap in self.declaredAnnotationProcessors:
             if not ap.isDistribution() and not ap.isLibrary():
                 abort('annotation processor dependency must be a distribution or a library: ' + ap.name, context=self)
+
+        if self.suite.getMxCompatibility().disableImportOfTestProjects() and not self.is_test_project():
+            for dep in self.deps:
+                if isinstance(dep, Project) and dep.is_test_project():
+                    abort('Non-test project {} can not depend on the test project {}'.format(self.name, dep.name))
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
@@ -2189,9 +2204,6 @@ class JavaProject(Project, ClasspathDependency):
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
         return getattr(self, cache)
-
-    def is_test_project(self):
-        return super(JavaProject, self).is_test_project() or self.name.endswith('.jtt')
 
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk, requiredCompliance):
@@ -2935,8 +2947,8 @@ Additional attributes:
   buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject)
         self.results = results
         self.output = output
         self.vpath = False
@@ -7008,15 +7020,19 @@ class SourceSuite(Suite):
                 else:
                     d = join(self.dir, subDir, name)
                 native = attrs.pop('native', False)
+
+
+                isTestProject = attrs.pop('isTestProject', None)
+
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'results', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, isTestProject=isTestProject)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, isTestProject=isTestProject)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -12979,7 +12995,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
-                    log("Ignoring dependency from {} to {}".format(proj.name, dep.name))
+                    logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
             p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
@@ -13078,7 +13094,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             libraryXml.close('component')
 
             libraryFile = join(librariesDirectory, _intellij_library_file_name(name))
-            update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
+            return update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
 
         # Setup the libraries that were used above
         for library in libraries:
@@ -13099,11 +13115,13 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             make_library(library.name, path, sourcePath)
 
         jdk = get_jdk()
-        if jdk_libraries:
-            log("Setting up JDK libraries using {0}".format(jdk))
+        updated = False
         for library in jdk_libraries:
             if library.classpath_repr(jdk) is not None:
-                make_library(library.name, os.path.relpath(library.classpath_repr(jdk), s.dir), os.path.relpath(library.get_source_path(jdk), s.dir))
+                if make_library(library.name, os.path.relpath(library.classpath_repr(jdk), s.dir), os.path.relpath(library.get_source_path(jdk), s.dir)):
+                    updated = True
+        if jdk_libraries and updated:
+            log("Setting up JDK libraries using {0}".format(jdk))
 
         # Set annotation processor profiles up, and link them to modules in compiler.xml
         compilerXml = XMLDoc()
@@ -13286,8 +13304,10 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 artifactXML.close('options')
                 artifactXML.close('properties')
                 artifactXML.open('root', attributes={'id': 'root'})
-                for javaProject in [dep for dep in dist.deps if dep.isJavaProject()]:
+                for javaProject in [dep for dep in dist.archived_deps() if dep.isJavaProject()]:
                     artifactXML.element('element', attributes={'id': 'module-output', 'name': javaProject.name})
+                for javaProject in [dep for dep in dist.deps if dep.isLibrary() or dep.isDistribution()]:
+                    artifactXML.element('element', attributes={'id': 'artifact', 'artifact-name': javaProject.name})
                 artifactXML.close('root')
                 artifactXML.close('artifact')
                 artifactXML.close('component')
@@ -15714,7 +15734,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.112.5")  # Little mx
+version = VersionSpec("5.113.0")  # Furry Enemy
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
