@@ -215,15 +215,26 @@ def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
 
 
-# Names of commands that do not need suites loaded.
-_suite_context_free = ['init', 'help', 'version']
+# Names of commands that don't need a primary suite.
+_suite_context_free = ['init', 'version']
 
 
 def suite_context_free(func):
     """
-    Decorator for commands that do not need suites loaded.
+    Decorator for commands that don't need a primary suite.
     """
     _suite_context_free.append(func.__name__)
+    return func
+
+# Names of commands that don't need a primary suite but will use one if it can be found.
+_optional_suite_context = ['help']
+
+
+def optional_suite_context(func):
+    """
+    Decorator for commands that don't need a primary suite but will use one if it can be found.
+    """
+    _optional_suite_context.append(func.__name__)
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
@@ -15671,7 +15682,7 @@ def main():
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
     should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
-    optional_suite_context = not initial_command
+    is_optional_suite_context = not initial_command or initial_command in _optional_suite_context
 
     assert not should_load_suites or should_discover_suites, initial_command
 
@@ -15709,7 +15720,7 @@ def main():
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
             _init_primary_suite(primary)
         else:
-            if not optional_suite_context:
+            if not is_optional_suite_context:
                 abort('no primary suite found')
 
         for envVar in _loadedEnv.keys():
@@ -15778,7 +15789,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.111.1")  # GR-4364
+version = VersionSpec("5.111.2")  # Unruly chin
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
