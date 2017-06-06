@@ -3278,6 +3278,10 @@ class ResourceLibrary(BaseLibrary):
         sha1path = path + '.sha1'
         return not _check_file_with_sha1(path, self.sha1, sha1path)
 
+    def _comparison_key(self):
+        return (self.sha1, self.name)
+
+
 class JreLibrary(BaseLibrary, ClasspathDependency):
     """
     A library jar provided by the Java Runtime Environment (JRE).
@@ -15789,7 +15793,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.111.2")  # Unruly chin
+version = VersionSpec("5.111.3")  # Furry Friend
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
