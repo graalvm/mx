@@ -137,4 +137,5 @@ class MicrobenchExecutor(object):
         return args, vmArgs
 
 def microbench(args):
+    """run JMH microbenchmark projects"""
     get_microbenchmark_executor().microbench(args)
