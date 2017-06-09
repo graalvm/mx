@@ -13640,10 +13640,14 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         moduleXml.element('exclude-output')
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
+        for d in os.listdir(s.mxDir):
+            if isdir(join(s.mxDir, d)):
+                moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
-        processes_suites = set([s.name])
+        processes_suites = {s.name}
+
         def _mx_projects_suite(visited_suite, suite_import):
             if suite_import.name in processes_suites:
                 return
@@ -16544,7 +16548,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.1")  # GR-7107
+version = VersionSpec("5.131.2")  # Team 17
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
