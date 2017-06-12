@@ -6061,7 +6061,8 @@ class SuiteImport:
         if version is None and version_from is None:
             if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite))):
                 abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
-            suite_dir = join(context.vc_dir, name)
+            if importer.isSourceSuite():
+                suite_dir = join(importer.vc_dir, name)
             version = importer.version()
         if urls is None:
             if not in_subdir:
