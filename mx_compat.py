@@ -106,6 +106,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def disableImportOfTestProjects(self):
+        """
+        Requires that test projects can only be imported by test projects.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -226,6 +232,14 @@ class MxCompatibility51104(MxCompatibility5680):#pylint: disable=too-many-ancest
         return mx.VersionSpec("5.110.4")
 
     def makePylintVCInputsAbsolute(self):
+        return True
+
+class MxCompatibility51120(MxCompatibility51104):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.113.0")
+
+    def disableImportOfTestProjects(self):
         return True
 
 def minVersion():
