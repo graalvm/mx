@@ -55,9 +55,19 @@ verifylibraryurls : {
   timelimit : "10:00"
 }
 
+downstream-truffleruby-binary-truffle: {
+  downloads: ${downloads.java}
+  run: [
+    [export, "MX_BINARY_SUITES=truffle"],
+    ["./mx", testdownstream, --repo, ["./mx", urlrewrite, "https://github.com/graalvm/truffleruby.git"], --mx-command, "ruby_testdownstream_hello"],
+  ]
+  timelimit : "10:00"
+}
+
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
+  ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
 ]
