@@ -5903,6 +5903,8 @@ class SuiteModel:
 
         if not exists(searchDir):
             return None
+
+        found = []
         for dd in os.listdir(searchDir):
             if suite_import.in_subdir:
                 candidate = join(searchDir, dd, suite_import.name)
@@ -5910,7 +5912,14 @@ class SuiteModel:
                 candidate = join(searchDir, dd)
             sd = _is_suite_dir(candidate, _mxDirName(suite_import.name))
             if sd is not None:
-                return sd
+                found.append(sd)
+
+        if len(found) == 0:
+            return None
+        elif len(found) == 1:
+            return found[0]
+        else:
+            abort("Multiple suites match the import {}:\n{}".format(suite_import.name, "\n".join(found)))
 
     def _check_exists(self, suite_import, path, check_alternate=True):
         if check_alternate and suite_import.urlinfos is not None and not exists(path):
@@ -15734,7 +15743,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.113.0")  # Furry Enemy
+version = VersionSpec("5.114.0")  # Strict mx
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
