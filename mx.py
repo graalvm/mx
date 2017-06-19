@@ -11946,23 +11946,8 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if files:
         files.append(projectFile)
 
-    settingsDir = join(p.dir, ".settings")
-    ensure_dir_exists(settingsDir)
-
     # copy a possibly modified file to the project's .settings directory
-    for name, sources in p.eclipse_settings_sources().iteritems():
-        out = StringIO.StringIO()
-        print >> out, '# GENERATED -- DO NOT EDIT'
-        for source in sources:
-            print >> out, '# Source:', source
-            with open(source) as f:
-                print >> out, f.read()
-        content = out.getvalue().replace('${javaCompliance}', str(eclipseJavaCompliance))
-        if processors:
-            content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
-        update_file(join(settingsDir, name), content)
-        if files:
-            files.append(join(settingsDir, name))
+    _copy_eclipse_settings(p, files)
 
     if processors:
         out = XMLDoc()
@@ -12653,6 +12638,8 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         apSourceOutRef = ""
     ensure_dir_exists(p.output_dir())
 
+    _copy_eclipse_settings(p)
+
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
 annotation.processing.enabled.in.editor=""" + annotationProcessorEnabled + """
@@ -12661,6 +12648,18 @@ annotation.processing.processors.list=
 annotation.processing.run.all.processors=true
 application.title=""" + p.name + """
 application.vendor=mx
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.eclipseFormatterActiveProfile=
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.eclipseFormatterEnabled=true
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.eclipseFormatterLocation=
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.enableFormatAsSaveAction=true
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.linefeed=
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.preserveBreakPoints=true
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.SaveActionModifiedLinesOnly=false
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.showNotifications=false
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.sourcelevel=
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.useProjectPref=true
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.useProjectSettings=true
+auxiliary.de-markiewb-netbeans-plugins-eclipse-formatter.eclipseFormatterActiveProfile=
 auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsEnabled=true
 auxiliary.org-netbeans-spi-editor-hints-projects.perProjectHintSettingsFile=nbproject/cfg_hints.xml
 build.classes.dir=${build.dir}
@@ -14784,6 +14783,31 @@ def maven_install(args):
         for dist in arcdists:
             print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
 
+def _copy_eclipse_settings(p, files=None):
+    eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
+    processors = p.annotation_processors()
+
+    settingsDir = join(p.dir, ".settings")
+    ensure_dir_exists(settingsDir)
+
+    for name, sources in p.eclipse_settings_sources().iteritems():
+        out = StringIO.StringIO()
+        print >> out, '# GENERATED -- DO NOT EDIT'
+        for source in sources:
+            print >> out, '# Source:', source
+            with open(source) as f:
+                print >> out, f.read()
+        if eclipseJavaCompliance:
+            content = out.getvalue().replace('${javaCompliance}', str(eclipseJavaCompliance))
+        else:
+            content = out.getvalue()
+        if processors:
+            content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
+        update_file(join(settingsDir, name), content)
+        if files:
+            files.append(join(settingsDir, name))
+
+
 def ensure_dir_exists(path, mode=None):
     """
     Ensures all directories on 'path' exists, creating them first if necessary with os.makedirs().
@@ -15743,7 +15767,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.1")  # JMH FTW
+version = VersionSpec("5.114.2")  # JST AHY
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
