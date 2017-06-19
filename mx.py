@@ -10255,6 +10255,8 @@ def build(args, parser=None):
         if len(failed):
             for t in failed:
                 log_error('{0} failed'.format(t))
+            for daemon in daemons.itervalues():
+                daemon.shutdown()
             abort('{0} build tasks failed'.format(len(failed)))
 
     else:  # not parallelize
