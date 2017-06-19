@@ -11324,14 +11324,17 @@ def _source_locator_memento(deps, jdk=None):
 
     javaCompliance = None
 
+    sources = []
     for dep in deps:
         if dep.isLibrary():
             if hasattr(dep, 'eclipse.container'):
                 memento = XMLDoc().element('classpathContainer', {'path' : getattr(dep, 'eclipse.container')}).xml(standalone='no')
                 slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
+                sources.append(getattr(dep, 'eclipse.container') +' [classpathContainer]')
             elif dep.get_source_path(resolve=True):
                 memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
                 slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
+                sources.append(dep.get_source_path(resolve=True) + ' [externalArchive]')
         elif dep.isJdkLibrary():
             if jdk is None:
                 jdk = get_jdk(tag='default')
@@ -11340,27 +11343,33 @@ def _source_locator_memento(deps, jdk=None):
                 if os.path.isdir(path):
                     memento = XMLDoc().element('directory', {'nest' : 'false', 'path' : path}).xml(standalone='no')
                     slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.directory'})
+                    sources.append(path + ' [directory]')
                 else:
                     memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : path}).xml(standalone='no')
                     slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
+                    sources.append(path + ' [externalArchive]')
         elif dep.isProject():
             if not dep.isJavaProject():
                 continue
             memento = XMLDoc().element('javaProject', {'name' : dep.name}).xml(standalone='no')
             slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.javaProject'})
+            sources.append(dep.name + ' [javaProject]')
             if javaCompliance is None or dep.javaCompliance > javaCompliance:
                 javaCompliance = dep.javaCompliance
 
     if javaCompliance:
-        memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(javaCompliance)}).xml(standalone='no')
+        jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(javaCompliance)
+        memento = XMLDoc().element('classpathContainer', {'path' : jdkContainer}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
+        sources.append(jdkContainer + ' [classpathContainer]')
     else:
         memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
+        sources.append('org.eclipse.jdt.launching.JRE_CONTAINER [classpathContainer]')
 
     slm.close('sourceContainers')
     slm.close('sourceLookupDirector')
-    return slm
+    return slm, sources
 
 def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
@@ -11368,7 +11377,11 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
     if deps is None:
         deps = []
-    slm = _source_locator_memento(deps, jdk=jdk)
+    slm, sources = _source_locator_memento(deps, jdk=jdk)
+    # Without an entry for the "Project:" field in an attach configuration, Eclipse Neon has problems connecting
+    # to a waiting VM and leaves it hanging. Putting any valid project entry in the field seems to solve it.
+    firstProjectName = suite.projects[0].name if suite.projects else ''
+
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_id', 'value' : 'org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector'})
@@ -11378,7 +11391,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     launch.element('mapEntry', {'key' : 'hostname', 'value' : hostname})
     launch.element('mapEntry', {'key' : 'port', 'value' : port})
     launch.close('mapAttribute')
-    launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.PROJECT_ATTR', 'value' : ''})
+    launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.PROJECT_ATTR', 'value' : firstProjectName})
     launch.element('stringAttribute', {'key' : 'org.eclipse.jdt.launching.VM_CONNECTOR_ID', 'value' : 'org.eclipse.jdt.launching.socketAttachConnector'})
     launch.close('launchConfiguration')
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
@@ -11392,6 +11405,8 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
     ensure_dir_exists(eclipseLaunches)
     launchFile = join(eclipseLaunches, name + '.launch')
+    sourcesFile = join(eclipseLaunches, name + '.sources')
+    update_file(sourcesFile, '\n'.join(sources))
     return update_file(launchFile, launch), launchFile
 
 def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
@@ -11442,7 +11457,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
                 deps += [p for p in s.projects if e == p.output_dir()]
                 deps += [l for l in s.libs if e == l.get_path(False)]
 
-    slm = _source_locator_memento(deps)
+    slm, sources = _source_locator_memento(deps)
 
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.localJavaApplication'})
@@ -11458,7 +11473,10 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
 
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
     ensure_dir_exists(eclipseLaunches)
-    return update_file(join(eclipseLaunches, name + '.launch'), launch)
+    launchFile = join(eclipseLaunches, name + '.launch')
+    sourcesFile = join(eclipseLaunches, name + '.sources')
+    update_file(sourcesFile, '\n'.join(sources))
+    return update_file(launchFile, launch)
 
 def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
@@ -15767,7 +15785,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.2")  # JST AHY
+version = VersionSpec("5.114.3")  # Attaching with Neon
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
