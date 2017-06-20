@@ -5405,8 +5405,8 @@ class MavenRepo:
             release = versioning.find('release')
             versions = versioning.find('versions')
             versionStrings = [v.text for v in versions.iter('version')]
-            releaseVersionString = release.text if len(release) != 0 else None
-            if len(latest) != 0:
+            releaseVersionString = release.text if release is not None and len(release) != 0 else None
+            if latest is not None and len(latest) != 0:
                 latestVersionString = latest.text
             else:
                 logv('Element \'latest\' not specified in metadata. Fallback: Find latest via \'versions\'.')
