@@ -1010,7 +1010,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
         if stripConfigFileNames:
-            self.stripConfig = [join(join(suite.mxDir, 'proguard'), stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
+            self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
         assert path.endswith(self.localExtension())
@@ -1032,7 +1032,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
 
     def is_stripped(self):
-        return _opts.strip_jars and not self.stripConfig is None
+        return _opts.strip_jars and self.stripConfig is not None
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -1055,7 +1055,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                 Called just before the `services` are written to the binary archive and both archives are
                 written to their underlying files.
         """
-        if not archiveparticipant in self.archiveparticipants:
+        if archiveparticipant not in self.archiveparticipants:
             if not hasattr(archiveparticipant, '__opened__'):
                 abort(str(archiveparticipant) + ' must define __opened__')
             self.archiveparticipants.append(archiveparticipant)
@@ -1278,9 +1278,13 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.strip_jar()
 
     _strip_map_file_suffix = '.map'
+    _strip_cfg_deps_file_suffix = '.conf.d'
 
     def strip_mapping_file(self):
         return self._stripped_path() + JARDistribution._strip_map_file_suffix
+
+    def strip_config_dependency_file(self):
+        return self._stripped_path() + JARDistribution._strip_cfg_deps_file_suffix
 
     def strip_jar(self):
         assert _opts.strip_jars, "Only works under the flag --strip-jars"
@@ -1290,10 +1294,10 @@ class JARDistribution(Distribution, ClasspathDependency):
         with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
             with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
                 # add config files from projects
-                strip_config_paths = [join(self.suite.dir, f) for f in self.stripConfig]
+                assert all((os.path.isabs(f) for f in self.stripConfig))
 
                 # add configs (must be one file)
-                _merge_file_contents(strip_config_paths, config_tmp_file)
+                _merge_file_contents(self.stripConfig, config_tmp_file)
                 strip_command += ['-include', config_tmp_file.name]
 
                 # input and output jars
@@ -1323,10 +1327,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                     strip_command += ['-applymapping', mapping_tmp_file.name]
 
 
-                if _opts.verbose:
+                if _opts.very_verbose:
                     strip_command.append('-verbose')
+                elif not _opts.verbose:
+                    strip_command += ['-dontnote', '**']
 
                 run_java(strip_command)
+                with open(self.strip_config_dependency_file(), 'w') as f:
+                    f.writelines((l + os.linesep for l in self.stripConfig))
 
     def remoteName(self):
         base_name = super(JARDistribution, self).remoteName()
@@ -1363,6 +1371,18 @@ class JARDistribution(Distribution, ClasspathDependency):
                 ts = TimeStampFile(moduleJar)
                 if ts.isOlderThan(self.path):
                     return '{} is older than {}'.format(ts, self.path)
+        if self.is_stripped():
+            previous_strip_configs = []
+            dependency_file = self.strip_config_dependency_file()
+            if exists(dependency_file):
+                with open(dependency_file) as f:
+                    previous_strip_configs = (l.rstrip('\r\n') for l in f.readlines())
+            if set(previous_strip_configs) != set(self.stripConfig):
+                return 'strip config files changed'
+            for f in self.stripConfig:
+                ts = TimeStampFile(f)
+                if ts.isNewerThan(self.path):
+                    return '{} is newer than {}'.format(ts, self.path)
         return None
 
 class ArchiveTask(BuildTask):
@@ -15800,7 +15820,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.7")  # Maven-install with Sulong
+version = VersionSpec("5.114.8")  # Green balance
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
