@@ -15441,7 +15441,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     def _was_cloned_or_updated_during_discovery(_discovered_suite):
         return _discovered_suite.vc_dir is not None and _discovered_suite.vc_dir in original_version
 
-    def _update_repo(_discovered_suite, update_version, forget=False):
+    def _update_repo(_discovered_suite, update_version, forget=False, update_reason="to resolve conflict"):
         current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
         if current_version == update_version:
             return False
@@ -15456,7 +15456,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         if forget:
             # we updated, this may change the DAG so
             # "un-discover" anything that was discovered based on old information
-            _log_discovery("Updated needed to resolve conflict: updating {} to {}".format(_discovered_suite.vc_dir, update_version))
+            _log_discovery("Updated needed {}: updating {} to {}".format(update_reason, _discovered_suite.vc_dir, update_version))
             forgotten_edges = {}
 
             def _forget_visitor(_, __suite_import):
@@ -15465,7 +15465,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
             def _forget_suite(suite_name):
                 if suite_name not in discovered:
                     return
-                _log_discovery("Forgetting {} after conflict".format(suite_name))
+                _log_discovery("Forgetting {} after update".format(suite_name))
                 if suite_name in ancestor_names:
                     del ancestor_names[suite_name]
                 if suite_name in importer_names:
@@ -15611,16 +15611,18 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     original_version[discovered_suite.vc_dir] = VersionType.CLONED, None
                 elif discovered_suite.vc_dir in vc_dir_to_suite_names and not vc_dir_to_suite_names[discovered_suite.vc_dir]:
                     # we re-discovered a suite that we had cloned and then "un-discovered".
-                    if suite_import.version and _update_repo(discovered_suite, suite_import.version):
-                        _log_discovery("This is a re-discovery of a previously cloned suite: updating {} to {}".format(discovered_suite.vc_dir, suite_import.version))
+                    if suite_import.version and _update_repo(discovered_suite, suite_import.version, update_reason="(re-discovery of un-discovered suite)"):
+                        _log_discovery("This is a re-discovery of a previously cloned suite: updated {} to {}".format(discovered_suite.vc_dir, suite_import.version))
                 elif _was_cloned_or_updated_during_discovery(discovered_suite):
                     # we are re-reaching a repo through a different imported suite
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
                     continue
-                elif update_existing and suite_import.version and _update_repo(discovered_suite, suite_import.version):
-                    _log_discovery("Updating {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
-
+                elif update_existing and suite_import.version:
+                    _add_discovered_suite(discovered_suite, importing_suite.name)
+                    if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
+                        _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
+                    continue
                 _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
         cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
@@ -15796,7 +15798,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.4")  # Safer Unsafe
+version = VersionSpec("5.114.5")  # Silver theory
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
