@@ -2590,7 +2590,18 @@ class JavacCompiler(JavacLikeCompiler):
                 javacArgs.extend(['-classpath', os.pathsep.join(elements)])
 
         if jdk.javaCompliance >= '9':
-            unsafe_jar = _get_jdk_module_classes_jar('jdk.unsupported', primary_suite(), jdk, 'sun.misc.Unsafe')
+            unsafe_jar = join(_mx_home, 'jdk' + str(compliance.value) + '-unsafe.jar')
+            unsafe_source = join(_mx_home, 'Unsafe.java')
+            if not exists(unsafe_jar) or getmtime(unsafe_jar) < getmtime(unsafe_source):
+                tmpdir = tempfile.mkdtemp()
+                try:
+                    subprocess.check_call([jdk.javac, '--release', str(compliance.value), '-d', tmpdir, unsafe_source])
+                    subprocess.check_call([jdk.jar, 'cfM', unsafe_jar, '-C', tmpdir, 'sun/misc/Unsafe.class'])
+                    logv('[created/updated ' + unsafe_jar + ']')
+                except subprocess.CalledProcessError as e:
+                    abort('failed to compile ' + unsafe_source + ' or create ' + unsafe_jar + ': ' + str(e))
+                finally:
+                    shutil.rmtree(tmpdir)
             _classpath_append(unsafe_jar)
         if disableApiRestrictions:
             if jdk.javaCompliance < '9':
@@ -2704,7 +2715,7 @@ class JavacCompiler(JavacLikeCompiler):
 
                 if len(jdkModulesOnClassPath) != 0:
                     # We want annotation processors to use classes on the class path
-                    # instead of those the module(s) since the module classes may not
+                    # instead of those in module(s) since the module classes may not
                     # be in exported packages and/or may have different signatures.
                     # Unfortunately, there's no VM option for hiding modules, only the
                     # --limit-modules option for restricting modules observability.
@@ -15785,7 +15796,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.3")  # Attaching with Neon
+version = VersionSpec("5.114.4")  # Safer Unsafe
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
