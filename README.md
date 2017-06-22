@@ -24,6 +24,9 @@ Note: There is a Bash completion script for global options and commands, located
 
 The `unittest` command supports running Junit tests in `mx` suites.
 
+The unit test harness will use any `org.junit.runner.notification.RunListener`
+objects available via `java.util.ServiceLoader.load()`.
+
 Executing tests on JDK 9 or later can be complicated if the tests access
 packages that are publicly available in JDK 8 or earlier but are not public as
 of JDK 9. That is, the packages are *concealed* by their declaring module. Such
@@ -180,4 +183,4 @@ we need a new minor release.
 - "I removed some commands from `mx`.  There are alternative commands now."
 This change essentially changed the API.  Thus, we require a new major release.
 
-[1]: https://github.com/graalvm/graal-core/blob/master/README.md
+[1]: https://github.com/graalvm/graal/blob/master/compiler/README.md

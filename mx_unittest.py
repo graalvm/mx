@@ -373,7 +373,6 @@ def unittest(args):
 
     parser = ArgumentParser(prog='mx unittest',
           description='run the JUnit tests',
-          add_help=False,
           formatter_class=RawDescriptionHelpFormatter,
           epilog=unittestHelpSuffix,
         )

@@ -113,7 +113,7 @@ class VmRegistry(object):
             return self.default_vm(config, self._vms)
         return None
 
-    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False):
+    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
 
@@ -146,7 +146,8 @@ class VmRegistry(object):
                     notice = mx.warn
                     seen = set()
                     choice = ' [' + '|'.join((c[0] for c in vms if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
-                notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
+                if not quiet:
+                    notice("Defaulting the {} to '{}'. Consider using --{} {}".format(self.vm_type_name, vm, self.short_vm_type_name, choice))
         if vm_config is None:
             vm_configs = [(config,
                             self._vms_suite[(vm, config)] == mx.primary_suite(),
@@ -164,10 +165,11 @@ class VmRegistry(object):
                 notice = mx.warn
                 seen = set()
                 choice = ' [' + '|'.join((c[0] for c in vm_configs if c[0] not in seen and (seen.add(c[0]) or True))) + ']'
-            notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
+            if not quiet:
+                notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
         if isinstance(vm_object, GuestVm):
-            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True)
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True, quiet=quiet)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
 
@@ -737,7 +739,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message, partialResults)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -747,6 +749,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         """
         if dims is None:
             dims = {}
+        if extraRules is None:
+            extraRules = []
 
         def compiled(pat):
             if type(pat) is str:
@@ -762,7 +766,9 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             return []
 
         datapoints = []
-        for rule in self.rules(out, benchmarks, bmSuiteArgs):
+        rules = self.rules(out, benchmarks, bmSuiteArgs) + extraRules
+
+        for rule in rules:
             # pass working directory to rule without changing the signature of parse
             rule._cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
             parsedpoints = rule.parse(out)
@@ -881,7 +887,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return self.createVmCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
 
     def createVmCommandLineArgs(self, benchmarks, runArgs):
-        """" Creates the arguments that need to be passed to the VM to run the benchamrks.
+        """" Creates the arguments that need to be passed to the VM to run the benchmarks.
         :rtype: list
         """
         raise NotImplementedError()
@@ -905,9 +911,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         dims = {
             "vm": vm.name(),
             "host-vm": host_vm.name() if host_vm else vm.name(),
-            "host-vm-config": host_vm.config_name() if host_vm else vm.config_name(),
+            "host-vm-config": self.host_vm_config_name(host_vm, vm),
             "guest-vm": vm.name() if host_vm else "none",
-            "guest-vm-config": vm.config_name() if host_vm else "default",
+            "guest-vm-config": self.guest_vm_config_name(host_vm, vm),
         }
         for key, value in vm_dims.items():
             if key in dims and value != dims[key]:
@@ -918,6 +924,23 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
             dims[key] = value
         return ret_code, out, dims
+
+    def host_vm_config_name(self, host_vm, vm):
+        return host_vm.config_name() if host_vm else vm.config_name()
+
+    def guest_vm_config_name(self, host_vm, vm):
+        return vm.config_name() if host_vm else "default"
+
+    def validateStdoutWithDimensions(
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+
+        if extraRules is None:
+            extraRules = []
+
+        vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs, quiet=True)
+        extraRules += vm.rules(out, benchmarks, bmSuiteArgs)
+
+        return super(VmBenchmarkSuite, self).validateStdoutWithDimensions(out=out, benchmarks=benchmarks, bmSuiteArgs=bmSuiteArgs, retcode=retcode, dims=dims, extraRules=extraRules)
 
     def get_vm_registry(self):
         """" Gets the VM registry used to run this type of benchmarks.
@@ -978,6 +1001,17 @@ class Vm(object): #pylint: disable=R0922
     def config_name(self):
         """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
+
+    def rules(self, output, benchmarks, bmSuiteArgs):
+        """Returns a list of rules required to parse the standard output.
+
+        :param string output: Contents of the standard output.
+        :param list benchmarks: List of benchmarks that were run.
+        :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
+        :return: List of StdOutRule parse rules.
+        :rtype: list
+        """
+        return []
 
     def run(self, cwd, args):
         """Runs the JVM with the specified args.
@@ -1143,7 +1177,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs
+        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks if benchmarks else []
 
     def successPatterns(self):
         return [
@@ -1400,9 +1434,12 @@ class BenchmarkExecutor(object):
             if vc is None:
                 return {}
             info = vc.parent_info(mxsuite.dir)
+            url = vc.default_pull(mxsuite.dir, abortOnError=False)
+            if not url:
+                url = "unknown"
             return {
               prefix + "commit.rev": vc.parent(mxsuite.dir),
-              prefix + "commit.repo-url": vc.default_pull(mxsuite.dir),
+              prefix + "commit.repo-url": url,
               prefix + "commit.author": info["author"],
               prefix + "commit.author-ts": info["author-ts"],
               prefix + "commit.committer": info["committer"],
@@ -1610,7 +1647,7 @@ def splitArgs(args, separator):
 
 
 def benchmark(args):
-    """Run benchmark suite.
+    """run benchmark suite with given name
 
     :Example:
 

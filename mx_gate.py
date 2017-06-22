@@ -27,7 +27,6 @@
 import os, re, time, datetime
 from os.path import join, exists
 from argparse import ArgumentParser
-import xml.dom.minidom
 
 import mx
 import mx_microbench
@@ -40,6 +39,7 @@ class Tags:
     always = 'always'       # special tag that is always implicitly selected
     style = 'style'         # code style checks (without build)
     build = 'build'         # build
+    ecjbuild = 'ecjbuild'   # build with ecj only
     fullbuild = 'fullbuild' # full build (including warnings, findbugs and ide init)
 
 """
@@ -52,6 +52,7 @@ class Task:
     # a non-None value from __enter__. The body of a 'with Task(...) as t'
     # statement should check 't' and exit immediately if it is None.
     filters = None
+    log = True # whether to log task messages
     dryRun = False
     startAtFilter = None
     filtersExclude = False
@@ -116,7 +117,8 @@ class Task:
             self.end = None
             self.duration = None
             self.disableJacoco = disableJacoco
-            mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
+            if Task.log:
+                mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
     def __enter__(self):
         assert self.tasks is not None, "using Task with 'with' statement requires to pass the tasks list in the constructor"
         if self.skipped:
@@ -151,15 +153,17 @@ class Task:
         return ''
 
     def stop(self):
-        self.end = time.time()
-        self.duration = datetime.timedelta(seconds=self.end - self.start)
-        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
+        if Task.log:
+            self.end = time.time()
+            self.duration = datetime.timedelta(seconds=self.end - self.start)
+            mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
         return self
     def abort(self, codeOrMessage):
-        self.end = time.time()
-        self.duration = datetime.timedelta(seconds=self.end - self.start)
-        mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
-        mx.abort(codeOrMessage)
+        if Task.log:
+            self.end = time.time()
+            self.duration = datetime.timedelta(seconds=self.end - self.start)
+            mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
+            mx.abort(codeOrMessage)
         return self
 
 _gate_runners = []
@@ -263,19 +267,20 @@ def gate(args):
     parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
     parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
+    parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
+    parser.add_argument('-p', '--partial', help='run only a subset of the tasks in the gate (index/total). Eg. "--partial 2/5" runs the second fifth of the tasks in the gate. Tasks with tag build are repeated for each run.')
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
     filtering.add_argument('--tags', help='comma separated list of tags to select subset of tasks to be run. Tags can have a range specifier `name[:from:[to]]`.'
                            'If present only the [from,to) tasks are executed. If `to` is omitted all tasks starting with `from` are executed.')
+
     for a, k in _extra_gate_arguments:
         parser.add_argument(*a, **k)
-
     args = parser.parse_args(args)
     cleanArgs = check_gate_noclean_arg(args)
 
-    global _jacoco
     if args.dry_run:
         Task.dryRun = True
     if args.start_at:
@@ -295,117 +300,37 @@ def gate(args):
     if not args.extra_build_args:
         args.extra_build_args = []
 
+    if args.partial:
+        partialArgs = args.partial.split('/')
+        if len(partialArgs) is not 2:
+            mx.abort('invalid partial argument specified')
+
+        selected = int(partialArgs[0]) - 1
+        total = int(partialArgs[1])
+        if selected < 0 or selected >= total:
+            mx.abort('out of bounds partial argument specified')
+
+        tasks = _collect_tasks(cleanArgs, args)
+        buildTasks = [task for task in tasks if not task.skipped and Tags.build in task.tags]
+        nonBuildTasks = [task for task in tasks if not task.skipped and Tags.build not in task.tags]
+
+        partialTasks = nonBuildTasks[selected::total]
+        runTaskNames = [task.title for task in buildTasks + partialTasks]
+
+        # we have already ran the filters in the dry run when collecting
+        # so we can safely overwrite other filter settings.
+        Task.filters = runTaskNames
+        Task.filtersExclude = False
+
+        mx.log('Running gate with partial tasks ' + args.partial + ". " + str(len(partialTasks)) + " out of " + str(len(nonBuildTasks)) + " non-build tasks selected.")
+        if len(partialTasks) is 0:
+            mx.log('No partial tasks left to run. Finishing gate early.')
+            return
+
     tasks = []
     total = Task('Gate')
     try:
-        with Task('Versions', tasks, tags=[Tags.always]) as t:
-            if t:
-                mx.command_function('version')(['--oneline'])
-                mx.command_function('sversions')([])
-
-        with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
-            if t:
-                jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
-                for jdkDir in jdkDirs.split(os.pathsep):
-                    release = join(jdkDir, 'release')
-                    if exists(release):
-                        mx.log('==== ' + jdkDir + ' ====')
-                        with open(release) as fp:
-                            mx.log(fp.read().strip())
-
-        for suiteRunner in _pre_gate_runners:
-            suite, runner = suiteRunner
-            if args.all_suites or suite is mx.primary_suite():
-                runner(args, tasks)
-
-        with Task('Pylint', tasks, tags=[Tags.style]) as t:
-            if t:
-                if mx.command_function('pylint')(['--primary']) != 0:
-                    _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
-
-        gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild])
-
-        with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
-            if t:
-                if mx.command_function('checkoverlap')([]) != 0:
-                    t.abort('Found overlapping distributions.')
-
-        with Task('Canonicalization Check', tasks, tags=[Tags.style]) as t:
-            if t:
-                mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
-                if mx.command_function('canonicalizeprojects')([]) != 0:
-                    t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
-
-        with Task('Verify Java Sources in Project', tasks, tags=[Tags.style]) as t:
-            if t:
-                mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring all Java sources are in a Java project directory...'))
-                if mx.command_function('verifysourceinproject')([]) != 0:
-                    t.abort('Move or delete the Java sources that are not in a Java project directory.')
-
-        if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
-            with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild], legacyTitles=['BuildJavaWithEcj']) as t:
-                if t:
-                    if mx.get_env('JDT'):
-                        mx.command_function('build')(['-p', '--warning-as-error'] + args.extra_build_args)
-                        gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
-                    else:
-                        _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
-
-        with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
-            if t: mx.command_function('build')(['-p', '--warning-as-error', '--force-javac'] + args.extra_build_args)
-
-        with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
-            if t:
-                if args.cleanIDE:
-                    mx.command_function('ideclean')([])
-                    mx.command_function('ideinit')([])
-
-        with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
-            if t:
-                eclipse_exe = mx.get_env('ECLIPSE_EXE')
-                if eclipse_exe is not None:
-                    if mx.command_function('eclipseformat')(['-e', eclipse_exe, '--primary']) != 0:
-                        t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
-                else:
-                    _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
-
-        with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
-            if t and mx.command_function('checkstyle')(['--primary']) != 0:
-                t.abort('Checkstyle warnings were found')
-
-        with Task('Checkheaders', tasks, tags=[Tags.style]) as t:
-            if t and mx.command_function('checkheaders')([]) != 0:
-                t.abort('Checkheaders warnings were found')
-
-        with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
-            if t and mx.command_function('findbugs')([]) != 0:
-                t.abort('FindBugs warnings were found')
-
-        with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
-            if t:
-                mx.command_function('verifylibraryurls')([])
-
-        if mx._primary_suite is mx._mx_suite:
-            with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
-                if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
-
-        if exists('jacoco.exec'):
-            os.unlink('jacoco.exec')
-
-        if args.jacocout is not None:
-            _jacoco = 'append'
-        else:
-            _jacoco = 'off'
-
-        for suiteRunner in _gate_runners:
-            suite, runner = suiteRunner
-            if args.all_suites or suite is mx.primary_suite():
-                runner(args, tasks)
-
-        if args.jacocout is not None:
-            mx.command_function('jacocoreport')([args.jacocout])
-            _jacoco = 'off'
-
+        _run_gate(cleanArgs, args, tasks)
     except KeyboardInterrupt:
         total.abort(1)
 
@@ -425,36 +350,141 @@ def gate(args):
     if args.task_filter:
         Task.filters = None
 
+def _collect_tasks(cleanArgs, args):
+    prevDryRun = Task.dryRun
+    prevLog = Task.log
+    Task.dryRun = True
+    Task.log = False
+    tasks = []
+    try:
+        _run_gate(cleanArgs, args, tasks)
+    finally:
+        Task.dryRun = prevDryRun
+        Task.log = prevLog
+    return tasks
+
+def _run_gate(cleanArgs, args, tasks):
+    global _jacoco
+    with Task('Versions', tasks, tags=[Tags.always]) as t:
+        if t:
+            mx.command_function('version')(['--oneline'])
+            mx.command_function('sversions')([])
+
+    with Task('JDKReleaseInfo', tasks, tags=[Tags.always]) as t:
+        if t:
+            jdkDirs = os.pathsep.join([mx.get_env('JAVA_HOME', ''), mx.get_env('EXTRA_JAVA_HOMES', '')])
+            for jdkDir in jdkDirs.split(os.pathsep):
+                release = join(jdkDir, 'release')
+                if exists(release):
+                    mx.log('==== ' + jdkDir + ' ====')
+                    with open(release) as fp:
+                        mx.log(fp.read().strip())
+
+    for suiteRunner in _pre_gate_runners:
+        suite, runner = suiteRunner
+        if args.all_suites or suite is mx.primary_suite():
+            runner(args, tasks)
+
+    with Task('Pylint', tasks, tags=[Tags.style]) as t:
+        if t:
+            if mx.command_function('pylint')(['--primary']) != 0:
+                _warn_or_abort('Pylint not configured correctly. Cannot execute Pylint task.', args.strict_mode)
+
+    gate_clean(cleanArgs, tasks, tags=[Tags.build, Tags.fullbuild, Tags.ecjbuild])
+
+    with Task('Distribution Overlap Check', tasks, tags=[Tags.style]) as t:
+        if t:
+            if mx.command_function('checkoverlap')([]) != 0:
+                t.abort('Found overlapping distributions.')
+
+    with Task('Canonicalization Check', tasks, tags=[Tags.style]) as t:
+        if t:
+            mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring mx/projects files are canonicalized...'))
+            if mx.command_function('canonicalizeprojects')([]) != 0:
+                t.abort('Rerun "mx canonicalizeprojects" and modify the suite.py files as suggested.')
+
+    with Task('Verify Java Sources in Project', tasks, tags=[Tags.style]) as t:
+        if t:
+            mx.log(time.strftime('%d %b %Y %H:%M:%S - Ensuring all Java sources are in a Java project directory...'))
+            if mx.command_function('verifysourceinproject')([]) != 0:
+                t.abort('Move or delete the Java sources that are not in a Java project directory.')
+
+    if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
+        with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
+            if t:
+                defaultBuildArgs = ['-p']
+                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
+                # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
+                if not args.no_warning_as_error and fullbuild:
+                    defaultBuildArgs += ['--warning-as-error']
+                if mx.get_env('JDT'):
+                    mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
+                    if fullbuild:
+                        gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
+                else:
+                    _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
+
+    with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
+        if t:
+            defaultBuildArgs = ['-p']
+            if not args.no_warning_as_error:
+                defaultBuildArgs += ['--warning-as-error']
+            mx.command_function('build')(defaultBuildArgs + ['--force-javac'] + args.extra_build_args)
+
+    with Task('IDEConfigCheck', tasks, tags=[Tags.fullbuild]) as t:
+        if t:
+            if args.cleanIDE:
+                mx.command_function('ideclean')([])
+                mx.command_function('ideinit')([])
+
+    with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
+        if t:
+            eclipse_exe = mx.get_env('ECLIPSE_EXE')
+            if eclipse_exe is not None:
+                if mx.command_function('eclipseformat')(['-e', eclipse_exe, '--primary']) != 0:
+                    t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
+            else:
+                _warn_or_abort('ECLIPSE_EXE environment variable not set. Cannot execute CodeFormatCheck task.', args.strict_mode)
+
+    with Task('Checkstyle', tasks, tags=[Tags.style]) as t:
+        if t and mx.command_function('checkstyle')(['--primary']) != 0:
+            t.abort('Checkstyle warnings were found')
+
+    with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
+        if t and mx.command_function('findbugs')([]) != 0:
+            t.abort('FindBugs warnings were found')
+
+    with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
+        if t:
+            mx.command_function('verifylibraryurls')([])
+
+    if mx._primary_suite is mx._mx_suite:
+        with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
+            if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
+
+    if exists('jacoco.exec'):
+        os.unlink('jacoco.exec')
+
+    if args.jacocout is not None:
+        _jacoco = 'append'
+    else:
+        _jacoco = 'off'
+
+    for suiteRunner in _gate_runners:
+        suite, runner = suiteRunner
+        if args.all_suites or suite is mx.primary_suite():
+            runner(args, tasks)
+
+
+    if args.jacocout is not None:
+        mx.command_function('jacocoreport')([args.jacocout])
+        _jacoco = 'off'
+
 def checkheaders(args):
     """check Java source headers against any required pattern"""
-    failures = {}
-    for p in mx.projects():
-        if not p.isJavaProject():
-            continue
-
-        csConfig = join(mx.project(p.checkstyleProj).dir, '.checkstyle_checks.xml')
-        if not exists(csConfig):
-            mx.log('Cannot check headers for ' + p.name + ' - ' + csConfig + ' does not exist')
-            continue
-        dom = xml.dom.minidom.parse(csConfig)
-        for module in dom.getElementsByTagName('module'):
-            if module.getAttribute('name') == 'RegexpHeader':
-                for prop in module.getElementsByTagName('property'):
-                    if prop.getAttribute('name') == 'header':
-                        value = prop.getAttribute('value')
-                        matcher = re.compile(value, re.MULTILINE)
-                        for sourceDir in p.source_dirs():
-                            for root, _, files in os.walk(sourceDir):
-                                for name in files:
-                                    if name.endswith('.java') and name != 'package-info.java':
-                                        f = join(root, name)
-                                        with open(f) as fp:
-                                            content = fp.read()
-                                        if not matcher.match(content):
-                                            failures[f] = csConfig
-    for n, v in failures.iteritems():
-        mx.log('{0}: header does not match RegexpHeader defined in {1}'.format(n, v))
-    return len(failures)
+    mx.log('The checkheaders command is obsolete.  The checkstyle or checkcopyrights command performs\n'\
+           'the required checks depending on the mx configuration.')
+    return 0
 
 _jacoco = 'off'
 

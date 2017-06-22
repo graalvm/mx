@@ -32,24 +32,23 @@ public class VerboseTextListener extends TextRunListener {
 
     private static final int DEFAULT_MAX_TEST_PER_CLASS = 50;
     public static final int SHOW_ALL_TESTS = Integer.MAX_VALUE;
+    private final int classesCount;
     private final int maxTestsPerClass;
+    private int currentClassNum;
     private int currentTestNum;
 
-    public VerboseTextListener(JUnitSystem system) {
-        this(system.out());
+    public VerboseTextListener(JUnitSystem system, int classesCount) {
+        this(system.out(), classesCount, DEFAULT_MAX_TEST_PER_CLASS);
     }
 
-    public VerboseTextListener(PrintStream writer) {
-        this(writer, DEFAULT_MAX_TEST_PER_CLASS);
+    public VerboseTextListener(JUnitSystem system, int classesCount, int maxTests) {
+        this(system.out(), classesCount, maxTests);
     }
 
-    public VerboseTextListener(JUnitSystem system, int maxTests) {
-        this(system.out(), maxTests);
-    }
-
-    public VerboseTextListener(PrintStream writer, int maxTests) {
+    public VerboseTextListener(PrintStream writer, int classesCount, int maxTests) {
         super(writer);
         maxTestsPerClass = maxTests;
+        this.classesCount = classesCount;
     }
 
     @Override
@@ -59,7 +58,8 @@ public class VerboseTextListener extends TextRunListener {
 
     @Override
     public void testClassStarted(Class<?> clazz) {
-        getWriter().print(clazz.getName() + " started");
+        ++currentClassNum;
+        getWriter().printf("%s started (%d of %d)", clazz.getName(), currentClassNum, classesCount);
         currentTestNum = 0;
     }
 

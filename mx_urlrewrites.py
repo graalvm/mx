@@ -25,8 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 
 import re
-import os
 import json
+import mx
 
 _urlrewrites = [] # list of URLRewrite objects
 
@@ -70,6 +70,7 @@ def register_urlrewrite(urlrewrite, onError=None):
         except Exception as e: # pylint: disable=broad-except
             onError('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e))
         urlrewrite = URLRewrite(pattern, replacement)
+        mx.logvv("Registering url rewrite: " + str(urlrewrite))
         _urlrewrites.append(urlrewrite)
 
 def register_urlrewrites_from_env(name):
@@ -81,7 +82,7 @@ def register_urlrewrites_from_env(name):
 
     :param str name: name of an environment variable denoting URL rewrite rules
     """
-    value = os.environ.get(name, None)
+    value = mx.get_env(name, None)
     if value:
         def raiseError(msg):
             raise Exception('Error processing URL rewrite rules denoted by environment variable ' + name + ':\n' + msg)
@@ -119,8 +120,14 @@ def rewriteurl(url):
     for urlrewrite in _urlrewrites:
         res = urlrewrite._rewrite(url)
         if res:
+            mx.logvv("Rewrote '{}' to '{}'".format(url, res))
             return res
     return url
+
+def urlrewrite_cli(args):
+    """rewrites the given URL using MX_URLREWRITES"""
+    assert len(args) == 1
+    print rewriteurl(args[0])
 
 class URLRewrite(object):
     """

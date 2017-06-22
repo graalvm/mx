@@ -100,9 +100,15 @@ class MxCompatibility500(object):
         """
         return False
 
-    def requiresSourceInProjects(self):
+    def makePylintVCInputsAbsolute(self):
         """
-        Requires that all Java sources are in a Java project directory.
+        Makes pylint input paths discovered by VC absolute.
+        """
+        return False
+
+    def disableImportOfTestProjects(self):
+        """
+        Requires that test projects can only be imported by test projects.
         """
         return False
 
@@ -220,12 +226,20 @@ class MxCompatibility5680(MxCompatibility5590):#pylint: disable=too-many-ancesto
     def excludeDisableJavaDebuggging(self):
         return True
 
-class MxCompatibility5880(MxCompatibility5680):#pylint: disable=too-many-ancestors
+class MxCompatibility51104(MxCompatibility5680):#pylint: disable=too-many-ancestors
     @staticmethod
     def version():
-        return mx.VersionSpec("5.88.0")
+        return mx.VersionSpec("5.110.4")
 
-    def requiresSourceInProjects(self):
+    def makePylintVCInputsAbsolute(self):
+        return True
+
+class MxCompatibility51120(MxCompatibility51104):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.113.0")
+
+    def disableImportOfTestProjects(self):
         return True
 
 def minVersion():

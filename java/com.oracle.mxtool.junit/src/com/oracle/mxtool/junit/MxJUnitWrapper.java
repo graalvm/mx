@@ -33,8 +33,10 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,6 +49,7 @@ import org.junit.runner.Request;
 import org.junit.runner.Result;
 import org.junit.runner.Runner;
 import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunListener;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.ParentRunner;
 import org.junit.runners.model.RunnerScheduler;
@@ -113,7 +116,7 @@ public class MxJUnitWrapper {
         JUnitCore junitCore = new JUnitCore();
         system.out().println("MxJUnitCore");
         system.out().println("JUnit version " + Version.id());
-        List<Class<?>> classes = new ArrayList<>();
+        Set<Class<?>> classes = new LinkedHashSet<>();
         String methodName = null;
         List<Failure> missingClasses = new ArrayList<>();
         boolean verbose = false;
@@ -196,9 +199,9 @@ public class MxJUnitWrapper {
         }
         final TextRunListener textListener;
         if (veryVerbose) {
-            textListener = new VerboseTextListener(system, VerboseTextListener.SHOW_ALL_TESTS);
+            textListener = new VerboseTextListener(system, classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
         } else if (verbose) {
-            textListener = new VerboseTextListener(system);
+            textListener = new VerboseTextListener(system, classes.size());
         } else {
             textListener = new TextRunListener(system);
         }
@@ -214,6 +217,9 @@ public class MxJUnitWrapper {
         }
         if (gcAfterTest) {
             mxListener = new GCAfterTestDecorator(mxListener);
+        }
+        for (RunListener p : ServiceLoader.load(RunListener.class)) {
+            junitCore.addListener(p);
         }
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
@@ -246,7 +252,7 @@ public class MxJUnitWrapper {
             if (failFast) {
                 system.out().println("Single method selected - fail fast not supported");
             }
-            request = Request.method(classes.get(0), methodName);
+            request = Request.method(classes.iterator().next(), methodName);
         }
         if (repeatCount != 1) {
             request = new RepeatingRequest(request, repeatCount);
@@ -280,7 +286,7 @@ public class MxJUnitWrapper {
      * Updates modules specified in {@code AddExport} annotations on {@code classes} to export
      * concealed packages to the annotation classes' declaring modules.
      */
-    private static void addExports(List<Class<?>> classes, PrintStream out) {
+    private static void addExports(Set<Class<?>> classes, PrintStream out) {
         Set<Class<?>> types = new HashSet<>();
         for (Class<?> cls : classes) {
             gatherSupertypes(cls, types);

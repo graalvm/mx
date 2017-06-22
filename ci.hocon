@@ -1,10 +1,10 @@
 # overlay version
-overlay = d8d8bb68148b7e5a1ec7958a55f4a340397a3757
+overlay = 8df102201f4bece9d55579b7af1ef69051406139
 
 # These are used in the overlay
 java7 : {name : oraclejdk, version : "7",    platformspecific: true}
-java8 : {name : labsjdk, version : "8u121-jvmci-0.25", platformspecific: true}
-java9 : {name : labsjdk, version : "9-20170328-160617", platformspecific: true}
+java8 : {name : labsjdk, version : "8u121-jvmci-0.28", platformspecific: true}
+java9 : {name : labsjdk, version : "9-20170621-080948", platformspecific: true}
 
 downloads.java : {
     JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
@@ -55,9 +55,19 @@ verifylibraryurls : {
   timelimit : "10:00"
 }
 
+downstream-truffleruby-binary-truffle: {
+  downloads: ${downloads.java}
+  run: [
+    [export, "MX_BINARY_SUITES=truffle"],
+    ["./mx", testdownstream, --repo, ["./mx", urlrewrite, "https://github.com/graalvm/truffleruby.git"], --mx-command, "ruby_testdownstream_hello"],
+  ]
+  timelimit : "10:00"
+}
+
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
+  ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
 ]
