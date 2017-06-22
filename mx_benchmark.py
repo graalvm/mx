@@ -1177,7 +1177,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
-        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + benchmarks if benchmarks else []
+        return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + (benchmarks if benchmarks else [])
 
     def successPatterns(self):
         return [
@@ -1212,7 +1212,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
         if len(benchmarks) != 1:
             mx.abort("JMH Suite runs only a single JMH version, got: {0}".format(benchmarks))
         self._jmh_version = benchmarks[0]
-        return super(JMHRunnerBenchmarkSuite, self).createCommandLineArgs(benchmarks, bmSuiteArgs)
+        return super(JMHRunnerBenchmarkSuite, self).createCommandLineArgs([], bmSuiteArgs)
 
     def extraVmArgs(self):
         if not self._jmh_version:
