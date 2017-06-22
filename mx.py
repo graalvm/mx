@@ -14789,7 +14789,7 @@ def maven_install(args):
         only = args.only.split(',')
     for dist in s.dists:
         # ignore non-exported dists
-        if not dist.internal and not dist.name.startswith('COM_ORACLE') and dist.maven:
+        if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
             if len(only) is 0 or dist.name in only:
                 arcdists.append(dist)
 
@@ -15798,7 +15798,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.6")  # Maven madness
+version = VersionSpec("5.114.7")  # Maven-install with Sulong
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
