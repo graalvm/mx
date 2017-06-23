@@ -1974,7 +1974,6 @@ class JavaProject(Project, ClasspathDependency):
         corresponding to a matched source file is returned.
         """
         result = dict()
-        pkgDecl = re.compile(r"^package\s+([a-zA-Z_][\w\.]*)\s*;$")
         for srcDir in self.source_dirs():
             outputDir = self.output_dir()
             for root, _, files in os.walk(srcDir):
@@ -1987,7 +1986,7 @@ class JavaProject(Project, ClasspathDependency):
                             lineNo = 1
                             for line in f:
                                 if line.startswith("package "):
-                                    match = pkgDecl.match(line)
+                                    match = _java_package_regex.match(line)
                                     if match:
                                         pkg = match.group(1)
                                 if function(line.strip()):
@@ -2610,18 +2609,7 @@ class JavacCompiler(JavacLikeCompiler):
                 javacArgs.extend(['-classpath', os.pathsep.join(elements)])
 
         if jdk.javaCompliance >= '9':
-            unsafe_jar = join(_mx_home, 'jdk' + str(compliance.value) + '-unsafe.jar')
-            unsafe_source = join(_mx_home, 'Unsafe.java')
-            if not exists(unsafe_jar) or getmtime(unsafe_jar) < getmtime(unsafe_source):
-                tmpdir = tempfile.mkdtemp()
-                try:
-                    subprocess.check_call([jdk.javac, '--release', str(compliance.value), '-d', tmpdir, unsafe_source])
-                    subprocess.check_call([jdk.jar, 'cfM', unsafe_jar, '-C', tmpdir, 'sun/misc/Unsafe.class'])
-                    logv('[created/updated ' + unsafe_jar + ']')
-                except subprocess.CalledProcessError as e:
-                    abort('failed to compile ' + unsafe_source + ' or create ' + unsafe_jar + ': ' + str(e))
-                finally:
-                    shutil.rmtree(tmpdir)
+            _, unsafe_jar = _compile_mx_class('Unsafe', jdk=jdk, extraJavacArgs=['--release', str(compliance.value)], as_jar=True)
             _classpath_append(unsafe_jar)
         if disableApiRestrictions:
             if jdk.javaCompliance < '9':
@@ -14722,12 +14710,18 @@ def verify_library_urls(args):
     if not ok:
         abort('Some libraries are not reachable')
 
-def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None):
+_java_package_regex = re.compile(r"^package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
+
+def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
     myDir = join(_mx_home, 'java') if myDir is None else myDir
     binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
     javaSource = join(myDir, javaClassName + '.java')
     javaClass = join(binDir, javaClassName + '.class')
-    if not exists(javaClass) or getmtime(javaClass) < getmtime(javaSource):
+    if as_jar:
+        output = join(_mx_suite.get_output_root(), ('' if not jdk else 'jdk' + str(jdk.version)) + '-' + javaClassName + '.jar')
+    else:
+        output = javaClass
+    if not exists(output) or getmtime(output) < getmtime(javaSource):
         ensure_dir_exists(binDir)
         javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
@@ -14738,11 +14732,18 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extra
         cmd += [_cygpathU2W(javaSource)]
         try:
             subprocess.check_call(cmd)
-        except subprocess.CalledProcessError:
-            abort('failed to compile:' + javaSource)
-
-
-    return (myDir, binDir)
+            if as_jar:
+                with open(javaSource, 'r') as f:
+                    m = _java_package_regex.search(f.read())
+                    if m:
+                        package = m.group('package').replace('.', os.sep)
+                    else:
+                        package = ""
+                subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output), '-C', _cygpathU2W(binDir), join(package, javaClassName + '.class')])
+            logv('[created/updated ' + output + ']')
+        except subprocess.CalledProcessError as e:
+            abort('failed to compile ' + javaSource + ' or create ' + output + ': ' + str(e))
+    return myDir, output if as_jar else binDir
 
 def _add_command_primary_option(parser):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
@@ -15820,7 +15821,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.8")  # Green balance
+version = VersionSpec("5.114.8")  # Dusty fact
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
