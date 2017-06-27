@@ -141,7 +141,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
     # this is what should be used
     compat_suite = suite if suite else mx.primary_suite()
     if suite != mx._mx_suite and compat_suite.getMxCompatibility().useDistsForUnittest():
-        jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and (not suite or d.suite == suite)]
+        jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and exists(d.classpath_repr(resolve=False)) and (not suite or d.suite == suite)]
         # find a corresponding distribution for each test
         candidates = _find_classes_by_annotated_methods(annotations, jar_distributions, vmLauncher.jdk())
     else:
@@ -184,7 +184,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
             if not found:
-                mx.log('warning: no tests matched by substring: ' + t)
+                mx.warn('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
             elif len(classes) != 1:
                 mx.abort('More than one test matches substring {0} {1}'.format(t, classes))
 
@@ -199,7 +199,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
                 if not found:
-                    mx.log('warning: no tests matched by substring: ' + t)
+                    mx.warn('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
 
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
