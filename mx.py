@@ -2795,12 +2795,12 @@ class CompilerDaemon(Daemon):
         # Ensure the process is cleaned up when mx exits
         _addSubprocess(p, args)
 
-        # wait for Java process to launch and report the port number
+        # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
         while self.port == None:
             retries = retries + 1
-            if retries > 5:
-                raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output]')
+            if retries > 15:
+                raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output after 30 seconds]')
             else:
                 time.sleep(2)
 
