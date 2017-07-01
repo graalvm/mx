@@ -1658,6 +1658,7 @@ def init_benchmark_suites():
     """Called after mx initialization if mx is the primary suite."""
     add_java_vm(DefaultJavaVm("server", "default"), priority=-1)
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
+    add_bm_suite(JMHDistMxBenchmarkSuite())
     add_bm_suite(TestBenchmarkSuite())
 
 

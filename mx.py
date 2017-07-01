@@ -1388,6 +1388,30 @@ class JARDistribution(Distribution, ClasspathDependency):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
 
+class JMHArchiveParticipant:
+    """ Archive participant for building JMH benchmarking jars. """
+
+    def __init__(self, dist):
+        if not dist.mainClass:
+            # set default JMH main class
+            dist.mainClass = "org.openjdk.jmh.Main"
+
+    def __opened__(self, arc, srcArc, services):
+        self.arc = arc
+        self.benchmarkList = ''
+
+    def __add__(self, arcname, contents):
+        if arcname == 'META-INF/BenchmarkList':
+            self.benchmarkList += contents
+            return True
+        return False
+
+    def __addsrc__(self, arcname, contents):
+        return False
+
+    def __closing__(self):
+        self.arc.zf.writestr('META-INF/BenchmarkList', self.benchmarkList)
+
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
         BuildTask.__init__(self, dist, args, 1)
@@ -15901,6 +15925,12 @@ def main():
     if len(commandAndArgs) == 0:
         print_simple_help()
         return
+
+    # add JMH archive participants
+    for suite in suites(True, includeBinary=False):
+        for d in suite.dists:
+            if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
+                d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
