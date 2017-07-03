@@ -44,7 +44,7 @@ jmh-test : {
     ["./mx", "build"]
   ]
   run: [
-    ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-mx:*"]
+    ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"]
   ]
 }
 
