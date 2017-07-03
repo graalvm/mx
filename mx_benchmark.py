@@ -859,6 +859,40 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
+class DeprecatedMixin(object):
+    """ Mixin to deprecate benchmark suites. """
+    def benchmarkList(self, bmSuiteArgs):
+        try:
+            return super(DeprecatedMixin, self).benchmarkList(bmSuiteArgs)
+        except:
+            return ["THIS SUITE IS DEPRECATED"]
+
+    def alternative_suite(self):
+        return None
+
+    def warning_only(self):
+        return False
+
+    def run(self, *args, **kwargs):
+        alternative_suite = self.alternative_suite()
+        msg = "The `{0}` benchmark suite is deprecated! {1}".format(
+              self.name(),
+              "Consider using `{0}` instead.".format(alternative_suite)
+              if alternative_suite else
+              "(No alternatives provided.)"
+        )
+        if self.warning_only():
+            mx.warn(msg)
+        else:
+            mx.abort(msg)
+        return super(DeprecatedMixin, self).run(*args, **kwargs)
+
+
+class WarnDeprecatedMixin(DeprecatedMixin):
+    def warning_only(self):
+        return True
+
+
 class VmBenchmarkSuite(StdOutBenchmarkSuite):
     def vmArgs(self, bmSuiteArgs):
         args = self.vmAndRunArgs(bmSuiteArgs)[0]
