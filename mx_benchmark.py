@@ -1233,6 +1233,47 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
 
+class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """
+    JMH benchmark suite that executes microbenchmark mx distribution.
+    """
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if benchmarks is None:
+            mx.abort("JMH Dist Suite requires a JMH distribution. (try {0}:*)".format(self.name()))
+        if len(benchmarks) != 1:
+            mx.abort("JMH Dist Suite runs only a single JMH distribution, got: {0}".format(benchmarks))
+        self.dist = benchmarks[0]
+        mx.log("running " + self.dist)
+        return super(JMHDistBenchmarkSuite, self).createCommandLineArgs(None, bmSuiteArgs)
+
+    def extraVmArgs(self):
+        assert self.dist
+        jdk = mx.get_jdk(mx.distribution(self.dist).javaCompliance)
+        return ['-cp', mx.classpath([(self.dist)], jdk=jdk)]
+
+    def filter_distribution(self, dist):
+        return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
+
+    def benchmarkList(self, bmSuiteArgs):
+        return [d.name
+                for suite in self.benchmark_suites()
+                for d in suite.dists
+                if self.filter_distribution(d)
+                ]
+
+    def benchmark_suites(self):
+        opt_limit_to_suite = True
+        suites = mx.suites(opt_limit_to_suite, includeBinary=False)
+        if mx.primary_suite() == mx._mx_suite:
+            suites.append(mx._mx_suite)
+        return suites
+
+    def getJMHEntry(self, bmSuiteArgs):
+        assert self.dist
+        return ['-jar', mx.distribution(self.dist).path]
+
+
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
 
@@ -1329,6 +1370,17 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
 class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
     def name(self):
         return "jmh-mx"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
+
+
+class JMHDistMxBenchmarkSuite(JMHDistBenchmarkSuite):
+    def name(self):
+        return "jmh-dist"
 
     def group(self):
         return "Graal"
