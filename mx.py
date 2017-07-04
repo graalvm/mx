@@ -1123,7 +1123,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 claimer = a
                     return claimer is not None
 
-                def overwriteCheck(zf, arcname, source):
+                def overwriteCheck(zf, arcname, source, lp=None):
                     if os.path.basename(arcname).startswith('.'):
                         logv('Excluding dotfile: ' + source)
                         return True
@@ -1135,7 +1135,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                     existingSource = zf._provenance.get(arcname, None)
                     if existingSource and existingSource != source:
                         if arcname[-1] != os.path.sep:
-                            warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                            if lp and lp.read(arcname) == zf.read(arcname):
+                                logv(self.original_path() + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
+                            else:
+                                warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
                         return True
                     else:
                         zf._provenance[arcname] = source
@@ -1150,7 +1153,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 assert '/' not in service
                                 services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                             else:
-                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
+                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname, lp=lp):
                                     contents = lp.read(arcname)
                                     if not participants__add__(arcname, contents):
                                         arc.zf.writestr(arcname, contents)
@@ -1217,7 +1220,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
-                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname):
+                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname, lp=lp):
                                         contents = lp.read(arcname)
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
