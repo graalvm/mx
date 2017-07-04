@@ -1393,6 +1393,17 @@ class JMHDistMxBenchmarkSuite(JMHDistBenchmarkSuite):
         return "mx"
 
 
+class JMHJarMxBenchmarkSuite(JMHJarBenchmarkSuite):
+    def name(self):
+        return "jmh-jar"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
+
+
 def build_number():
     """
     Get the current build number from the BUILD_NUMBER environment variable. If BUILD_NUMBER is not set or not a number,
@@ -1715,6 +1726,7 @@ def init_benchmark_suites():
     add_java_vm(DefaultJavaVm("server", "default"), priority=-1)
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
     add_bm_suite(JMHDistMxBenchmarkSuite())
+    add_bm_suite(JMHJarMxBenchmarkSuite())
     add_bm_suite(TestBenchmarkSuite())
 
 
