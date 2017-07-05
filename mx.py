@@ -14876,6 +14876,24 @@ def _copy_eclipse_settings(p, files=None):
         if files:
             files.append(join(settingsDir, name))
 
+_tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
+
+
+def get_file_extension(path):
+    root, ext = os.path.splitext(path)
+    if len(ext) > 0:
+        ext = ext[1:]  # remove leading .
+    if ext in _tar_compressed_extensions and os.path.splitext(root)[1] == ".tar":
+        return "tar." + ext
+    return ext
+
+
+def change_file_extension(path, new_extension):
+    ext = get_file_extension(path)
+    if not ext:
+        return path + '.' + new_extension
+    return path[:-len(ext)] + new_extension
+
 
 def ensure_dir_exists(path, mode=None):
     """
