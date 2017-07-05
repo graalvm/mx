@@ -3002,7 +3002,11 @@ class NativeProject(Project):
 
 class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
-        ProjectBuildTask.__init__(self, args, cpu_count(), project)  # assume parallelized
+        if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
+            jobs = 1
+        else:
+            jobs = cpu_count()
+        ProjectBuildTask.__init__(self, args, jobs, project)
         self._newestOutput = None
 
     def __str__(self):
@@ -3032,7 +3036,8 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += [self.subject.makeTarget]
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
-        cmdline += ['-j', str(cpu_count() + 1)]
+        if self.parallelism > 1:
+            cmdline += ['-j', str(self.parallelism)]
         return cmdline, cwd, env
 
     def build(self):
@@ -15886,7 +15891,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.115.0")  # Useful Utils
+version = VersionSpec("5.115.1")  # Compat
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
