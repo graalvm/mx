@@ -3102,6 +3102,7 @@ def _make_absolute(path, prefix):
         return join(prefix, path)
     return path
 
+
 @suite_context_free
 def sha1(args):
     """generate sha1 digest for given file"""
@@ -3115,6 +3116,7 @@ def sha1(args):
     else:
         print 'sha1 of ' + args.path + ': ' + value
 
+
 def sha1OfFile(path):
     with open(path, 'rb') as f:
         d = hashlib.sha1()
@@ -3125,11 +3127,22 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+
 def user_home():
     return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
 
+
 def dot_mx_dir():
     return join(user_home(), '.mx')
+
+
+def is_cache_path(path):
+    return path.startswith(_cache_dir())
+
+
+def _cache_dir():
+    return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
+
 
 def _get_path_in_cache(name, sha1, urls, ext=None):
     """
@@ -3149,10 +3162,10 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
-    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(cacheDir, name + '_' + sha1 + ext)
+    return join(_cache_dir(), name + '_' + sha1 + ext)
+
 
 def download_file_exists(urls):
     """
@@ -3165,6 +3178,7 @@ def download_file_exists(urls):
         except:
             pass
     return False
+
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     """
@@ -14893,6 +14907,10 @@ def change_file_extension(path, new_extension):
     if not ext:
         return path + '.' + new_extension
     return path[:-len(ext)] + new_extension
+
+
+def change_file_name(path, new_file_name):
+    return join(dirname(path), new_file_name + '.' + get_file_extension(path))
 
 
 def ensure_dir_exists(path, mode=None):
