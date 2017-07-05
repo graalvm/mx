@@ -370,6 +370,9 @@ class SuiteConstituent(object):
     def __str__(self):
         return self.name
 
+    def __repr__(self):
+        return self.name
+
 
 class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
@@ -3029,6 +3032,7 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += [self.subject.makeTarget]
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
+        cmdline += ['-j', str(cpu_count() + 1)]
         return cmdline, cwd, env
 
     def build(self):
@@ -3039,7 +3043,7 @@ class NativeBuildTask(ProjectBuildTask):
     def needsBuild(self, newestInput):
         logv('Checking whether to build {} with GNU Make'.format(self.subject.name))
         cmdline, cwd, env = self._build_run_args()
-        cmdline += ['--question']
+        cmdline += ['-q']
 
         if _opts.verbose:
             # default out/err stream
