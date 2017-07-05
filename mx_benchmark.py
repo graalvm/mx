@@ -1238,6 +1238,11 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     JMH benchmark suite that executes microbenchmark mx distribution.
     """
 
+    def benchSuiteName(self, bmSuiteArgs):
+        if self.dist:
+            return "jmh-" + self.dist
+        return super(JMHDistBenchmarkSuite, self).benchSuiteName(bmSuiteArgs)
+
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         if benchmarks is None:
             mx.abort("JMH Dist Suite requires a JMH distribution. (try {0}:*)".format(self.name()))
