@@ -112,6 +112,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def useJobsForMakeByDefault(self):
+        """
+        Uses -j for make by default, can be prevented using `single_job` attribute on the project.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -240,6 +246,15 @@ class MxCompatibility51120(MxCompatibility51104):#pylint: disable=too-many-ances
         return mx.VersionSpec("5.113.0")
 
     def disableImportOfTestProjects(self):
+        return True
+
+
+class MxCompatibility51150(MxCompatibility51120):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.115.0")
+
+    def useJobsForMakeByDefault(self):
         return True
 
 def minVersion():
