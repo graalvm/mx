@@ -7819,7 +7819,7 @@ def library(name, fatalIfMissing=True, context=None):
         abort(_missing_dep_message(name, 'library'), context=context)
     return l
 
-def classpath_entries(names=None, includeSelf=True, preferProjects=False):
+def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None):
     """
     Gets the transitive set of dependencies that need to be on the class path
     given the root set of projects and distributions in `names`.
@@ -7845,9 +7845,22 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
         if invalid:
             abort('class path roots must be classpath dependencies: ' + str(invalid))
 
+    if excludes is None:
+        excludes = []
+    else:
+        if isinstance(excludes, types.StringTypes):
+            excludes = [excludes]
+        elif isinstance(excludes, Dependency):
+            excludes = [excludes]
+        excludes = [dependency(n) for n in excludes]
+
+    assert len(set(roots) & set(excludes)) == 0
+
     cpEntries = []
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
+            return False
+        if dst in excludes:
             return False
         if dst in roots or dst.isLibrary() or dst.isJdkLibrary():
             return True
