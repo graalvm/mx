@@ -370,6 +370,9 @@ class SuiteConstituent(object):
     def __str__(self):
         return self.name
 
+    def __repr__(self):
+        return self.name
+
 
 class License(SuiteConstituent):
     def __init__(self, suite, name, fullname, url):
@@ -3029,6 +3032,7 @@ class NativeBuildTask(ProjectBuildTask):
             cmdline += [self.subject.makeTarget]
         if hasattr(self.subject, "getBuildEnv"):
             env.update(self.subject.getBuildEnv())
+        cmdline += ['-j', str(cpu_count() + 1)]
         return cmdline, cwd, env
 
     def build(self):
@@ -3039,7 +3043,7 @@ class NativeBuildTask(ProjectBuildTask):
     def needsBuild(self, newestInput):
         logv('Checking whether to build {} with GNU Make'.format(self.subject.name))
         cmdline, cwd, env = self._build_run_args()
-        cmdline += ['--question']
+        cmdline += ['-q']
 
         if _opts.verbose:
             # default out/err stream
@@ -3098,6 +3102,7 @@ def _make_absolute(path, prefix):
         return join(prefix, path)
     return path
 
+
 @suite_context_free
 def sha1(args):
     """generate sha1 digest for given file"""
@@ -3111,6 +3116,7 @@ def sha1(args):
     else:
         print 'sha1 of ' + args.path + ': ' + value
 
+
 def sha1OfFile(path):
     with open(path, 'rb') as f:
         d = hashlib.sha1()
@@ -3121,11 +3127,22 @@ def sha1OfFile(path):
             d.update(buf)
         return d.hexdigest()
 
+
 def user_home():
     return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
 
+
 def dot_mx_dir():
     return join(user_home(), '.mx')
+
+
+def is_cache_path(path):
+    return path.startswith(_cache_dir())
+
+
+def _cache_dir():
+    return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
+
 
 def _get_path_in_cache(name, sha1, urls, ext=None):
     """
@@ -3145,10 +3162,10 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
-    cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(cacheDir, name + '_' + sha1 + ext)
+    return join(_cache_dir(), name + '_' + sha1 + ext)
+
 
 def download_file_exists(urls):
     """
@@ -3161,6 +3178,7 @@ def download_file_exists(urls):
         except:
             pass
     return False
+
 
 def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
     """
@@ -7815,7 +7833,7 @@ def library(name, fatalIfMissing=True, context=None):
         abort(_missing_dep_message(name, 'library'), context=context)
     return l
 
-def classpath_entries(names=None, includeSelf=True, preferProjects=False):
+def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None):
     """
     Gets the transitive set of dependencies that need to be on the class path
     given the root set of projects and distributions in `names`.
@@ -7841,9 +7859,22 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False):
         if invalid:
             abort('class path roots must be classpath dependencies: ' + str(invalid))
 
+    if excludes is None:
+        excludes = []
+    else:
+        if isinstance(excludes, types.StringTypes):
+            excludes = [excludes]
+        elif isinstance(excludes, Dependency):
+            excludes = [excludes]
+        excludes = [dependency(n) for n in excludes]
+
+    assert len(set(roots) & set(excludes)) == 0
+
     cpEntries = []
     def _preVisit(dst, edge):
         if not isinstance(dst, ClasspathDependency):
+            return False
+        if dst in excludes:
             return False
         if dst in roots or dst.isLibrary() or dst.isJdkLibrary():
             return True
@@ -14859,6 +14890,40 @@ def _copy_eclipse_settings(p, files=None):
         if files:
             files.append(join(settingsDir, name))
 
+_tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
+_known_zip_pre_extensions = {'src'}
+
+
+def get_file_extension(path):
+    root, ext = os.path.splitext(path)
+    if len(ext) > 0:
+        ext = ext[1:]  # remove leading .
+    if ext in _tar_compressed_extensions and os.path.splitext(root)[1] == ".tar":
+        return "tar." + ext
+    if ext == 'zip':
+        _, pre_ext = os.path.splitext(root)
+        if len(pre_ext) > 0:
+            pre_ext = pre_ext[1:]  # remove leading .
+        if pre_ext in _known_zip_pre_extensions:
+            return pre_ext + ".zip"
+    if ext == 'map':
+        _, pre_ext = os.path.splitext(root)
+        if len(pre_ext) > 0:
+            pre_ext = pre_ext[1:]  # remove leading .
+            return pre_ext + ".map"
+    return ext
+
+
+def change_file_extension(path, new_extension):
+    ext = get_file_extension(path)
+    if not ext:
+        return path + '.' + new_extension
+    return path[:-len(ext)] + new_extension
+
+
+def change_file_name(path, new_file_name):
+    return join(dirname(path), new_file_name + '.' + get_file_extension(path))
+
 
 def ensure_dir_exists(path, mode=None):
     """
@@ -15821,7 +15886,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.114.10")  # Tasty tests
+version = VersionSpec("5.115.0")  # Useful Utils
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
