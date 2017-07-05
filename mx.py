@@ -14891,6 +14891,7 @@ def _copy_eclipse_settings(p, files=None):
             files.append(join(settingsDir, name))
 
 _tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
+_known_zip_pre_extensions = {'src'}
 
 
 def get_file_extension(path):
@@ -14899,6 +14900,17 @@ def get_file_extension(path):
         ext = ext[1:]  # remove leading .
     if ext in _tar_compressed_extensions and os.path.splitext(root)[1] == ".tar":
         return "tar." + ext
+    if ext == 'zip':
+        _, pre_ext = os.path.splitext(root)
+        if len(pre_ext) > 0:
+            pre_ext = pre_ext[1:]  # remove leading .
+        if pre_ext in _known_zip_pre_extensions:
+            return pre_ext + ".zip"
+    if ext == 'map':
+        _, pre_ext = os.path.splitext(root)
+        if len(pre_ext) > 0:
+            pre_ext = pre_ext[1:]  # remove leading .
+            return pre_ext + ".map"
     return ext
 
 
