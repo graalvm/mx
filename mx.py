@@ -202,6 +202,7 @@ _mvn = None
 _binary_suites = None  # source suites only if None, [] means all binary, otherwise specific list
 _urlrewrites = []  # list of URLRewrite objects
 _original_environ = dict(os.environ)
+_original_directory = os.getcwd()
 _jdkProvidedSuites = set()
 
 # List of functions to run when the primary suite is initialized
@@ -1647,6 +1648,8 @@ class TARArchiveTask(ArchiveTask):
             abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
+        if not forBuild and self.subject.output and exists(self.subject.output) and self.subject.output != '.':
+            rmtree(self.subject.output)
 
     def cleanForbidden(self):
         if ArchiveTask.cleanForbidden(self):
@@ -3113,16 +3116,16 @@ class NativeBuildTask(ProjectBuildTask):
             # so that all executed commands are visible.
             cmdline += ["MX_VERBOSE=y"]
         if hasattr(self.subject, "vpath") and self.subject.vpath:
-            env['VPATH'] = self.subject.dir
+            cmdline += ['VPATH=' + pipes.quote(self.subject.dir)]
             cwd = join(self.subject.suite.dir, self.subject.getOutput())
             ensure_dir_exists(cwd)
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
+        if hasattr(self.subject, "getBuildEnv"):
+            cmdline += [n + '=' + pipes.quote(v) for n, v in self.subject.getBuildEnv().iteritems()]
         if hasattr(self.subject, "makeTarget"):
             cmdline += [self.subject.makeTarget]
-        if hasattr(self.subject, "getBuildEnv"):
-            env.update(self.subject.getBuildEnv())
         if self.parallelism > 1:
             cmdline += ['-j', str(self.parallelism)]
         return cmdline, cwd, env
@@ -9292,6 +9295,12 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 log('    ' + key + '=' + env[key])
             log(' \\\n '.join(map(pipes.quote, args)))
         else:
+            if cwd is not None and cwd != _original_directory:
+                log('Directory: ' + cwd)
+            if env is not None:
+                env_diff = env.viewitems() - _original_environ.viewitems()
+                if len(env_diff):
+                    log('env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\')
             log(' '.join(map(pipes.quote, args)))
 
     if timeout is None and _opts.ptimeout != 0:
@@ -16313,7 +16322,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.6")  # vpath fix
+version = VersionSpec("5.128.7")  # native build clean
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
