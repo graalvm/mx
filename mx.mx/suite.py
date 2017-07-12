@@ -4,14 +4,49 @@ suite = {
 
     # ------------- Libraries -------------
 
+    "JACOCOCORE" : {
+      "sha1" : "66215826a684eb6866d4c14a5a4f9c344f1d1eef",
+      "sourceSha1" : "a365ee459836b2aa18028929923923d15f0c3af9",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.core",
+        "version" : "0.7.9",
+      },
+      "licence": "EPL-1.0",
+    },
+
     "JACOCOAGENT" : {
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jacoco/jacocoagent-0.7.1-1.jar"],
-      "sha1" : "2f73a645b02e39290e577ce555f00b02004650b0",
+      "sha1" : "a6ac9cca89d889222a40dab9dd5039bfd22a4cff",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.agent",
+        "version" : "0.7.9",
+        "suffix" : "runtime",
+      },
+      "licence": "EPL-1.0",
     },
 
     "JACOCOREPORT" : {
-      "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/jacoco/jacocoreport-0.7.1-2.jar"],
-      "sha1" : "a630436391832d697a12c8f7daef8655d7a1efd2",
+      "sha1" : "8a7f78fdf2a4e58762890d8e896a9298c2980c10",
+      "sourceSha1" : "e6703ef288523a8e63fa756d8adeaa70858d41b0",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.report",
+        "version" : "0.7.9",
+      },
+      "dependencies" : ["JACOCOCORE", "ASM_DEBUG_ALL"],
+      "licence": "EPL-1.0",
+    },
+
+    "ASM_DEBUG_ALL": {
+      "maven": {
+        "groupId": "org.ow2.asm",
+        "artifactId": "asm-debug-all",
+        "version": "5.0.4",
+      },
+      "sha1": "702b8525fcf81454235e5e2fa2a35f15ffc0ec7e",
+      "sourceSha1": "112ff54474f1f04ccf1384c92e39fdc566f0bb5e",
+      "license": "BSD-new",
     },
 
     "FINDBUGS_DIST" : {
@@ -205,6 +240,10 @@ suite = {
       "name" : "Apache License 2.0",
       "url" : "https://opensource.org/licenses/Apache-2.0"
     },
+    "EPL-1.0": {
+      "name": "Eclipse Public License 1.0",
+      "url": "https://opensource.org/licenses/EPL-1.0",
+    },
   },
 
   "projects" : {
@@ -251,10 +290,19 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8",
     },
-  },
+
+    "com.oracle.mxtool.jacoco" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "javaCompliance" : "1.8",
+      "dependencies" : [
+        "JACOCOREPORT",
+        "JOPTSIMPLE_4_6",
+      ],
+    },
+   },
 
   "distributions" : {
-
     "JUNIT_TOOL" : {
       "subDir" : "java",
       "dependencies" : [
@@ -266,6 +314,12 @@ suite = {
         "JUNIT",
         "HAMCREST",
       ],
+    },
+
+    "MX_JACOCO_REPORT" : {
+      "subDir" : "java",
+      "mainClass" : "com.oracle.mxtool.jacoco.JacocoReport",
+      "dependencies" : ["com.oracle.mxtool.jacoco"],
     },
   },
 
