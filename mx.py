@@ -3873,6 +3873,15 @@ class VC(object):
         """
         abort(self.kind + " release_version_from_tags is not implemented")
 
+    def parent_tags(self, vcdir):
+        """
+        Returns the tags of the parent revision.
+
+        :param str vcdir: a valid repository path
+        :rtype: list of str
+        """
+        abort(self.kind + " parent_tags is not implemented")
+
     @staticmethod
     def _version_string_helper(current_revision, tag_revision, tag_version, snapshotSuffix):
         def version_str(version_list):
@@ -4275,6 +4284,13 @@ class HgConfig(VC):
             return VC._version_string_helper(current_id, most_recent_tag_id, most_recent_tag_version, snapshotSuffix)
         return None
 
+    def parent_tags(self, vcdir):
+        try:
+            _tags = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{tags}', '--rev', '.']).strip().split(' ')
+            return [tag for tag in _tags if tag != 'tip']
+        except subprocess.CalledProcessError as e:
+            abort('hg log failed: ' + str(e))
+
     def metadir(self):
         return '.hg'
 
@@ -4673,6 +4689,12 @@ class GitConfig(VC):
             most_recent_tag_revision = self._commitish_revision(vcdir, most_recent_tag)
             return VC._version_string_helper(latest_rev, most_recent_tag_revision, most_recent_version, snapshotSuffix)
         return None
+
+    def parent_tags(self, vcdir):
+        try:
+            return subprocess.check_output(['git', 'tag', '--list', '--points-at', 'HEAD'], cwd=vcdir).strip().split('\r\n')
+        except subprocess.CalledProcessError as e:
+            abort('git tag failed: ' + str(e))
 
     def metadir(self):
         return '.git'
@@ -6374,7 +6396,8 @@ class Suite(object):
             'repositories',
             'javac.lint.overrides',
             'urlrewrites',
-            'scm'
+            'scm',
+            'version'
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -7009,17 +7032,23 @@ class SourceSuite(Suite):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
-        return self.vc.is_release_from_tags(self.vc_dir, self.name)
+        _version = self._get_early_suite_dict_property('version')
+        if _version:
+            return '{}-{}'.format(self.name, _version) in self.vc.parent_tags(self.vc_dir)
+        else:
+            return self.vc.is_release_from_tags(self.vc_dir, self.name)
 
     def release_version(self, snapshotSuffix='dev'):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
         if not self._releaseVersion:
-            tag = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
-            if not tag:
-                tag = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
-            self._releaseVersion = tag
+            _version = self._get_early_suite_dict_property('version')
+            if not _version:
+                _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
+            if not _version:
+                _version = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
+            self._releaseVersion = _version
         return self._releaseVersion
 
     def scm_metadata(self, abortOnError=False):
@@ -15891,7 +15920,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.115.1")  # Compat
+version = VersionSpec("5.116.0")  # Mit pommes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
