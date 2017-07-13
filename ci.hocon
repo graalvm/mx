@@ -57,8 +57,14 @@ verifylibraryurls : {
 
 downstream-truffleruby-binary-truffle: {
   downloads: ${downloads.java}
+  packages: {
+    llvm: "==3.8"
+  }
+  environment: {
+    PATH: "$LLVM/bin:$PATH",
+  }
   run: [
-    [export, "MX_BINARY_SUITES=truffle"],
+    [export, "MX_BINARY_SUITES=sdk,truffle"],
     ["./mx", testdownstream, --repo, ["./mx", urlrewrite, "https://github.com/graalvm/truffleruby.git"], --mx-command, "ruby_testdownstream_hello"],
   ]
   timelimit : "10:00"
