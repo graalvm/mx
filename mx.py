@@ -1482,41 +1482,64 @@ class NativeTARDistribution(Distribution):
                         ensure_dir_exists(os.path.dirname(dest))
                         shutil.copy2(name, dest)
 
-            for d in self.archived_deps():
-                if d.isNativeProject():
-                    output = d.getOutput()
-                    output = join(self.suite.dir, output) if output else None
-                    for r in d.getResults():
-                        if output and self.relpath:
-                            filename = os.path.relpath(r, output)
-                        else:
-                            filename = basename(r)
-                        # Make debug-info files optional for distribution
-                        if is_debug_lib_file(r) and not os.path.exists(r):
-                            warn("File {} for archive {} does not exist.".format(filename, d.name))
-                        else:
-                            archive_and_copy(r, filename)
-                    if hasattr(d, "headers"):
-                        srcdir = os.path.join(self.suite.dir, d.dir)
-                        for h in d.headers:
-                            if self.relpath:
-                                filename = h
-                            else:
-                                filename = basename(h)
-                            archive_and_copy(os.path.join(srcdir, h), filename)
-                elif d.isArchivableProject():
-                    outputDir = d.output_dir()
-                    archivePrefix = d.archive_prefix()
-                    for f in d.getResults():
-                        relpath = d.get_relpath(f, outputDir)
-                        arcname = join(archivePrefix, relpath)
-                        archive_and_copy(f, arcname)
-                elif hasattr(d, 'getResults') and not d.getResults():
-                    logv("[{}: ignoring dependency {} with no results]".format(self.name, d.name))
-                else:
-                    abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
+            for name, arcname in self.get_files_to_archive():
+                archive_and_copy(name, arcname)
 
         self.notify_updated()
+
+    def get_files_to_archive(self, reportOutput=True):
+        filesToArchive = []
+        for d in self.archived_deps():
+            if d.isNativeProject():
+                filesToArchive.extend(self.get_files_for_nativeProject(d, reportOutput))
+            elif d.isArchivableProject():
+                filesToArchive.extend(self.get_files_for_archivableProject(d))
+            elif hasattr(d, 'getResults') and not d.getResults():
+                if reportOutput: logv("[{}: ignoring dependency {} with no results]".format(self.name, d.name))
+            else:
+                if reportOutput: abort('Unsupported dependency for native distribution {}: {}'.format(self.name, d.name))
+
+        return filesToArchive
+
+    def get_files_for_nativeProject(self, d, reportOutput=True):
+        assert d.isNativeProject()
+        fileList = []
+
+        output = d.getOutput()
+        output = join(self.suite.dir, output) if output else None
+        for r in d.getResults():
+            if output and self.relpath:
+                filename = os.path.relpath(r, output)
+            else:
+                filename = basename(r)
+            # Make debug-info files optional for distribution
+            if is_debug_lib_file(r) and not os.path.exists(r):
+                if reportOutput: warn("File {} for archive {} does not exist.".format(filename, d.name))
+            else:
+                fileList.append((r, filename))
+        if hasattr(d, "headers"):
+            srcdir = os.path.join(self.suite.dir, d.dir)
+            for h in d.headers:
+                if self.relpath:
+                    filename = h
+                else:
+                    filename = basename(h)
+                fileList.append((os.path.join(srcdir, h), filename))
+
+        return fileList
+
+    def get_files_for_archivableProject(self, d):
+        assert d.isArchivableProject()
+        fileList = []
+
+        outputDir = d.output_dir()
+        archivePrefix = d.archive_prefix()
+        for f in d.getResults():
+            relpath = d.get_relpath(f, outputDir)
+            arcname = join(archivePrefix, relpath)
+            fileList.append((f, arcname))
+
+        return fileList
 
     def getBuildTask(self, args):
         return TARArchiveTask(args, self)
@@ -1570,6 +1593,13 @@ class TARArchiveTask(ArchiveTask):
             abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
+
+        if not forBuild:
+            if self.subject.output:
+                for _, arcname in self.subject.get_files_to_archive(False):
+                    dest = join(self.subject.suite.dir, self.subject.output, arcname)
+                    if exists(dest):
+                        os.remove(dest)
 
     def cleanForbidden(self):
         if ArchiveTask.cleanForbidden(self):
