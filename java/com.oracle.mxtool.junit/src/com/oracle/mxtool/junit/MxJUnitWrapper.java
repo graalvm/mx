@@ -32,9 +32,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -205,10 +207,9 @@ public class MxJUnitWrapper {
         } else {
             textListener = new TextRunListener(system);
         }
-        MxRunListener mxListener = textListener;
-        if ((veryVerbose || verbose) && enableTiming) {
-            mxListener = new TimingDecorator(mxListener);
-        }
+        TimingDecorator timings = enableTiming ? new TimingDecorator(textListener) : null;
+        MxRunListener mxListener = enableTiming ? timings : textListener;
+
         if (color) {
             mxListener = new AnsiTerminalDecorator(mxListener);
         }
@@ -257,6 +258,16 @@ public class MxJUnitWrapper {
         if (repeatCount != 1) {
             request = new RepeatingRequest(request, repeatCount);
         }
+
+        if (enableTiming) {
+            Runtime.getRuntime().addShutdownHook(new Thread() {
+                @Override
+                public void run() {
+                    printTimings(timings);
+                }
+            });
+        }
+
         Result result = junitCore.run(request);
         for (Failure each : missingClasses) {
             result.getFailures().add(each);
@@ -265,6 +276,57 @@ public class MxJUnitWrapper {
     }
 
     private static final Pattern MODULE_PACKAGE_RE = Pattern.compile("([^/]+)/(.+)");
+
+    static class Timing<T> implements Comparable<Timing<T>> {
+        final T subject;
+        final long value;
+
+        public Timing(T subject, long value) {
+            this.subject = subject;
+            this.value = value;
+        }
+
+        public int compareTo(Timing<T> o) {
+            if (this.value < o.value) {
+                return -1;
+            }
+            if (this.value > o.value) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+
+    // Should never need to customize so using a system property instead of a command line option is
+    // fine for rare time someone wants to customize.
+    private static final int TIMINGS_TO_PRINT = Integer.getInteger("mx.junit.timings_to_print", 10);
+
+    private static void printTimings(TimingDecorator timings) {
+        if (TIMINGS_TO_PRINT != 0) {
+            List<Timing<Class<?>>> classTimes = new ArrayList<>(timings.classTimes.size());
+            List<Timing<Description>> testTimes = new ArrayList<>(timings.testTimes.size());
+            for (Map.Entry<Class<?>, Long> e : timings.classTimes.entrySet()) {
+                classTimes.add(new Timing<>(e.getKey(), e.getValue()));
+            }
+            for (Map.Entry<Description, Long> e : timings.testTimes.entrySet()) {
+                testTimes.add(new Timing<>(e.getKey(), e.getValue()));
+            }
+            Collections.sort(classTimes, Collections.reverseOrder());
+            Collections.sort(testTimes, Collections.reverseOrder());
+
+            System.out.println();
+            System.out.printf("%d longest running test classes:%n", TIMINGS_TO_PRINT);
+            for (int i = 0; i < TIMINGS_TO_PRINT && i < classTimes.size(); i++) {
+                Timing<Class<?>> timing = classTimes.get(i);
+                System.out.printf(" %,10d ms    %s%n", timing.value, timing.subject.getName());
+            }
+            System.out.printf("%d longest running tests:%n", TIMINGS_TO_PRINT);
+            for (int i = 0; i < TIMINGS_TO_PRINT && i < testTimes.size(); i++) {
+                Timing<Description> timing = testTimes.get(i);
+                System.out.printf(" %,10d ms    %s%n", timing.value, timing.subject);
+            }
+        }
+    }
 
     /**
      * Adds the super types of {@code cls} to {@code supertypes}.
