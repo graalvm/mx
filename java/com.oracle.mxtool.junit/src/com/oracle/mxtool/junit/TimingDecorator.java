@@ -22,7 +22,10 @@
  */
 package com.oracle.mxtool.junit;
 
-import org.junit.runner.*;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.junit.runner.Description;
 
 /**
  * Timing support for JUnit test runs.
@@ -31,9 +34,13 @@ public class TimingDecorator extends MxRunListenerDecorator {
 
     private long startTime;
     private long classStartTime;
+    final Map<Class<?>, Long> classTimes;
+    final Map<Description, Long> testTimes;
 
     public TimingDecorator(MxRunListener l) {
         super(l);
+        this.classTimes = new HashMap<>();
+        this.testTimes = new HashMap<>();
     }
 
     @Override
@@ -49,6 +56,9 @@ public class TimingDecorator extends MxRunListenerDecorator {
         if (beVerbose()) {
             getWriter().print(' ' + valueToString(totalTime));
         }
+        if (classTimes != null) {
+            classTimes.put(clazz, totalTime / 1_000_000);
+        }
     }
 
     @Override
@@ -63,6 +73,9 @@ public class TimingDecorator extends MxRunListenerDecorator {
         super.testFinished(description);
         if (beVerbose()) {
             getWriter().print(" " + valueToString(totalTime));
+        }
+        if (testTimes != null) {
+            testTimes.put(description, totalTime / 1_000_000);
         }
     }
 
