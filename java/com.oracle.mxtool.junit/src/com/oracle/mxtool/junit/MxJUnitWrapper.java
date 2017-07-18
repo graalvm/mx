@@ -23,18 +23,14 @@
 package com.oracle.mxtool.junit;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -118,9 +114,9 @@ public class MxJUnitWrapper {
         JUnitCore junitCore = new JUnitCore();
         system.out().println("MxJUnitCore");
         system.out().println("JUnit version " + Version.id());
-        Set<Class<?>> classes = new LinkedHashSet<>();
-        String methodName = null;
-        List<Failure> missingClasses = new ArrayList<>();
+
+        MxJUnitRequest.Builder builder = new MxJUnitRequest.Builder();
+
         boolean verbose = false;
         boolean veryVerbose = false;
         boolean enableTiming = false;
@@ -165,45 +161,23 @@ public class MxJUnitWrapper {
                 }
 
             } else {
-                /*
-                 * Entries of the form class#method are handled specially. Only one can be specified
-                 * on the command line as there's no obvious way to build a runner for multiple
-                 * ones.
-                 */
-                if (methodName != null) {
-                    system.out().println("Only a single class and method can be specified: " + each);
-                    System.exit(1);
-                } else if (each.contains("#")) {
-                    String[] pair = each.split("#");
-                    if (pair.length != 2) {
-                        system.out().println("Malformed class and method request: " + each);
-                        System.exit(1);
-                    } else if (classes.size() != 0) {
-                        system.out().println("Only a single class and method can be specified: " + each);
-                        System.exit(1);
-                    } else {
-                        methodName = pair[1];
-                        each = pair[0];
-                    }
-                }
+
                 try {
-                    Class<?> cls = Class.forName(each, false, MxJUnitWrapper.class.getClassLoader());
-                    if ((cls.getModifiers() & Modifier.ABSTRACT) == 0) {
-                        classes.add(cls);
-                    }
-                } catch (ClassNotFoundException e) {
-                    system.out().println("Could not find class: " + each);
-                    Description description = Description.createSuiteDescription(each);
-                    Failure failure = new Failure(description, e);
-                    missingClasses.add(failure);
+                    builder.addTestSpec(each);
+                } catch (MxJUnitRequest.BuilderException ex) {
+                    system.out().println(ex.getMessage());
+                    System.exit(1);
                 }
             }
         }
+
+        MxJUnitRequest mxRequest = builder.build();
+
         final TextRunListener textListener;
         if (veryVerbose) {
-            textListener = new VerboseTextListener(system, classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
+            textListener = new VerboseTextListener(system, mxRequest.classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
         } else if (verbose) {
-            textListener = new VerboseTextListener(system, classes.size());
+            textListener = new VerboseTextListener(system, mxRequest.classes.size());
         } else {
             textListener = new TextRunListener(system);
         }
@@ -225,12 +199,11 @@ public class MxJUnitWrapper {
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
         if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
-            addExports(classes, system.out());
+            addExports(mxRequest.classes, system.out());
         }
 
-        Request request;
-        if (methodName == null) {
-            request = Request.classes(classes.toArray(new Class<?>[0]));
+        Request request = mxRequest.getRequest();
+        if (mxRequest.methodName == null) {
             if (failFast) {
                 Runner runner = request.getRunner();
                 if (runner instanceof ParentRunner) {
@@ -253,8 +226,8 @@ public class MxJUnitWrapper {
             if (failFast) {
                 system.out().println("Single method selected - fail fast not supported");
             }
-            request = Request.method(classes.iterator().next(), methodName);
         }
+
         if (repeatCount != 1) {
             request = new RepeatingRequest(request, repeatCount);
         }
@@ -269,7 +242,7 @@ public class MxJUnitWrapper {
         }
 
         Result result = junitCore.run(request);
-        for (Failure each : missingClasses) {
+        for (Failure each : mxRequest.missingClasses) {
             result.getFailures().add(each);
         }
         System.exit(result.wasSuccessful() ? 0 : 1);
