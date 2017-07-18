@@ -68,7 +68,7 @@ public class MxJUnitWrapper {
         public int repeatCount = 1;
     }
 
-    static class RepeatingRunner extends Runner {
+    private static class RepeatingRunner extends Runner {
 
         private final Runner parent;
         private int repeat;
@@ -96,7 +96,7 @@ public class MxJUnitWrapper {
         }
     }
 
-    static class RepeatingRequest extends Request {
+    private static class RepeatingRequest extends Request {
 
         private final Request request;
         private final int repeat;
@@ -261,7 +261,7 @@ public class MxJUnitWrapper {
 
     private static final Pattern MODULE_PACKAGE_RE = Pattern.compile("([^/]+)/(.+)");
 
-    static class Timing<T> implements Comparable<Timing<T>> {
+    private static class Timing<T> implements Comparable<Timing<T>> {
         final T subject;
         final long value;
 
@@ -402,23 +402,6 @@ public class MxJUnitWrapper {
         } catch (Exception e) {
             throw new AssertionError(String.format("Could not read %f element from %s", name, annotation), e);
         }
-    }
-
-    /**
-     * Gets the command line for the current process.
-     *
-     * @return the command line arguments for the current process or {@code null} if they are not
-     *         available
-     */
-    public static List<String> getProcessCommandLine() {
-        String processArgsFile = System.getenv().get("MX_SUBPROCESS_COMMAND_FILE");
-        if (processArgsFile != null) {
-            try {
-                return Files.readAllLines(new File(processArgsFile).toPath());
-            } catch (IOException e) {
-            }
-        }
-        return null;
     }
 
     /**

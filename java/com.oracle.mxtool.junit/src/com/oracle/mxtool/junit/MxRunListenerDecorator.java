@@ -27,7 +27,7 @@ import java.io.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
 
-public abstract class MxRunListenerDecorator implements MxRunListener {
+abstract class MxRunListenerDecorator implements MxRunListener {
 
     private final MxRunListener l;
 

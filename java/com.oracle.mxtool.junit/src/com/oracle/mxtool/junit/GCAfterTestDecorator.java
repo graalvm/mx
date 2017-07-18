@@ -24,7 +24,7 @@ package com.oracle.mxtool.junit;
 
 import org.junit.runner.*;
 
-public class GCAfterTestDecorator extends MxRunListenerDecorator {
+class GCAfterTestDecorator extends MxRunListenerDecorator {
 
     public GCAfterTestDecorator(MxRunListener l) {
         super(l);

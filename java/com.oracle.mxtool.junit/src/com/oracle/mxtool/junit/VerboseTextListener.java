@@ -28,7 +28,7 @@ import org.junit.internal.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
 
-public class VerboseTextListener extends TextRunListener {
+class VerboseTextListener extends TextRunListener {
 
     private static final int DEFAULT_MAX_TEST_PER_CLASS = 50;
     public static final int SHOW_ALL_TESTS = Integer.MAX_VALUE;

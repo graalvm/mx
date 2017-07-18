@@ -24,7 +24,7 @@ package com.oracle.mxtool.junit;
 
 import org.junit.runner.notification.*;
 
-public class EagerStackTraceDecorator extends MxRunListenerDecorator {
+class EagerStackTraceDecorator extends MxRunListenerDecorator {
 
     public EagerStackTraceDecorator(MxRunListener l) {
         super(l);
