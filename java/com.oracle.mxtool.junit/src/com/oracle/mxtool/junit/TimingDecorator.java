@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2014, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2017, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,7 @@ public class TimingDecorator extends MxRunListenerDecorator {
 
     private long startTime;
     private long classStartTime;
+    private Description currentTest;
     final Map<Class<?>, Long> classTimes;
     final Map<Description, Long> testTimes;
 
@@ -56,13 +57,12 @@ public class TimingDecorator extends MxRunListenerDecorator {
         if (beVerbose()) {
             getWriter().print(' ' + valueToString(totalTime));
         }
-        if (classTimes != null) {
-            classTimes.put(clazz, totalTime / 1_000_000);
-        }
+        classTimes.put(clazz, totalTime / 1_000_000);
     }
 
     @Override
     public void testStarted(Description description) {
+        currentTest = description;
         startTime = System.nanoTime();
         super.testStarted(description);
     }
@@ -74,13 +74,28 @@ public class TimingDecorator extends MxRunListenerDecorator {
         if (beVerbose()) {
             getWriter().print(" " + valueToString(totalTime));
         }
-        if (testTimes != null) {
-            testTimes.put(description, totalTime / 1_000_000);
+        currentTest = null;
+        testTimes.put(description, totalTime / 1_000_000);
+    }
+
+    private static String valueToString(long valueNS) {
+        long timeWholeMS = valueNS / 1_000_000;
+        long timeFractionMS = (valueNS / 100_000) % 10;
+        return String.format("%d.%d ms", timeWholeMS, timeFractionMS);
+    }
+
+    /**
+     * Gets the test currently starting but not yet completed along with the number of milliseconds
+     * it has been executing.
+     *
+     * @return {@code null} if there is no test currently executing
+     */
+    public Object[] getCurrentTestDuration() {
+        Description current = currentTest;
+        if (current != null) {
+            long timeMS = (System.nanoTime() - startTime) / 1_000_000;
+            return new Object[]{current, timeMS};
         }
+        return null;
     }
-
-    private static String valueToString(long value) {
-        return String.format("%d.%d ms", value / 1000000, (value / 100000) % 10);
-    }
-
 }
