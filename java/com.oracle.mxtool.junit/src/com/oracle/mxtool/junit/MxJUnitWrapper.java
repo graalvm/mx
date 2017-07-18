@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2014, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2017, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -297,8 +297,8 @@ public class MxJUnitWrapper {
         }
     }
 
-    // Should never need to customize so using a system property instead of a command line option is
-    // fine for rare time someone wants to customize.
+    // Should never need to customize so using a system property instead
+    // of a command line option for customization is fine.
     private static final int TIMINGS_TO_PRINT = Integer.getInteger("mx.junit.timings_to_print", 10);
 
     private static void printTimings(TimingDecorator timings) {
@@ -325,6 +325,11 @@ public class MxJUnitWrapper {
                 Timing<Description> timing = testTimes.get(i);
                 System.out.printf(" %,10d ms    %s%n", timing.value, timing.subject);
             }
+            Object[] current = timings.getCurrentTestDuration();
+            if (current != null) {
+                System.out.printf("Test %s not finished after %d ms%n", current[0], current[1]);
+            }
+
         }
     }
 
