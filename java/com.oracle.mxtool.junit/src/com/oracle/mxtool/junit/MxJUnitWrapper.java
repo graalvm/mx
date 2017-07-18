@@ -56,6 +56,18 @@ import junit.runner.Version;
 
 public class MxJUnitWrapper {
 
+    public static class MxJUnitConfig {
+
+        public boolean verbose = false;
+        public boolean veryVerbose = false;
+        public boolean enableTiming = false;
+        public boolean failFast = false;
+        public boolean color = false;
+        public boolean eagerStackTrace = false;
+        public boolean gcAfterTest = false;
+        public int repeatCount = 1;
+    }
+
     static class RepeatingRunner extends Runner {
 
         private final Runner parent;
@@ -116,15 +128,7 @@ public class MxJUnitWrapper {
         system.out().println("JUnit version " + Version.id());
 
         MxJUnitRequest.Builder builder = new MxJUnitRequest.Builder();
-
-        boolean verbose = false;
-        boolean veryVerbose = false;
-        boolean enableTiming = false;
-        boolean failFast = false;
-        boolean color = false;
-        boolean eagerStackTrace = false;
-        boolean gcAfterTest = false;
-        int repeatCount = 1;
+        MxJUnitConfig config = new MxJUnitConfig();
 
         String[] expandedArgs = expandArgs(args);
         for (int i = 0; i < expandedArgs.length; i++) {
@@ -132,26 +136,26 @@ public class MxJUnitWrapper {
             if (each.charAt(0) == '-') {
                 // command line arguments
                 if (each.contentEquals("-JUnitVerbose")) {
-                    verbose = true;
+                    config.verbose = true;
                 } else if (each.contentEquals("-JUnitVeryVerbose")) {
-                    veryVerbose = true;
+                    config.veryVerbose = true;
                 } else if (each.contentEquals("-JUnitFailFast")) {
-                    failFast = true;
+                    config.failFast = true;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
-                    enableTiming = true;
+                    config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitColor")) {
-                    color = true;
+                    config.color = true;
                 } else if (each.contentEquals("-JUnitEagerStackTrace")) {
-                    eagerStackTrace = true;
+                    config.eagerStackTrace = true;
                 } else if (each.contentEquals("-JUnitGCAfterTest")) {
-                    gcAfterTest = true;
+                    config.gcAfterTest = true;
                 } else if (each.contentEquals("-JUnitRepeat")) {
                     if (i + 1 >= expandedArgs.length) {
                         system.out().println("Must include argument for -JUnitRepeat");
                         System.exit(1);
                     }
                     try {
-                        repeatCount = Integer.parseInt(expandedArgs[++i]);
+                        config.repeatCount = Integer.parseInt(expandedArgs[++i]);
                     } catch (NumberFormatException e) {
                         system.out().println("Expected integer argument for -JUnitRepeat. Found: " + expandedArgs[i]);
                         System.exit(1);
@@ -171,40 +175,46 @@ public class MxJUnitWrapper {
             }
         }
 
-        MxJUnitRequest mxRequest = builder.build();
+        MxJUnitRequest request = builder.build();
 
+        if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
+            addExports(request.classes, system.out());
+        }
+
+        for (RunListener p : ServiceLoader.load(RunListener.class)) {
+            junitCore.addListener(p);
+        }
+
+        Result result = runRequest(junitCore, system, config, request);
+        System.exit(result.wasSuccessful() ? 0 : 1);
+    }
+
+    public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest) {
         final TextRunListener textListener;
-        if (veryVerbose) {
+        if (config.veryVerbose) {
             textListener = new VerboseTextListener(system, mxRequest.classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
-        } else if (verbose) {
+        } else if (config.verbose) {
             textListener = new VerboseTextListener(system, mxRequest.classes.size());
         } else {
             textListener = new TextRunListener(system);
         }
-        TimingDecorator timings = enableTiming ? new TimingDecorator(textListener) : null;
-        MxRunListener mxListener = enableTiming ? timings : textListener;
+        TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
+        MxRunListener mxListener = config.enableTiming ? timings : textListener;
 
-        if (color) {
+        if (config.color) {
             mxListener = new AnsiTerminalDecorator(mxListener);
         }
-        if (eagerStackTrace) {
+        if (config.eagerStackTrace) {
             mxListener = new EagerStackTraceDecorator(mxListener);
         }
-        if (gcAfterTest) {
+        if (config.gcAfterTest) {
             mxListener = new GCAfterTestDecorator(mxListener);
-        }
-        for (RunListener p : ServiceLoader.load(RunListener.class)) {
-            junitCore.addListener(p);
         }
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
-        if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
-            addExports(mxRequest.classes, system.out());
-        }
-
         Request request = mxRequest.getRequest();
         if (mxRequest.methodName == null) {
-            if (failFast) {
+            if (config.failFast) {
                 Runner runner = request.getRunner();
                 if (runner instanceof ParentRunner) {
                     ParentRunner<?> parentRunner = (ParentRunner<?>) runner;
@@ -223,16 +233,16 @@ public class MxJUnitWrapper {
                 }
             }
         } else {
-            if (failFast) {
+            if (config.failFast) {
                 system.out().println("Single method selected - fail fast not supported");
             }
         }
 
-        if (repeatCount != 1) {
-            request = new RepeatingRequest(request, repeatCount);
+        if (config.repeatCount != 1) {
+            request = new RepeatingRequest(request, config.repeatCount);
         }
 
-        if (enableTiming) {
+        if (config.enableTiming) {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
                 public void run() {
@@ -245,7 +255,8 @@ public class MxJUnitWrapper {
         for (Failure each : mxRequest.missingClasses) {
             result.getFailures().add(each);
         }
-        System.exit(result.wasSuccessful() ? 0 : 1);
+
+        return result;
     }
 
     private static final Pattern MODULE_PACKAGE_RE = Pattern.compile("([^/]+)/(.+)");
