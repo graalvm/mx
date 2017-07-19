@@ -23,18 +23,14 @@
 package com.oracle.mxtool.junit;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,7 +56,19 @@ import junit.runner.Version;
 
 public class MxJUnitWrapper {
 
-    static class RepeatingRunner extends Runner {
+    public static class MxJUnitConfig {
+
+        public boolean verbose = false;
+        public boolean veryVerbose = false;
+        public boolean enableTiming = false;
+        public boolean failFast = false;
+        public boolean color = false;
+        public boolean eagerStackTrace = false;
+        public boolean gcAfterTest = false;
+        public int repeatCount = 1;
+    }
+
+    private static class RepeatingRunner extends Runner {
 
         private final Runner parent;
         private int repeat;
@@ -88,7 +96,7 @@ public class MxJUnitWrapper {
         }
     }
 
-    static class RepeatingRequest extends Request {
+    private static class RepeatingRequest extends Request {
 
         private final Request request;
         private final int repeat;
@@ -118,17 +126,9 @@ public class MxJUnitWrapper {
         JUnitCore junitCore = new JUnitCore();
         system.out().println("MxJUnitCore");
         system.out().println("JUnit version " + Version.id());
-        Set<Class<?>> classes = new LinkedHashSet<>();
-        String methodName = null;
-        List<Failure> missingClasses = new ArrayList<>();
-        boolean verbose = false;
-        boolean veryVerbose = false;
-        boolean enableTiming = false;
-        boolean failFast = false;
-        boolean color = false;
-        boolean eagerStackTrace = false;
-        boolean gcAfterTest = false;
-        int repeatCount = 1;
+
+        MxJUnitRequest.Builder builder = new MxJUnitRequest.Builder();
+        MxJUnitConfig config = new MxJUnitConfig();
 
         String[] expandedArgs = expandArgs(args);
         for (int i = 0; i < expandedArgs.length; i++) {
@@ -136,26 +136,26 @@ public class MxJUnitWrapper {
             if (each.charAt(0) == '-') {
                 // command line arguments
                 if (each.contentEquals("-JUnitVerbose")) {
-                    verbose = true;
+                    config.verbose = true;
                 } else if (each.contentEquals("-JUnitVeryVerbose")) {
-                    veryVerbose = true;
+                    config.veryVerbose = true;
                 } else if (each.contentEquals("-JUnitFailFast")) {
-                    failFast = true;
+                    config.failFast = true;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
-                    enableTiming = true;
+                    config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitColor")) {
-                    color = true;
+                    config.color = true;
                 } else if (each.contentEquals("-JUnitEagerStackTrace")) {
-                    eagerStackTrace = true;
+                    config.eagerStackTrace = true;
                 } else if (each.contentEquals("-JUnitGCAfterTest")) {
-                    gcAfterTest = true;
+                    config.gcAfterTest = true;
                 } else if (each.contentEquals("-JUnitRepeat")) {
                     if (i + 1 >= expandedArgs.length) {
                         system.out().println("Must include argument for -JUnitRepeat");
                         System.exit(1);
                     }
                     try {
-                        repeatCount = Integer.parseInt(expandedArgs[++i]);
+                        config.repeatCount = Integer.parseInt(expandedArgs[++i]);
                     } catch (NumberFormatException e) {
                         system.out().println("Expected integer argument for -JUnitRepeat. Found: " + expandedArgs[i]);
                         System.exit(1);
@@ -165,73 +165,56 @@ public class MxJUnitWrapper {
                 }
 
             } else {
-                /*
-                 * Entries of the form class#method are handled specially. Only one can be specified
-                 * on the command line as there's no obvious way to build a runner for multiple
-                 * ones.
-                 */
-                if (methodName != null) {
-                    system.out().println("Only a single class and method can be specified: " + each);
-                    System.exit(1);
-                } else if (each.contains("#")) {
-                    String[] pair = each.split("#");
-                    if (pair.length != 2) {
-                        system.out().println("Malformed class and method request: " + each);
-                        System.exit(1);
-                    } else if (classes.size() != 0) {
-                        system.out().println("Only a single class and method can be specified: " + each);
-                        System.exit(1);
-                    } else {
-                        methodName = pair[1];
-                        each = pair[0];
-                    }
-                }
+
                 try {
-                    Class<?> cls = Class.forName(each, false, MxJUnitWrapper.class.getClassLoader());
-                    if ((cls.getModifiers() & Modifier.ABSTRACT) == 0) {
-                        classes.add(cls);
-                    }
-                } catch (ClassNotFoundException e) {
-                    system.out().println("Could not find class: " + each);
-                    Description description = Description.createSuiteDescription(each);
-                    Failure failure = new Failure(description, e);
-                    missingClasses.add(failure);
+                    builder.addTestSpec(each);
+                } catch (MxJUnitRequest.BuilderException ex) {
+                    system.out().println(ex.getMessage());
+                    System.exit(1);
                 }
             }
         }
-        final TextRunListener textListener;
-        if (veryVerbose) {
-            textListener = new VerboseTextListener(system, classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
-        } else if (verbose) {
-            textListener = new VerboseTextListener(system, classes.size());
-        } else {
-            textListener = new TextRunListener(system);
-        }
-        TimingDecorator timings = enableTiming ? new TimingDecorator(textListener) : null;
-        MxRunListener mxListener = enableTiming ? timings : textListener;
 
-        if (color) {
-            mxListener = new AnsiTerminalDecorator(mxListener);
+        MxJUnitRequest request = builder.build();
+
+        if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
+            addExports(request.classes, system.out());
         }
-        if (eagerStackTrace) {
-            mxListener = new EagerStackTraceDecorator(mxListener);
-        }
-        if (gcAfterTest) {
-            mxListener = new GCAfterTestDecorator(mxListener);
-        }
+
         for (RunListener p : ServiceLoader.load(RunListener.class)) {
             junitCore.addListener(p);
         }
+
+        Result result = runRequest(junitCore, system, config, request);
+        System.exit(result.wasSuccessful() ? 0 : 1);
+    }
+
+    public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest) {
+        final TextRunListener textListener;
+        if (config.veryVerbose) {
+            textListener = new VerboseTextListener(system, mxRequest.classes.size(), VerboseTextListener.SHOW_ALL_TESTS);
+        } else if (config.verbose) {
+            textListener = new VerboseTextListener(system, mxRequest.classes.size());
+        } else {
+            textListener = new TextRunListener(system);
+        }
+        TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
+        MxRunListener mxListener = config.enableTiming ? timings : textListener;
+
+        if (config.color) {
+            mxListener = new AnsiTerminalDecorator(mxListener);
+        }
+        if (config.eagerStackTrace) {
+            mxListener = new EagerStackTraceDecorator(mxListener);
+        }
+        if (config.gcAfterTest) {
+            mxListener = new GCAfterTestDecorator(mxListener);
+        }
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
-        if (System.getProperty("java.specification.version").compareTo("1.9") >= 0) {
-            addExports(classes, system.out());
-        }
-
-        Request request;
-        if (methodName == null) {
-            request = Request.classes(classes.toArray(new Class<?>[0]));
-            if (failFast) {
+        Request request = mxRequest.getRequest();
+        if (mxRequest.methodName == null) {
+            if (config.failFast) {
                 Runner runner = request.getRunner();
                 if (runner instanceof ParentRunner) {
                     ParentRunner<?> parentRunner = (ParentRunner<?>) runner;
@@ -250,16 +233,16 @@ public class MxJUnitWrapper {
                 }
             }
         } else {
-            if (failFast) {
+            if (config.failFast) {
                 system.out().println("Single method selected - fail fast not supported");
             }
-            request = Request.method(classes.iterator().next(), methodName);
-        }
-        if (repeatCount != 1) {
-            request = new RepeatingRequest(request, repeatCount);
         }
 
-        if (enableTiming) {
+        if (config.repeatCount != 1) {
+            request = new RepeatingRequest(request, config.repeatCount);
+        }
+
+        if (config.enableTiming) {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
                 public void run() {
@@ -269,15 +252,16 @@ public class MxJUnitWrapper {
         }
 
         Result result = junitCore.run(request);
-        for (Failure each : missingClasses) {
+        for (Failure each : mxRequest.missingClasses) {
             result.getFailures().add(each);
         }
-        System.exit(result.wasSuccessful() ? 0 : 1);
+
+        return result;
     }
 
     private static final Pattern MODULE_PACKAGE_RE = Pattern.compile("([^/]+)/(.+)");
 
-    static class Timing<T> implements Comparable<Timing<T>> {
+    private static class Timing<T> implements Comparable<Timing<T>> {
         final T subject;
         final long value;
 
@@ -418,23 +402,6 @@ public class MxJUnitWrapper {
         } catch (Exception e) {
             throw new AssertionError(String.format("Could not read %f element from %s", name, annotation), e);
         }
-    }
-
-    /**
-     * Gets the command line for the current process.
-     *
-     * @return the command line arguments for the current process or {@code null} if they are not
-     *         available
-     */
-    public static List<String> getProcessCommandLine() {
-        String processArgsFile = System.getenv().get("MX_SUBPROCESS_COMMAND_FILE");
-        if (processArgsFile != null) {
-            try {
-                return Files.readAllLines(new File(processArgsFile).toPath());
-            } catch (IOException e) {
-            }
-        }
-        return null;
     }
 
     /**

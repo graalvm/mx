@@ -28,7 +28,7 @@ import org.junit.internal.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
 
-public class TextRunListener implements MxRunListener {
+class TextRunListener implements MxRunListener {
 
     private final PrintStream fWriter;
     protected Failure lastFailure;

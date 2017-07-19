@@ -30,7 +30,7 @@ import org.junit.runner.Description;
 /**
  * Timing support for JUnit test runs.
  */
-public class TimingDecorator extends MxRunListenerDecorator {
+class TimingDecorator extends MxRunListenerDecorator {
 
     private long startTime;
     private long classStartTime;

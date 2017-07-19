@@ -30,7 +30,7 @@ import java.util.Set;
  * Facade for the {@code java.lang.Module} class introduced in JDK9 that allows tests to be
  * developed against JDK8 but use module logic if deployed on JDK9.
  */
-public class JLModule {
+class JLModule {
 
     private final Object realModule;
 

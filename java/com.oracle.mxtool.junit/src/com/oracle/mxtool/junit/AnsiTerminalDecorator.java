@@ -28,7 +28,7 @@ import org.junit.runner.notification.*;
 /**
  * Color support for JUnit test output using ANSI escapes codes.
  */
-public class AnsiTerminalDecorator extends MxRunListenerDecorator {
+class AnsiTerminalDecorator extends MxRunListenerDecorator {
 
     /** Foreground black. */
     public static final String BLACK = "\u001b[30m";

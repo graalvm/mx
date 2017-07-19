@@ -28,7 +28,7 @@ import org.junit.internal.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
 
-public interface MxRunListener {
+interface MxRunListener {
 
     /**
      * Called before any tests have been run.

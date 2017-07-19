@@ -249,6 +249,16 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8",
     },
-   },
+  },
+
+  "distributions" : {
+
+    "JUNIT_TOOL" : {
+      "subDir" : "java",
+      "dependencies" : [
+        "com.oracle.mxtool.junit"
+      ],
+    },
+  },
 
 }
