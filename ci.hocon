@@ -65,7 +65,7 @@ downstream-truffleruby-binary-truffle: {
   }
   run: [
     [export, "MX_BINARY_SUITES=sdk,truffle"],
-    ["./mx", testdownstream, --repo, ["./mx", urlrewrite, "https://github.com/graalvm/truffleruby.git"], --mx-command, "ruby_testdownstream_hello"],
+    ["./mx", testdownstream, --repo, "https://github.com/graalvm/truffleruby.git", --mx-command, "ruby_testdownstream_hello"],
   ]
   timelimit : "10:00"
 }
