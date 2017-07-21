@@ -32,6 +32,7 @@ from urlparse import urlparse
 import shutil
 import os
 import mx
+import mx_urlrewrites
 
 def testdownstream_cli(args):
     """tests a downstream repo against the current working directory state of the primary suite
@@ -72,6 +73,8 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     """
 
     assert len(repoUrls) > 0
+    repoUrls = [mx_urlrewrites.rewriteurl(url) for url in repoUrls]
+
     workDir = join(suite.get_output_root(), 'testdownstream')
 
     # A mirror of each suites in the same repo as `suite` is created via copying
