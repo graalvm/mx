@@ -9044,7 +9044,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     commands = [sys.executable, '-u', mxpy, '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
-        if isinstance(suite, str):
+        if isinstance(suite, basestring):
             commands += ['-p', suite]
             cwd = suite
         else:
