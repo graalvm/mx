@@ -216,7 +216,7 @@ def nyi(name, obj):
 
 
 # Names of commands that don't need a primary suite.
-_suite_context_free = ['init', 'version']
+_suite_context_free = ['init', 'version', 'urlrewrite']
 
 
 def suite_context_free(func):
