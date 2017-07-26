@@ -65,7 +65,7 @@ class Task:
     tags_count = dict()
 
     verbose = False
-
+    startTime = None
 
     def tag_matches(self, _tags):
         for t in _tags:
@@ -81,6 +81,18 @@ class Task:
                     if frm <= cnt and cnt < to:
                         return True
         return False
+
+    def _timestamp(self, suffix):
+        stamp = time.strftime('gate: %d %b %Y %H:%M:%S')
+        if Task.startTime:
+            duration = datetime.timedelta(seconds=time.time() - Task.startTime)
+            # Strip microseconds and convert to a string
+            duration = str(duration - datetime.timedelta(microseconds=duration.microseconds))
+            # Strip hours if 0
+            if duration.startswith('0:'):
+                duration = duration[2:]
+            stamp += '(+{})'.format(duration)
+        return stamp + suffix
 
     def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None):
         self.tasks = tasks
@@ -118,7 +130,7 @@ class Task:
             self.duration = None
             self.disableJacoco = disableJacoco
             if Task.log:
-                mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: BEGIN: ') + title)
+                mx.log(self._timestamp(' BEGIN: ') + title)
     def __enter__(self):
         assert self.tasks is not None, "using Task with 'with' statement requires to pass the tasks list in the constructor"
         if self.skipped:
@@ -156,13 +168,13 @@ class Task:
         if Task.log:
             self.end = time.time()
             self.duration = datetime.timedelta(seconds=self.end - self.start)
-            mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
+            mx.log(self._timestamp(' END:   ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
         return self
     def abort(self, codeOrMessage):
         if Task.log:
             self.end = time.time()
             self.duration = datetime.timedelta(seconds=self.end - self.start)
-            mx.log(time.strftime('gate: %d %b %Y %H:%M:%S: ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
+            mx.log(self._timestamp(' ABORT: ') + self.title + ' [' + str(self.duration) + ']' + Task._diskstats())
             mx.abort(codeOrMessage)
         return self
 
@@ -327,6 +339,7 @@ def gate(args):
             mx.log('No partial tasks left to run. Finishing gate early.')
             return
 
+    Task.startTime = time.time()
     tasks = []
     total = Task('Gate')
     try:
