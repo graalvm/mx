@@ -49,6 +49,7 @@ jmh-test : {
 }
 
 verifylibraryurls : {
+  downloads : ${downloads.java}
   run : [
     ["./mx", "--strict-compliance", "-v", "verifylibraryurls"]
   ]
