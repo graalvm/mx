@@ -38,7 +38,7 @@ class TimingDecorator extends MxRunListenerDecorator {
     final Map<Class<?>, Long> classTimes;
     final Map<Description, Long> testTimes;
 
-    public TimingDecorator(MxRunListener l) {
+    TimingDecorator(MxRunListener l) {
         super(l);
         this.classTimes = new HashMap<>();
         this.testTimes = new HashMap<>();

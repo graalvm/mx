@@ -131,7 +131,8 @@ public class MxJUnitWrapper {
         MxJUnitConfig config = new MxJUnitConfig();
 
         String[] expandedArgs = expandArgs(args);
-        for (int i = 0; i < expandedArgs.length; i++) {
+        int i = 0;
+        while (i < expandedArgs.length) {
             String each = expandedArgs[i];
             if (each.charAt(0) == '-') {
                 // command line arguments
@@ -173,6 +174,7 @@ public class MxJUnitWrapper {
                     System.exit(1);
                 }
             }
+            i++;
         }
 
         MxJUnitRequest request = builder.build();
@@ -265,7 +267,7 @@ public class MxJUnitWrapper {
         final T subject;
         final long value;
 
-        public Timing(T subject, long value) {
+        Timing(T subject, long value) {
             this.subject = subject;
             this.value = value;
         }

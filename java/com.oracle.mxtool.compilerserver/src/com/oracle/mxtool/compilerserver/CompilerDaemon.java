@@ -48,7 +48,8 @@ public abstract class CompilerDaemon {
 
     public void run(String[] args) throws Exception {
         int jobsArg = -1;
-        for (int i = 0; i < args.length; i++) {
+        int i = 0;
+        while (i < args.length) {
             String arg = args[i];
             if (arg.equals("-v")) {
                 verbose = true;
@@ -61,6 +62,7 @@ public abstract class CompilerDaemon {
             } else {
                 usage();
             }
+            i++;
         }
 
         // create socket

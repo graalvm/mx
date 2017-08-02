@@ -37,15 +37,15 @@ class VerboseTextListener extends TextRunListener {
     private int currentClassNum;
     private int currentTestNum;
 
-    public VerboseTextListener(JUnitSystem system, int classesCount) {
+    VerboseTextListener(JUnitSystem system, int classesCount) {
         this(system.out(), classesCount, DEFAULT_MAX_TEST_PER_CLASS);
     }
 
-    public VerboseTextListener(JUnitSystem system, int classesCount, int maxTests) {
+    VerboseTextListener(JUnitSystem system, int classesCount, int maxTests) {
         this(system.out(), classesCount, maxTests);
     }
 
-    public VerboseTextListener(PrintStream writer, int classesCount, int maxTests) {
+    VerboseTextListener(PrintStream writer, int classesCount, int maxTests) {
         super(writer);
         maxTestsPerClass = maxTests;
         this.classesCount = classesCount;
