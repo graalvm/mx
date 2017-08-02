@@ -15835,6 +15835,7 @@ def main():
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
             _init_primary_suite(_mx_suite)
+            _mx_suite.internal = False
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
             # We explicitly load the 'env' file of the primary suite now as it might
