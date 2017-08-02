@@ -13115,11 +13115,19 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             moduleXml.close('component')
 
             # Checkstyle
-            csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
+            checkstyleProj = project(p.checkstyleProj, context=p)
+            csConfig = join(checkstyleProj.dir, '.checkstyle_checks.xml')
             if exists(csConfig):
+                if hasattr(p, 'checkstyleVersion'):
+                    checkstyleVersion = p.checkstyleVersion
+                elif hasattr(checkstyleProj, 'checkstyleVersion'):
+                    checkstyleVersion = checkstyleProj.checkstyleVersion
+                else:
+                    checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
                 moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
                 moduleXml.open('option', attributes={'name': 'configuration'})
                 moduleXml.open('map')
+                moduleXml.element('entry', attributes={'key' : "checkstyle-version", 'value': checkstyleVersion})
                 moduleXml.element('entry', attributes={'key' : "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
                 moduleXml.close('map')
                 moduleXml.close('option')
