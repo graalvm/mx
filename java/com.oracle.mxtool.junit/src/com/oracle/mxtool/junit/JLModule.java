@@ -34,7 +34,7 @@ class JLModule {
 
     private final Object realModule;
 
-    public JLModule(Object module) {
+    JLModule(Object module) {
         this.realModule = module;
     }
 

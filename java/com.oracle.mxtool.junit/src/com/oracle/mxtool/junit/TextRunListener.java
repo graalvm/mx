@@ -33,11 +33,11 @@ class TextRunListener implements MxRunListener {
     private final PrintStream fWriter;
     protected Failure lastFailure;
 
-    public TextRunListener(JUnitSystem system) {
+    TextRunListener(JUnitSystem system) {
         this(system.out());
     }
 
-    public TextRunListener(PrintStream writer) {
+    TextRunListener(PrintStream writer) {
         fWriter = writer;
     }
 

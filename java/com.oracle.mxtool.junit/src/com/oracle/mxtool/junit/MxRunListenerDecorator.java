@@ -31,7 +31,7 @@ abstract class MxRunListenerDecorator implements MxRunListener {
 
     private final MxRunListener l;
 
-    public MxRunListenerDecorator(MxRunListener l) {
+    MxRunListenerDecorator(MxRunListener l) {
         this.l = l;
     }
 

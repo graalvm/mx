@@ -86,7 +86,7 @@ class AnsiTerminalDecorator extends MxRunListenerDecorator {
     /** Underline. */
     public static final String UNDERLINED = "\u001b[4m";
 
-    public AnsiTerminalDecorator(MxRunListener l) {
+    AnsiTerminalDecorator(MxRunListener l) {
         super(l);
     }
 

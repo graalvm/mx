@@ -26,7 +26,7 @@ import org.junit.runner.notification.*;
 
 class EagerStackTraceDecorator extends MxRunListenerDecorator {
 
-    public EagerStackTraceDecorator(MxRunListener l) {
+    EagerStackTraceDecorator(MxRunListener l) {
         super(l);
     }
 

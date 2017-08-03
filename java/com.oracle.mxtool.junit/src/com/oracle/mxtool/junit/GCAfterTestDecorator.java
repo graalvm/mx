@@ -26,7 +26,7 @@ import org.junit.runner.*;
 
 class GCAfterTestDecorator extends MxRunListenerDecorator {
 
-    public GCAfterTestDecorator(MxRunListener l) {
+    GCAfterTestDecorator(MxRunListener l) {
         super(l);
     }
 

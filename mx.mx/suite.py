@@ -217,6 +217,7 @@ suite = {
       ],
       "javaCompliance" : "1.8",
       "annotationProcessors" : ["JMH"],
+      "findbugsIgnoresGenerated" : True,
     },
 
     "com.oracle.mxtool.jmh_1_18" : {
@@ -227,6 +228,7 @@ suite = {
       ],
       "javaCompliance" : "1.8",
       "annotationProcessors" : ["JMH_1_18"],
+      "findbugsIgnoresGenerated" : True,
     },
 
     "com.oracle.mxtool.junit" : {

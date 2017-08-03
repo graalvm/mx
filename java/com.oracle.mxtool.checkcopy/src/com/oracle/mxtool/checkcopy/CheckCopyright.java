@@ -60,6 +60,9 @@ public class CheckCopyright {
 
         @Override
         public boolean equals(Object other) {
+            if (!(other instanceof YearInfo)) {
+                return false;
+            }
             final YearInfo yearInfo = (YearInfo) other;
             return yearInfo.firstYear == firstYear && yearInfo.lastYear == lastYear;
         }
