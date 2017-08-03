@@ -258,7 +258,13 @@ suite = {
     "JUNIT_TOOL" : {
       "subDir" : "java",
       "dependencies" : [
-        "com.oracle.mxtool.junit"
+        "com.oracle.mxtool.junit",
+        "JUNIT",
+        "HAMCREST",
+      ],
+      "exclude" : [
+        "JUNIT",
+        "HAMCREST",
       ],
     },
   },

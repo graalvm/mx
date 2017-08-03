@@ -15936,7 +15936,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.120.1")  # Gate timestamps now with duration
+version = VersionSpec("5.120.2")  # fix junit-tool.jar
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
