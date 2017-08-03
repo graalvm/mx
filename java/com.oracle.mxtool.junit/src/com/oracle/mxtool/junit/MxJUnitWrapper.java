@@ -297,8 +297,8 @@ public class MxJUnitWrapper {
             for (Map.Entry<Description, Long> e : timings.testTimes.entrySet()) {
                 testTimes.add(new Timing<>(e.getKey(), e.getValue()));
             }
-            Collections.sort(classTimes, Collections.reverseOrder());
-            Collections.sort(testTimes, Collections.reverseOrder());
+            classTimes.sort(Collections.reverseOrder());
+            testTimes.sort(Collections.reverseOrder());
 
             System.out.println();
             System.out.printf("%d longest running test classes:%n", TIMINGS_TO_PRINT);
@@ -390,7 +390,7 @@ public class MxJUnitWrapper {
      */
     private static <T> Optional<T> getElement(String name, Class<T> type, Annotation annotation) {
         Class<? extends Annotation> annotationType = annotation.annotationType();
-        Method valueAccessor = null;
+        Method valueAccessor;
         try {
             valueAccessor = annotationType.getMethod(name);
             if (!valueAccessor.getReturnType().equals(type)) {
@@ -402,14 +402,13 @@ public class MxJUnitWrapper {
         try {
             return Optional.of(type.cast(valueAccessor.invoke(annotation)));
         } catch (Exception e) {
-            throw new AssertionError(String.format("Could not read %f element from %s", name, annotation), e);
+            throw new AssertionError(String.format("Could not read %s element from %s", name, annotation), e);
         }
     }
 
     /**
      * Expand any arguments starting with @ and return the resulting argument array.
      *
-     * @param args
      * @return the expanded argument array
      */
     private static String[] expandArgs(String[] args) {
@@ -433,9 +432,6 @@ public class MxJUnitWrapper {
 
     /**
      * Add each line from {@code filename} to the list {@code args}.
-     *
-     * @param filename
-     * @param args
      */
     private static void expandArg(String filename, List<String> args) {
         BufferedReader br = null;
