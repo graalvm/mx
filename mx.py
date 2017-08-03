@@ -13048,6 +13048,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
     def _complianceToIntellijLanguageLevel(compliance):
         return 'JDK_1_' + str(compliance.value)
 
+    max_checkstyle_version = None
     if java_modules:
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive():
@@ -13124,11 +13125,14 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                     checkstyleVersion = checkstyleProj.checkstyleVersion
                 else:
                     checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
+
+                max_checkstyle_version = max(max_checkstyle_version, VersionSpec(checkstyleVersion)) if max_checkstyle_version else VersionSpec(checkstyleVersion)
+
                 moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
                 moduleXml.open('option', attributes={'name': 'configuration'})
                 moduleXml.open('map')
-                moduleXml.element('entry', attributes={'key' : "checkstyle-version", 'value': checkstyleVersion})
-                moduleXml.element('entry', attributes={'key' : "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+                moduleXml.element('entry', attributes={'key': "checkstyle-version", 'value': checkstyleVersion})
+                moduleXml.element('entry', attributes={'key': "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
                 moduleXml.close('map')
                 moduleXml.close('option')
                 moduleXml.close('component')
@@ -13346,6 +13350,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             checkstyleXml.open('component', attributes={'name': 'CheckStyle-IDEA'})
             checkstyleXml.open('option', attributes={'name' : "configuration"})
             checkstyleXml.open('map')
+
+            if max_checkstyle_version:
+                checkstyleXml.element('entry', attributes={'key': "checkstyle-version", 'value': str(max_checkstyle_version)})
 
             # Initialize an entry for each style that is used
             checkstyleProjects = set([])
