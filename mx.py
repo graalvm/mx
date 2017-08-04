@@ -12576,6 +12576,12 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.open('copy', {'todir' : '${build.classes.dir}', 'overwrite' : 'true'})
     out.element('resources', {'refid' : 'changed.files'})
     out.close('copy')
+    if len(p.annotation_processors()) > 0:
+        out.open('copy', {'todir' : '${src.ap-source-output.dir}'})
+        out.open('fileset', {'dir': '${cos.src.dir.internal}/../sources/'})
+        out.element('include', {'name': '**/*.java'})
+        out.close('fileset')
+        out.close('copy')
     out.open('exec', {'executable' : '${ant.home}/bin/ant', 'spawn' : 'true'})
     out.element('arg', {'value' : '-f'})
     out.element('arg', {'value' : '${ant.file}'})
@@ -15936,7 +15942,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.120.2")  # fix junit-tool.jar
+version = VersionSpec("5.120.3")  # fix copying generated sources in netbeans
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
