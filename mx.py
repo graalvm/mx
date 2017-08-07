@@ -11260,7 +11260,7 @@ def projectgraph(args, suite=None):
     args = parser.parse_args(args)
 
     if args.igv or args.igv_format:
-        if args.dists:
+        if args.dist:
             abort("--dist is not supported in combination with IGV output")
         ids = {}
         nextToIndex = {}
