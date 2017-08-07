@@ -6407,7 +6407,10 @@ class Suite(object):
             self.requiredMxVersion = mx_compat.minVersion()
             warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
         elif self.requiredMxVersion > version:
-            abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"mx update\"".format(self.name, self.requiredMxVersion, version))
+            mx = join(_mx_home, 'mx')
+            if _mx_home in os.environ['PATH'].split(os.pathsep):
+                mx = 'mx'
+            abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"{} update\"".format(self.name, self.requiredMxVersion, version, mx))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
@@ -15942,7 +15945,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.121.0")  # Gotta cover 'em all!
+version = VersionSpec("5.121.1")  # fix path to mx itself
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
