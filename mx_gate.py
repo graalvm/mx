@@ -547,7 +547,7 @@ def get_jacoco_agent_args():
         excludes += [package + '.*' for package in baseExcludes]
         agentOptions = {
                         'append' : 'true' if _jacoco == 'append' else 'false',
-                        'bootclasspath' : 'true',
+                        'inclbootstrapclasses' : 'true',
                         'includes' : ':'.join(includes),
                         'excludes' : ':'.join(excludes),
                         'destfile' : 'jacoco.exec'
@@ -560,31 +560,24 @@ def jacocoreport(args):
 
     Creates the report from the 'jacoco.exec' file in the current directory.
     Default output directory is 'coverage', but an alternative can be provided as an argument."""
-    jacocoreport = mx.library("JACOCOREPORT", True)
+
+    dist_name = "MX_JACOCO_REPORT"
+    dist = mx.distribution(dist_name)
+    jdk = mx.get_jdk(dist.javaCompliance)
+
     out = 'coverage'
     if len(args) == 1:
         out = args[0]
     elif len(args) > 1:
         mx.abort('jacocoreport takes only one argument : an output directory')
 
-    includes = list(_jacoco_includes)
+    # list of strings of the form "project-dir:binary-dir"
+    includedirs = []
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
         if projsetting == 'include' or projsetting == '':
-            includes.append(p.name)
+            if isinstance(p, mx.ClasspathDependency):
+                includedirs.append(p.dir + ":" + p.classpath_repr(jdk))
 
-    includedirs = set()
-
-    for p in mx.projects():
-        projsetting = getattr(p, 'jacoco', '')
-        if projsetting == 'exclude':
-            continue
-        for include in includes:
-            if include in p.dir:
-                includedirs.add(p.dir)
-
-    for i in includedirs:
-        bindir = i + '/bin'
-        mx.ensure_dir_exists(bindir)
-
-    mx.run_java(['-jar', jacocoreport.get_path(True), '--in', 'jacoco.exec', '--out', out] + sorted(includedirs))
+    mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
+                 '--in', 'jacoco.exec', '--out', out] + sorted(includedirs), jdk=jdk)
