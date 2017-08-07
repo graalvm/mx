@@ -1279,7 +1279,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
         return ['-jar', mx.distribution(self.dist).path]
 
 
-class JMHRunnerBenchmarkSuite(WarnDeprecatedMixin, JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
+class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
 
     def benchmarkList(self, bmSuiteArgs):
