@@ -30,7 +30,7 @@ or when going through [mx] using `mx vm -jar benchmarks.jar`.
 
 However, [mx] provides a wrapper for [mx benchmark] that performs the data parsing.
 The recommended way of using this is creating a sub-class of `JMHJarBenchmarkSuite`.
-Here is an example snipped taken from `mx_benchmark.py`:
+Here is an example snippet taken from `mx_benchmark.py`:
 
 ```python
 class JMHJarMxBenchmarkSuite(JMHJarBenchmarkSuite):
@@ -59,7 +59,7 @@ the `--jmh-name` parameter can be used to provide a better name for the result j
 mx benchmark jmh-jar:* --results-file=results.json -- --jmh-name=api-benchmarks --jmh-jar=path/to/benchmarks.jar --jvm-config=default
 ```
 
-This execute the [JMH] benchmarks in the `benchmarks.jar` with the `default` JVM config.
+This executes the [JMH] benchmarks in the `benchmarks.jar` with the `default` JVM config.
 [mx benchmark] will create a file `results.json` with the results and the dimensions
 `group=Graal`, `subgroup=mx`, `bench.suite=jmh-api-benchmark`.
 Other dimensions, like `benchmark`, `metric.name`, and of course `metric.value`,
@@ -90,7 +90,7 @@ In the following all steps will be discussed in details.
 ### Create an [mx project]
 
 The [mx project] is the place where the actual benchmarks live.
-To make a project a [JMH] simply add a [JMH] *library* to the `dependencies`
+To make a project a [JMH] project simply add a [JMH] *library* to the `dependencies`
 *and* also to the `annotationProcessors`.
 We have multiple version of [JMH] availablue.
 At the time of writing `JMH_1_18` is the most recent one.
