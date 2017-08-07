@@ -321,6 +321,15 @@ suite = {
       "mainClass" : "com.oracle.mxtool.jacoco.JacocoReport",
       "dependencies" : ["com.oracle.mxtool.jacoco"],
     },
-  },
 
+    "MX_MICRO_BENCHMARKS" : {
+      "subDir" : "java",
+      "dependencies" : ["com.oracle.mxtool.jmh_1_18"],
+    },
+
+    "MX_MICRO_BENCHMARKS_LEGACY" : {
+      "subDir" : "java",
+      "dependencies" : ["com.oracle.mxtool.bench"],
+    }
+  },
 }

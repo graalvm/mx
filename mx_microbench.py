@@ -50,7 +50,7 @@ class MicrobenchExecutor(object):
         parser.add_argument('--jar', help='Explicitly specify micro-benchmark location')
         self.add_arguments(parser)
 
-        mx.warn("`mx microbench` is deprecated! Consider moving to `mx_benchmark.JMHRunnerBenchmarkSuite`")
+        mx.warn("`mx microbench` is deprecated! Consider moving to `mx_benchmark.JMHDistBenchmarkSuite`")
 
         known_args, args = parser.parse_known_args(args)
 

@@ -859,6 +859,40 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise NotImplementedError()
 
 
+class DeprecatedMixin(object):
+    """ Mixin to deprecate benchmark suites. """
+    def benchmarkList(self, bmSuiteArgs):
+        try:
+            return super(DeprecatedMixin, self).benchmarkList(bmSuiteArgs)
+        except:
+            return ["THIS SUITE IS DEPRECATED"]
+
+    def alternative_suite(self):
+        return None
+
+    def warning_only(self):
+        return False
+
+    def run(self, *args, **kwargs):
+        alternative_suite = self.alternative_suite()
+        msg = "The `{0}` benchmark suite is deprecated! {1}".format(
+              self.name(),
+              "Consider using `{0}` instead.".format(alternative_suite)
+              if alternative_suite else
+              "(No alternatives provided.)"
+        )
+        if self.warning_only():
+            mx.warn(msg)
+        else:
+            mx.abort(msg)
+        return super(DeprecatedMixin, self).run(*args, **kwargs)
+
+
+class WarnDeprecatedMixin(DeprecatedMixin):
+    def warning_only(self):
+        return True
+
+
 class VmBenchmarkSuite(StdOutBenchmarkSuite):
     def vmArgs(self, bmSuiteArgs):
         args = self.vmAndRunArgs(bmSuiteArgs)[0]
@@ -1199,7 +1233,53 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
 
-class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
+class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
+    """
+    JMH benchmark suite that executes microbenchmark mx distribution.
+    """
+
+    def benchSuiteName(self, bmSuiteArgs):
+        if self.dist:
+            return "jmh-" + self.dist
+        return super(JMHDistBenchmarkSuite, self).benchSuiteName(bmSuiteArgs)
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if benchmarks is None:
+            mx.abort("JMH Dist Suite requires a JMH distribution. (try {0}:*)".format(self.name()))
+        if len(benchmarks) != 1:
+            mx.abort("JMH Dist Suite runs only a single JMH distribution, got: {0}".format(benchmarks))
+        self.dist = benchmarks[0]
+        mx.log("running " + self.dist)
+        return super(JMHDistBenchmarkSuite, self).createCommandLineArgs(None, bmSuiteArgs)
+
+    def extraVmArgs(self):
+        assert self.dist
+        jdk = mx.get_jdk(mx.distribution(self.dist).javaCompliance)
+        return ['-cp', mx.classpath([(self.dist)], jdk=jdk)]
+
+    def filter_distribution(self, dist):
+        return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
+
+    def benchmarkList(self, bmSuiteArgs):
+        return [d.name
+                for suite in self.benchmark_suites()
+                for d in suite.dists
+                if self.filter_distribution(d)
+                ]
+
+    def benchmark_suites(self):
+        opt_limit_to_suite = True
+        suites = mx.suites(opt_limit_to_suite, includeBinary=False)
+        if mx.primary_suite() == mx._mx_suite:
+            suites.append(mx._mx_suite)
+        return suites
+
+    def getJMHEntry(self, bmSuiteArgs):
+        assert self.dist
+        return ['-jar', mx.distribution(self.dist).path]
+
+
+class JMHRunnerBenchmarkSuite(WarnDeprecatedMixin, JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
 
     def benchmarkList(self, bmSuiteArgs):
@@ -1292,9 +1372,35 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         return jmh_jar
 
 
-class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
+class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite): #pylint: disable=too-many-ancestors
+
+    def alternative_suite(self):
+        return "jmh-dist"
+
     def name(self):
         return "jmh-mx"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
+
+
+class JMHDistMxBenchmarkSuite(JMHDistBenchmarkSuite):
+    def name(self):
+        return "jmh-dist"
+
+    def group(self):
+        return "Graal"
+
+    def subgroup(self):
+        return "mx"
+
+
+class JMHJarMxBenchmarkSuite(JMHJarBenchmarkSuite):
+    def name(self):
+        return "jmh-jar"
 
     def group(self):
         return "Graal"
@@ -1624,6 +1730,8 @@ def init_benchmark_suites():
     """Called after mx initialization if mx is the primary suite."""
     add_java_vm(DefaultJavaVm("server", "default"), priority=-1)
     add_bm_suite(JMHRunnerMxBenchmarkSuite())
+    add_bm_suite(JMHDistMxBenchmarkSuite())
+    add_bm_suite(JMHJarMxBenchmarkSuite())
     add_bm_suite(TestBenchmarkSuite())
 
 

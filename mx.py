@@ -1123,7 +1123,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 claimer = a
                     return claimer is not None
 
-                def overwriteCheck(zf, arcname, source):
+                def overwriteCheck(zf, arcname, source, lp=None):
                     if os.path.basename(arcname).startswith('.'):
                         logv('Excluding dotfile: ' + source)
                         return True
@@ -1135,7 +1135,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                     existingSource = zf._provenance.get(arcname, None)
                     if existingSource and existingSource != source:
                         if arcname[-1] != os.path.sep:
-                            warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                            if lp and lp.read(arcname) == zf.read(arcname):
+                                logv(self.original_path() + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
+                            else:
+                                warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
                         return True
                     else:
                         zf._provenance[arcname] = source
@@ -1150,7 +1153,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 assert '/' not in service
                                 services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                             else:
-                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname):
+                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname, lp=lp):
                                     contents = lp.read(arcname)
                                     if not participants__add__(arcname, contents):
                                         arc.zf.writestr(arcname, contents)
@@ -1217,7 +1220,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
-                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname):
+                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname, lp=lp):
                                         contents = lp.read(arcname)
                                         if not participants__add__(arcname, contents, addsrc=True):
                                             srcArc.zf.writestr(arcname, contents)
@@ -1387,6 +1390,30 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if ts.isNewerThan(self.path):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
+
+class JMHArchiveParticipant:
+    """ Archive participant for building JMH benchmarking jars. """
+
+    def __init__(self, dist):
+        if not dist.mainClass:
+            # set default JMH main class
+            dist.mainClass = "org.openjdk.jmh.Main"
+
+    def __opened__(self, arc, srcArc, services):
+        self.arc = arc
+        self.benchmarkList = ''
+
+    def __add__(self, arcname, contents):
+        if arcname == 'META-INF/BenchmarkList':
+            self.benchmarkList += contents
+            return True
+        return False
+
+    def __addsrc__(self, arcname, contents):
+        return False
+
+    def __closing__(self):
+        self.arc.zf.writestr('META-INF/BenchmarkList', self.benchmarkList)
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -11260,7 +11287,7 @@ def projectgraph(args, suite=None):
     args = parser.parse_args(args)
 
     if args.igv or args.igv_format:
-        if args.dists:
+        if args.dist:
             abort("--dist is not supported in combination with IGV output")
         ids = {}
         nextToIndex = {}
@@ -15902,6 +15929,12 @@ def main():
         print_simple_help()
         return
 
+    # add JMH archive participants
+    for suite in suites(True, includeBinary=False):
+        for d in suite.dists:
+            if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
+                d.set_archiveparticipant(JMHArchiveParticipant(d))
+
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
 
@@ -15945,7 +15978,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.121.1")  # fix path to mx itself
+version = VersionSpec("5.122.0")  # Make JMH flexible again!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
