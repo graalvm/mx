@@ -15930,10 +15930,26 @@ def main():
         return
 
     # add JMH archive participants
-    #for suite in suites(True, includeBinary=False):
-    #    for d in suite.dists:
-    #        if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
-    #            d.set_archiveparticipant(JMHArchiveParticipant(d))
+    def _has_jmh_dep(dist):
+        class NonLocal:
+            """ Work around nonlocal access """
+            jmh_found = False
+
+        def _visit_and_find_jmh_dep(dst, edge):
+            if NonLocal.jmh_found:
+                return False
+            if dst.isLibrary() and dst.name.startswith('JMH'):
+                NonLocal.jmh_found = True
+                return False
+            return True
+
+        dist.walk_deps(preVisit=_visit_and_find_jmh_dep)
+        return NonLocal.jmh_found
+
+    for suite in suites(True, includeBinary=False):
+        for d in suite.dists:
+            if _has_jmh_dep(d):
+                d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
