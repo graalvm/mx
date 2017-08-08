@@ -1401,11 +1401,17 @@ class JMHArchiveParticipant:
 
     def __opened__(self, arc, srcArc, services):
         self.arc = arc
-        self.benchmarkList = ''
+        self.meta_files = {
+            'META-INF/BenchmarkList': None,
+            'META-INF/CompilerHints': None,
+        }
 
     def __add__(self, arcname, contents):
-        if arcname == 'META-INF/BenchmarkList':
-            self.benchmarkList += contents
+        if arcname in self.meta_files.keys():
+            if self.meta_files[arcname] is None:
+                self.meta_files[arcname] = contents
+            else:
+                self.meta_files[arcname] += contents
             return True
         return False
 
@@ -1413,7 +1419,9 @@ class JMHArchiveParticipant:
         return False
 
     def __closing__(self):
-        self.arc.zf.writestr('META-INF/BenchmarkList', self.benchmarkList)
+        for filename, content in self.meta_files.iteritems():
+            if content is not None:
+                self.arc.zf.writestr(filename, content)
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
