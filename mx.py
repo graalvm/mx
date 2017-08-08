@@ -15930,10 +15930,10 @@ def main():
         return
 
     # add JMH archive participants
-    for suite in suites(True, includeBinary=False):
-        for d in suite.dists:
-            if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
-                d.set_archiveparticipant(JMHArchiveParticipant(d))
+    #for suite in suites(True, includeBinary=False):
+    #    for d in suite.dists:
+    #        if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
+    #            d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
