@@ -74,8 +74,7 @@ downstream-truffleruby-binary-truffle: {
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
-  # GR-4845
-  #${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
+  ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
 ]
