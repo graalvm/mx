@@ -15930,10 +15930,10 @@ def main():
         return
 
     # add JMH archive participants
-    for suite in suites(True, includeBinary=False):
-        for d in suite.dists:
-            if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
-                d.set_archiveparticipant(JMHArchiveParticipant(d))
+    #for suite in suites(True, includeBinary=False):
+    #    for d in suite.dists:
+    #        if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
+    #            d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
@@ -15978,7 +15978,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.122.1")  # don't use WarnDeprecatedMixin in mx
+version = VersionSpec("5.122.2")  # backout/GR-4845
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
