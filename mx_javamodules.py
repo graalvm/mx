@@ -320,6 +320,9 @@ def make_java_module(dist, jdk):
 
     for dep in javaprojects:
         uses.update(getattr(dep, 'uses', []))
+        for pkg in getattr(dep, 'runtimeDeps', []):
+            requires.setdefault(pkg, set(['static']))
+
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
             # Only consider packages not defined by the module we're creating. This handles the
             # case where we're creating a module that will upgrade an existing upgradeable
