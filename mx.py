@@ -1401,11 +1401,17 @@ class JMHArchiveParticipant:
 
     def __opened__(self, arc, srcArc, services):
         self.arc = arc
-        self.benchmarkList = ''
+        self.meta_files = {
+            'META-INF/BenchmarkList': None,
+            'META-INF/CompilerHints': None,
+        }
 
     def __add__(self, arcname, contents):
-        if arcname == 'META-INF/BenchmarkList':
-            self.benchmarkList += contents
+        if arcname in self.meta_files.keys():
+            if self.meta_files[arcname] is None:
+                self.meta_files[arcname] = contents
+            else:
+                self.meta_files[arcname] += contents
             return True
         return False
 
@@ -1413,7 +1419,9 @@ class JMHArchiveParticipant:
         return False
 
     def __closing__(self):
-        self.arc.zf.writestr('META-INF/BenchmarkList', self.benchmarkList)
+        for filename, content in self.meta_files.iteritems():
+            if content is not None:
+                self.arc.zf.writestr(filename, content)
 
 class ArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -15930,10 +15938,26 @@ def main():
         return
 
     # add JMH archive participants
-    #for suite in suites(True, includeBinary=False):
-    #    for d in suite.dists:
-    #        if any((dep.name.startswith('JMH') for dep in d.archived_deps())):
-    #            d.set_archiveparticipant(JMHArchiveParticipant(d))
+    def _has_jmh_dep(dist):
+        class NonLocal:
+            """ Work around nonlocal access """
+            jmh_found = False
+
+        def _visit_and_find_jmh_dep(dst, edge):
+            if NonLocal.jmh_found:
+                return False
+            if dst.isLibrary() and dst.name.startswith('JMH'):
+                NonLocal.jmh_found = True
+                return False
+            return True
+
+        dist.walk_deps(preVisit=_visit_and_find_jmh_dep)
+        return NonLocal.jmh_found
+
+    for suite in suites(True, includeBinary=False):
+        for d in suite.dists:
+            if _has_jmh_dep(d):
+                d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
@@ -15978,7 +16002,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.122.2")  # backout/GR-4845
+version = VersionSpec("5.122.3")  # reenable JMHArchiveParticipant
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
