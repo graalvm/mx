@@ -69,6 +69,7 @@ class Task:
 
     def tag_matches(self, _tags):
         for t in _tags:
+            assert isinstance(t, basestring), '{} is not a string and thus not a valid tag'.format(t)
             if t in Task.tags:
                 if t not in Task.tags_range:
                     # no range restriction
