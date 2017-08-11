@@ -2443,6 +2443,19 @@ class JavaBuildTask(ProjectBuildTask):
 
     def build(self):
         outputDir = ensure_dir_exists(self.subject.output_dir())
+        # Copy other files
+        for nonjavafiletuple in self._nonJavaFileTuples():
+            sourceDir = nonjavafiletuple[0]
+            nonjavafilelist = nonjavafiletuple[1]
+            for src in nonjavafilelist:
+                dst = join(outputDir, src[len(sourceDir) + 1:])
+                ensure_dir_exists(dirname(dst))
+                dstFile = TimeStampFile(dst)
+                if dstFile.isOlderThan(src):
+                    shutil.copyfile(src, dst)
+                    self._newestOutput = dstFile
+        if self._nonJavaFileCount():
+            logvv('Finished resource copy for {}'.format(self.subject.name))
         # Java build
         if self.compileArgs:
             try:
@@ -2460,19 +2473,6 @@ class JavaBuildTask(ProjectBuildTask):
                 self._newestOutput = TimeStampFile(max(output, key=key))
         # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
-        # Copy other files
-        for nonjavafiletuple in self._nonJavaFileTuples():
-            sourceDir = nonjavafiletuple[0]
-            nonjavafilelist = nonjavafiletuple[1]
-            for src in nonjavafilelist:
-                dst = join(outputDir, src[len(sourceDir) + 1:])
-                ensure_dir_exists(dirname(dst))
-                dstFile = TimeStampFile(dst)
-                if dstFile.isOlderThan(src):
-                    shutil.copyfile(src, dst)
-                    self._newestOutput = dstFile
-        if self._nonJavaFileCount():
-            logvv('Finished resource copy for {}'.format(self.subject.name))
         if self.copyfiles:
             for src, dst in self.copyfiles:
                 ensure_dir_exists(dirname(dst))
@@ -16002,7 +16002,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.123.0")  # support runtimeDeps
+version = VersionSpec("5.124.0")  # get the right order (GR-5556)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
