@@ -7173,7 +7173,7 @@ class SourceSuite(Suite):
                 if exists(configFile):
                     with open(configFile) as fp:
                         annotationProcessors = [ap.strip() for ap in fp]
-                        if len(annotationProcessors) != 0:
+                        if len(annotationProcessors) != 0 and p.checkPackagePrefix:
                             for ap in annotationProcessors:
                                 if not ap.startswith(p.name):
                                     abort(ap + ' in ' + configFile + ' does not start with ' + p.name)
@@ -16002,7 +16002,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.0")  # get the right order (GR-5556)
+version = VersionSpec("5.124.1")  # Respect checkPackagePrefix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
