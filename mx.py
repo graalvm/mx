@@ -3629,7 +3629,14 @@ class Library(BaseLibrary, ClasspathDependency):
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        return not _check_file_with_sha1(path, self.sha1, sha1path)
+        if not _check_file_with_sha1(path, self.sha1, sha1path):
+            return True
+        if self.sourcePath:
+            path = _make_absolute(self.sourcePath, self.suite.dir)
+            sha1path = path + '.sha1'
+            if not _check_file_with_sha1(path, self.sourceSha1, sha1path):
+                return True
+        return False
 
     def get_source_path(self, resolve):
         if self.sourcePath is None:
@@ -3673,6 +3680,8 @@ class LibraryDownloadTask(BuildTask):
 
     def build(self):
         self.subject.get_path(resolve=True)
+        if hasattr(self.subject, 'get_source_path'):
+            self.subject.get_source_path(resolve=True)
 
     def clean(self, forBuild=False):
         abort('should not reach here')
