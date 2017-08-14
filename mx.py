@@ -3184,7 +3184,7 @@ def _cache_dir():
     return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
 
 
-def _get_path_in_cache(name, sha1, urls, ext=None):
+def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
     """
     Gets the path an artifact has (or would have) in the download cache.
     """
@@ -3197,14 +3197,14 @@ def _get_path_in_cache(name, sha1, urls, ext=None):
                 path = o.query
             else:
                 path = o.path
-            _, ext = os.path.splitext(path)
+            ext = get_file_extension(path)
             if ext:
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(_cache_dir(), name + '_' + sha1 + ext)
+    return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + '.' + ext)
 
 
 def download_file_exists(urls):
@@ -3241,7 +3241,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         ensure_dir_exists(cacheDir)
 
         _, ext = os.path.splitext(path)
-        cachePath = _get_path_in_cache(name, sha1, urls, ext=ext)
+        cachePath = _get_path_in_cache(name, sha1, urls, ext=ext, sources=sources)
 
         def _copy_or_symlink(source, link_name):
             if canSymlink and 'symlink' in dir(os):
@@ -6861,7 +6861,7 @@ class Suite(object):
                         abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
-                path = _get_path_in_cache(name, sha1, urls, ext)
+                path = _get_path_in_cache(name, sha1, urls, ext, sources=False)
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
@@ -6877,7 +6877,7 @@ class Suite(object):
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
-                    sourcePath = _get_path_in_cache(name + '.sources', sourceSha1, sourceUrls, sourceExt)
+                    sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
