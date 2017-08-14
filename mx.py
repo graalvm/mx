@@ -3199,12 +3199,13 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
                 path = o.path
             ext = get_file_extension(path)
             if ext:
+                ext = '.' + ext
                 break
         if not ext:
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + '.' + ext)
+    return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)
 
 
 def download_file_exists(urls):
