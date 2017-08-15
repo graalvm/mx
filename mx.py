@@ -260,6 +260,7 @@ def no_suite_discovery(func):
     return func
 
 DEP_STANDARD = "standard dependency"
+DEP_BUILD = "a build dependency"
 DEP_ANNOTATION_PROCESSOR = "annotation processor dependency"
 DEP_EXCLUDED = "excluded library"
 
@@ -492,7 +493,7 @@ class Dependency(SuiteConstituent):
             visited = set()
         if not ignoredEdges:
             # Default ignored edges
-            ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED]
+            ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD]
         self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
 
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
@@ -1676,6 +1677,13 @@ class Project(Dependency):
                     visitEdge(self, DEP_STANDARD, d)
                 if d not in visited:
                     d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+        if hasattr(self, 'buildDependencies'):
+            if not _is_edge_ignored(DEP_BUILD, ignoredEdges):
+                for d in self.buildDependencies:
+                    if visitEdge:
+                        visitEdge(self, DEP_BUILD, d)
+                    if d not in visited:
+                        d._walk_deps_helper(visited, DepEdge(self, DEP_BUILD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
     def _compute_max_dep_distances(self, dep, distances, dist):
         currentDist = distances.get(dep)
@@ -7970,7 +7978,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         if not includeSelf and dep in roots:
             return
         cpEntries.append(dep)
-    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR])
+    walk_deps(roots=roots, visit=_visit, preVisit=_preVisit, ignoredEdges=[DEP_ANNOTATION_PROCESSOR, DEP_BUILD])
     return cpEntries
 
 def _entries_to_classpath(cpEntries, resolve=True, includeBootClasspath=False, jdk=None, unique=False, ignoreStripped=False, cp_prefix=None, cp_suffix=None):
@@ -10237,42 +10245,23 @@ def build(args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
-    delayedTasks = {}
 
     def _createTask(dep, edge):
         task = dep.getBuildTask(args)
         if task.subject in taskMap:
             return
         taskMap[dep] = task
-        def try_link_task(t):
-            if hasattr(t.subject, 'buildDependencies'):
-                for build_dep in t.subject.buildDependencies:
-                    if build_dep not in taskMap:
-                        delayedTasks.setdefault(build_dep, []).append(t)
-                        return
-                    else:
-                        t.deps.append(taskMap[build_dep])
-            if onlyDeps is None or t.subject.name in onlyDeps:
-                sortedTasks.append(t)
-            lst = depsMap.setdefault(t.subject, [])
-            for d in lst:
-                t.deps.append(taskMap[d])
-
-        if dep in delayedTasks:
-            candidates = delayedTasks[dep]
-            del delayedTasks[dep]
-            for candidate in candidates:
-                try_link_task(candidate)
-        try_link_task(task)
+        if onlyDeps is None or task.subject.name in onlyDeps:
+            sortedTasks.append(task)
+        lst = depsMap.setdefault(task.subject, [])
+        for d in lst:
+            task.deps.append(taskMap[d])
 
     def _registerDep(src, edgeType, dst):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
-    while len(delayedTasks) != 0:
-        logv('[Flushing disconnected delayed tasks: ' + str([d.name for d in delayedTasks.keys()]) + ']')
-        walk_deps(visit=_createTask, visitEdge=_registerDep, roots=delayedTasks.keys(), ignoredEdges=[DEP_EXCLUDED])
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
@@ -16012,7 +16001,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.2")  # download sources
+version = VersionSpec("5.124.3")  # full build deps
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
