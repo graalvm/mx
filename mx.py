@@ -13858,6 +13858,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
             def visit(dep, edge):
+                if dep == p:
+                    return
                 if dep.isProject():
                     depOut = outDir(dep)
                     links.append('-link')
