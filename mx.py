@@ -13851,11 +13851,15 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
+            if not p.isJavaProject():
+                continue
             pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
             out = outDir(p)
             def visit(dep, edge):
+                if dep == p:
+                    return
                 if dep.isProject():
                     depOut = outDir(dep)
                     links.append('-link')
@@ -16001,7 +16005,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.3")  # full build deps
+version = VersionSpec("5.124.4")  # javadoc fixes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
