@@ -3258,17 +3258,17 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     if len(urls) is 0 and not sha1Check:
         return path
 
-    if not _check_file_with_sha1(path, sha1, sha1path, resolve and mustExist):
+    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
         if len(urls) is 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
-        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
-        ensure_dir_exists(cacheDir)
-
-        _, ext = os.path.splitext(path)
-        cachePath = _get_path_in_cache(name, sha1, urls, ext=ext, sources=sources)
+        if is_cache_path(path):
+            cachePath = path
+        else:
+            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources)
 
         def _copy_or_symlink(source, link_name):
+            ensure_dirname_exists(link_name)
             if canSymlink and 'symlink' in dir(os):
                 logvv('Symlinking {} to {}'.format(link_name, source))
                 if os.path.lexists(link_name):
@@ -3296,14 +3296,10 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             download(cachePath, urls)
 
         if path != cachePath:
-            d = dirname(path)
-            if d != '':
-                ensure_dir_exists(d)
             _copy_or_symlink(cachePath, path)
 
-        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
-            log('SHA1 of ' + sha1OfFile(cachePath) + ' does not match expected value (' + sha1 + ')')
-            abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
+        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
+            abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
 
     return path
 
@@ -3311,7 +3307,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 Checks if a file exists and is up to date according to the sha1.
 Returns False if the file is not there or does not have the right checksum.
 """
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
+def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
     def _sha1CachedValid():
@@ -3325,9 +3321,9 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
         with open(sha1path, 'r') as f:
             return f.read()[0:40]
 
-    def _writeSha1Cached():
-        with open(sha1path, 'w') as f:
-            f.write(sha1OfFile(path))
+    def _writeSha1Cached(value=None):
+        with SafeFileCreation(sha1path) as sfc, open(sfc.tmpPath, 'w') as f:
+            f.write(value or sha1OfFile(path))
 
     if exists(path):
         if sha1Check and sha1:
@@ -3336,12 +3332,17 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
                 _writeSha1Cached()
 
             if sha1 != _sha1Cached():
-                if sha1 == sha1OfFile(path):
-                    logv('Fix corrupt SHA1 cache file ' + sha1path)
-                    _writeSha1Cached()
+                computedSha1 = sha1OfFile(path)
+                if sha1 == computedSha1:
+                    warn('Fixing corrupt SHA1 cache file ' + sha1path)
+                    _writeSha1Cached(computedSha1)
                     return True
+                if logErrors:
+                    log_error('SHA1 of {} ({}) does not match expected value ({})'.format(path, computedSha1, sha1))
                 return False
     elif mustExist:
+        if logErrors:
+            log_error("'{}' does not exist".format(path))
         return False
 
     return True
@@ -10054,15 +10055,13 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
     The downloaded content is written to the file indicated by `path`.
     """
-    d = dirname(path)
-    if d != '':
-        ensure_dir_exists(d)
+    ensure_dirname_exists(path)
 
     assert not path.endswith(os.sep)
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
-    progress = not _opts.no_download_progress and sys.stderr.isatty()
+    progress = not _opts.no_download_progress and sys.stdout.isatty()
     for url in urls:
         if not verifyOnly or verbose:
             log('Downloading ' + url + ' to ' + path)
@@ -15043,6 +15042,12 @@ def change_file_extension(path, new_extension):
 
 def change_file_name(path, new_file_name):
     return join(dirname(path), new_file_name + '.' + get_file_extension(path))
+
+
+def ensure_dirname_exists(path, mode=None):
+    d = dirname(path)
+    if d != '':
+        ensure_dir_exists(d, mode)
 
 
 def ensure_dir_exists(path, mode=None):
