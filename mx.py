@@ -5678,12 +5678,9 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         pom.open('dependencies')
         for dep in directDistDeps:
             pom.open('dependency')
-            depGroupId = _mavenGroupId(dep.suite)
-            depArtifactId = _map_to_maven_dist_name(dep.remoteName())
-            depVersion = versionGetter(dep.suite)
-            pom.element('groupId', data=depGroupId)
-            pom.element('artifactId', data=depArtifactId)
-            pom.element('version', data=depVersion)
+            pom.element('groupId', data=dep.maven_group_id())
+            pom.element('artifactId', data=dep.maven_artifact_id())
+            pom.element('version', data=versionGetter(dep.suite))
             pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
@@ -9078,14 +9075,20 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     add_proxy_property('https.proxyPort', port)
     add_proxy_property('http.nonProxyHosts', _java_no_proxy())
 
+    extra_args = []
     if proxyArgs:
         proxyArgs.append('-DproxySet=true')
+        extra_args.extend(proxyArgs)
+
+    if _opts.very_verbose:
+        extra_args += ['--debug']
+
 
     mavenCommand = 'mvn'
     mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
-    return run([mavenCommand] + proxyArgs + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
+    return run([mavenCommand] + extra_args + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
 def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
     """
@@ -16005,7 +16008,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.4")  # javadoc fixes
+version = VersionSpec("5.124.5")  # POM
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
