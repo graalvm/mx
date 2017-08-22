@@ -118,6 +118,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def overwriteProjectAttributes(self):
+        """
+        Attributes from the configuration that are not explicitly handled overwrite values set by the constructor.
+        """
+        return True
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -256,6 +262,15 @@ class MxCompatibility51150(MxCompatibility51120):#pylint: disable=too-many-ances
 
     def useJobsForMakeByDefault(self):
         return True
+
+
+class MxCompatibility51247(MxCompatibility51150):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.124.7")
+
+    def overwriteProjectAttributes(self):
+        return False
 
 def minVersion():
     _ensureCompatLoaded()

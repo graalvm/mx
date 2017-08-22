@@ -7191,7 +7191,12 @@ class SourceSuite(Suite):
                         p.declaredAnnotationProcessors = ap
                     if jlintOverrides:
                         p._javac_lint_overrides = jlintOverrides
-            p.__dict__.update(attrs)
+            if self.getMxCompatibility().overwriteProjectAttributes():
+                p.__dict__.update(attrs)
+            else:
+                for k, v in attrs.items():
+                    if not hasattr(p, k):
+                        setattr(p, k, v)
             self.projects.append(p)
 
 
@@ -16027,7 +16032,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.6")  # proguard urls
+version = VersionSpec("5.124.7")  # project attributes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
