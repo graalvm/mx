@@ -1017,6 +1017,9 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
+        self.buildDependencies = []
+        if self.is_stripped():
+            self.buildDependencies.append("mx:PROGUARD")
         assert path.endswith(self.localExtension())
 
     @property
@@ -1391,6 +1394,19 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if ts.isNewerThan(self.path):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
+
+    def resolveDeps(self):
+        super(JARDistribution, self).resolveDeps()
+        self._resolveDepsHelper(self.buildDependencies)
+
+    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        super(JARDistribution, self)._walk_deps_visit_edges(visited, edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
+        if not _is_edge_ignored(DEP_BUILD, ignoredEdges):
+            for d in self.buildDependencies:
+                if visitEdge:
+                    visitEdge(self, DEP_BUILD, d)
+                if d not in visited:
+                    d._walk_deps_helper(visited, DepEdge(self, DEP_BUILD, edge), preVisit, visit, ignoredEdges, visitEdge)
 
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
@@ -6776,6 +6792,8 @@ class Suite(object):
             assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
             if isinstance(maven, types.DictType) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
+            if attrs.pop('buildDependencies', None):
+                abort("'buildDependencies' is not supported for JAR distributions")
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, javadocType=javadocType,
                                 allowsJavadocWarnings=allowsJavadocWarnings, maven=maven,
@@ -7446,8 +7464,6 @@ class InternalSuite(SourceSuite):
 class MXSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, _mx_home)
-        self._init_metadata()
-        self._post_init()
 
     def _parse_env(self):
         # Only load the env file from mx when it's the primary suite.  This can only
@@ -15874,6 +15890,9 @@ def main():
 
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
+    _mx_suite._init_metadata()
+    _mx_suite._post_init()
+
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
@@ -16008,7 +16027,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.5")  # POM
+version = VersionSpec("5.124.6")  # proguard urls
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

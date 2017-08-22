@@ -199,19 +199,21 @@ suite = {
     },
 
     "PROGUARD" : {
-      "urls" : [
-        "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/proguard-base-5.3.1.jar",
-        "https://repo1.maven.org/maven2/net/sf/proguard/proguard-base/5.3.1/proguard-base-5.3.1.jar",
-      ],
       "sha1" : "996a984a7e230fdcfc269d66a6c91fd1587edd50",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-base",
+        "version" : "5.3.1",
+      }
     },
 
     "PROGUARD_RETRACE" : {
-      "urls" : [
-        "http://lafo.ssw.uni-linz.ac.at/graal-external-deps/proguard-retrace-5.3.1.jar",
-        "https://repo1.maven.org/maven2/net/sf/proguard/proguard-retrace/5.3.1/proguard-retrace-5.3.1.jar",
-      ],
       "sha1" : "4a57d643d2ded6ebcf4b7bcdab8fcf3d2588aa1b",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-retrace",
+        "version" : "5.3.1",
+      }
     },
   },
 
