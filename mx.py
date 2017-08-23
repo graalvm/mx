@@ -9856,7 +9856,7 @@ def log(msg=None):
     if msg is None:
         print
     else:
-        print msg
+        print msg + "\n",
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
