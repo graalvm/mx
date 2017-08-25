@@ -15656,14 +15656,14 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
     def _update_repo(_discovered_suite, update_version, forget=False, update_reason="to resolve conflict"):
         current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
-        if current_version == update_version:
-            return False
         if _discovered_suite.vc_dir not in original_version:
             branch = _discovered_suite.vc.active_branch(_discovered_suite.vc_dir, abortOnError=False)
             if branch is not None:
                 original_version[_discovered_suite.vc_dir] = VersionType.BRANCH, branch
             else:
                 original_version[_discovered_suite.vc_dir] = VersionType.REVISION, current_version
+        if current_version == update_version:
+            return False
         _discovered_suite.vc.update(_discovered_suite.vc_dir, rev=update_version, mayPull=True)
         _clear_pyc_files(_discovered_suite)
         if forget:
@@ -16037,7 +16037,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.8")  # Downloads
+version = VersionSpec("5.124.9")  # sforceimports
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
