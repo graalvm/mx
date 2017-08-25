@@ -6548,10 +6548,7 @@ class Suite(object):
     def _register_distribution(self, d):
         existing = _dists.get(d.name)
         if existing is not None and _check_global_structures:
-            # allow redefinition, so use path from existing
-            # abort('cannot redefine distribution  ' + d.name)
             warn('distribution ' + d.name + ' redefined', context=d)
-            d.path = existing.path
         _dists[d.name] = d
 
     def _resolve_dependencies(self):
@@ -16037,7 +16034,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.9")  # sforceimports
+version = VersionSpec("5.125.0")  # GR-5771
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
