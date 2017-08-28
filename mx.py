@@ -3232,13 +3232,24 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
     return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)
 
 
+def _urlopen(*args, **kwargs):
+    try:
+        return urllib2.urlopen(*args, **kwargs)
+    except urllib2.URLError as e:
+        if isinstance(e.reason, socket.error) and e.reason.errno == errno.EINTR:
+            if 'timeout' in kwargs and is_interactive():
+                warn("Download failed with EINTR. Retrying without timeout.")
+                del kwargs['timeout']
+                return urllib2.urlopen(*args, **kwargs)
+        raise
+
 def download_file_exists(urls):
     """
     Returns true if one of the given urls denotes an existing resource.
     """
     for url in urls:
         try:
-            urllib2.urlopen(url, timeout=0.5).close()
+            _urlopen(url, timeout=0.5).close()
             return True
         except:
             pass
@@ -5512,7 +5523,7 @@ class MavenRepo:
         metadataUrl = "{0}/{1}/{2}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId)
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
+            metadataFile = _urlopen(metadataUrl, timeout=10)
         except urllib2.HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
@@ -5537,7 +5548,7 @@ class MavenRepo:
                 for version_str in reversed(versionStrings):
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
-                        snapshot_metadataFile = urllib2.urlopen(snapshot_metadataUrl, timeout=10)
+                        snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
                     except urllib2.HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
@@ -5563,7 +5574,7 @@ class MavenRepo:
         metadataUrl = self.getSnapshotUrl(groupId, artifactId, version)
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
+            metadataFile = _urlopen(metadataUrl, timeout=10)
         except urllib2.URLError as e:
             if isinstance(e, urllib2.HTTPError) and e.code == 404:
                 return None
@@ -10070,7 +10081,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
 
         if verifyOnly:
             try:
-                conn = urllib2.urlopen(url, timeout=10)
+                conn = _urlopen(url, timeout=10)
                 conn.close()
                 return True
             except (IOError, socket.timeout) as e:
@@ -10086,7 +10097,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
             try:
 
                 # 10 second timeout to establish connection
-                conn = urllib2.urlopen(url, timeout=10)
+                conn = _urlopen(url, timeout=10)
 
                 # Not all servers support the "Content-Length" header
                 lengthHeader = conn.info().getheader('Content-Length')
