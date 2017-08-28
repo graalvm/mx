@@ -6086,6 +6086,9 @@ class SuiteModel:
         else:
             abort("Multiple suites match the import {}:\n{}".format(suite_import.name, "\n".join(found)))
 
+    def verify_imports(self, p):
+        pass
+
     def _check_exists(self, suite_import, path, check_alternate=True):
         if check_alternate and suite_import.urlinfos is not None and not exists(path):
             return suite_import.urlinfos
@@ -6171,6 +6174,21 @@ class SiblingSuiteModel(SuiteModel):
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
         checked = self._check_exists(suite_import, path, check_alternate)
         return SuiteModel._checked_to_importee_tuple(checked, suite_import)
+
+    def verify_imports(self, p):
+        if p.dir != p.vc_dir:
+            imports = {}
+            for suite_dir in [_is_suite_dir(join(p.vc_dir, x)) for x in os.listdir(p.vc_dir) if os.path.isdir(join(p.vc_dir, x)) and _is_suite_dir(join(p.vc_dir, x))]:
+                suite = SourceSuite(suite_dir, load=False, primary=True)
+                for suite_import in suite.suite_imports:
+                    current_import = imports.get(suite_import.name)
+                    if not current_import:
+                        imports[suite_import.name] = (suite, suite_import.version)
+                    else:
+                        importing_suite, version = current_import
+                        if suite_import.version != version:
+                            abort('%s and %s import different versions of %s' % (importing_suite.name, suite.name, suite_import.name))
+
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'mx.imports/source' directory of the primary suite"""
@@ -14473,6 +14491,9 @@ def scheckimports(args):
     # check imports of all suites
     for s in suites():
         s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports, ignore_uncommitted=args.ignore_uncommitted)
+    for s in suites():
+        _suitemodel.verify_imports(s)
+
 
 
 @no_suite_discovery
@@ -16077,13 +16098,22 @@ def main():
     _mx_suite._init_metadata()
     _mx_suite._post_init()
 
-    initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
-    is_suite_context_free = initial_command and initial_command in _suite_context_free
-    should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
-    should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
-    is_optional_suite_context = not initial_command or initial_command in _optional_suite_context
+    command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
+    if command and command not in _commands:
+        hits = [c for c in _commands.iterkeys() if c.startswith(command)]
+        if len(hits) == 1:
+            command = hits[0]
+        elif len(hits) == 0:
+            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(command, _format_commands()))
+        else:
+            abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
-    assert not should_load_suites or should_discover_suites, initial_command
+    is_suite_context_free = command and command in _suite_context_free
+    should_discover_suites = not is_suite_context_free and not (command and command in _no_suite_discovery)
+    should_load_suites = should_discover_suites and not (command and command in _no_suite_loading)
+    is_optional_suite_context = not command or command in _optional_suite_context
+
+    assert not should_load_suites or should_discover_suites, command
 
     def _setup_binary_suites():
         global _binary_suites
@@ -16121,7 +16151,7 @@ def main():
             _init_primary_suite(primary)
         else:
             if not is_optional_suite_context:
-                abort('no primary suite found')
+                abort('no primary suite found for %s' % command)
 
         for envVar in _loadedEnv.keys():
             value = _loadedEnv[envVar]
@@ -16168,19 +16198,11 @@ def main():
             if _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
-    command = commandAndArgs[0]
+    if _argParser.initialCommandAndArgs[0] != commandAndArgs[0]:
+        abort('Command changed')
     command_args = commandAndArgs[1:]
 
-    if command not in _commands:
-        hits = [c for c in _commands.iterkeys() if c.startswith(command)]
-        if len(hits) == 1:
-            command = hits[0]
-        elif len(hits) == 0:
-            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(command, _format_commands()))
-        else:
-            abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
-
-    c, _ = _commands[command][:2]
+    command_function, _ = _commands[command][:2]
 
     if primarySuiteMxDir and should_load_suites:
         if not _get_command_property(command, "keepUnsatisfiedDependencies"):
@@ -16203,7 +16225,7 @@ def main():
                 abort('Command timed out after ' + str(_opts.timeout) + ' seconds: ' + ' '.join(commandAndArgs))
             signal.signal(signal.SIGALRM, alarm_handler)
             signal.alarm(_opts.timeout)
-        retcode = c(command_args)
+        retcode = command_function(command_args)
         if retcode is not None and retcode != 0:
             abort(retcode)
     except KeyboardInterrupt:
