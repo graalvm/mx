@@ -9856,6 +9856,19 @@ def log(msg=None):
     if msg is None:
         print
     else:
+        # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
+        # > A '\n' character is written at the end, unless the print statement
+        # > ends with a comma.
+        #
+        # In CPython, the normal print statement (without comma) is compiled to
+        # two bytecode instructions: PRINT_ITEM, followed by PRINT_NEWLINE.
+        # Each of these bytecode instructions is executed atomically, but the
+        # interpreter can suspend the thread between the two instructions.
+        #
+        # If the print statement is followed by a comma, the PRINT_NEWLINE
+        # instruction is omitted. By manually adding the newline to the string,
+        # there is only a single PRINT_ITEM instruction which is executed
+        # atomically, but still prints the newline.
         print msg + "\n",
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
