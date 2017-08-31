@@ -5255,14 +5255,13 @@ class BinaryVC(VC):
         mxname = _mx_binary_distribution_root(suite_name)
         self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name).replace('.', '/'), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
-        if not self._pull_artifact(metadata, mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, _mavenGroupId(suite_name), mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
             return False
         run([get_jdk(tag=DEFAULT_JDK_TAG).jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
 
-    def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
-        groupId = _mavenGroupId(metadata.suiteName)
+    def _pull_artifact(self, metadata, groupId, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
         repo = MavenRepo(metadata.repourl)
         snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
         if not snapshot:
@@ -5314,12 +5313,13 @@ class BinaryVC(VC):
             return
         metadata = self._readMetadata(vcdir)
         artifactId = distribution.maven_artifact_id()
+        groupId = distribution.maven_group_id()
         path = distribution.path[:-len(distribution.localExtension())] + distribution.remoteExtension()
         if distribution.isJARDistribution():
             sourcesPath = distribution.sourcesPath
         else:
             sourcesPath = None
-        self._pull_artifact(metadata, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
+        self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
         distribution.postPull(path)
         distribution.notify_updated()
 
@@ -5337,7 +5337,7 @@ class BinaryVC(VC):
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
-        if not self._pull_artifact(metadata, mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, _mavenGroupId(metadata.suiteName), mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
             shutil.rmtree(tmpdir)
             return False
 
@@ -14940,12 +14940,12 @@ def checkcopyrights(args):
         result = result if rc == 0 else rc
     return result
 
-def mvn_local_install(suite_name, dist_name, path, version, repo=None):
+def mvn_local_install(group_id, artifact_id, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
     repoArgs = ['-Dmaven.repo.local=' + repo] if repo else []
-    run_maven(['install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
-            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
+    run_maven(['install:install-file', '-DgroupId=' + group_id, '-DartifactId=' + artifact_id, '-Dversion=' +
+               version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
     """install the primary suite in a local maven repository for testing
@@ -14979,19 +14979,19 @@ def maven_install(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
+            mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
+        mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version, args.repo)
-            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion, args.repo)
+                mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
+            mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, releaseVersion, args.repo)
     else:
         print 'jars to deploy manually for version: ' + version
         print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
         for dist in arcdists:
-            print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
+            print 'name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir)
 
 def _copy_eclipse_settings(p, files=None):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
