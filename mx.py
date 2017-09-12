@@ -13113,7 +13113,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True):
     # has to be complete and contain information that is repeated
     # in dependent suites.
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules, suite != primary_suite())
+        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
 
     if mx_python_modules:
         # mx module
@@ -13144,16 +13144,13 @@ def _intellij_library_file_name(library_name):
 
 
 def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
-    if isinstance(s, BinarySuite):
-        return
-
     libraries = set()
     jdk_libraries = set()
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
     modulesXml = XMLDoc()
-    if not module_files_only:
+    if not module_files_only and not s.isBinarySuite():
         ensure_dir_exists(ideaProjectDirectory)
         nameFile = join(ideaProjectDirectory, '.name')
         update_file(nameFile, s.name)
@@ -13177,6 +13174,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
     max_checkstyle_version = None
     if java_modules:
+        assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive():
             if not p.isJavaProject():
