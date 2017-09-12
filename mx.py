@@ -2877,7 +2877,7 @@ class CompilerDaemon(Daemon):
 
     def _noticePort(self, data):
         logv(data.rstrip())
-        if self.port == None:
+        if self.port is None:
             m = self.portRegex.match(data)
             if m:
                 self.port = int(m.group(1))
@@ -15897,6 +15897,8 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
                         _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
+                    else:
+                        _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
                 else:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
