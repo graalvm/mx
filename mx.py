@@ -13419,9 +13419,25 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         miscXml.open('project', attributes={'version' : '4'})
 
         if java_modules:
+            mainJdk = get_jdk()
+            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
+            miscXml.close('component')
+        else:
+            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
+
+        miscXml.close('project')
+        miscFile = join(ideaProjectDirectory, 'misc.xml')
+        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+
+
+        if java_modules:
+            # Eclipse formatter config
             corePrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
             uiPrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
             if corePrefsSources:
+                miscXml = XMLDoc()
+                miscXml.open('project', attributes={'version' : '4'})
                 out = StringIO.StringIO()
                 print >> out, '# GENERATED -- DO NOT EDIT'
                 for source in corePrefsSources:
@@ -13446,27 +13462,26 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                                     print >> out, line.strip()
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
                     update_file(importConfigFile, out.getvalue())
-                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
+                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
+                miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
+                miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
-                miscXml.element('option', attributes={'name' : 'name', 'value' : s.name})
+                custom_eclipse_exe = get_env('ECLIPSE_EXE')
+                if custom_eclipse_exe:
+                    custom_eclipse = dirname(custom_eclipse_exe)
+                    miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
+                    miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
-                miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
                 if importConfigFile:
                     miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
                     miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
 
+                miscXml.close('ProjectSpecificProfile')
+                miscXml.close('option')
                 miscXml.close('component')
-            mainJdk = get_jdk()
-            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
-            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
-            miscXml.close('component')
-        else:
-            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
-
-        miscXml.close('project')
-        miscFile = join(ideaProjectDirectory, 'misc.xml')
-        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+                miscXml.close('project')
+                miscFile = join(ideaProjectDirectory, 'eclipseCodeFormatter.xml')
+                update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Write checkstyle-idea.xml for the CheckStyle-IDEA
