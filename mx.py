@@ -11636,16 +11636,18 @@ def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate PyDev projects for the mx python projects.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
     parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
     parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False, pythonProjects=False):
     """(re)generate Eclipse project configurations and working sets"""
+
     for s in suites(True) + [_mx_suite]:
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths, pythonProjects)
 
     wsroot = generate_eclipse_workingsets()
 
@@ -12193,13 +12195,13 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False):
+def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False, pythonProjects=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
-    if isinstance(suite, BinarySuite):
+    if isinstance(s, BinarySuite):
         return
 
-    mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
+    mxOutputDir = ensure_dir_exists(s.get_mx_output_dir())
     configZip = TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
     configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
@@ -12207,16 +12209,16 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
     update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
-    if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
-        logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
+    if not force and _check_ide_timestamp(s, configZip, 'eclipse', settingsFile):
+        logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
         return
 
     files = []
     libFiles = []
     if buildProcessorJars:
-        files += _processorjars_suite(suite)
+        files += _processorjars_suite(s)
 
-    for p in suite.projects:
+    for p in s.projects:
         code = p._eclipseinit.func_code
         if 'absolutePaths' in code.co_varnames[:code.co_argcount]:
             p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
@@ -12225,13 +12227,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             p._eclipseinit(files, libFiles)
 
     jdk = get_jdk(tag='default')
-    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
+    _, launchFile = make_eclipse_attach(s, 'localhost', '8000', deps=dependencies(), jdk=jdk)
     files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
     # for the distribution whenever any (transitively) dependent project of the
     # distribution is updated.
-    for dist in suite.dists:
+    for dist in s.dists:
         if not dist.isJARDistribution():
             continue
         projectDir = dist.get_ide_project_dir()
@@ -12284,8 +12286,54 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         update_file(projectFile, out.xml(indent='\t', newl='\n'))
         files.append(projectFile)
 
-    _zip_files(files + [settingsFile], suite.dir, configZip.path)
-    _zip_files(libFiles, suite.dir, configLibsZip)
+    if pythonProjects:
+        projectXml = XMLDoc()
+        projectXml.open('projectDescription')
+        projectXml.element('name', data=s.name if s is _mx_suite else 'mx.' + s.name)
+        projectXml.element('comment')
+        projectXml.open('projects')
+        if s is not _mx_suite:
+            projectXml.element('project', data=_mx_suite.name)
+        processed_suites = set([s.name])
+        def _mx_projects_suite(visited_suite, suite_import):
+            if suite_import.name in processed_suites:
+                return
+            processed_suites.add(suite_import.name)
+            dep_suite = suite(suite_import.name)
+            projectXml.element('project', data='mx.' + suite_import.name)
+            dep_suite.visit_imports(_mx_projects_suite)
+        s.visit_imports(_mx_projects_suite)
+        projectXml.close('projects')
+        projectXml.open('buildSpec')
+        projectXml.open('buildCommand')
+        projectXml.element('name', data='org.python.pydev.PyDevBuilder')
+        projectXml.element('arguments')
+        projectXml.close('buildCommand')
+        projectXml.close('buildSpec')
+        projectXml.open('natures')
+        projectXml.element('nature', data='org.python.pydev.pythonNature')
+        projectXml.close('natures')
+        projectXml.close('projectDescription')
+        projectFile = join(s.dir if s is _mx_suite else s.mxDir, '.project')
+        update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
+        files.append(projectFile)
+
+        pydevProjectXml = """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?eclipse-pydev version="1.0"?>
+<pydev_project>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.7</pydev_property>
+<pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
+<path>/{}</path>
+</pydev_pathproperty>
+</pydev_project>
+""".format(s.name if s is _mx_suite else 'mx.' + s.name)
+        pydevProjectFile = join(s.dir if s is _mx_suite else s.mxDir, '.pydevproject')
+        update_file(pydevProjectFile, pydevProjectXml)
+        files.append(pydevProjectFile)
+
+    _zip_files(files + [settingsFile], s.dir, configZip.path)
+    _zip_files(libFiles, s.dir, configLibsZip)
 
 def _zip_files(files, baseDir, zipPath):
     with SafeFileCreation(zipPath) as sfc:
@@ -16095,7 +16143,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.126.0")  # This version Socks!
+version = VersionSpec("5.127.0") # GR-5984
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
