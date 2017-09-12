@@ -15906,7 +15906,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     # we are re-reaching a repo through a different imported suite
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
-                elif update_existing and suite_import.version:
+                elif (update_existing or discovered_suite.isBinarySuite()) and suite_import.version:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
                         _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
