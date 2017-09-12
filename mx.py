@@ -13104,11 +13104,17 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
-def intellijinit(args, refreshOnly=False, doFsckProjects=True):
-    """(re)generate Intellij project configurations"""
-    mx_python_modules = '--mx-python-modules' in args or '--mx-python-modules-only' in args
-    java_modules = '--mx-python-modules-only' not in args
+def intellijinit_cli(args):
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules)
 
+
+def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True):
+    """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
@@ -13646,14 +13652,18 @@ def ideclean(args):
 
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
     mx_ide = os.environ.get('MX_IDE', 'all').lower()
     all_ides = mx_ide == 'all'
     if all_ides or mx_ide == 'eclipse':
-        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        eclipseinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False, pythonProjects=args.pythonProjects)
     if all_ides or mx_ide == 'netbeans':
-        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        netbeansinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        intellijinit(args, refreshOnly=refreshOnly, doFsckProjects=False)
+        intellijinit(args.remainder, refreshOnly=refreshOnly, doFsckProjects=False, mx_python_modules=args.pythonProjects)
     if not refreshOnly:
         fsckprojects([])
 
@@ -15332,7 +15342,7 @@ _commands = {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
-    'intellijinit': [intellijinit, ''],
+    'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'java': [java_command, '[-options] class [args...]'],
