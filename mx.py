@@ -13502,8 +13502,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             # mx integration
             def antTargetName(dist):
                 return 'archive_' + dist.name
+
             def artifactFileName(dist):
-                return dist.name + '.xml'
+                return dist.name.replace('.', '_').replace('-', '_') + '.xml'
             validDistributions = [dist for dist in sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
 
             # 1) Make an ant file for archiving the distributions.
