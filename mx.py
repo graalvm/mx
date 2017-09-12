@@ -2859,12 +2859,12 @@ class CompilerDaemon(Daemon):
 
         # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
-        while self.port == None:
+        while self.port is None:
             retries = retries + 1
-            if retries > 15:
+            if retries > 300:
                 raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output after 30 seconds]')
             else:
-                time.sleep(2)
+                time.sleep(0.1)
 
         self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -10354,9 +10354,9 @@ def build(args, parser=None):
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
-        def _activeCpus():
+        def _activeCpus(_active):
             cpus = 0
-            for t in active:
+            for t in _active:
                 cpus += t.parallelism
             return cpus
 
@@ -10366,9 +10366,9 @@ def build(args, parser=None):
                 if len(failed) != 0:
                     assert not active, active
                     break
-                if _activeCpus() >= cpus:
-                    # Sleep for 1 second
-                    time.sleep(1)
+                if _activeCpus(active) >= cpus:
+                    # Sleep for 0.2 second
+                    time.sleep(0.2)
                 else:
                     break
 
@@ -10387,8 +10387,9 @@ def build(args, parser=None):
                         return False
                 return True
 
+            added_new_tasks = False
             for task in worklist:
-                if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
+                if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
                     task.initSharedMemoryState()
                     task.prepare(daemons)
@@ -10397,8 +10398,12 @@ def build(args, parser=None):
                     task.proc.start()
                     active.append(task)
                     task.sub = _addSubprocess(task.proc, [str(task)])
-                if _activeCpus() >= cpus:
+                    added_new_tasks = True
+                if _activeCpus(active) >= cpus:
                     break
+
+            if not added_new_tasks:
+                time.sleep(0.2)
 
             worklist = sortWorklist(worklist)
 
