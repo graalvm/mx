@@ -2859,12 +2859,12 @@ class CompilerDaemon(Daemon):
 
         # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
-        while self.port == None:
+        while self.port is None:
             retries = retries + 1
-            if retries > 15:
+            if retries > 300:
                 raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output after 30 seconds]')
             else:
-                time.sleep(2)
+                time.sleep(0.1)
 
         self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -2877,7 +2877,7 @@ class CompilerDaemon(Daemon):
 
     def _noticePort(self, data):
         logv(data.rstrip())
-        if self.port == None:
+        if self.port is None:
             m = self.portRegex.match(data)
             if m:
                 self.port = int(m.group(1))
@@ -10354,9 +10354,9 @@ def build(args, parser=None):
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
-        def _activeCpus():
+        def _activeCpus(_active):
             cpus = 0
-            for t in active:
+            for t in _active:
                 cpus += t.parallelism
             return cpus
 
@@ -10366,9 +10366,9 @@ def build(args, parser=None):
                 if len(failed) != 0:
                     assert not active, active
                     break
-                if _activeCpus() >= cpus:
-                    # Sleep for 1 second
-                    time.sleep(1)
+                if _activeCpus(active) >= cpus:
+                    # Sleep for 0.2 second
+                    time.sleep(0.2)
                 else:
                     break
 
@@ -10387,8 +10387,9 @@ def build(args, parser=None):
                         return False
                 return True
 
+            added_new_tasks = False
             for task in worklist:
-                if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
+                if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
                     task.initSharedMemoryState()
                     task.prepare(daemons)
@@ -10397,8 +10398,12 @@ def build(args, parser=None):
                     task.proc.start()
                     active.append(task)
                     task.sub = _addSubprocess(task.proc, [str(task)])
-                if _activeCpus() >= cpus:
+                    added_new_tasks = True
+                if _activeCpus(active) >= cpus:
                     break
+
+            if not added_new_tasks:
+                time.sleep(0.2)
 
             worklist = sortWorklist(worklist)
 
@@ -13099,16 +13104,22 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
-def intellijinit(args, refreshOnly=False, doFsckProjects=True):
-    """(re)generate Intellij project configurations"""
-    mx_python_modules = '--mx-python-modules' in args or '--mx-python-modules-only' in args
-    java_modules = '--mx-python-modules-only' not in args
+def intellijinit_cli(args):
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules)
 
+
+def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True):
+    """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules, suite != primary_suite())
+        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
 
     if mx_python_modules:
         # mx module
@@ -13139,16 +13150,13 @@ def _intellij_library_file_name(library_name):
 
 
 def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
-    if isinstance(s, BinarySuite):
-        return
-
     libraries = set()
     jdk_libraries = set()
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
     modulesXml = XMLDoc()
-    if not module_files_only:
+    if not module_files_only and not s.isBinarySuite():
         ensure_dir_exists(ideaProjectDirectory)
         nameFile = join(ideaProjectDirectory, '.name')
         update_file(nameFile, s.name)
@@ -13172,6 +13180,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
     max_checkstyle_version = None
     if java_modules:
+        assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive():
             if not p.isJavaProject():
@@ -13416,9 +13425,25 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         miscXml.open('project', attributes={'version' : '4'})
 
         if java_modules:
+            mainJdk = get_jdk()
+            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
+            miscXml.close('component')
+        else:
+            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
+
+        miscXml.close('project')
+        miscFile = join(ideaProjectDirectory, 'misc.xml')
+        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+
+
+        if java_modules:
+            # Eclipse formatter config
             corePrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
             uiPrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
             if corePrefsSources:
+                miscXml = XMLDoc()
+                miscXml.open('project', attributes={'version' : '4'})
                 out = StringIO.StringIO()
                 print >> out, '# GENERATED -- DO NOT EDIT'
                 for source in corePrefsSources:
@@ -13443,27 +13468,26 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                                     print >> out, line.strip()
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
                     update_file(importConfigFile, out.getvalue())
-                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
+                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
+                miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
+                miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
-                miscXml.element('option', attributes={'name' : 'name', 'value' : s.name})
+                custom_eclipse_exe = get_env('ECLIPSE_EXE')
+                if custom_eclipse_exe:
+                    custom_eclipse = dirname(custom_eclipse_exe)
+                    miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
+                    miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
-                miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
                 if importConfigFile:
                     miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
                     miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
 
+                miscXml.close('ProjectSpecificProfile')
+                miscXml.close('option')
                 miscXml.close('component')
-            mainJdk = get_jdk()
-            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
-            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
-            miscXml.close('component')
-        else:
-            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
-
-        miscXml.close('project')
-        miscFile = join(ideaProjectDirectory, 'misc.xml')
-        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+                miscXml.close('project')
+                miscFile = join(ideaProjectDirectory, 'eclipseCodeFormatter.xml')
+                update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Write checkstyle-idea.xml for the CheckStyle-IDEA
@@ -13497,8 +13521,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             # mx integration
             def antTargetName(dist):
                 return 'archive_' + dist.name
+
             def artifactFileName(dist):
-                return dist.name + '.xml'
+                return dist.name.replace('.', '_').replace('-', '_') + '.xml'
             validDistributions = [dist for dist in sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
 
             # 1) Make an ant file for archiving the distributions.
@@ -13627,14 +13652,18 @@ def ideclean(args):
 
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
     mx_ide = os.environ.get('MX_IDE', 'all').lower()
     all_ides = mx_ide == 'all'
     if all_ides or mx_ide == 'eclipse':
-        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        eclipseinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False, pythonProjects=args.pythonProjects)
     if all_ides or mx_ide == 'netbeans':
-        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        netbeansinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        intellijinit(args, refreshOnly=refreshOnly, doFsckProjects=False)
+        intellijinit(args.remainder, refreshOnly=refreshOnly, doFsckProjects=False, mx_python_modules=args.pythonProjects)
     if not refreshOnly:
         fsckprojects([])
 
@@ -15313,7 +15342,7 @@ _commands = {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
-    'intellijinit': [intellijinit, ''],
+    'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'java': [java_command, '[-options] class [args...]'],
@@ -15887,10 +15916,12 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                     # we are re-reaching a repo through a different imported suite
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
-                elif update_existing and suite_import.version:
+                elif (update_existing or discovered_suite.isBinarySuite()) and suite_import.version:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
                         _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
+                    else:
+                        _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
                 else:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
