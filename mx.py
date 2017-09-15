@@ -15373,6 +15373,7 @@ _commands = {
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'update': [update, ''],
+    'unstrip': [_unstrip, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'verifylibraryurls': [verify_library_urls, ''],
     'verifysourceinproject': [verifysourceinproject, ''],
@@ -16174,7 +16175,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.127.0") # GR-5984
+version = VersionSpec("5.127.1")  # unstrip
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
