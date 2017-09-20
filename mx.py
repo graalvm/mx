@@ -2859,12 +2859,12 @@ class CompilerDaemon(Daemon):
 
         # wait 30 seconds for the Java process to launch and report the port number
         retries = 0
-        while self.port == None:
+        while self.port is None:
             retries = retries + 1
-            if retries > 15:
+            if retries > 300:
                 raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output after 30 seconds]')
             else:
-                time.sleep(2)
+                time.sleep(0.1)
 
         self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -2877,7 +2877,7 @@ class CompilerDaemon(Daemon):
 
     def _noticePort(self, data):
         logv(data.rstrip())
-        if self.port == None:
+        if self.port is None:
             m = self.portRegex.match(data)
             if m:
                 self.port = int(m.group(1))
@@ -3232,13 +3232,24 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
     return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)
 
 
+def _urlopen(*args, **kwargs):
+    try:
+        return urllib2.urlopen(*args, **kwargs)
+    except urllib2.URLError as e:
+        if isinstance(e.reason, socket.error) and e.reason.errno == errno.EINTR:
+            if 'timeout' in kwargs and is_interactive():
+                warn("Download failed with EINTR. Retrying without timeout.")
+                del kwargs['timeout']
+                return urllib2.urlopen(*args, **kwargs)
+        raise
+
 def download_file_exists(urls):
     """
     Returns true if one of the given urls denotes an existing resource.
     """
     for url in urls:
         try:
-            urllib2.urlopen(url, timeout=0.5).close()
+            _urlopen(url, timeout=0.5).close()
             return True
         except:
             pass
@@ -3258,17 +3269,17 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     if len(urls) is 0 and not sha1Check:
         return path
 
-    if not _check_file_with_sha1(path, sha1, sha1path, resolve and mustExist):
+    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
         if len(urls) is 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
-        cacheDir = _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
-        ensure_dir_exists(cacheDir)
-
-        _, ext = os.path.splitext(path)
-        cachePath = _get_path_in_cache(name, sha1, urls, ext=ext, sources=sources)
+        if is_cache_path(path):
+            cachePath = path
+        else:
+            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources)
 
         def _copy_or_symlink(source, link_name):
+            ensure_dirname_exists(link_name)
             if canSymlink and 'symlink' in dir(os):
                 logvv('Symlinking {} to {}'.format(link_name, source))
                 if os.path.lexists(link_name):
@@ -3296,14 +3307,10 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
             download(cachePath, urls)
 
         if path != cachePath:
-            d = dirname(path)
-            if d != '':
-                ensure_dir_exists(d)
             _copy_or_symlink(cachePath, path)
 
-        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True):
-            log('SHA1 of ' + sha1OfFile(cachePath) + ' does not match expected value (' + sha1 + ')')
-            abort("SHA1 does not match for " + name + ". Broken download? SHA1 not updated in suite.py file?")
+        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
+            abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
 
     return path
 
@@ -3311,7 +3318,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 Checks if a file exists and is up to date according to the sha1.
 Returns False if the file is not there or does not have the right checksum.
 """
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
+def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
     def _sha1CachedValid():
@@ -3325,9 +3332,9 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
         with open(sha1path, 'r') as f:
             return f.read()[0:40]
 
-    def _writeSha1Cached():
-        with open(sha1path, 'w') as f:
-            f.write(sha1OfFile(path))
+    def _writeSha1Cached(value=None):
+        with SafeFileCreation(sha1path) as sfc, open(sfc.tmpPath, 'w') as f:
+            f.write(value or sha1OfFile(path))
 
     if exists(path):
         if sha1Check and sha1:
@@ -3336,12 +3343,17 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False):
                 _writeSha1Cached()
 
             if sha1 != _sha1Cached():
-                if sha1 == sha1OfFile(path):
-                    logv('Fix corrupt SHA1 cache file ' + sha1path)
-                    _writeSha1Cached()
+                computedSha1 = sha1OfFile(path)
+                if sha1 == computedSha1:
+                    warn('Fixing corrupt SHA1 cache file ' + sha1path)
+                    _writeSha1Cached(computedSha1)
                     return True
+                if logErrors:
+                    log_error('SHA1 of {} ({}) does not match expected value ({})'.format(path, computedSha1, sha1))
                 return False
     elif mustExist:
+        if logErrors:
+            log_error("'{}' does not exist".format(path))
         return False
 
     return True
@@ -4769,7 +4781,7 @@ class GitConfig(VC):
         return '.git'
 
     def _local_cache_repo(self):
-        cache_path = join(dot_mx_dir(), 'git-cache')
+        cache_path = get_env('MX_GIT_CACHE_DIR') or join(dot_mx_dir(), 'git-cache')
         if not exists(cache_path):
             self.init(cache_path, bare=True)
         return cache_path
@@ -5243,14 +5255,13 @@ class BinaryVC(VC):
         mxname = _mx_binary_distribution_root(suite_name)
         self._log_clone("{}/{}/{}".format(url, _mavenGroupId(suite_name).replace('.', '/'), mxname), dest, rev)
         mx_jar_path = join(dest, _mx_binary_distribution_jar(suite_name))
-        if not self._pull_artifact(metadata, mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, _mavenGroupId(suite_name), mxname, mxname, mx_jar_path, abortOnVersionError=abortOnError):
             return False
         run([get_jdk(tag=DEFAULT_JDK_TAG).jar, 'xf', mx_jar_path], cwd=dest)
         self._writeMetadata(dest, metadata)
         return True
 
-    def _pull_artifact(self, metadata, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
-        groupId = _mavenGroupId(metadata.suiteName)
+    def _pull_artifact(self, metadata, groupId, artifactId, name, path, sourcePath=None, abortOnVersionError=True, extension='jar'):
         repo = MavenRepo(metadata.repourl)
         snapshot = repo.getSnapshot(groupId, artifactId, metadata.snapshotVersion)
         if not snapshot:
@@ -5302,12 +5313,13 @@ class BinaryVC(VC):
             return
         metadata = self._readMetadata(vcdir)
         artifactId = distribution.maven_artifact_id()
+        groupId = distribution.maven_group_id()
         path = distribution.path[:-len(distribution.localExtension())] + distribution.remoteExtension()
         if distribution.isJARDistribution():
             sourcesPath = distribution.sourcesPath
         else:
             sourcesPath = None
-        self._pull_artifact(metadata, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
+        self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
         distribution.postPull(path)
         distribution.notify_updated()
 
@@ -5325,7 +5337,7 @@ class BinaryVC(VC):
         tmpdir = tempfile.mkdtemp()
         mxname = _mx_binary_distribution_root(metadata.suiteName)
         tmpmxjar = join(tmpdir, mxname + '.jar')
-        if not self._pull_artifact(metadata, mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
+        if not self._pull_artifact(metadata, _mavenGroupId(metadata.suiteName), mxname, mxname, tmpmxjar, abortOnVersionError=abortOnError):
             shutil.rmtree(tmpdir)
             return False
 
@@ -5511,7 +5523,7 @@ class MavenRepo:
         metadataUrl = "{0}/{1}/{2}/maven-metadata.xml".format(self.repourl, groupId.replace('.', '/'), artifactId)
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
+            metadataFile = _urlopen(metadataUrl, timeout=10)
         except urllib2.HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
@@ -5536,7 +5548,7 @@ class MavenRepo:
                 for version_str in reversed(versionStrings):
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
-                        snapshot_metadataFile = urllib2.urlopen(snapshot_metadataUrl, timeout=10)
+                        snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
                     except urllib2.HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
@@ -5562,7 +5574,7 @@ class MavenRepo:
         metadataUrl = self.getSnapshotUrl(groupId, artifactId, version)
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
-            metadataFile = urllib2.urlopen(metadataUrl, timeout=10)
+            metadataFile = _urlopen(metadataUrl, timeout=10)
         except urllib2.URLError as e:
             if isinstance(e, urllib2.HTTPError) and e.code == 404:
                 return None
@@ -6547,10 +6559,7 @@ class Suite(object):
     def _register_distribution(self, d):
         existing = _dists.get(d.name)
         if existing is not None and _check_global_structures:
-            # allow redefinition, so use path from existing
-            # abort('cannot redefine distribution  ' + d.name)
             warn('distribution ' + d.name + ' redefined', context=d)
-            d.path = existing.path
         _dists[d.name] = d
 
     def _resolve_dependencies(self):
@@ -10067,15 +10076,13 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
     The downloaded content is written to the file indicated by `path`.
     """
-    d = dirname(path)
-    if d != '':
-        ensure_dir_exists(d)
+    ensure_dirname_exists(path)
 
     assert not path.endswith(os.sep)
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
-    progress = not _opts.no_download_progress and sys.stderr.isatty()
+    progress = not _opts.no_download_progress and sys.stdout.isatty()
     for url in urls:
         if not verifyOnly or verbose:
             log('Downloading ' + url + ' to ' + path)
@@ -10087,7 +10094,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
 
         if verifyOnly:
             try:
-                conn = urllib2.urlopen(url, timeout=10)
+                conn = _urlopen(url, timeout=10)
                 conn.close()
                 return True
             except (IOError, socket.timeout) as e:
@@ -10103,7 +10110,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
             try:
 
                 # 10 second timeout to establish connection
-                conn = urllib2.urlopen(url, timeout=10)
+                conn = _urlopen(url, timeout=10)
 
                 # Not all servers support the "Content-Length" header
                 lengthHeader = conn.info().getheader('Content-Length')
@@ -10360,9 +10367,9 @@ def build(args, parser=None):
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
-        def _activeCpus():
+        def _activeCpus(_active):
             cpus = 0
-            for t in active:
+            for t in _active:
                 cpus += t.parallelism
             return cpus
 
@@ -10372,9 +10379,9 @@ def build(args, parser=None):
                 if len(failed) != 0:
                     assert not active, active
                     break
-                if _activeCpus() >= cpus:
-                    # Sleep for 1 second
-                    time.sleep(1)
+                if _activeCpus(active) >= cpus:
+                    # Sleep for 0.2 second
+                    time.sleep(0.2)
                 else:
                     break
 
@@ -10393,8 +10400,9 @@ def build(args, parser=None):
                         return False
                 return True
 
+            added_new_tasks = False
             for task in worklist:
-                if depsDone(task) and _activeCpus() + task.parallelism <= cpus:
+                if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
                     task.initSharedMemoryState()
                     task.prepare(daemons)
@@ -10403,8 +10411,12 @@ def build(args, parser=None):
                     task.proc.start()
                     active.append(task)
                     task.sub = _addSubprocess(task.proc, [str(task)])
-                if _activeCpus() >= cpus:
+                    added_new_tasks = True
+                if _activeCpus(active) >= cpus:
                     break
+
+            if not added_new_tasks:
+                time.sleep(0.2)
 
             worklist = sortWorklist(worklist)
 
@@ -11642,16 +11654,18 @@ def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
     parser = ArgumentParser(prog='mx eclipseinit')
     parser.add_argument('--no-build', action='store_false', dest='buildProcessorJars', help='Do not build annotation processor jars.')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate PyDev projects for the mx python projects.')
     parser.add_argument('-C', '--log-to-console', action='store_true', dest='logToConsole', help='Send builder output to eclipse console.')
     parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
     parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
-    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths)
+    eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
 
-def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False):
+def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False, pythonProjects=False):
     """(re)generate Eclipse project configurations and working sets"""
+
     for s in suites(True) + [_mx_suite]:
-        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths)
+        _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths, pythonProjects)
 
     wsroot = generate_eclipse_workingsets()
 
@@ -12199,13 +12213,13 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
-def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False):
+def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False, pythonProjects=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
-    if isinstance(suite, BinarySuite):
+    if isinstance(s, BinarySuite):
         return
 
-    mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
+    mxOutputDir = ensure_dir_exists(s.get_mx_output_dir())
     configZip = TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
     configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
@@ -12213,16 +12227,16 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
     update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
-    if not force and _check_ide_timestamp(suite, configZip, 'eclipse', settingsFile):
-        logv('[Eclipse configurations for {} are up to date - skipping]'.format(suite.name))
+    if not force and _check_ide_timestamp(s, configZip, 'eclipse', settingsFile):
+        logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
         return
 
     files = []
     libFiles = []
     if buildProcessorJars:
-        files += _processorjars_suite(suite)
+        files += _processorjars_suite(s)
 
-    for p in suite.projects:
+    for p in s.projects:
         code = p._eclipseinit.func_code
         if 'absolutePaths' in code.co_varnames[:code.co_argcount]:
             p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
@@ -12231,13 +12245,13 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
             p._eclipseinit(files, libFiles)
 
     jdk = get_jdk(tag='default')
-    _, launchFile = make_eclipse_attach(suite, 'localhost', '8000', deps=dependencies(), jdk=jdk)
+    _, launchFile = make_eclipse_attach(s, 'localhost', '8000', deps=dependencies(), jdk=jdk)
     files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
     # for the distribution whenever any (transitively) dependent project of the
     # distribution is updated.
-    for dist in suite.dists:
+    for dist in s.dists:
         if not dist.isJARDistribution():
             continue
         projectDir = dist.get_ide_project_dir()
@@ -12290,8 +12304,54 @@ def _eclipseinit_suite(suite, buildProcessorJars=True, refreshOnly=False, logToC
         update_file(projectFile, out.xml(indent='\t', newl='\n'))
         files.append(projectFile)
 
-    _zip_files(files + [settingsFile], suite.dir, configZip.path)
-    _zip_files(libFiles, suite.dir, configLibsZip)
+    if pythonProjects:
+        projectXml = XMLDoc()
+        projectXml.open('projectDescription')
+        projectXml.element('name', data=s.name if s is _mx_suite else 'mx.' + s.name)
+        projectXml.element('comment')
+        projectXml.open('projects')
+        if s is not _mx_suite:
+            projectXml.element('project', data=_mx_suite.name)
+        processed_suites = set([s.name])
+        def _mx_projects_suite(visited_suite, suite_import):
+            if suite_import.name in processed_suites:
+                return
+            processed_suites.add(suite_import.name)
+            dep_suite = suite(suite_import.name)
+            projectXml.element('project', data='mx.' + suite_import.name)
+            dep_suite.visit_imports(_mx_projects_suite)
+        s.visit_imports(_mx_projects_suite)
+        projectXml.close('projects')
+        projectXml.open('buildSpec')
+        projectXml.open('buildCommand')
+        projectXml.element('name', data='org.python.pydev.PyDevBuilder')
+        projectXml.element('arguments')
+        projectXml.close('buildCommand')
+        projectXml.close('buildSpec')
+        projectXml.open('natures')
+        projectXml.element('nature', data='org.python.pydev.pythonNature')
+        projectXml.close('natures')
+        projectXml.close('projectDescription')
+        projectFile = join(s.dir if s is _mx_suite else s.mxDir, '.project')
+        update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
+        files.append(projectFile)
+
+        pydevProjectXml = """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?eclipse-pydev version="1.0"?>
+<pydev_project>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.7</pydev_property>
+<pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
+<path>/{}</path>
+</pydev_pathproperty>
+</pydev_project>
+""".format(s.name if s is _mx_suite else 'mx.' + s.name)
+        pydevProjectFile = join(s.dir if s is _mx_suite else s.mxDir, '.pydevproject')
+        update_file(pydevProjectFile, pydevProjectXml)
+        files.append(pydevProjectFile)
+
+    _zip_files(files + [settingsFile], s.dir, configZip.path)
+    _zip_files(libFiles, s.dir, configLibsZip)
 
 def _zip_files(files, baseDir, zipPath):
     with SafeFileCreation(zipPath) as sfc:
@@ -13057,16 +13117,22 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
-def intellijinit(args, refreshOnly=False, doFsckProjects=True):
-    """(re)generate Intellij project configurations"""
-    mx_python_modules = '--mx-python-modules' in args or '--mx-python-modules-only' in args
-    java_modules = '--mx-python-modules-only' not in args
+def intellijinit_cli(args):
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
+    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules)
 
+
+def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True):
+    """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules, suite != primary_suite())
+        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
 
     if mx_python_modules:
         # mx module
@@ -13097,16 +13163,13 @@ def _intellij_library_file_name(library_name):
 
 
 def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
-    if isinstance(s, BinarySuite):
-        return
-
     libraries = set()
     jdk_libraries = set()
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
     modulesXml = XMLDoc()
-    if not module_files_only:
+    if not module_files_only and not s.isBinarySuite():
         ensure_dir_exists(ideaProjectDirectory)
         nameFile = join(ideaProjectDirectory, '.name')
         update_file(nameFile, s.name)
@@ -13130,6 +13193,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
     max_checkstyle_version = None
     if java_modules:
+        assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive():
             if not p.isJavaProject():
@@ -13374,9 +13438,25 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         miscXml.open('project', attributes={'version' : '4'})
 
         if java_modules:
+            mainJdk = get_jdk()
+            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
+            miscXml.close('component')
+        else:
+            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
+
+        miscXml.close('project')
+        miscFile = join(ideaProjectDirectory, 'misc.xml')
+        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+
+
+        if java_modules:
+            # Eclipse formatter config
             corePrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
             uiPrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
             if corePrefsSources:
+                miscXml = XMLDoc()
+                miscXml.open('project', attributes={'version' : '4'})
                 out = StringIO.StringIO()
                 print >> out, '# GENERATED -- DO NOT EDIT'
                 for source in corePrefsSources:
@@ -13401,27 +13481,26 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                                     print >> out, line.strip()
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
                     update_file(importConfigFile, out.getvalue())
-                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatter'})
+                miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
+                miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
+                miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                miscXml.element('option', attributes={'name' : 'id', 'value' : '1450878132508'})
-                miscXml.element('option', attributes={'name' : 'name', 'value' : s.name})
+                custom_eclipse_exe = get_env('ECLIPSE_EXE')
+                if custom_eclipse_exe:
+                    custom_eclipse = dirname(custom_eclipse_exe)
+                    miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
+                    miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
-                miscXml.element('option', attributes={'name' : 'useOldEclipseJavaFormatter', 'value' : 'true'}) # Eclipse 4.4
                 if importConfigFile:
                     miscXml.element('option', attributes={'name' : 'importOrderConfigFilePath', 'value' : '$PROJECT_DIR$/.idea/' + basename(importConfigFile)})
                     miscXml.element('option', attributes={'name' : 'importOrderFromFile', 'value' : 'true'})
 
+                miscXml.close('ProjectSpecificProfile')
+                miscXml.close('option')
                 miscXml.close('component')
-            mainJdk = get_jdk()
-            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
-            miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
-            miscXml.close('component')
-        else:
-            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
-
-        miscXml.close('project')
-        miscFile = join(ideaProjectDirectory, 'misc.xml')
-        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+                miscXml.close('project')
+                miscFile = join(ideaProjectDirectory, 'eclipseCodeFormatter.xml')
+                update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Write checkstyle-idea.xml for the CheckStyle-IDEA
@@ -13455,8 +13534,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             # mx integration
             def antTargetName(dist):
                 return 'archive_' + dist.name
+
             def artifactFileName(dist):
-                return dist.name + '.xml'
+                return dist.name.replace('.', '_').replace('-', '_') + '.xml'
             validDistributions = [dist for dist in sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
 
             # 1) Make an ant file for archiving the distributions.
@@ -13585,14 +13665,18 @@ def ideclean(args):
 
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
+    parser = ArgumentParser(prog='mx ideinit')
+    parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
+    args = parser.parse_args(args)
     mx_ide = os.environ.get('MX_IDE', 'all').lower()
     all_ides = mx_ide == 'all'
     if all_ides or mx_ide == 'eclipse':
-        eclipseinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        eclipseinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False, pythonProjects=args.pythonProjects)
     if all_ides or mx_ide == 'netbeans':
-        netbeansinit(args, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
+        netbeansinit(args.remainder, refreshOnly=refreshOnly, buildProcessorJars=buildProcessorJars, doFsckProjects=False)
     if all_ides or mx_ide == 'intellij':
-        intellijinit(args, refreshOnly=refreshOnly, doFsckProjects=False)
+        intellijinit(args.remainder, refreshOnly=refreshOnly, doFsckProjects=False, mx_python_modules=args.pythonProjects)
     if not refreshOnly:
         fsckprojects([])
 
@@ -14946,12 +15030,12 @@ def checkcopyrights(args):
         result = result if rc == 0 else rc
     return result
 
-def mvn_local_install(suite_name, dist_name, path, version, repo=None):
+def mvn_local_install(group_id, artifact_id, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
     repoArgs = ['-Dmaven.repo.local=' + repo] if repo else []
-    run_maven(['install:install-file', '-DgroupId=com.oracle.' + suite_name, '-DartifactId=' + dist_name, '-Dversion=' +
-            version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
+    run_maven(['install:install-file', '-DgroupId=' + group_id, '-DartifactId=' + artifact_id, '-Dversion=' +
+               version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
     """install the primary suite in a local maven repository for testing
@@ -14985,19 +15069,19 @@ def maven_install(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
+            mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(s.name, _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
+        mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
-                mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, version, args.repo)
-            mvn_local_install(s.name, _map_to_maven_dist_name(dist.name), dist.path, releaseVersion, args.repo)
+                mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
+            mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, releaseVersion, args.repo)
     else:
         print 'jars to deploy manually for version: ' + version
         print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
         for dist in arcdists:
-            print 'name: ' + _map_to_maven_dist_name(dist.name) + ', path: ' + os.path.relpath(dist.path, s.dir)
+            print 'name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir)
 
 def _copy_eclipse_settings(p, files=None):
     eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
@@ -15056,6 +15140,12 @@ def change_file_extension(path, new_extension):
 
 def change_file_name(path, new_file_name):
     return join(dirname(path), new_file_name + '.' + get_file_extension(path))
+
+
+def ensure_dirname_exists(path, mode=None):
+    d = dirname(path)
+    if d != '':
+        ensure_dir_exists(d, mode)
 
 
 def ensure_dir_exists(path, mode=None):
@@ -15265,7 +15355,7 @@ _commands = {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
-    'intellijinit': [intellijinit, ''],
+    'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
     'java': [java_command, '[-options] class [args...]'],
@@ -15296,6 +15386,7 @@ _commands = {
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
     'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'update': [update, ''],
+    'unstrip': [_unstrip, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'verifylibraryurls': [verify_library_urls, ''],
     'verifysourceinproject': [verifysourceinproject, ''],
@@ -15664,14 +15755,14 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 
     def _update_repo(_discovered_suite, update_version, forget=False, update_reason="to resolve conflict"):
         current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
-        if current_version == update_version:
-            return False
         if _discovered_suite.vc_dir not in original_version:
             branch = _discovered_suite.vc.active_branch(_discovered_suite.vc_dir, abortOnError=False)
             if branch is not None:
                 original_version[_discovered_suite.vc_dir] = VersionType.BRANCH, branch
             else:
                 original_version[_discovered_suite.vc_dir] = VersionType.REVISION, current_version
+        if current_version == update_version:
+            return False
         _discovered_suite.vc.update(_discovered_suite.vc_dir, rev=update_version, mayPull=True)
         _clear_pyc_files(_discovered_suite)
         if forget:
@@ -15830,21 +15921,23 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                 _log_discovery("Discovered {} from {} ({}, newly cloned: {})".format(discovered_suite.name, importing_suite_name, discovered_suite.dir, is_clone))
                 if is_clone:
                     original_version[discovered_suite.vc_dir] = VersionType.CLONED, None
+                    _add_discovered_suite(discovered_suite, importing_suite.name)
                 elif discovered_suite.vc_dir in vc_dir_to_suite_names and not vc_dir_to_suite_names[discovered_suite.vc_dir]:
                     # we re-discovered a suite that we had cloned and then "un-discovered".
-                    if suite_import.version and _update_repo(discovered_suite, suite_import.version, update_reason="(re-discovery of un-discovered suite)"):
-                        _log_discovery("This is a re-discovery of a previously cloned suite: updated {} to {}".format(discovered_suite.vc_dir, suite_import.version))
+                    _log_discovery("This is a re-discovery of a previously forgotten repo: {}. Leaving it as-is".format(discovered_suite.vc_dir))
+                    _add_discovered_suite(discovered_suite, importing_suite.name)
                 elif _was_cloned_or_updated_during_discovery(discovered_suite):
                     # we are re-reaching a repo through a different imported suite
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     _check_and_handle_version_conflict(suite_import, importing_suite, discovered_suite)
-                    continue
-                elif update_existing and suite_import.version:
+                elif (update_existing or discovered_suite.isBinarySuite()) and suite_import.version:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
                         _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
-                    continue
-                _add_discovered_suite(discovered_suite, importing_suite.name)
+                    else:
+                        _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
+                else:
+                    _add_discovered_suite(discovered_suite, importing_suite.name)
     except SystemExit as se:
         cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
         if cloned_during_discovery:
@@ -15878,16 +15971,63 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
     return primary
 
 
+def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
+    """ Install a socks proxy handler so that all urllib2 requests are routed through the socks proxy. """
+    try:
+        import socks
+        from sockshandler import SocksiPyHandler
+    except ImportError:
+        warn('WARNING: Failed to load PySocks module. Try installing it with `pip install PySocks`.')
+        return
+    if proxytype == 4:
+        proxytype = socks.SOCKS4
+    elif proxytype == 5:
+        proxytype = socks.SOCKS5
+    else:
+        abort("Unknown Socks Proxy type {0}".format(proxytype))
+
+    opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    urllib2.install_opener(opener)
+
 def main():
-    # make sure logv and logvv work as early as possible
+    # make sure logv, logvv and warn work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
+    _opts.__dict__['warn'] = '--no-warning' not in sys.argv
     global _vc_systems
     _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
 
     global _mx_suite
     _mx_suite = MXSuite()
     os.environ['MX_HOME'] = _mx_home
+
+    def _get_env_upper_or_lowercase(name):
+        return os.environ.get(name, os.environ.get(name.upper()))
+
+    def _check_socks_proxy():
+        """ Install a Socks Proxy Handler if the environment variable is set. """
+        def _read_socks_proxy_config(proxy_raw):
+            s = proxy_raw.split(':')
+            if len(s) == 1:
+                return s[0], None
+            if len(s) == 2:
+                return s[0], int(s[1])
+            abort("Can not parse Socks proxy configuration: {0}".format(proxy_raw))
+
+        def _load_socks_env():
+            proxy = _get_env_upper_or_lowercase('socks5_proxy')
+            if proxy:
+                return proxy, 5
+            proxy = _get_env_upper_or_lowercase('socks4_proxy')
+            if proxy:
+                return proxy, 4
+            return None, -1
+
+        # check for socks5_proxy/socks4_proxy env variable
+        socksproxy, socksversion = _load_socks_env()
+        if socksproxy:
+            socksaddr, socksport = _read_socks_proxy_config(socksproxy)
+            _install_socks_proxy_opener(socksversion, socksaddr, socksport)
 
     # Set the https proxy environment variable from the http proxy environment
     # variable if the former is not explicitly specified but the latter is and
@@ -15900,6 +16040,9 @@ def main():
             os.environ['https_proxy'] = httpProxy
     elif httpsProxy:
         os.environ['http_proxy'] = httpsProxy
+    else:
+        # only check for socks proxy if no http(s) has been specified
+        _check_socks_proxy()
 
     _argParser._parse_cmd_line(_opts, firstParse=True)
 
@@ -16045,7 +16188,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.124.7")  # project attributes
+version = VersionSpec("5.127.1")  # unstrip
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
