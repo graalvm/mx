@@ -1715,7 +1715,7 @@ class BenchmarkExecutor(object):
         topLevelJson = {
           "queries": results
         }
-        dump = json.dumps(topLevelJson)
+        dump = json.dumps(topLevelJson, sort_keys=True, indent=2)
         with open(mxBenchmarkArgs.results_file, "w") as txtfile:
             txtfile.write(dump)
         if failures_seen:
