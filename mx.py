@@ -216,6 +216,7 @@ def nyi(name, obj):
 
 
 # Names of commands that don't need a primary suite.
+# This cannot be used outside of mx because of implementation restrictions
 _suite_context_free = ['init', 'version', 'urlrewrite']
 
 
@@ -227,6 +228,7 @@ def suite_context_free(func):
     return func
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
+# This cannot be used outside of mx because of implementation restrictions
 _optional_suite_context = ['help']
 
 
@@ -238,6 +240,7 @@ def optional_suite_context(func):
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
+# This cannot be used outside of mx because of implementation restrictions
 _no_suite_loading = []
 
 
@@ -249,6 +252,7 @@ def no_suite_loading(func):
     return func
 
 # Names of commands that need a primary suite but don't need suites to be discovered.
+# This cannot be used outside of mx because of implementation restrictions
 _no_suite_discovery = []
 
 
@@ -6086,6 +6090,10 @@ class SuiteModel:
         else:
             abort("Multiple suites match the import {}:\n{}".format(suite_import.name, "\n".join(found)))
 
+    def verify_imports(self, suites, args):
+        """Ensure that the imports are consistent."""
+        pass
+
     def _check_exists(self, suite_import, path, check_alternate=True):
         if check_alternate and suite_import.urlinfos is not None and not exists(path):
             return suite_import.urlinfos
@@ -6171,6 +6179,45 @@ class SiblingSuiteModel(SuiteModel):
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), suitename)
         checked = self._check_exists(suite_import, path, check_alternate)
         return SuiteModel._checked_to_importee_tuple(checked, suite_import)
+
+    def verify_imports(self, suites, args):
+        if not args:
+            args = []
+        results = []
+        # Ensure that all suites in the same repo import the same version of other suites
+        dirs = set([s.vc_dir for s in suites if s.dir != s.vc_dir])
+        for vc_dir in dirs:
+            imports = {}
+            for suite_dir in [_is_suite_dir(join(vc_dir, x)) for x in os.listdir(vc_dir) if _is_suite_dir(join(vc_dir, x))]:
+                suite = SourceSuite(suite_dir, load=False, primary=True)
+                for suite_import in suite.suite_imports:
+                    current_import = imports.get(suite_import.name)
+                    if not current_import:
+                        imports[suite_import.name] = (suite, suite_import.version)
+                    else:
+                        importing_suite, version = current_import
+                        if suite_import.version != version:
+                            results.append((suite_import.name, importing_suite.dir, suite.dir))
+
+        # Parallel suite imports may mean that multiple suites import the
+        # same subsuite and if scheckimports isn't run in the right suite
+        # then it creates a mismatch.
+        if len(results) != 0:
+            mismatches = []
+            for name, suite1, suite2 in results:
+                log_error('\'%s\' and \'%s\' import different versions of the suite \'%s\'' % (suite1, suite2, name))
+                for s in suites:
+                    if s.dir == suite1:
+                        mismatches.append(suite2)
+                    elif s.dir == suite2:
+                        mismatches.append(suite1)
+            log_error('Please adjust the other imports using this command')
+            for mismatch in mismatches:
+                log_error('mx -p %s scheckimports %s' % (mismatch, ' '.join(args)))
+            abort('Aborting for import mismatch')
+
+        return results
+
 
 class NestedImportsSuiteModel(SuiteModel):
     """Imported suites are all siblings in an 'mx.imports/source' directory of the primary suite"""
@@ -14469,10 +14516,11 @@ def scheckimports(args):
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
     parser.add_argument('-i', '--ignore-uncommitted', action='store_true', help="Ignore uncommitted changes in the suite")
-    args = parser.parse_args(args)
+    parsed_args = parser.parse_args(args)
     # check imports of all suites
     for s in suites():
-        s.visit_imports(_scheck_imports_visitor, bookmark_imports=args.bookmark_imports, ignore_uncommitted=args.ignore_uncommitted)
+        s.visit_imports(_scheck_imports_visitor, bookmark_imports=parsed_args.bookmark_imports, ignore_uncommitted=parsed_args.ignore_uncommitted)
+    _suitemodel.verify_imports(suites(), args)
 
 
 @no_suite_discovery
@@ -16078,6 +16126,11 @@ def main():
     _mx_suite._post_init()
 
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
+    if initial_command not in _commands:
+        hits = [c for c in _commands.iterkeys() if c.startswith(initial_command)]
+        if len(hits) == 1:
+            initial_command = hits[0]
+
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
     should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
@@ -16121,7 +16174,7 @@ def main():
             _init_primary_suite(primary)
         else:
             if not is_optional_suite_context:
-                abort('no primary suite found')
+                abort('no primary suite found for %s' % initial_command)
 
         for envVar in _loadedEnv.keys():
             value = _loadedEnv[envVar]
