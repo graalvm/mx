@@ -3233,15 +3233,38 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
 
 
 def _urlopen(*args, **kwargs):
-    try:
-        return urllib2.urlopen(*args, **kwargs)
-    except urllib2.URLError as e:
-        if isinstance(e.reason, socket.error) and e.reason.errno == errno.EINTR:
-            if 'timeout' in kwargs and is_interactive():
-                warn("Download failed with EINTR. Retrying without timeout.")
-                del kwargs['timeout']
-                return urllib2.urlopen(*args, **kwargs)
-        raise
+    timeout_attempts = [0]
+    timeout_retries = kwargs.pop('timeout_retries', 3)
+
+    def on_timeout():
+        if timeout_attempts[0] <= timeout_retries:
+            timeout_attempts[0] += 1
+            kwargs['timeout'] = kwargs.get('timeout', 5) * 2
+            warn("urlopen() timed out! Retrying without timeout of {}s.".format(kwargs['timeout']))
+            return True
+        return False
+
+    while True:
+        try:
+            return urllib2.urlopen(*args, **kwargs)
+        except urllib2.URLError as e:
+            if isinstance(e.reason, socket.error):
+                if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
+                    warn("urlopen() failed with EINTR. Retrying without timeout.")
+                    del kwargs['timeout']
+                    return urllib2.urlopen(*args, **kwargs)
+                if e.reason.errno == errno.EINPROGRESS:
+                    if on_timeout():
+                        continue
+            if isinstance(e.reason, socket.timeout):
+                if on_timeout():
+                    continue
+            raise
+        except socket.timeout:
+            if on_timeout():
+                continue
+            raise
+        abort("should not reach here")
 
 def download_file_exists(urls):
     """
@@ -14954,7 +14977,7 @@ def verify_library_urls(args):
         for lib in s.libs:
             if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
-                log('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
+                log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
         abort('Some libraries are not reachable')
 
@@ -16188,7 +16211,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.127.2")  # threadsafe print
+version = VersionSpec("5.128.0")  # retry timeouts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
