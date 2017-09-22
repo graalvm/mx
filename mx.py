@@ -3240,7 +3240,7 @@ def _urlopen(*args, **kwargs):
         if timeout_attempts[0] <= timeout_retries:
             timeout_attempts[0] += 1
             kwargs['timeout'] = kwargs.get('timeout', 5) * 2
-            warn("urlopen() timed out. Retrying.")
+            warn("urlopen() timed out! Retrying without timeout of {}s.".format(kwargs['timeout']))
             return True
         return False
 
