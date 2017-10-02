@@ -13641,7 +13641,8 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
         for d in os.listdir(s.mxDir):
-            if isdir(join(s.mxDir, d)):
+            directory = join(s.mxDir, d)
+            if isdir(directory) and dir_contains_files_recursively(directory, r".*\.java"):
                 moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
@@ -13971,6 +13972,15 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
         # TODO look into copyright settings
 
+
+def dir_contains_files_recursively(directory, file_pattern):
+    for file_name in os.listdir(directory):
+        file_path = join(directory, file_name)
+        found = dir_contains_files_recursively(file_path, file_pattern) if isdir(file_path) \
+            else re.match(file_pattern, file_name)
+        if found:
+            return True
+    return False
 
 def ideclean(args):
     """remove all IDE project configurations"""
