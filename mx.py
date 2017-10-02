@@ -16126,7 +16126,7 @@ def main():
     _mx_suite._post_init()
 
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
-    if initial_command not in _commands:
+    if initial_command and initial_command not in _commands:
         hits = [c for c in _commands.iterkeys() if c.startswith(initial_command)]
         if len(hits) == 1:
             initial_command = hits[0]
