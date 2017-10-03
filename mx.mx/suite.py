@@ -45,7 +45,8 @@ suite = {
         "version": "5.0.4",
       },
       "sha1": "702b8525fcf81454235e5e2fa2a35f15ffc0ec7e",
-      "sourceSha1": "112ff54474f1f04ccf1384c92e39fdc566f0bb5e",
+      # sources are omitted on purpose: they produce warnings due to duplicated jar entries
+      # see https://gitlab.ow2.org/asm/asm/issues/317795
       "license": "BSD-new",
     },
 
