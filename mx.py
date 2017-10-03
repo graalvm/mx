@@ -62,7 +62,7 @@ from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter
-from os.path import join, basename, dirname, exists, getmtime, isabs, expandvars, isdir
+from os.path import join, basename, dirname, exists, isabs, expandvars, isdir
 from tempfile import mkdtemp
 import fnmatch
 
@@ -2675,8 +2675,8 @@ class JavacCompiler(JavacLikeCompiler):
                 javacArgs.extend(['-classpath', os.pathsep.join(elements)])
 
         if jdk.javaCompliance >= '9':
-            _, unsafe_jar = _compile_mx_class('Unsafe', jdk=jdk, extraJavacArgs=['--release', str(compliance.value)], as_jar=True)
-            _classpath_append(unsafe_jar)
+            _, unsupported_jar = _compile_mx_class(['Unsafe', 'Signal', 'SignalHandler'], jdk=jdk, extraJavacArgs=['--release', str(compliance.value)], as_jar=True)
+            _classpath_append(unsupported_jar)
         if disableApiRestrictions:
             if jdk.javaCompliance < '9':
                 javacArgs.append('-XDignore.symbol.file')
@@ -15031,16 +15031,19 @@ def verify_library_urls(args):
 
 _java_package_regex = re.compile(r"^package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
 
-def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
+def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
+    if not isinstance(javaClassNames, list):
+        javaClassNames = [javaClassNames]
     myDir = join(_mx_home, 'java') if myDir is None else myDir
     binDir = join(_mx_suite.get_output_root(), 'bin' if not jdk else '.jdk' + str(jdk.version))
-    javaSource = join(myDir, javaClassName + '.java')
-    javaClass = join(binDir, javaClassName + '.class')
+    javaSources = [join(myDir, n + '.java') for n in javaClassNames]
+    javaClasses = [join(binDir, n + '.class') for n in javaClassNames]
     if as_jar:
-        output = join(_mx_suite.get_output_root(), ('' if not jdk else 'jdk' + str(jdk.version)) + '-' + javaClassName + '.jar')
+        output = join(_mx_suite.get_output_root(), ('' if not jdk else 'jdk' + str(jdk.version)) + '-' + '-'.join(javaClassNames) + '.jar')
     else:
-        output = javaClass
-    if not exists(output) or getmtime(output) < getmtime(javaSource):
+        assert len(javaClassNames) == 1, 'can only compile multiple sources when producing a jar'
+        output = javaClasses[0]
+    if not exists(output) or TimeStampFile(output).isOlderThan(javaSources):
         ensure_dir_exists(binDir)
         javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
         cmd = [javac, '-d', _cygpathU2W(binDir)]
@@ -15048,20 +15051,25 @@ def _compile_mx_class(javaClassName, classpath=None, jdk=None, myDir=None, extra
             cmd.extend(['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)])
         if extraJavacArgs:
             cmd.extend(extraJavacArgs)
-        cmd += [_cygpathU2W(javaSource)]
+        cmd += [_cygpathU2W(s) for s in javaSources]
         try:
             subprocess.check_call(cmd)
             if as_jar:
-                with open(javaSource, 'r') as f:
-                    m = _java_package_regex.search(f.read())
-                    if m:
-                        package = m.group('package').replace('.', os.sep)
-                    else:
-                        package = ""
-                subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output), '-C', _cygpathU2W(binDir), join(package, javaClassName + '.class')])
+                classfiles = []
+                for root, _, filenames in os.walk(binDir):
+                    for n in filenames:
+                        if n.endswith('.class'):
+                            # Get top level class name
+                            if '$' in n:
+                                className = n[0:n.find('$')]
+                            else:
+                                className = n[:-len('.class')]
+                            if className in javaClassNames:
+                                classfiles.append(os.path.relpath(join(root, n), binDir))
+                subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output)] + classfiles, cwd=_cygpathU2W(binDir))
             logv('[created/updated ' + output + ']')
         except subprocess.CalledProcessError as e:
-            abort('failed to compile ' + javaSource + ' or create ' + output + ': ' + str(e))
+            abort('failed to compile ' + javaSources + ' or create ' + output + ': ' + str(e))
     return myDir, output if as_jar else binDir
 
 def _add_command_primary_option(parser):
@@ -16264,7 +16272,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.0")  # retry timeouts
+version = VersionSpec("5.128.1")  # handle more jdk.unsupported
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
