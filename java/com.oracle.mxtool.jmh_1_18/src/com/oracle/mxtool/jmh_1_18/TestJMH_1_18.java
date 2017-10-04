@@ -22,22 +22,19 @@
  */
 package com.oracle.mxtool.jmh_1_18;
 
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.Fork;
-import org.openjdk.jmh.annotations.Measurement;
-import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.annotations.*;
 
 /**
  * This dummy class is used to verify that the JMH microbenchmarking environment is set up properly.
  */
-@Warmup(iterations = 1)
-@Measurement(iterations = 1)
-@Fork(1)
+@Warmup(iterations = 2)
+@Measurement(iterations = 2)
+@Fork(2)
 public class TestJMH_1_18 {
 
     @Benchmark
+    @BenchmarkMode(Mode.All)
     public void testJMH() {
         // This method was intentionally left blank.
     }
-
 }

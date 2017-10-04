@@ -635,17 +635,21 @@ class JMHJsonRule(Rule):
                         metricUnit = "op/" + unit_parts[1]
                     else:
                         metricUnit = unit
-                elif mode in ["avgt", "sample", "ss"]:
+                else:
                     # Average time, Sampling time, Single shot invocation time
-                    metricName = "time"
                     better = "lower"
                     if len(unit_parts) == 2:
                         metricUnit = unit_parts[0]
                     else:
                         metricUnit = unit
-                else:
-                    raise RuntimeError("Unknown benchmark mode {0}".format(mode))
-
+                    if mode == "avgt":
+                        metricName = "average-time"
+                    elif mode == "sample":
+                        metricName = "sample-time"
+                    elif mode == "ss":
+                        metricName = "single-shot"
+                    else:
+                        raise RuntimeError("Unknown benchmark mode {0}".format(mode))
 
                 d = {
                     "bench-suite" : self.benchSuiteName(),
@@ -670,15 +674,23 @@ class JMHJsonRule(Rule):
                     if k in result:
                         d["extra.jmh." + k] = str(result[k])
 
-                for jmhFork, rawData in enumerate(pm["rawData"]):
-                    for iteration, data in enumerate(rawData):
-                        d2 = d.copy()
-                        d2.update({
-                          "metric.value": float(data),
-                          "metric.iteration": int(iteration),
-                          "extra.jmh.fork": str(jmhFork),
-                        })
-                        r.append(d2)
+                if 'rawData' not in pm:
+                    # we don't have the raw results, e.g. for the `sample` mode
+                    # upload only the overall score
+                    d.update({
+                        "metric.value": float(pm['score']),
+                    })
+                    r.append(d)
+                else:
+                    for jmhFork, rawData in enumerate(pm["rawData"]):
+                        for iteration, data in enumerate(rawData):
+                            d2 = d.copy()
+                            d2.update({
+                              "metric.value": float(data),
+                              "metric.iteration": int(iteration),
+                              "extra.jmh.fork": str(jmhFork),
+                            })
+                            r.append(d2)
         return r
 
 
