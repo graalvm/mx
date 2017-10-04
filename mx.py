@@ -10267,6 +10267,18 @@ def _defaultEcjPath():
         return jdt
     return None
 
+
+def _before_fork():
+    try:
+        # Try to initialize _scproxy on the main thread to work around issue on macOS:
+        # https://bugs.python.org/issue30837
+        from _scproxy import _get_proxy_settings, _get_proxies
+        _get_proxy_settings()
+        _get_proxies()
+    except ImportError:
+        pass
+
+
 def build(args, parser=None):
     """builds the artifacts of one or more dependencies"""
 
@@ -10393,6 +10405,7 @@ def build(args, parser=None):
             args.no_daemon = True
     daemons = {}
     if args.parallelize and onlyDeps is None:
+        _before_fork()
         def joinTasks(tasks):
             failed = []
             for t in tasks:
