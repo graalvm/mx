@@ -44,10 +44,7 @@ jmh-test : {
     ["./mx", "build"]
   ]
   run: [
-    ["./mx", "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "jmh-dist:*"]
-  ]
-  teardown: [
-    ["bench-uploader.py", "--url", "$BENCH_SERVER_URL", "bench-results.json"]
+    ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"]
   ]
 }
 
