@@ -1040,7 +1040,14 @@ class JARDistribution(Distribution, ClasspathDependency):
         return self._path
 
     def paths_to_clean(self):
-        return [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
+        paths = [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
+        jdk = get_jdk(tag='default')
+        if jdk.javaCompliance >= '9':
+            info = get_java_module_info(self)
+            if info:
+                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
+                paths.append(moduleJar)
+        return paths
 
     def is_stripped(self):
         return _opts.strip_jars and self.stripConfig is not None

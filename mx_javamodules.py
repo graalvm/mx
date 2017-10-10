@@ -79,17 +79,21 @@ class JavaModuleDescriptor(object):
         return cmp(self.name, other.name)
 
     @staticmethod
-    def load(dist, jdk):
+    def load(dist, jdk, fatalIfNotCreated=True):
         """
         Unpickles the module descriptor corresponding to a given distribution.
 
         :param str dist: the distribution for which to read the pickled object
         :param JDKConfig jdk: used to resolve pickled references to JDK modules
+        :param bool fatalIfNotCreated: specifies whether to abort if a descriptor has not been created yet
         """
         _, moduleDir, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
         path = moduleDir + '.pickled'
         if not exists(path):
-            mx.abort(path + ' does not exist')
+            if fatalIfNotCreated:
+                mx.abort(path + ' does not exist')
+            else:
+                return None
         with open(path, 'rb') as fp:
             jmd = pickle.load(fp)
         jdkmodules = {m.name: m for m in jdk.get_modules()}
@@ -121,8 +125,8 @@ class JavaModuleDescriptor(object):
         self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
         self.dist = dist.name
         try:
-            with open(path, 'wb') as fp:
-                pickle.dump(self, fp)
+            with mx.SafeFileCreation(path) as sfc, open(sfc.tmpPath, 'wb') as f:
+                pickle.dump(self, f)
         finally:
             self.modulepath = modulepath
             self.dist = dist
@@ -212,18 +216,21 @@ def get_module_deps(dist):
         setattr(dist, '.module_deps', moduledeps)
     return getattr(dist, '.module_deps')
 
-def as_java_module(dist, jdk):
+def as_java_module(dist, jdk, fatalIfNotCreated=True):
     """
     Gets the Java module created from a given distribution.
 
     :param JARDistribution dist: a distribution that defines a Java module
     :param JDKConfig jdk: a JDK with a version >= 9 that can be used to resolve references to JDK modules
+    :param bool fatalIfNotCreated: specifies whether to abort if a descriptor has not been created yet
     :return: the descriptor for the module
     :rtype: `JavaModuleDescriptor`
     """
     if not hasattr(dist, '.javaModule'):
-        jmd = JavaModuleDescriptor.load(dist, jdk)
-        setattr(dist, '.javaModule', jmd)
+        jmd = JavaModuleDescriptor.load(dist, jdk, fatalIfNotCreated)
+        if jmd:
+            setattr(dist, '.javaModule', jmd)
+        return jmd
     return getattr(dist, '.javaModule')
 
 def get_java_module_info(dist, fatalIfNotModule=False):
@@ -294,10 +301,10 @@ def make_java_module(dist, jdk):
     if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
         moduledeps = dist.archived_deps()
         for dep in mx.classpath_entries(dist, includeSelf=False):
-            jmd = make_java_module(dep, jdk) if dep.isJARDistribution() else None
-            if jmd:
+            if dep.isJARDistribution():
+                jmd = as_java_module(dep, jdk, fatalIfNotCreated=False) or make_java_module(dep, jdk)
                 modulepath.append(jmd)
-                requires[jmd.name] = set([jdk.get_transitive_requires_keyword()])
+                requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
             elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
                 pass
             else:
