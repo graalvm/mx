@@ -34,36 +34,45 @@ class SubstitutionEngine(object):
         self._chain = chain
         self._subst = {}
         self._hasArg = {}
+        self._keywordArgs = {}
 
-    def register_with_arg(self, var, function):
+    def register_with_arg(self, var, function, keywordArgs=False):
         self._subst[var] = function
         self._hasArg[var] = True
+        self._keywordArgs[var] = keywordArgs
 
-    def register_no_arg(self, var, function):
+    def register_no_arg(self, var, function, keywordArgs=False):
         self._subst[var] = function
         self._hasArg[var] = False
+        self._keywordArgs[var] = keywordArgs
 
-    def _replace(self, m):
+    def _replace(self, m, **kwArgs):
         var = m.group(1)
         if var in self._subst:
             fn = self._subst[var]
             if self._hasArg[var]:
                 arg = m.group(3)
-                return fn(arg)
+                if self._keywordArgs[var]:
+                    return fn(arg, **kwArgs)
+                else:
+                    return fn(arg)
             else:
                 if m.group(3) is not None:
                     mx.warn('Ignoring argument in substitution ' + m.group(0))
                 if callable(fn):
-                    return fn()
+                    if self._keywordArgs[var]:
+                        return fn(**kwArgs)
+                    else:
+                        return fn()
                 else:
                     return fn
         elif self._chain is not None:
-            return self._chain._replace(m)
+            return self._chain._replace(m, **kwArgs)
         else:
             mx.abort('Unknown substitution: ' + m.group(0))
 
-    def substitute(self, string):
-        return re.sub(r'<(.+?)(:(.+?))?>', self._replace, string)
+    def substitute(self, string, **kwArgs):
+        return re.sub(r'<(.+?)(:(.+?))?>', lambda m: self._replace(m, **kwArgs), string)
 
 
 class CompatSubstitutionEngine(SubstitutionEngine):
@@ -71,7 +80,7 @@ class CompatSubstitutionEngine(SubstitutionEngine):
         super(CompatSubstitutionEngine, self).__init__()
         self._replaceFn = replaceFn
 
-    def _replace(self, m):
+    def _replace(self, m, **kwArgs):
         # simulate behavior of old regex matcher
         return re.sub(r'<(.+?)>', self._replaceFn, m.group(0))
 
