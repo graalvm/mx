@@ -1525,7 +1525,10 @@ class NativeTARDistribution(Distribution):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
         self.relpath = relpath
-        self.output = output
+        if output is None:
+            self.output = None
+        else:
+            self.output = mx_subst.results_substitutions.substitute(output)
 
     def make_archive(self):
         directory = dirname(self.path)
