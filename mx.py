@@ -16319,7 +16319,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.4")  # modules
+version = VersionSpec("5.128.5")  # native build dirs
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
