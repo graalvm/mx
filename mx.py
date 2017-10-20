@@ -440,6 +440,9 @@ class Dependency(SuiteConstituent):
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
 
+    def isPlatformDependent(self):
+        return False
+
     def getGlobalRegistry(self):
         if self.isProject():
             return _projects
@@ -463,6 +466,10 @@ class Dependency(SuiteConstituent):
             return self.suite.jreLibs
         assert self.isJdkLibrary()
         return self.suite.jdkLibs
+
+    def get_output_base(self):
+        return self.suite.get_output_root(platformDependent=self.isPlatformDependent())
+
 
     """
     Return a BuildTask that can be used to build this dependency.
@@ -623,7 +630,7 @@ class ClasspathDependency(Dependency):
         ret = {}
         if hasattr(self, "javaProperties"):
             for key, value in self.javaProperties.items():
-                ret[key] = replaceVar.substitute(value)
+                ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
 
 """
@@ -850,6 +857,9 @@ class Distribution(Dependency):
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
+
+    def isPlatformDependent(self):
+        return self.platformDependent
 
     def add_update_listener(self, listener):
         self.update_listeners.add(listener)
@@ -1525,7 +1535,10 @@ class NativeTARDistribution(Distribution):
         Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
         self.path = _make_absolute(path, suite.dir)
         self.relpath = relpath
-        self.output = output
+        if output is None:
+            self.output = None
+        else:
+            self.output = mx_subst.results_substitutions.substitute(output, dependency=self)
 
     def make_archive(self):
         directory = dirname(self.path)
@@ -1690,12 +1703,12 @@ class Project(Dependency):
         project such as class files and annotation generated sources should be placed.
         """
         if not self.subDir:
-            return join(self.suite.get_output_root(), self.name)
+            return join(self.get_output_base(), self.name)
         names = self.subDir.split(os.sep)
         parents = len([n for n in names if n == os.pardir])
         if parents != 0:
-            return os.sep.join([self.suite.get_output_root(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
-        return join(self.suite.get_output_root(), self.subDir, self.name)
+            return os.sep.join([self.get_output_base(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
+        return join(self.get_output_base(), self.subDir, self.name)
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
@@ -3048,9 +3061,12 @@ class NativeProject(Project):
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
 
+    def isPlatformDependent(self):
+        return True
+
     def getOutput(self, replaceVar=mx_subst.results_substitutions):
         if self.output:
-            return mx_subst.as_engine(replaceVar).substitute(self.output)
+            return mx_subst.as_engine(replaceVar).substitute(self.output, dependency=self)
         if self.vpath:
             return self.get_output_root()
         return None
@@ -3059,7 +3075,7 @@ class NativeProject(Project):
         results = []
         output = self.getOutput(replaceVar=replaceVar)
         for rt in self.results:
-            r = mx_subst.as_engine(replaceVar).substitute(rt)
+            r = mx_subst.as_engine(replaceVar).substitute(rt, dependency=self)
             results.append(join(self.suite.dir, output, r))
         return results
 
@@ -3067,7 +3083,7 @@ class NativeProject(Project):
         ret = {}
         if hasattr(self, 'buildEnv'):
             for key, value in self.buildEnv.items():
-                ret[key] = replaceVar.substitute(value)
+                ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
 
 class NativeBuildTask(ProjectBuildTask):
@@ -6425,7 +6441,7 @@ class Suite(object):
     def _parse_env(self):
         nyi('_parse_env', self)
 
-    def get_output_root(self):
+    def get_output_root(self, platformDependent=False):
         """
         Gets the root of the directory hierarchy under which generated artifacts for this
         suite such as class files and annotation generated sources should be placed.
@@ -6438,7 +6454,10 @@ class Suite(object):
                 self._outputRoot = os.path.realpath(_make_absolute(join(get_env('MX_ALT_OUTPUT_ROOT'), self.name), self.dir))
             else:
                 self._outputRoot = self.getMxCompatibility().getSuiteOutputRoot(self)
-        return self._outputRoot
+        if platformDependent:
+            return os.path.join(self._outputRoot, get_os() + '-' + get_arch())
+        else:
+            return self._outputRoot
 
     def get_mx_output_dir(self):
         """
@@ -6852,16 +6871,16 @@ class Suite(object):
         Suite._merge_os_arch_attrs(attrs, os_arch, context)
         exclLibs = Suite._pop_list(attrs, 'exclude', context)
         deps = Suite._pop_list(attrs, 'dependencies', context)
-        platformDependent = bool(os_arch)
+        platformDependent = bool(os_arch) or attrs.pop('platformDependent', False)
         ext = '.tar' if native else '.jar'
-        defaultPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + ext)
+        defaultPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + ext)
         path = attrs.pop('path', defaultPath)
         if native:
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
             d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
         else:
-            defaultSourcesPath = join(self.get_output_root(), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
+            defaultSourcesPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
             sourcesPath = attrs.pop('sourcesPath', defaultSourcesPath)
             if sourcesPath == "<unified>":
@@ -9398,6 +9417,13 @@ def add_debug_lib_suffix(name):
 
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
+
+
+def get_mxbuild_dir(dependency, **kwargs):
+    return dependency.get_output_base()
+
+mx_subst.results_substitutions.register_no_arg('mxbuild', get_mxbuild_dir, keywordArgs=True)
+
 
 """
 Utility for filtering duplicate lines.
@@ -16293,7 +16319,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.4")  # modules
+version = VersionSpec("5.128.5")  # native build dirs
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
