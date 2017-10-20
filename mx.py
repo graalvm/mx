@@ -3053,11 +3053,11 @@ Additional attributes:
   buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False, **kwArgs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False, vpath=False, **kwArgs):
         Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject, **kwArgs)
         self.results = results
         self.output = output
-        self.vpath = False
+        self.vpath = vpath
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
