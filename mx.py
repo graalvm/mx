@@ -5897,7 +5897,8 @@ def _deploy_binary(args, suite):
         log("Not deploying '{0}' because repositories aren't defined".format(suite.name))
         return
     if not suite.vc:
-        abort('Current primary suite has no version control')
+        abort('Current suite has no version control')
+
     _mvn.check()
     def _versionGetter(suite):
         return '{0}-SNAPSHOT'.format(suite.vc.parent(suite.vc_dir))
