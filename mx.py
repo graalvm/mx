@@ -3116,16 +3116,16 @@ class NativeBuildTask(ProjectBuildTask):
             # so that all executed commands are visible.
             cmdline += ["MX_VERBOSE=y"]
         if hasattr(self.subject, "vpath") and self.subject.vpath:
-            cmdline += ['VPATH=' + pipes.quote(self.subject.dir)]
+            env['VPATH'] = self.subject.dir
             cwd = join(self.subject.suite.dir, self.subject.getOutput())
             ensure_dir_exists(cwd)
             cmdline += ['-f', join(self.subject.dir, 'Makefile')]
         else:
             cwd = self.subject.dir
-        if hasattr(self.subject, "getBuildEnv"):
-            cmdline += [n + '=' + pipes.quote(v) for n, v in self.subject.getBuildEnv().iteritems()]
         if hasattr(self.subject, "makeTarget"):
             cmdline += [self.subject.makeTarget]
+        if hasattr(self.subject, "getBuildEnv"):
+            env.update(self.subject.getBuildEnv())
         if self.parallelism > 1:
             cmdline += ['-j', str(self.parallelism)]
         return cmdline, cwd, env
