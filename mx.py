@@ -395,11 +395,12 @@ A dependency is a library, distribution or project specified in a suite.
 The name must be unique across all Dependency instances.
 """
 class Dependency(SuiteConstituent):
-    def __init__(self, suite, name, theLicense):
+    def __init__(self, suite, name, theLicense, **kwArgs):
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
             theLicense = [theLicense]
         self.theLicense = theLicense
+        self.__dict__.update(kwArgs)
 
     def isBaseLibrary(self):
         return isinstance(self, BaseLibrary)
@@ -608,7 +609,7 @@ Attributes:
     javaProperties: dictionary of custom Java properties that should be added to the commandline
 """
 class ClasspathDependency(Dependency):
-    def __init__(self): # pylint: disable=super-init-not-called
+    def __init__(self, **kwArgs): # pylint: disable=super-init-not-called
         pass
 
     def classpath_repr(self, resolve=True):
@@ -851,8 +852,8 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense):
-        Dependency.__init__(self, suite, name, theLicense)
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs):
+        Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
@@ -1014,9 +1015,9 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param bool maven:
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
-                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None):
-        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense)
-        ClasspathDependency.__init__(self)
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None, **kwArgs):
+        Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
+        ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
         self._path = _make_absolute(path.replace('/', os.sep), suite.dir)
         self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir) if sourcesPath else None
@@ -1531,8 +1532,8 @@ class NativeTARDistribution(Distribution):
     Attributes:
         path: suite-local path to where the tar file will be placed
     """
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output):
-        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense)
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output, **kwArgs):
+        Distribution.__init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path, suite.dir)
         self.relpath = relpath
         if output is None:
@@ -1664,8 +1665,8 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=False):
-        Dependency.__init__(self, suite, name, theLicense)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=False, **kwArgs):
+        Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
@@ -1826,9 +1827,9 @@ class ArchivableProject(Project):
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
-    def __init__(self, suite, name, deps, workingSets, theLicense):
+    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
         d = suite.dir
-        Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense)
+        Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
 
     def getBuildTask(self, args):
         return ArchivableBuildTask(self, args, 1)
@@ -1888,7 +1889,7 @@ class MavenProject(Project, ClasspathDependency):
         context = 'project ' + name
         d = suite.dir
         srcDirs = Suite._pop_list(args, 'sourceDirs', context)
-        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense)
+        Project.__init__(self, suite, name, "", srcDirs, deps, workingSets, d, theLicense, **args)
         ClasspathDependency.__init__(self)
         jar = args.pop('jar')
         assert jar.endswith('.jar')
@@ -1908,9 +1909,9 @@ class MavenProject(Project, ClasspathDependency):
         return join(self.suite.dir, self.sourceDirs[0])
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, isTestProject=False):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=isTestProject)
-        ClasspathDependency.__init__(self)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, isTestProject=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=isTestProject, **kwArgs)
+        ClasspathDependency.__init__(self, **kwArgs)
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
         self.javaCompliance = JavaCompliance(javaCompliance)
@@ -3052,11 +3053,11 @@ Additional attributes:
   buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False, vpath=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject, **kwArgs)
         self.results = results
         self.output = output
-        self.vpath = False
+        self.vpath = vpath
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
@@ -3414,8 +3415,8 @@ class BaseLibrary(Dependency):
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
     """
-    def __init__(self, suite, name, optional, theLicense):
-        Dependency.__init__(self, suite, name, theLicense)
+    def __init__(self, suite, name, optional, theLicense, **kwArgs):
+        Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.optional = optional
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
@@ -3437,8 +3438,8 @@ class ResourceLibrary(BaseLibrary):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
-    def __init__(self, suite, name, path, optional, urls, sha1):
-        BaseLibrary.__init__(self, suite, name, optional, None)
+    def __init__(self, suite, name, path, optional, urls, sha1, **kwArgs):
+        BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
         self.path = path.replace('/', os.sep)
         self.sourcePath = None
         self.urls = urls
@@ -3472,9 +3473,9 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     motivating example is the Java Flight Recorder library
     found in the Oracle JRE.
     """
-    def __init__(self, suite, name, jar, optional, theLicense):
-        BaseLibrary.__init__(self, suite, name, optional, theLicense)
-        ClasspathDependency.__init__(self)
+    def __init__(self, suite, name, jar, optional, theLicense, **kwArgs):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
+        ClasspathDependency.__init__(self, **kwArgs)
         self.jar = jar
 
     def _comparison_key(self):
@@ -3556,9 +3557,9 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
            available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
     :param module: If this JAR has been transferred to a module since JDK 9, the name of the module that contains the same classes as the JAR used to.
     """
-    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None, module=None):
-        BaseLibrary.__init__(self, suite, name, optional, theLicense)
-        ClasspathDependency.__init__(self)
+    def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None, module=None, **kwArgs):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
+        ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.deps = deps
@@ -3651,9 +3652,9 @@ class Library(BaseLibrary, ClasspathDependency):
     it is not built by the Suite.
     N.B. Not obvious but a Library can be an annotationProcessor
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense):
-        BaseLibrary.__init__(self, suite, name, optional, theLicense)
-        ClasspathDependency.__init__(self)
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **kwArgs):
+        BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
+        ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep)
         self.urls = urls
         self.sha1 = sha1
@@ -6708,12 +6709,11 @@ class Suite(object):
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            l = JreLibrary(self, name, jar, optional, theLicense)
+            l = JreLibrary(self, name, jar, optional, theLicense, **attrs)
             self.jreLibs.append(l)
 
         for name, attrs in sorted(jdkLibsMap.iteritems()):
             path = attrs.pop('path')
-            sourcePath = attrs.pop('sourcePath', None)
             deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
@@ -6721,8 +6721,7 @@ class Suite(object):
             if isinstance(optional, str):
                 optional = optional != 'false'
             jdkStandardizedSince = JavaCompliance(attrs.pop('jdkStandardizedSince', '1.2'))
-            module = attrs.pop('module', None)
-            l = JdkLibrary(self, name, path, deps, optional, theLicense, sourcePath=sourcePath, jdkStandardizedSince=jdkStandardizedSince, module=module)
+            l = JdkLibrary(self, name, path, deps, optional, theLicense, jdkStandardizedSince=jdkStandardizedSince, **attrs)
             self.jdkLibs.append(l)
 
         for name, attrs in sorted(importsMap.iteritems()):
@@ -6878,7 +6877,7 @@ class Suite(object):
         if native:
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, **attrs)
         else:
             defaultSourcesPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
@@ -6890,8 +6889,6 @@ class Suite(object):
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
             javaCompliance = attrs.pop('javaCompliance', None)
-            javadocType = attrs.pop('javadocType', 'implementation')
-            allowsJavadocWarnings = attrs.pop('allowsJavadocWarnings', False)
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
             assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
@@ -6900,10 +6897,8 @@ class Suite(object):
             if attrs.pop('buildDependencies', None):
                 abort("'buildDependencies' is not supported for JAR distributions")
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
-                                javaCompliance, platformDependent, theLicense, javadocType=javadocType,
-                                allowsJavadocWarnings=allowsJavadocWarnings, maven=maven,
-                                stripConfigFileNames=stripConfigFileNames)
-        d.__dict__.update(attrs)
+                                javaCompliance, platformDependent, theLicense, maven=maven,
+                                stripConfigFileNames=stripConfigFileNames, **attrs)
         self.dists.append(d)
         return d
 
@@ -7011,10 +7006,9 @@ class Suite(object):
             optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
             if resource:
-                l = ResourceLibrary(self, name, path, optional, urls, sha1)
+                l = ResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             else:
-                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense)
-            l.__dict__.update(attrs)
+                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
             self.libs.append(l)
 
     def _load_licenses(self, licenseDefs):
@@ -7283,12 +7277,12 @@ class SourceSuite(Suite):
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'results', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, isTestProject=isTestProject)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, isTestProject=isTestProject)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -16319,7 +16313,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.5")  # native build dirs
+version = VersionSpec("5.128.6")  # vpath fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
