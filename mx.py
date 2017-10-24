@@ -4831,6 +4831,20 @@ class GitConfig(VC):
         except subprocess.CalledProcessError as e:
             abort('git tag failed: ' + str(e))
 
+    def set_tag(self, vcdir, tag_name, tag_commit='HEAD', with_remote=True):
+        force = '--force' # Replace an existing tag with the given name
+        run(['git', 'tag', force, tag_name, tag_commit], cwd=vcdir)
+        if with_remote:
+            run(['git', 'push', force, 'origin', tag_name], cwd=vcdir)
+
+    def get_tag(self, vcdir, tag_name, with_remote=True):
+        if with_remote:
+            self._fetch(vcdir, repository='origin', refspec='{0}:{0}'.format('refs/tags/{0}'.format(tag_name)), abortOnError=False)
+        try:
+            return subprocess.check_output(['git', 'show-ref', '-s', tag_name], cwd=vcdir).strip()
+        except subprocess.CalledProcessError:
+            return None
+
     def metadir(self):
         return '.git'
 
@@ -5944,6 +5958,27 @@ def _deploy_binary(args, suite):
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
     if not args.platform_dependent:
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
+
+    if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.dir) == 'master':
+        vars(suite)
+        binary_deployed_tag = 'binary'
+        deployed_rev = suite.version()
+        assert deployed_rev == suite.vc.parent(suite.dir), 'Version mismatch: suite.version() != suite.vc.parent(suite.dir)'
+        def set_deployed_tag():
+            suite.vc.set_tag(suite.dir, binary_deployed_tag, deployed_rev, with_remote=not args.dry_run)
+            log("Updated '{0}'-tag to {1}".format(binary_deployed_tag, deployed_rev))
+
+        log("On master branch: Set '{0}'-tag on deployed revision: {1}".format(binary_deployed_tag, deployed_rev))
+
+        # Ideally the remaining sequence should run exclusive on the repo
+        prev_tag_rev = suite.vc.get_tag(suite.dir, binary_deployed_tag)
+        if prev_tag_rev:
+            log("Found previous '{0}'-tag: {1}".format(binary_deployed_tag, prev_tag_rev))
+            latest = suite.vc.latest(suite.dir, prev_tag_rev, deployed_rev)
+            if latest != prev_tag_rev:
+                set_deployed_tag()
+        else:
+            set_deployed_tag()
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
     if licenses is None:
