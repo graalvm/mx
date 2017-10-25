@@ -5987,22 +5987,21 @@ def _deploy_binary(args, suite):
     if not args.platform_dependent:
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
 
-    if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.dir) == 'master':
-        vars(suite)
+    if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
         binary_deployed_tag = 'binary'
         deployed_rev = suite.version()
-        assert deployed_rev == suite.vc.parent(suite.dir), 'Version mismatch: suite.version() != suite.vc.parent(suite.dir)'
+        assert deployed_rev == suite.vc.parent(suite.vc_dir), 'Version mismatch: suite.version() != suite.vc.parent(suite.vc_dir)'
         def set_deployed_tag():
-            suite.vc.set_tag(suite.dir, binary_deployed_tag, deployed_rev, with_remote=not args.dry_run)
+            suite.vc.set_tag(suite.vc_dir, binary_deployed_tag, deployed_rev, with_remote=not args.dry_run)
             log("Updated '{0}'-tag to {1}".format(binary_deployed_tag, deployed_rev))
 
         log("On master branch: Set '{0}'-tag on deployed revision: {1}".format(binary_deployed_tag, deployed_rev))
 
         # Ideally the remaining sequence should run exclusive on the repo
-        prev_tag_rev = suite.vc.get_tag(suite.dir, binary_deployed_tag)
+        prev_tag_rev = suite.vc.get_tag(suite.vc_dir, binary_deployed_tag)
         if prev_tag_rev:
             log("Found previous '{0}'-tag: {1}".format(binary_deployed_tag, prev_tag_rev))
-            latest = suite.vc.latest(suite.dir, prev_tag_rev, deployed_rev)
+            latest = suite.vc.latest(suite.vc_dir, prev_tag_rev, deployed_rev)
             if latest != prev_tag_rev:
                 set_deployed_tag()
         else:
