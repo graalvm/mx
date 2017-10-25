@@ -4837,11 +4837,22 @@ class GitConfig(VC):
         if with_remote:
             run(['git', 'push', force, 'origin', tag_name], cwd=vcdir)
 
+    @classmethod
+    def _tag_to_ref(cls, tag_name):
+        return 'refs/tags/{0}'.format(tag_name)
+
     def get_tag(self, vcdir, tag_name, with_remote=True):
         if with_remote:
-            self._fetch(vcdir, repository='origin', refspec='{0}:{0}'.format('refs/tags/{0}'.format(tag_name)), abortOnError=False)
+            self._fetch(vcdir, repository='origin', refspec='{0}:{0}'.format(self._tag_to_ref(tag_name)), abortOnError=False)
         try:
             return subprocess.check_output(['git', 'show-ref', '-s', tag_name], cwd=vcdir).strip()
+        except subprocess.CalledProcessError:
+            return None
+
+    @classmethod
+    def get_tag_remote(cls, remote_url, tag_name):
+        try:
+            return subprocess.check_output(['git', 'ls-remote', remote_url, cls._tag_to_ref(tag_name)]).split('\t')[0]
         except subprocess.CalledProcessError:
             return None
 
@@ -5300,6 +5311,16 @@ class BinaryVC(VC):
         except IOError:
             return False
 
+    def resolve_tag_rev(self, rev):
+        tag_prefix = 'tag.'
+        try:
+            if rev.startswith(tag_prefix):
+                tag_spec, tag_url = rev.split('|')
+                tag_name = tag_spec[len(tag_prefix):]
+                return GitConfig.get_tag_remote(tag_url, tag_name)
+        except:
+            return None
+
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
         Downloads the ``mx-suitename.jar`` file. The caller is responsible for downloading
@@ -5310,14 +5331,18 @@ class BinaryVC(VC):
               denoting the suite name and `result` which is a dict for output values. If this
               method returns True, then there will be a `adj_version` entry in this dict
               containing the actual (adjusted) version
-        :return: True if the clone was successful, Fazlse otherwise
+        :return: True if the clone was successful, False otherwise
         :rtype: bool
         """
         assert dest
         suite_name = extra_args['suite_name']
         metadata = self.Metadata(suite_name, url, None, None)
+
+        rev = self.resolve_tag_rev(rev)
+
         if not rev:
             rev = self._tip(metadata)
+
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
 
         mxname = _mx_binary_distribution_root(suite_name)
@@ -5396,6 +5421,9 @@ class BinaryVC(VC):
             return False  # TODO or True?
 
         metadata = self._readMetadata(vcdir)
+
+        rev = self.resolve_tag_rev(rev)
+
         if not rev:
             rev = self._tip(metadata)
         if rev == self._id(metadata):
