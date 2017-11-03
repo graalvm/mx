@@ -5771,7 +5771,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 if validateMetadata == 'full':
                     dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
                 dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
-            pom.element('version', dep_version)
+            pom.element('version', data=dep_version)
             pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
@@ -16331,7 +16331,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.8")  # maven deploy validation
+version = VersionSpec("5.128.9")  # maven deploy validation fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
