@@ -5759,10 +5759,19 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     if directDistDeps or directLibDeps:
         pom.open('dependencies')
         for dep in directDistDeps:
+            if validateMetadata != 'none' and not (dep.isJARDistribution() and dep.maven):
+                if validateMetadata == 'full':
+                    dist.abort("Distribution depends on non-maven distribution {}".format(dep))
+                dist.warn("Distribution depends on non-maven distribution {}".format(dep))
             pom.open('dependency')
             pom.element('groupId', data=dep.maven_group_id())
             pom.element('artifactId', data=dep.maven_artifact_id())
-            pom.element('version', data=versionGetter(dep.suite))
+            dep_version = versionGetter(dep.suite)
+            if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
+                if validateMetadata == 'full':
+                    dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+                dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+            pom.element('version', dep_version)
             pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
@@ -6013,7 +6022,7 @@ def maven_deploy(args):
     _mvn.check()
     def _versionGetter(suite):
         return suite.release_version(snapshotSuffix='SNAPSHOT')
-    dists = [d for d in s.dists if d.maven]
+    dists = [d for d in s.dists if d.isJARDistribution() and d.maven]
     if args.only:
         only = args.only.split(',')
         dists = [d for d in dists if d.name in only]
@@ -16322,7 +16331,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.128.7")  # native build clean
+version = VersionSpec("5.128.8")  # maven deploy validation
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

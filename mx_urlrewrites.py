@@ -68,7 +68,7 @@ def register_urlrewrite(urlrewrite, onError=None):
         try:
             pattern = re.compile(pattern)
         except Exception as e: # pylint: disable=broad-except
-            onError('Error parsing URL rewrite pattern "' + pattern +'": ' + str(e))
+            onError('Error parsing URL rewrite pattern "' + pattern + '": ' + str(e))
         urlrewrite = URLRewrite(pattern, replacement)
         mx.logvv("Registering url rewrite: " + str(urlrewrite))
         _urlrewrites.append(urlrewrite)
