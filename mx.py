@@ -4831,28 +4831,38 @@ class GitConfig(VC):
         except subprocess.CalledProcessError as e:
             abort('git tag failed: ' + str(e))
 
-    def set_tag(self, vcdir, tag_name, tag_commit='HEAD', with_remote=True):
-        force = '--force' # Replace an existing tag with the given name
-        run(['git', 'tag', force, tag_name, tag_commit], cwd=vcdir)
-        if with_remote:
-            run(['git', 'push', force, 'origin', tag_name], cwd=vcdir)
+    @classmethod
+    def set_branch(self, vcdir, branch_name, branch_commit='HEAD', with_remote=True):
+        """
+        Sets branch_name to branch_commit. By using with_remote (the default) the change is
+        propagated to origin (but only if the given branch_commit is ahead of its remote
+        counterpart (if one exists))
+        :param vcdir: the local git repository directory
+        :param branch_name: the name the branch should have
+        :param branch_commit: the commit id the branch should point-to
+        :param with_remote: if True (default) the change is propagated to origin
+        :return: 0 if setting branch was successful
+        """
+        run(['git', 'branch', '--no-track', '--force', branch_name, branch_commit], cwd=vcdir)
+        if not with_remote:
+            return 0
+
+        # guaranteed to fail if branch_commit is behind its remote counterpart
+        return run(['git', 'push', 'origin', branch_name], nonZeroIsFatal=False, cwd=vcdir)
 
     @classmethod
-    def _tag_to_ref(cls, tag_name):
-        return 'refs/tags/{0}'.format(tag_name)
+    def get_branch_remote(cls, remote_url, branch_name):
+        """
+        Get commit id that the branch given by remote_url and branch_name points-to.
+        :param remote_url: the URL of the git repo that contains the branch
+        :param branch_name: the name of the branch whose commit we are interested in
+        :return: commit id the branch points-to or None
+        """
+        def _head_to_ref(cls, head_name):
+            return 'refs/heads/{0}'.format(head_name)
 
-    def get_tag(self, vcdir, tag_name, with_remote=True):
-        if with_remote:
-            self._fetch(vcdir, repository='origin', refspec='{0}:{0}'.format(self._tag_to_ref(tag_name)), abortOnError=False)
         try:
-            return subprocess.check_output(['git', 'show-ref', '-s', tag_name], cwd=vcdir).strip()
-        except subprocess.CalledProcessError:
-            return None
-
-    @classmethod
-    def get_tag_remote(cls, remote_url, tag_name):
-        try:
-            return subprocess.check_output(['git', 'ls-remote', remote_url, cls._tag_to_ref(tag_name)]).split('\t')[0]
+            return subprocess.check_output(['git', 'ls-remote', remote_url, _head_to_ref(branch_name)]).split('\t')[0]
         except subprocess.CalledProcessError:
             return None
 
@@ -5317,7 +5327,7 @@ class BinaryVC(VC):
             if rev.startswith(tag_prefix):
                 tag_spec, tag_url = rev.split('|')
                 tag_name = tag_spec[len(tag_prefix):]
-                return GitConfig.get_tag_remote(tag_url, tag_name)
+                return GitConfig.get_branch_remote(tag_url, tag_name)
         except:
             return None
 
@@ -5988,24 +5998,17 @@ def _deploy_binary(args, suite):
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
 
     if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
-        binary_deployed_tag = 'binary'
+        binary_deployed_ref = 'binary'
         deployed_rev = suite.version()
         assert deployed_rev == suite.vc.parent(suite.vc_dir), 'Version mismatch: suite.version() != suite.vc.parent(suite.vc_dir)'
-        def set_deployed_tag():
-            suite.vc.set_tag(suite.vc_dir, binary_deployed_tag, deployed_rev, with_remote=not args.dry_run)
-            log("Updated '{0}'-tag to {1}".format(binary_deployed_tag, deployed_rev))
-
-        log("On master branch: Set '{0}'-tag on deployed revision: {1}".format(binary_deployed_tag, deployed_rev))
-
-        # Ideally the remaining sequence should run exclusive on the repo
-        prev_tag_rev = suite.vc.get_tag(suite.vc_dir, binary_deployed_tag)
-        if prev_tag_rev:
-            log("Found previous '{0}'-tag: {1}".format(binary_deployed_tag, prev_tag_rev))
-            latest = suite.vc.latest(suite.vc_dir, prev_tag_rev, deployed_rev)
-            if latest != prev_tag_rev:
-                set_deployed_tag()
+        deploy_item_msg = "'{0}'-branch to {1}".format(binary_deployed_ref, deployed_rev)
+        log("On master branch: Try setting " + deploy_item_msg)
+        retcode = GitConfig.set_branch(suite.vc_dir, binary_deployed_ref, deployed_rev, with_remote=not args.dry_run)
+        if retcode:
+            log("Updating " + deploy_item_msg + " failed (probably more recent deployment)")
         else:
-            set_deployed_tag()
+            log("Sucessfully updated " + deploy_item_msg)
+
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
     if licenses is None:
