@@ -4832,7 +4832,7 @@ class GitConfig(VC):
             abort('git tag failed: ' + str(e))
 
     @classmethod
-    def set_branch(self, vcdir, branch_name, branch_commit='HEAD', with_remote=True):
+    def set_branch(cls, vcdir, branch_name, branch_commit='HEAD', with_remote=True):
         """
         Sets branch_name to branch_commit. By using with_remote (the default) the change is
         propagated to origin (but only if the given branch_commit is ahead of its remote
@@ -4858,7 +4858,7 @@ class GitConfig(VC):
         :param branch_name: the name of the branch whose commit we are interested in
         :return: commit id the branch points-to or None
         """
-        def _head_to_ref(cls, head_name):
+        def _head_to_ref(head_name):
             return 'refs/heads/{0}'.format(head_name)
 
         try:
@@ -5321,16 +5321,6 @@ class BinaryVC(VC):
         except IOError:
             return False
 
-    def resolve_tag_rev(self, rev):
-        tag_prefix = 'tag.'
-        try:
-            if rev.startswith(tag_prefix):
-                tag_spec, tag_url = rev.split('|')
-                tag_name = tag_spec[len(tag_prefix):]
-                return GitConfig.get_branch_remote(tag_url, tag_name)
-        except:
-            return None
-
     def clone(self, url, dest=None, rev=None, abortOnError=True, **extra_args):
         """
         Downloads the ``mx-suitename.jar`` file. The caller is responsible for downloading
@@ -5347,12 +5337,8 @@ class BinaryVC(VC):
         assert dest
         suite_name = extra_args['suite_name']
         metadata = self.Metadata(suite_name, url, None, None)
-
-        rev = self.resolve_tag_rev(rev)
-
         if not rev:
             rev = self._tip(metadata)
-
         metadata.snapshotVersion = '{0}-SNAPSHOT'.format(rev)
 
         mxname = _mx_binary_distribution_root(suite_name)
@@ -5431,9 +5417,6 @@ class BinaryVC(VC):
             return False  # TODO or True?
 
         metadata = self._readMetadata(vcdir)
-
-        rev = self.resolve_tag_rev(rev)
-
         if not rev:
             rev = self._tip(metadata)
         if rev == self._id(metadata):
@@ -6369,9 +6352,9 @@ class SuiteImportURLInfo:
 class SuiteImport:
     def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None, suite_dir=None):
         self.name = name
-        self.version = version
-        self.version_from = version_from
         self.urlinfos = [] if urlinfos is None else urlinfos
+        self.version = self.resolve_git_branchref(version)
+        self.version_from = version_from
         self.dynamicImport = dynamicImport
         self.kind = kind
         self.in_subdir = in_subdir
@@ -6379,6 +6362,31 @@ class SuiteImport:
 
     def __str__(self):
         return self.name
+
+    def resolve_git_branchref(self, version):
+        prefix = 'git-bref:'
+        try:
+            if version.startswith(prefix):
+                bref_name = version[len(prefix):]
+                git_urlinfos = [urlinfo for urlinfo in self.urlinfos if urlinfo.vc.kind == 'git']
+                if len(git_urlinfos) != 1:
+                    abort('Using ' + version + ' requires exactly one git urlinfo')
+                git_url = git_urlinfos[0].url
+                resolved_version = GitConfig.get_branch_remote(git_url, bref_name)
+                if not resolved_version:
+                    abort('Resolving ' + version + ' against ' + git_url + ' failed')
+                log('Resolved ' +  version + ' against ' + git_url + ' to ' + resolved_version)
+
+                # If git-bref is used binary suite import should be tried first
+                global _binary_suites
+                if _binary_suites is None:
+                    _binary_suites = []
+                if self.name not in _binary_suites:
+                    _binary_suites.append(self.name)
+
+                return resolved_version
+        except:
+            return version
 
     @staticmethod
     def parse_specification(import_dict, context, importer, dynamicImport=False):
@@ -7170,7 +7178,7 @@ class Suite(object):
         if imported_suite:
             # if urlinfos is set, force the import to version in case it already existed
             if urlinfos:
-                updated = imported_suite.vc.update(imported_suite.vc_dir, rev=version, mayPull=True)
+                updated = imported_suite.vc.update(imported_suite.vc_dir, rev=suite_import.version, mayPull=True)
                 if isinstance(imported_suite, BinarySuite) and updated:
                     imported_suite.reload_binary_suite()
             # TODO Add support for imports in dynamically loaded suites (no current use case)
