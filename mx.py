@@ -6365,28 +6365,27 @@ class SuiteImport:
 
     def resolve_git_branchref(self, version):
         prefix = 'git-bref:'
-        try:
-            if version.startswith(prefix):
-                bref_name = version[len(prefix):]
-                git_urlinfos = [urlinfo for urlinfo in self.urlinfos if urlinfo.vc.kind == 'git']
-                if len(git_urlinfos) != 1:
-                    abort('Using ' + version + ' requires exactly one git urlinfo')
-                git_url = git_urlinfos[0].url
-                resolved_version = GitConfig.get_branch_remote(git_url, bref_name)
-                if not resolved_version:
-                    abort('Resolving ' + version + ' against ' + git_url + ' failed')
-                log('Resolved ' +  version + ' against ' + git_url + ' to ' + resolved_version)
-
-                # If git-bref is used binary suite import should be tried first
-                global _binary_suites
-                if _binary_suites is None:
-                    _binary_suites = []
-                if self.name not in _binary_suites:
-                    _binary_suites.append(self.name)
-
-                return resolved_version
-        except:
+        if not version or not version.startswith(prefix):
             return version
+
+        bref_name = version[len(prefix):]
+        git_urlinfos = [urlinfo for urlinfo in self.urlinfos if urlinfo.vc.kind == 'git']
+        if len(git_urlinfos) != 1:
+            abort('Using ' + version + ' requires exactly one git urlinfo')
+        git_url = git_urlinfos[0].url
+        resolved_version = GitConfig.get_branch_remote(git_url, bref_name)
+        if not resolved_version:
+            abort('Resolving ' + version + ' against ' + git_url + ' failed')
+        log('Resolved ' +  version + ' against ' + git_url + ' to ' + resolved_version)
+
+        # If git-bref is used binary suite import should be tried first
+        global _binary_suites
+        if _binary_suites is None:
+            _binary_suites = []
+        if self.name not in _binary_suites:
+            _binary_suites.append(self.name)
+
+        return resolved_version
 
     @staticmethod
     def parse_specification(import_dict, context, importer, dynamicImport=False):
