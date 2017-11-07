@@ -3403,7 +3403,8 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, l
                     _writeSha1Cached(computedSha1)
                     return True
                 if logErrors:
-                    log_error('SHA1 of {} ({}) does not match expected value ({})'.format(path, computedSha1, sha1))
+                    size = os.path.getsize(path)
+                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1))
                 return False
     elif mustExist:
         if logErrors:
@@ -16404,7 +16405,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.0")  # branch ref based version resolving with 'git-bref:<branch-name>'
+version = VersionSpec("5.129.1")  # GR-6794
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
