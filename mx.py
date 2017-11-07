@@ -4849,7 +4849,7 @@ class GitConfig(VC):
             return 0
 
         # guaranteed to fail if branch_commit is behind its remote counterpart
-        return run(['git', 'push', 'origin', branch_name], nonZeroIsFatal=False, cwd=vcdir)
+        return run(['git', 'push', 'origin', 'refs/heads/' + branch_name], nonZeroIsFatal=False, cwd=vcdir)
 
     @classmethod
     def get_branch_remote(cls, remote_url, branch_name):
