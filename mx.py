@@ -10319,11 +10319,11 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                         # Sleep for 0.2 seconds
                         time.sleep(0.2)
                         chunkRetriesRemaining[0] = chunkRetriesRemaining[0] - 1
-                        log('Retrying read of chunk from {}'.format(url))
+                        warn('Retrying read of chunk from {}'.format(url))
                         chunk = conn.read(chunkSize)
                         if chunk:
                             return chunk
-                    log('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
+                    log_error('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
                     return chunk
 
                 with open(tmp, 'wb') as fp:
