@@ -10309,17 +10309,18 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 chunkSize = 8192
 
                 # Boxed so it can be updated in _read_chunk
-                chunkRetriesRemaining = [10]
+                maxRetries = 10
+                retries = [0]
 
                 def _read_chunk():
                     chunk = conn.read(chunkSize)
                     if chunk or length == -1:
                         return chunk
-                    while chunkRetriesRemaining[0] != 0:
+                    while retries[0] < maxRetries:
                         # Sleep for 0.2 seconds
                         time.sleep(0.2)
-                        chunkRetriesRemaining[0] = chunkRetriesRemaining[0] - 1
-                        warn('Retrying read of chunk from {}'.format(url))
+                        retries[0] = retries[0] + 1
+                        warn('Retry {} of read from {} after reading {} bytes'.format(retries[0], url, bytesRead))
                         chunk = conn.read(chunkSize)
                         if chunk:
                             return chunk
@@ -10331,8 +10332,14 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                     while chunk:
                         bytesRead += len(chunk)
                         fp.write(chunk)
-                        if progress:
-                            sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
+                        if length == -1:
+                            if progress:
+                                sys.stdout.write('\r {} bytes'.format(bytesRead))
+                        else:
+                            if progress:
+                                sys.stdout.write('\r {} bytes ({}%)'.format(bytesRead, bytesRead * 100 / length))
+                            if bytesRead == length:
+                                break
                         chunk = _read_chunk()
 
                 if progress:
