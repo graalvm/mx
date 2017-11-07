@@ -4032,7 +4032,7 @@ class VC(object):
     @staticmethod
     def _find_metadata_dir(start, name):
         d = start
-        while len(d) != 0 and d != os.sep:
+        while len(d) != 0 and os.path.splitdrive(d)[1] != os.sep:
             subdir = join(d, name)
             if exists(subdir):
                 return subdir
