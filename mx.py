@@ -4849,7 +4849,7 @@ class GitConfig(VC):
             return 0
 
         # guaranteed to fail if branch_commit is behind its remote counterpart
-        return run(['git', 'push', 'origin', branch_name], nonZeroIsFatal=False, cwd=vcdir)
+        return run(['git', 'push', 'origin', 'refs/heads/' + branch_name], nonZeroIsFatal=False, cwd=vcdir)
 
     @classmethod
     def get_branch_remote(cls, remote_url, branch_name):
@@ -16405,7 +16405,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.1")  # GR-6794
+version = VersionSpec("5.129.2")  # GR-6480 fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
