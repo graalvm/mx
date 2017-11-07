@@ -10308,14 +10308,32 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 bytesRead = 0
                 chunkSize = 8192
 
-                with open(tmp, 'wb') as fp:
+                # Boxed so it can be updated in _read_chunk
+                chunkRetriesRemaining = [10]
+
+                def _read_chunk():
                     chunk = conn.read(chunkSize)
+                    if chunk or length == -1:
+                        return chunk
+                    while chunkRetriesRemaining[0] != 0:
+                        # Sleep for 0.2 seconds
+                        time.sleep(0.2)
+                        chunkRetriesRemaining[0] = chunkRetriesRemaining[0] - 1
+                        log('Retrying read of chunk from {}'.format(url))
+                        chunk = conn.read(chunkSize)
+                        if chunk:
+                            return chunk
+                    log('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
+                    return chunk
+
+                with open(tmp, 'wb') as fp:
+                    chunk = _read_chunk()
                     while chunk:
                         bytesRead += len(chunk)
                         fp.write(chunk)
                         if progress:
                             sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
-                        chunk = conn.read(chunkSize)
+                        chunk = _read_chunk()
 
                 if progress:
                     sys.stdout.write('\n')
@@ -16405,7 +16423,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.2")  # GR-6480 fix
+version = VersionSpec("5.129.3")  # GR-6802 fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
