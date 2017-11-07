@@ -12005,7 +12005,7 @@ def _get_jdk_module_jar(module, suite, jdk):
             ancestors of `start` and looking for ``*/src/<module>/share/classes``.
             """
             d = start
-            while len(d) != 0 and d != os.sep:
+            while len(d) != 0 and os.path.splitdrive(d)[1] != os.sep:
                 for subdir in os.listdir(d):
                     classes = join(d, subdir, 'src', module, 'share', 'classes')
                     if exists(classes):
