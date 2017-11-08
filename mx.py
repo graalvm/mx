@@ -10367,7 +10367,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 conn = _urlopen(url, timeout=10)
                 conn.close()
                 return True
-            except (IOError, socket.timeout) as e:
+            except (IOError, socket.timeout):
                 pass
             continue
 
