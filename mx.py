@@ -10259,6 +10259,88 @@ def _suggest_http_proxy_error(e):
         defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
         log('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
 
+def _attempt_download(url, path, jarEntryName=None):
+    """
+    Attempts to download content from `url` and save it to `path`.
+    If `jarEntryName` is not None, then the downloaded content is
+    expected to be a zip/jar file and the entry of the corresponding
+    name is extracted and written to `path`.
+
+    :return: True if the download succeeded, False otherwise
+    """
+
+    # Use a temp file while downloading to avoid multiple threads
+    # overwriting the same file.
+    progress = not _opts.no_download_progress and sys.stdout.isatty()
+    with SafeFileCreation(path) as sfc:
+        tmp = sfc.tmpPath
+        conn = None
+        try:
+
+            # 10 second timeout to establish connection
+            conn = _urlopen(url, timeout=10)
+
+            # Not all servers support the "Content-Length" header
+            lengthHeader = conn.info().getheader('Content-Length')
+            length = int(lengthHeader.strip()) if lengthHeader else -1
+
+            bytesRead = 0
+            chunkSize = 8192
+
+            # Boxed so it can be updated in _read_chunk
+            maxRetries = 10
+            retries = [0]
+
+            def _read_chunk():
+                chunk = conn.read(chunkSize)
+                if chunk or length == -1:
+                    return chunk
+                while retries[0] < maxRetries:
+                    # Sleep for 0.2 seconds
+                    time.sleep(0.2)
+                    retries[0] = retries[0] + 1
+                    warn('Retry {} of read from {} after reading {} bytes'.format(retries[0], url, bytesRead))
+                    chunk = conn.read(chunkSize)
+                    if chunk:
+                        return chunk
+                raise IOError('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
+
+            with open(tmp, 'wb') as fp:
+                chunk = _read_chunk()
+                while chunk:
+                    bytesRead += len(chunk)
+                    fp.write(chunk)
+                    if length == -1:
+                        if progress:
+                            sys.stdout.write('\r {} bytes'.format(bytesRead))
+                    else:
+                        if progress:
+                            sys.stdout.write('\r {} bytes ({}%)'.format(bytesRead, bytesRead * 100 / length))
+                        if bytesRead == length:
+                            break
+                    chunk = _read_chunk()
+
+            if progress:
+                sys.stdout.write('\n')
+
+            if jarEntryName:
+                with zipfile.ZipFile(tmp, 'r') as zf:
+                    jarEntry = zf.read(jarEntryName)
+                with open(tmp, 'wb') as fp:
+                    fp.write(jarEntry)
+
+            return True
+
+        except (IOError, socket.timeout) as e:
+            log("Error reading from " + url + ": " + str(e))
+            _suggest_http_proxy_error(e)
+            if exists(tmp):
+                os.remove(tmp)
+        finally:
+            if conn:
+                conn.close()
+    return False
+
 def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
@@ -10271,7 +10353,6 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
-    progress = not _opts.no_download_progress and sys.stdout.isatty()
     for url in urls:
         if not verifyOnly or verbose:
             log('Downloading ' + url + ' to ' + path)
@@ -10286,56 +10367,15 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 conn = _urlopen(url, timeout=10)
                 conn.close()
                 return True
-            except (IOError, socket.timeout) as e:
+            except (IOError, socket.timeout):
                 pass
             continue
 
-
-        # Use a temp file while downloading to avoid multiple threads
-        # overwriting the same file.
-        with SafeFileCreation(path) as sfc:
-            tmp = sfc.tmpPath
-            conn = None
-            try:
-
-                # 10 second timeout to establish connection
-                conn = _urlopen(url, timeout=10)
-
-                # Not all servers support the "Content-Length" header
-                lengthHeader = conn.info().getheader('Content-Length')
-                length = int(lengthHeader.strip()) if lengthHeader else -1
-
-                bytesRead = 0
-                chunkSize = 8192
-
-                with open(tmp, 'wb') as fp:
-                    chunk = conn.read(chunkSize)
-                    while chunk:
-                        bytesRead += len(chunk)
-                        fp.write(chunk)
-                        if progress:
-                            sys.stdout.write('\r {} bytes{}'.format(bytesRead, '' if length == -1 else ' (' + str(bytesRead * 100 / length) + '%)'))
-                        chunk = conn.read(chunkSize)
-
-                if progress:
-                    sys.stdout.write('\n')
-
-                if jarEntryName:
-                    with zipfile.ZipFile(tmp, 'r') as zf:
-                        jarEntry = zf.read(jarEntryName)
-                    with open(tmp, 'wb') as fp:
-                        fp.write(jarEntry)
-
-                return True
-
-            except (IOError, socket.timeout) as e:
-                log("Error reading from " + url + ": " + str(e))
-                _suggest_http_proxy_error(e)
-                if exists(tmp):
-                    os.remove(tmp)
-            finally:
-                if conn:
-                    conn.close()
+        if _attempt_download(url, path, jarEntryName):
+            return True
+        warn('Retrying download from ' + url)
+        if _attempt_download(url, path, jarEntryName):
+            return True
 
     if abortOnError:
         abort('Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls))
@@ -16405,7 +16445,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.2")  # GR-6480 fix
+version = VersionSpec("5.129.3")  # GR-6802 fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
