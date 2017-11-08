@@ -10266,7 +10266,8 @@ def _attempt_download(url, path, jarEntryName=None):
     expected to be a zip/jar file and the entry of the corresponding
     name is extracted and written to `path`.
 
-    :return: True if the download succeeded, False otherwise
+    :return: True if the download succeeded, "retry" if it failed but might succeed
+            if retried, False otherwise
     """
 
     # Use a temp file while downloading to avoid multiple threads
@@ -10287,26 +10288,8 @@ def _attempt_download(url, path, jarEntryName=None):
             bytesRead = 0
             chunkSize = 8192
 
-            # Boxed so it can be updated in _read_chunk
-            maxRetries = 10
-            retries = [0]
-
-            def _read_chunk():
-                chunk = conn.read(chunkSize)
-                if chunk or length == -1:
-                    return chunk
-                while retries[0] < maxRetries:
-                    # Sleep for 0.2 seconds
-                    time.sleep(0.2)
-                    retries[0] = retries[0] + 1
-                    warn('Retry {} of read from {} after reading {} bytes'.format(retries[0], url, bytesRead))
-                    chunk = conn.read(chunkSize)
-                    if chunk:
-                        return chunk
-                raise IOError('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
-
             with open(tmp, 'wb') as fp:
-                chunk = _read_chunk()
+                chunk = conn.read(chunkSize)
                 while chunk:
                     bytesRead += len(chunk)
                     fp.write(chunk)
@@ -10318,10 +10301,14 @@ def _attempt_download(url, path, jarEntryName=None):
                             sys.stdout.write('\r {} bytes ({}%)'.format(bytesRead, bytesRead * 100 / length))
                         if bytesRead == length:
                             break
-                    chunk = _read_chunk()
+                    chunk = conn.read(chunkSize)
 
             if progress:
                 sys.stdout.write('\n')
+
+            if length != -1 and length != bytesRead:
+                log_error('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
+                return "retry"
 
             if jarEntryName:
                 with zipfile.ZipFile(tmp, 'r') as zf:
@@ -10331,11 +10318,13 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-        except (IOError, socket.timeout) as e:
-            log("Error reading from " + url + ": " + str(e))
+        except (IOError, socket.timeout, urllib2.HTTPError) as e:
+            log_error("Error reading from " + url + ": " + str(e))
             _suggest_http_proxy_error(e)
             if exists(tmp):
                 os.remove(tmp)
+            if isinstance(e, urllib2.HTTPError) and e.code == 500:
+                return "retry"
         finally:
             if conn:
                 conn.close()
@@ -10371,11 +10360,15 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 pass
             continue
 
-        if _attempt_download(url, path, jarEntryName):
-            return True
-        warn('Retrying download from ' + url)
-        if _attempt_download(url, path, jarEntryName):
-            return True
+        for i in range(4):
+            if i != 0:
+                time.sleep(1)
+                warn('Retry {} to download from {}'.format(i, url))
+            res = _attempt_download(url, path, jarEntryName)
+            if res is True:
+                return True
+            if res is False:
+                break
 
     if abortOnError:
         abort('Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls))
@@ -16445,7 +16438,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.3")  # GR-6802 fix
+version = VersionSpec("5.129.4")  # GR-6834
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
