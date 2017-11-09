@@ -951,9 +951,13 @@ class Distribution(Dependency):
     def localExtension(self):
         nyi('localExtension', self)
 
+    @classmethod
+    def platformName(cls):
+        return '{os}_{arch}'.format(os=get_os(), arch=get_arch())
+
     def remoteName(self):
         if self.platformDependent:
-            return '{name}_{os}_{arch}'.format(name=self.name, os=get_os(), arch=get_arch())
+            return '{name}_{platform}'.format(name=self.name, platform=self.platformName())
         return self.name
 
     def postPull(self, f):
@@ -4848,6 +4852,10 @@ class GitConfig(VC):
             abort('git tag failed: ' + str(e))
 
     @classmethod
+    def _head_to_ref(cls, head_name):
+        return 'refs/heads/{0}'.format(head_name)
+
+    @classmethod
     def set_branch(cls, vcdir, branch_name, branch_commit='HEAD', with_remote=True):
         """
         Sets branch_name to branch_commit. By using with_remote (the default) the change is
@@ -4855,7 +4863,7 @@ class GitConfig(VC):
         counterpart (if one exists))
         :param vcdir: the local git repository directory
         :param branch_name: the name the branch should have
-        :param branch_commit: the commit id the branch should point-to
+        :param branch_commit: the commit_id the branch should point-to
         :param with_remote: if True (default) the change is propagated to origin
         :return: 0 if setting branch was successful
         """
@@ -4864,23 +4872,48 @@ class GitConfig(VC):
             return 0
 
         # guaranteed to fail if branch_commit is behind its remote counterpart
-        return run(['git', 'push', 'origin', 'refs/heads/' + branch_name], nonZeroIsFatal=False, cwd=vcdir)
+        return run(['git', 'push', 'origin', cls._head_to_ref(branch_name)], nonZeroIsFatal=False, cwd=vcdir)
+
+    @classmethod
+    def get_matching_branches(cls, repository, brefs, vcdir=None):
+        """
+        Get dict of branch_name, commit_id entries for branches that match given brefs pattern.
+        If vcdir is given then command will be run as if it started in vcdir (allows to use
+        git REMOTES for repository).
+        :param repository: either URL of git repo or remote that is defined in the local repo
+        :param brefs: branch name or branch pattern
+        :param vcdir: local repo directory
+        :return: dict of branch_name, commit_id entries
+        """
+        command = ['git']
+        if vcdir:
+            command += ['-C', vcdir]
+        command += ['ls-remote', repository, cls._head_to_ref(brefs)]
+
+        result = dict()
+        try:
+            head_ref_prefix_length = len(cls._head_to_ref(''))
+            for line in subprocess.check_output(command).splitlines():
+                commit_id, branch_name = line.split('\t')
+                result[branch_name[head_ref_prefix_length:]] = commit_id
+        except subprocess.CalledProcessError:
+            pass
+
+        return result
 
     @classmethod
     def get_branch_remote(cls, remote_url, branch_name):
         """
-        Get commit id that the branch given by remote_url and branch_name points-to.
+        Get commit_id that the branch given by remote_url and branch_name points-to.
         :param remote_url: the URL of the git repo that contains the branch
         :param branch_name: the name of the branch whose commit we are interested in
-        :return: commit id the branch points-to or None
+        :return: commit_id the branch points-to or None
         """
-        def _head_to_ref(head_name):
-            return 'refs/heads/{0}'.format(head_name)
-
-        try:
-            return subprocess.check_output(['git', 'ls-remote', remote_url, _head_to_ref(branch_name)]).split('\t')[0]
-        except subprocess.CalledProcessError:
+        branches = cls.get_matching_branches(remote_url, branch_name)
+        if len(branches) != 1:
             return None
+
+        return next(iter(branches.values()))
 
     def metadir(self):
         return '.git'
@@ -5966,9 +5999,12 @@ def _deploy_binary(args, suite):
     assert exists(mxMetaJar)
     if args.all_suites:
         dists = [d for d in dists if d.exists()]
+
     for dist in dists:
         if not dist.exists():
             abort("'{0}' is not built, run 'mx build' first".format(dist.name))
+
+    platform_dependence = any(d.platformDependent for d in dists)
 
     if args.url:
         repo = Repository(None, args.repository_id, args.url, repository(args.repository_id).licenses)
@@ -5997,17 +6033,33 @@ def _deploy_binary(args, suite):
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
 
     if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
-        binary_deployed_ref = 'binary'
+        deploy_branch_name = 'binary'
+        platform_dependent_base = deploy_branch_name + '_'
+        binary_deployed_ref = platform_dependent_base + Distribution.platformName() if platform_dependence else deploy_branch_name
         deployed_rev = suite.version()
         assert deployed_rev == suite.vc.parent(suite.vc_dir), 'Version mismatch: suite.version() != suite.vc.parent(suite.vc_dir)'
-        deploy_item_msg = "'{0}'-branch to {1}".format(binary_deployed_ref, deployed_rev)
-        log("On master branch: Try setting " + deploy_item_msg)
-        retcode = GitConfig.set_branch(suite.vc_dir, binary_deployed_ref, deployed_rev, with_remote=not args.dry_run)
-        if retcode:
-            log("Updating " + deploy_item_msg + " failed (probably more recent deployment)")
-        else:
-            log("Sucessfully updated " + deploy_item_msg)
 
+        def try_remote_branch_update(branch_name):
+            deploy_item_msg = "'{0}'-branch to {1}".format(branch_name, deployed_rev)
+            log("On master branch: Try setting " + deploy_item_msg)
+            retcode = GitConfig.set_branch(suite.vc_dir, branch_name, deployed_rev)
+            if retcode:
+                log("Updating " + deploy_item_msg + " failed (probably more recent deployment)")
+            else:
+                log("Sucessfully updated " + deploy_item_msg)
+
+        try_remote_branch_update(binary_deployed_ref)
+
+        if platform_dependence:
+            log("Suite has platform_dependence: Update " + deploy_branch_name)
+            platform_dependent_branches = GitConfig.get_matching_branches('origin', platform_dependent_base + '*', vcdir=suite.vc_dir)
+            not_on_same_rev = [(branch_name, commit_id) for branch_name, commit_id in platform_dependent_branches.items() if commit_id != deployed_rev]
+            if len(not_on_same_rev):
+                log("Skip " + deploy_branch_name + " update! The following branches are not yet on " + deployed_rev + ":")
+                for branch_name, commit_id in not_on_same_rev:
+                    log("  " + branch_name + " --> " + commit_id)
+            else:
+                try_remote_branch_update(deploy_branch_name)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
     if licenses is None:
@@ -16462,7 +16514,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.5")  # GR-6855
+version = VersionSpec("5.130.0")  # GR-6827
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
