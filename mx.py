@@ -4892,10 +4892,10 @@ class GitConfig(VC):
 
         result = dict()
         try:
-            head_ref_prefix_lenght = len(cls._head_to_ref(''))
+            head_ref_prefix_length = len(cls._head_to_ref(''))
             for line in subprocess.check_output(command).splitlines():
                 commit_id, branch_name = line.split('\t')
-                result[branch_name[head_ref_prefix_lenght:]] = commit_id
+                result[branch_name[head_ref_prefix_length:]] = commit_id
         except subprocess.CalledProcessError:
             pass
 
