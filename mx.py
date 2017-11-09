@@ -3275,9 +3275,21 @@ def _urlopen(*args, **kwargs):
             return True
         return False
 
+    error500_attempts = 0
+    error500_limit = 5
+
     while True:
         try:
             return urllib2.urlopen(*args, **kwargs)
+        except (urllib2.HTTPError) as e:
+            if e.code == 500:
+                if error500_attempts < error500_limit:
+                    error500_attempts += 1
+                    url = '?' if len(args) == 0 else args[0]
+                    warn("Retrying after error reading from " + url + ": " + str(e))
+                    time.sleep(0.2)
+                    continue
+            raise
         except urllib2.URLError as e:
             if isinstance(e.reason, socket.error):
                 if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
@@ -10342,6 +10354,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
+    verify_errors = {}
     for url in urls:
         if not verifyOnly or verbose:
             log('Downloading ' + url + ' to ' + path)
@@ -10356,8 +10369,8 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 conn = _urlopen(url, timeout=10)
                 conn.close()
                 return True
-            except (IOError, socket.timeout):
-                pass
+            except (IOError, socket.timeout) as e:
+                verify_errors[url] = e
             continue
 
         for i in range(4):
@@ -10371,7 +10384,11 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 break
 
     if abortOnError:
-        abort('Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls))
+        msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
+        if verifyOnly:
+            for url, e in verify_errors.iteritems():
+                msg += '\n  ' + url + ': ' + str(e)
+        abort(msg)
     else:
         return False
 
@@ -16438,7 +16455,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.129.4")  # GR-6834
+version = VersionSpec("5.129.5")  # GR-6855
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
