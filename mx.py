@@ -170,7 +170,10 @@ _dists = dict()
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
-_mavenRepoBaseURL = "https://search.maven.org/remotecontent?filepath="
+_mavenRepoBaseURLs = [
+    "https://repo1.maven.org/maven2/",
+    "https://search.maven.org/remotecontent?filepath="
+]
 
 
 """
@@ -7065,20 +7068,24 @@ class Suite(object):
                 if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
 
-            def _maven_download_url(groupId, artifactId, version, suffix=None, baseURL=_mavenRepoBaseURL):
+            def _maven_download_urls(groupId, artifactId, version, suffix=None, baseURL=None):
+                if baseURL is None:
+                    baseURLs = _mavenRepoBaseURLs
+                else:
+                    baseURLs = [baseURL]
                 args = {
                     'groupId': groupId.replace('.', '/'),
                     'artifactId': artifactId,
                     'version': version,
                     'suffix' : '-{0}'.format(suffix) if suffix else ''
                 }
-                return "{baseURL}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(baseURL=baseURL, **args)
+                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(base=base, **args) for base in baseURLs]
 
             if path is None:
                 if not urls:
                     if maven is not None:
                         _check_maven(maven)
-                        urls = [_maven_download_url(**maven)]
+                        urls = _maven_download_urls(**maven)
                     else:
                         abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
                 if not sha1:
@@ -7095,7 +7102,7 @@ class Suite(object):
                         _check_maven(maven)
                         if 'suffix' in maven:
                             abort('Cannot download sources for "maven" library with "suffix" attribute', context)
-                        sourceUrls = [_maven_download_url(suffix='sources', **maven)]
+                        sourceUrls = _maven_download_urls(suffix='sources', **maven)
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
