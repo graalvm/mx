@@ -71,10 +71,23 @@ downstream-truffleruby-binary-truffle: {
   timelimit : "10:00"
 }
 
+nocache: {
+  environment: {
+    MX_CACHE_DIR: "/tmp/.gate_fresh_mx_cache"
+  }
+  setup : [
+    [rm, -rf, "/tmp/.gate_fresh_mx_cache"]
+  ]
+  teardown: [
+    [rm, -rf, "/tmp/.gate_fresh_mx_cache"]
+  ]
+}
+
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
+  ${downstream-truffleruby-binary-truffle} ${nocache} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle-nocache"}
 ]
