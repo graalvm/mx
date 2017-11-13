@@ -5457,7 +5457,7 @@ class BinaryVC(VC):
             sourcesPath = distribution.sourcesPath
         else:
             sourcesPath = None
-        with SafeFileCreation(path) as sfc, SafeFileCreation(sourcesPath) as sourceSfc:
+        with SafeFileCreation(path, companion_patterns=["{path}.sha1"]) as sfc, SafeFileCreation(sourcesPath, companion_patterns=["{path}.sha1"]) as sourceSfc:
             self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), sfc.tmpPath, sourcePath=sourceSfc.tmpPath, extension=distribution.remoteExtension())
             distribution.postPull(sfc.tmpPath)
         distribution.notify_updated()
@@ -11118,8 +11118,9 @@ class SafeFileCreation(object):
         shutil.copy(src, sfc.tmpPath)
 
     """
-    def __init__(self, path):
+    def __init__(self, path, companion_patterns=None):
         self.path = path
+        self.companion_patterns = companion_patterns or []
 
     def __enter__(self):
         if self.path is not None:
@@ -11140,16 +11141,21 @@ class SafeFileCreation(object):
         # Windows will complain about tmp being in use by another process
         # when calling os.rename if we don't close the file descriptor.
         os.close(self.tmpFd)
-        if exists(self.tmpPath):
-            if exc_value:
-                # If an error occurred, delete the temp file
-                # instead of renaming it
-                os.remove(self.tmpPath)
-            else:
-                # Correct the permissions on the temporary file which is created with restrictive permissions
-                os.chmod(self.tmpPath, 0o666 & ~currentUmask)
-                # Atomic if self.path does not already exist.
-                os.rename(self.tmpPath, self.path)
+
+        def _handle_file(tmpPath, path):
+            if exists(tmpPath):
+                if exc_value:
+                    # If an error occurred, delete the temp file
+                    # instead of renaming it
+                    os.remove(tmpPath)
+                else:
+                    # Correct the permissions on the temporary file which is created with restrictive permissions
+                    os.chmod(tmpPath, 0o666 & ~currentUmask)
+                    # Atomic if self.path does not already exist.
+                    os.rename(tmpPath, path)
+        _handle_file(self.tmpPath, self.path)
+        for companion_pattern in self.companion_patterns:
+            _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
 
 
 class Archiver(SafeFileCreation):
