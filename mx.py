@@ -5457,8 +5457,9 @@ class BinaryVC(VC):
             sourcesPath = distribution.sourcesPath
         else:
             sourcesPath = None
-        self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), path, sourcePath=sourcesPath, extension=distribution.remoteExtension())
-        distribution.postPull(path)
+        with SafeFileCreation(path) as sfc, SafeFileCreation(sourcesPath) as sourceSfc:
+            self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), sfc.tmpPath, sourcePath=sourceSfc.tmpPath, extension=distribution.remoteExtension())
+            distribution.postPull(sfc.tmpPath)
         distribution.notify_updated()
 
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
@@ -11102,6 +11103,7 @@ def pylint(args):
 
     return 0
 
+
 class SafeFileCreation(object):
     """
     Context manager for creating a file that tries hard to handle races between processes/threads
@@ -11120,15 +11122,21 @@ class SafeFileCreation(object):
         self.path = path
 
     def __enter__(self):
-        path_dir = dirname(self.path)
-        ensure_dir_exists(path_dir)
-        # Temporary file must be on the same file system as self.path for os.rename to be atomic.
-        fd, tmp = tempfile.mkstemp(suffix='', prefix=basename(self.path) + '.', dir=path_dir)
-        self.tmpFd = fd
-        self.tmpPath = tmp
+        if self.path is not None:
+            path_dir = dirname(self.path)
+            ensure_dir_exists(path_dir)
+            # Temporary file must be on the same file system as self.path for os.rename to be atomic.
+            fd, tmp = tempfile.mkstemp(suffix=basename(self.path), dir=path_dir)
+            self.tmpFd = fd
+            self.tmpPath = tmp
+        else:
+            self.tmpFd = None
+            self.tmpPath = None
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if self.path is None:
+            return
         # Windows will complain about tmp being in use by another process
         # when calling os.rename if we don't close the file descriptor.
         os.close(self.tmpFd)
@@ -11142,6 +11150,7 @@ class SafeFileCreation(object):
                 os.chmod(self.tmpPath, 0o666 & ~currentUmask)
                 # Atomic if self.path does not already exist.
                 os.rename(self.tmpPath, self.path)
+
 
 class Archiver(SafeFileCreation):
     """
