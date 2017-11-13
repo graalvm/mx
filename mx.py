@@ -1629,6 +1629,7 @@ class NativeTARDistribution(Distribution):
             with tarfile.open(tarfilename, 'r:') as tar:
                 logv('Extracting {} to {}'.format(tarfilename, output))
                 tar.extractall(output)
+        return tarfilename
 
     def prePush(self, f):
         tgz = f + '.gz'
@@ -5459,7 +5460,10 @@ class BinaryVC(VC):
             sourcesPath = None
         with SafeFileCreation(path, companion_patterns=["{path}.sha1"]) as sfc, SafeFileCreation(sourcesPath, companion_patterns=["{path}.sha1"]) as sourceSfc:
             self._pull_artifact(metadata, groupId, artifactId, distribution.remoteName(), sfc.tmpPath, sourcePath=sourceSfc.tmpPath, extension=distribution.remoteExtension())
-            distribution.postPull(sfc.tmpPath)
+            final_path = distribution.postPull(sfc.tmpPath)
+        if final_path:
+            os.rename(final_path, distribution.path)
+        assert exists(distribution.path)
         distribution.notify_updated()
 
     def pull(self, vcdir, rev=None, update=True, abortOnError=True):
