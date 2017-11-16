@@ -5891,7 +5891,7 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None):
+def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositoryId, repositoryUrl, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
     assert exists(jarPath)
     assert not srcPath or exists(srcPath)
 
@@ -5936,6 +5936,11 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
 
     if description:
         cmd.append('-Ddescription=' + description)
+
+    if mapFile:
+        cmd.append('-Dfiles=' + mapFile)
+        cmd.append('-Dclassifiers=proguard')
+        cmd.append('-Dtypes=map')
 
     log('Deploying {0}:{1}...'.format(groupId, artifactId))
     if dryRun:
@@ -6109,8 +6114,13 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
                 if emptyJavadoc:
                     javadocPath = None
                     warn('Javadoc for {0} was empty'.format(dist.name))
+
+            mapFile = None
+            if dist.is_stripped():
+                mapFile = dist.strip_mapping_file()
+
             _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
-                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath)
+                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
             os.unlink(pomFile)
             if javadocPath:
                 os.unlink(javadocPath)
