@@ -6038,7 +6038,7 @@ def _deploy_binary(args, suite):
         if not dists:
             return
 
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses)
+    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses, deployMapFiles=True)
     if not args.platform_dependent:
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
 
@@ -6071,7 +6071,7 @@ def _deploy_binary(args, suite):
             else:
                 try_remote_branch_update(deploy_branch_name)
 
-def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False):
+def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
     if licenses is None:
         licenses = []
     for dist in dists:
@@ -6116,7 +6116,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
                     warn('Javadoc for {0} was empty'.format(dist.name))
 
             mapFile = None
-            if dist.is_stripped():
+            if deployMapFiles and dist.is_stripped():
                 mapFile = dist.strip_mapping_file()
 
             _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repository_id, url, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
@@ -8056,7 +8056,7 @@ def repository(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
     r = _repositories.get(name)
     if r is None and fatalIfMissing:
-        abort('repository named ' + name + ' not found', context=context)
+        abort('repository named ' + name + ' not found among ' + str(_repositories.keys()), context=context)
     return r
 
 def splitqualname(name):
