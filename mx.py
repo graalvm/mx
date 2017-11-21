@@ -4810,8 +4810,12 @@ class GitConfig(VC):
         :rtype: str
         """
         try:
-            rev = subprocess.check_output(['git', 'show', '-s', '--format="%H"', commitish], cwd=vcdir)
-            return rev.strip()
+            if not commitish.endswith('^{commit}'):
+                commitish += '^{commit}'
+            rev = subprocess.check_output(['git', 'show', '-s', '--format=%H', commitish], cwd=vcdir)
+            res = rev.strip()
+            assert re.match(r'[0-9a-f]{40}', res) is not None, 'output is not a commit hash: ' + res
+            return res
         except subprocess.CalledProcessError as e:
             if abortOnError:
                 abort('git show failed: ' + str(e))
@@ -16533,7 +16537,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.130.1")  # binary fixes
+version = VersionSpec("5.131.0")  # GR-7059
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
