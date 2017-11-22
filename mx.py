@@ -9124,7 +9124,7 @@ def is_interactive():
         return False
     return not sys.stdin.closed and sys.stdin.isatty()
 
-def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
+def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source=None):
     filtered = []
     for candidate in candidates:
         try:
@@ -9132,8 +9132,15 @@ def _filtered_jdk_configs(candidates, versionCheck, warn=False, source=None):
             if versionCheck(config.version):
                 filtered.append(config)
         except JDKConfigException as e:
-            if warn and source:
-                log('Path in ' + source + "' is not pointing to a JDK (" + e.message + ")")
+            if warnInvalidJDK and source:
+                message = 'Path in ' + source + ' is not pointing to a JDK (' + e.message + ')'
+                try:
+                    candidate = join(candidate, 'Contents', 'Home')
+                    JDKConfig(candidate)
+                    message += '. Set ' + source + ' to ' + candidate + ' instead.'
+                except JDKConfigException:
+                    pass
+                warn(message)
     return filtered
 
 def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
@@ -16537,7 +16544,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.0")  # GR-7059
+version = VersionSpec("5.131.1")  # GR-7107
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
