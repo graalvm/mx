@@ -13640,10 +13640,15 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         moduleXml.element('exclude-output')
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
+        for d in os.listdir(s.mxDir):
+            directory = join(s.mxDir, d)
+            if isdir(directory) and dir_contains_files_recursively(directory, r".*\.java"):
+                moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
-        processes_suites = set([s.name])
+        processes_suites = {s.name}
+
         def _mx_projects_suite(visited_suite, suite_import):
             if suite_import.name in processes_suites:
                 return
@@ -13967,6 +13972,15 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
 
         # TODO look into copyright settings
 
+
+def dir_contains_files_recursively(directory, file_pattern):
+    for file_name in os.listdir(directory):
+        file_path = join(directory, file_name)
+        found = dir_contains_files_recursively(file_path, file_pattern) if isdir(file_path) \
+            else re.match(file_pattern, file_name)
+        if found:
+            return True
+    return False
 
 def ideclean(args):
     """remove all IDE project configurations"""
@@ -16544,7 +16558,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.1")  # GR-7107
+version = VersionSpec("5.131.2")  # Team 17
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
