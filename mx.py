@@ -7829,6 +7829,9 @@ class XMLDoc(xml.dom.minidom.Document):
     def xml(self, indent='', newl='', escape=False, standalone=None):
         assert self.current == self
         result = self.toprettyxml(indent, newl, encoding="UTF-8")
+        if not result.startswith('<?xml'):
+            # include xml tag if it's not already included
+            result = '<?xml version="1.0" encoding="UTF-8"?>\n' + result
         if escape:
             entities = {'"':  "&quot;", "'":  "&apos;", '\n': '&#10;'}
             result = xml.sax.saxutils.escape(result, entities)
@@ -13516,6 +13519,8 @@ def _intellij_library_file_name(library_name):
 def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
     libraries = set()
     jdk_libraries = set()
+    all_modules = set()
+    generated_modules = set()
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
@@ -13546,10 +13551,11 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
     if java_modules:
         assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
-        for p in s.projects_recursive():
+        for p in s.projects_recursive() + _mx_suite.projects_recursive():
             if not p.isJavaProject():
                 continue
 
+            generated_modules.add(p)
             jdk = get_jdk(p.javaCompliance)
             assert jdk
 
@@ -13596,6 +13602,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                     libraries.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 elif dep.isJavaProject():
+                    all_modules.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
                 elif dep.isJdkLibrary():
                     jdk_libraries.add(dep)
@@ -13639,6 +13646,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             if not module_files_only:
                 moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+
+    if len(all_modules - generated_modules) != 0:
+        abort('Modules seen and modules described disagree: {}'.format(all_modules - generated_modules))
 
     python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
 
@@ -13844,6 +13854,10 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 custom_eclipse_exe = get_env('ECLIPSE_EXE')
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
+                    if get_os() == 'darwin':
+                        custom_eclipse = join(dirname(custom_eclipse), 'Eclipse', 'plugins')
+                    if not exists(custom_eclipse_exe):
+                        abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
                     miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
                     miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
@@ -14085,7 +14099,7 @@ def fsckprojects(args):
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
         if exists(librariesDirectory):
             neededLibraries = set()
-            for p in suite.projects_recursive():
+            for p in suite.projects_recursive() + _mx_suite.projects_recursive():
                 if not p.isJavaProject():
                     continue
                 def processDep(dep, edge):
