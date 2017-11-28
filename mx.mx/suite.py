@@ -184,14 +184,6 @@ suite = {
       }
     },
 
-    "JMH": {
-      "sha1": "df111ae8e92bfd84fe135b844c4e3a910e1b8497",
-      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12.jar"],
-      "sourceSha1": "b8c0f381c83c08b36244ab116025f87841e6b251",
-      "sourceUrls": ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
-      "licence": "GPLv2-CPE",
-    },
-
     "JACKPOT" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jackpot-8.1-20151011.220626.jar",
