@@ -251,17 +251,6 @@ suite = {
 
   "projects" : {
 
-    "com.oracle.mxtool.bench" : {
-      "subDir" : "java",
-      "sourceDirs" : ["src"],
-      "dependencies" : [
-        "JMH",
-      ],
-      "javaCompliance" : "1.8",
-      "annotationProcessors" : ["JMH"],
-      "findbugsIgnoresGenerated" : True,
-    },
-
     "com.oracle.mxtool.jmh_1_18" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
@@ -328,11 +317,6 @@ suite = {
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
       "dependencies" : ["com.oracle.mxtool.jmh_1_18"],
-    },
-
-    "MX_MICRO_BENCHMARKS_LEGACY" : {
-      "subDir" : "java",
-      "dependencies" : ["com.oracle.mxtool.bench"],
     }
   },
 }
