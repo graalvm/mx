@@ -16580,7 +16580,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.3")  # Relax sanity
+version = VersionSpec("5.132.0")  # Bye, bye jmh-runner!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
