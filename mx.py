@@ -13648,7 +13648,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if len(all_modules - generated_modules) != 0:
-        abort('Modules seen and modules described disagree: {}'.format(all_modules - generated_modules))
+        warn('Modules seen and modules described disagree: {}'.format(all_modules - generated_modules))
 
     python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
 
@@ -16582,7 +16582,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.2")  # Team 17
+version = VersionSpec("5.131.3")  # Relax sanity
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
