@@ -184,14 +184,6 @@ suite = {
       }
     },
 
-    "JMH": {
-      "sha1": "df111ae8e92bfd84fe135b844c4e3a910e1b8497",
-      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12.jar"],
-      "sourceSha1": "b8c0f381c83c08b36244ab116025f87841e6b251",
-      "sourceUrls": ["https://lafo.ssw.uni-linz.ac.at/pub/jmh/jmh-runner-1.12-sources.jar"],
-      "licence": "GPLv2-CPE",
-    },
-
     "JACKPOT" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jackpot-8.1-20151011.220626.jar",
@@ -250,17 +242,6 @@ suite = {
   },
 
   "projects" : {
-
-    "com.oracle.mxtool.bench" : {
-      "subDir" : "java",
-      "sourceDirs" : ["src"],
-      "dependencies" : [
-        "JMH",
-      ],
-      "javaCompliance" : "1.8",
-      "annotationProcessors" : ["JMH"],
-      "findbugsIgnoresGenerated" : True,
-    },
 
     "com.oracle.mxtool.jmh_1_18" : {
       "subDir" : "java",
@@ -328,11 +309,6 @@ suite = {
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
       "dependencies" : ["com.oracle.mxtool.jmh_1_18"],
-    },
-
-    "MX_MICRO_BENCHMARKS_LEGACY" : {
-      "subDir" : "java",
-      "dependencies" : ["com.oracle.mxtool.bench"],
     }
   },
 }

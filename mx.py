@@ -72,7 +72,6 @@ import mx_sigtest
 import mx_gate
 import mx_jackpot
 import mx_compat
-import mx_microbench
 import mx_urlrewrites
 import mx_benchmark
 import mx_downstream
@@ -15751,7 +15750,6 @@ _commands = {
     'javap': [javap, '[options] <class name patterns>'],
     'maven-deploy' : [maven_deploy, ''],
     'maven-install' : [maven_install, ''],
-    'microbench' : [mx_microbench.microbench, '[VM options] [-- [JMH options]]'],
     'minheap' : [run_java_min_heap, ''],
     'netbeansinit': [netbeansinit, ''],
     'projectgraph': [projectgraph, ''],
@@ -16582,7 +16580,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.131.3")  # Relax sanity
+version = VersionSpec("5.132.0")  # Bye, bye jmh-runner!
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

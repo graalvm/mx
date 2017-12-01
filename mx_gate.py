@@ -29,7 +29,6 @@ from os.path import join, exists
 from argparse import ArgumentParser
 
 import mx
-import mx_microbench
 import sys
 
 """
@@ -471,10 +470,6 @@ def _run_gate(cleanArgs, args, tasks):
     with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
         if t:
             mx.command_function('verifylibraryurls')([])
-
-    if mx._primary_suite is mx._mx_suite:
-        with Task('TestJMH', tasks, tags=[Tags.fullbuild]) as t:
-            if t: mx_microbench.get_microbenchmark_executor().microbench(['--', '-foe', 'true', 'com.oracle.mxtool.bench.TestJMH'])
 
     if exists('jacoco.exec'):
         os.unlink('jacoco.exec')
