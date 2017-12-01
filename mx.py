@@ -13484,8 +13484,13 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
+    declared_modules = set()
+    referenced_modules = set()
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
+        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
+
+    if len(referenced_modules - declared_modules) != 0:
+        abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
 
     if mx_python_modules:
         # mx module
@@ -13515,11 +13520,9 @@ def _intellij_library_file_name(library_name):
     return library_name.replace('.', '_').replace('-', '_') + '.xml'
 
 
-def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
+def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
     libraries = set()
     jdk_libraries = set()
-    all_modules = set()
-    generated_modules = set()
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
@@ -13554,7 +13557,6 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             if not p.isJavaProject():
                 continue
 
-            generated_modules.add(p)
             jdk = get_jdk(p.javaCompliance)
             assert jdk
 
@@ -13601,7 +13603,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
                     libraries.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 elif dep.isJavaProject():
-                    all_modules.add(dep)
+                    referenced_modules.add(dep.name)
                     moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
                 elif dep.isJdkLibrary():
                     jdk_libraries.add(dep)
@@ -13643,11 +13645,9 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
             if not module_files_only:
+                declared_modules.add(p.name)
                 moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
-
-    if len(all_modules - generated_modules) != 0:
-        warn('Modules seen and modules described disagree: {}'.format(all_modules - generated_modules))
 
     python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
 
@@ -13676,6 +13676,7 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': basename(dep_suite.mxDir)})
             moduleFile = join(dep_suite.mxDir, basename(dep_suite.mxDir) + '.iml')
             if not module_files_only:
+                declared_modules.add(basename(dep_suite.mxDir))
                 moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
             dep_suite.visit_imports(_mx_projects_suite)
@@ -13686,9 +13687,11 @@ def _intellij_suite(args, s, refreshOnly=False, mx_python_modules=False, java_mo
         moduleFile = join(s.mxDir, basename(s.mxDir) + '.iml')
         update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
         if not module_files_only:
+            declared_modules.add(basename(s.mxDir))
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
+            declared_modules.add(basename(_mx_suite.dir))
             mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
             mxModuleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + mxModuleFilePath, 'filepath': mxModuleFilePath})
@@ -16580,7 +16583,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.132.0")  # Bye, bye jmh-runner!
+version = VersionSpec("5.132.1")  # mx sanity
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
