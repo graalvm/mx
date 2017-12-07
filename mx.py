@@ -58,6 +58,7 @@ import difflib
 import glob
 import urllib2, urlparse
 import filecmp
+import json
 from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
@@ -6710,6 +6711,45 @@ class Suite(object):
             context = "suite import '" + _suite.get('name', '<undefined>') + "'"
             os_arch = Suite._pop_os_arch(_suite, context)
             Suite._merge_os_arch_attrs(_suite, os_arch, context)
+
+        (jsonifiable, errorMessage) = self._is_jsonifiable(modulePath)
+        if not jsonifiable:
+            msg = "Cannot parse file {}. Please make sure that this file only contains dicts and arrays. {}".format(modulePath, errorMessage)
+            if self.getMxCompatibility().requireJsonifiableSuite():
+                abort(msg)
+            else:
+                warn(msg)
+
+    def _is_jsonifiable(self, suiteFile):
+        """Other tools require the suite.py files to be parseable without running a python interpreter.
+        Therefore suite.py file must consist out of JSON like dict, array, string, integer and boolean
+        structures. Function calls, string concatenations and other python expressions are not allowed."""
+        with open(suiteFile, "r") as f:
+            suiteContents = f.read()
+        try:
+            result = re.match("\\s*suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
+            part = result.group(1)
+            stack = 0
+            endIdx = 0
+            for c in part:
+                if c == "{":
+                    stack += 1
+                elif c == "}":
+                    stack -= 1
+                endIdx += 1
+                if stack == 0:
+                    break
+            part = part[:endIdx]
+            part = re.sub("True", "true", part)
+            part = re.sub("False", "false", part)
+            part = re.sub("(\\s*)#.*", "\\1", part)
+            part = re.sub(",\\s*(\\]|\\})", "\\1", part)
+            part = re.sub("\"\"\"", "\"", part)
+            part = re.sub("'''", "\"", part)
+            json.loads(part)
+            return (True, None)
+        except:
+            return (False, sys.exc_info()[1])
 
     def _register_url_rewrites(self):
         urlrewrites = self._get_early_suite_dict_property('urlrewrites')
@@ -16583,7 +16623,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.132.1")  # mx sanity
+version = VersionSpec("5.133.0")  # GR-7387: Check if suite.py is jsonifiable.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

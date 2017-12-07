@@ -124,6 +124,9 @@ class MxCompatibility500(object):
         """
         return True
 
+    def requireJsonifiableSuite(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -271,6 +274,14 @@ class MxCompatibility51247(MxCompatibility51150):#pylint: disable=too-many-ances
 
     def overwriteProjectAttributes(self):
         return False
+
+class MxCompatibility51330(MxCompatibility51247):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.133.0")
+
+    def requireJsonifiableSuite(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()
