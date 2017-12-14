@@ -16624,7 +16624,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.133.0")  # GR-7387: Check if suite.py is jsonifiable.
+version = VersionSpec("5.134.0")  # [GR-7511] Add support for *.properties files in mx_binary_distribution_jar.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
