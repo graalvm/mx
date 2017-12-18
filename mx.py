@@ -7651,11 +7651,12 @@ class SourceSuite(Suite):
         detect access to private (non-distribution) state
         """
         mxMetaJar = self.mx_binary_distribution_jar_path()
-        pyfiles = glob.glob(join(self.mxDir, '*.py'))
+        mxfiles = glob.glob(join(self.mxDir, '*.py'))
+        mxfiles += glob.glob(join(self.mxDir, '*.properties'))
         with Archiver(mxMetaJar) as arc:
-            for pyfile in pyfiles:
+            for mxfile in mxfiles:
                 mxDirBase = basename(self.mxDir)
-                arc.zf.write(pyfile, arcname=join(mxDirBase, basename(pyfile)))
+                arc.zf.write(mxfile, arcname=join(mxDirBase, basename(mxfile)))
 
     def eclipse_settings_sources(self):
         """
@@ -16623,7 +16624,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.133.0")  # GR-7387: Check if suite.py is jsonifiable.
+version = VersionSpec("5.134.0")  # [GR-7511] Add support for *.properties files in mx_binary_distribution_jar.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
