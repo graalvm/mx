@@ -76,7 +76,6 @@ def get_parser(name):
     """
     return parsers[name].parser
 
-
 class VmRegistry(object):
     def __init__(self, vm_type_name, short_vm_type_name=None, default_vm=None, known_host_registries=None):
         """
@@ -113,6 +112,10 @@ class VmRegistry(object):
             return self.default_vm(config, self._vms)
         return None
 
+    def get_available_vm_configs_help(self):
+        avail = ['--{}={} --{}-config={}'.format(self.short_vm_type_name, vm.name(), self.short_vm_type_name, vm.config_name()) for vm in self._vms.values()]
+        return 'The following {} configurations are available:\n  {}'.format(self.vm_type_name, '\n  '.join(avail))
+
     def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
@@ -136,7 +139,7 @@ class VmRegistry(object):
                          self._vms_priority[(vm, config)]
                          ) for (vm, config) in self._vms if vm_config is None or config == vm_config]
                 if not vms:
-                    mx.abort("Could not find a {} to default to.".format(self.vm_type_name))
+                    mx.abort("Could not find a {} to default to.\n{avail}".format(self.vm_type_name, avail=self.get_available_vm_configs_help()))
                 vms.sort(key=lambda t: t[1:], reverse=True)
                 vm = vms[0][0]
                 if len(vms) == 1:
@@ -155,7 +158,7 @@ class VmRegistry(object):
                             self._vms_priority[(vm, config)]
                             ) for (j, config) in self._vms if j == vm]
             if not vm_configs:
-                mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{}'.".format(vm=vm, vm_type=self.vm_type_name))
+                mx.abort("Could not find a {vm_type} config to default to for {vm_type} '{vm}'.\n{avail}".format(vm=vm, vm_type=self.vm_type_name, avail=self.get_available_vm_configs_help()))
             vm_configs.sort(key=lambda t: t[1:], reverse=True)
             vm_config = vm_configs[0][0]
             if len(vm_configs) == 1:
@@ -181,12 +184,15 @@ class VmRegistry(object):
         self._vms_suite[key] = suite
         self._vms_priority[key] = priority
 
+    
     def get_vm(self, vm_name, vm_config):
         key = (vm_name, vm_config)
         if key not in self._vms:
-            mx.abort("{} and config '{}' do not exist.".format(self.vm_type_name, key))
+            mx.abort("{} and config '{}' do not exist.\n{}".format(self.vm_type_name, key, self.get_available_vm_configs_help()))
         return self._vms[key]
 
+    def get_vms(self):
+        return self._vms.values()
 
 # JMH suite parsers.
 add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
@@ -368,6 +374,12 @@ def add_bm_suite(suite, mxsuite=None):
 def bm_suite_valid_keys():
     return sorted([k for k, v in _bm_suites.items() if v])
 
+def vm_registries():
+    res = set()
+    for bm_suite in _bm_suites.itervalues():
+        if isinstance(bm_suite, VmBenchmarkSuite):
+            res.add(bm_suite.get_vm_registry())
+    return res
 
 class Rule(object):
     # the maximum size of a string field
@@ -1663,15 +1675,25 @@ class BenchmarkExecutor(object):
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
         parser.add_argument(
             "--list", default=None, action="store_true",
-            help="When set, just prints the list of all available benchmark suites or all benchmarks available in a suite.")
+            help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
+        suite = None
         if mxBenchmarkArgs.benchmark:
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
+        def _print_available_vms():
+            if suite:
+                if isinstance(suite, VmBenchmarkSuite):
+                    vmRegistries = [suite.get_vm_registry()]
+            else:
+                vmRegistries = vm_registries()
+            for vmregistry in vmRegistries:
+                print "\n{}".format(vmregistry.get_available_vm_configs_help())
+            
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print "The following benchmarks are available in suite {}:\n".format(suite.name())
@@ -1681,6 +1703,7 @@ class BenchmarkExecutor(object):
                 print "The following benchmark suites are available:\n"
                 for name in bm_suite_valid_keys():
                     print "  " + name
+            _print_available_vms()
             return 0
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
@@ -1689,6 +1712,7 @@ class BenchmarkExecutor(object):
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
                     print entry.description
                     entry.parser.print_help()
+            _print_available_vms()
             return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()
