@@ -184,7 +184,6 @@ class VmRegistry(object):
         self._vms_suite[key] = suite
         self._vms_priority[key] = priority
 
-    
     def get_vm(self, vm_name, vm_config):
         key = (vm_name, vm_config)
         if key not in self._vms:
@@ -1685,25 +1684,31 @@ class BenchmarkExecutor(object):
         if mxBenchmarkArgs.benchmark:
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
-        def _print_available_vms():
-            if suite:
-                if isinstance(suite, VmBenchmarkSuite):
-                    vmRegistries = [suite.get_vm_registry()]
-            else:
-                vmRegistries = vm_registries()
-            for vmregistry in vmRegistries:
-                print "\n{}".format(vmregistry.get_available_vm_configs_help())
-            
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print "The following benchmarks are available in suite {}:\n".format(suite.name())
                 for name in suite.benchmarkList(bmSuiteArgs):
                     print "  " + name
+                if isinstance(suite.get_vm_registry(), VmBenchmarkSuite):
+                    print "\n{}".format(suite.get_vm_registry().get_available_vm_configs_help())
             else:
-                print "The following benchmark suites are available:\n"
-                for name in bm_suite_valid_keys():
-                    print "  " + name
-            _print_available_vms()
+                vmregToSuites = {}
+                noVmRegSuites = []
+                for bm_suite_name, bm_suite in sorted([(k, v) for k, v in _bm_suites.items() if v]):
+                    if isinstance(bm_suite, VmBenchmarkSuite):
+                        vmreg = bm_suite.get_vm_registry()
+                        vmregToSuites.setdefault(vmreg, []).append(bm_suite_name)
+                    else:
+                        noVmRegSuites.append(bm_suite_name)
+                for vmreg, bm_suite_names in vmregToSuites.iteritems():
+                    print "\nThe following {} benchmark suites are available:\n".format(vmreg.vm_type_name)
+                    for name in bm_suite_names:
+                        print "  " + name
+                    print "\n{}".format(vmreg.get_available_vm_configs_help())
+                if noVmRegSuites:
+                    print "\nThe following non-VM benchmark suites are available:\n"
+                    for name in noVmRegSuites:
+                        print "  " + name
             return 0
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
@@ -1712,7 +1717,8 @@ class BenchmarkExecutor(object):
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
                     print entry.description
                     entry.parser.print_help()
-            _print_available_vms()
+            for vmreg in vm_registries():
+                print "\n{}".format(vmreg.get_available_vm_configs_help())
             return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()
