@@ -1610,7 +1610,7 @@ class BenchmarkExecutor(object):
                 difference = list(set(requested_benchmarks) - set(all_benchmarks))
                 plural = "" if len(difference) == 1 else "s"
                 mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
-            return (suite, [[b] for b in all_benchmarks if (b in requested_benchmarks)])
+            return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
         elif benchspec is "":
             return (suite, [None])
         else:
