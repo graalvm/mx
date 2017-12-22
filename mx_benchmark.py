@@ -1603,6 +1603,14 @@ class BenchmarkExecutor(object):
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, bm_suite_valid_keys()))
         if benchspec is "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
+        elif benchspec.startswith("*[") and benchspec.endswith("]"):
+            all_benchmarks = suite.benchmarkList(bmSuiteArgs)
+            requested_benchmarks = benchspec[2:-1].split(",")
+            if not set(requested_benchmarks) < set(all_benchmarks):
+                difference = list(set(requested_benchmarks) - set(all_benchmarks))
+                plural = "" if len(difference) == 1 else "s"
+                mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
+            return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
         elif benchspec is "":
             return (suite, [None])
         else:
@@ -1814,6 +1822,8 @@ def benchmark(args):
             benchmarks must be executed as part of one run. If `benchName` starts with
             `~`, then all the specified benchmarks are excluded and the unspecified
             benchmarks are executed as part of one run.
+            If a wildcard with a `*[bench1,bench2,...]` list is specified,
+            then only the subset of the benchmarks from the list is run.
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Path to the file into which to dump the benchmark results.
