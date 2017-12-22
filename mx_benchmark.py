@@ -1603,6 +1603,9 @@ class BenchmarkExecutor(object):
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are {1}".format(suitename, bm_suite_valid_keys()))
         if benchspec is "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
+        elif benchspec.startswith("*[") and benchspec.endswith("]"):
+            benchlist = benchspec[2:-1].split(",")
+            return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs) if (b in benchlist)])
         elif benchspec is "":
             return (suite, [None])
         else:
@@ -1814,6 +1817,8 @@ def benchmark(args):
             benchmarks must be executed as part of one run. If `benchName` starts with
             `~`, then all the specified benchmarks are excluded and the unspecified
             benchmarks are executed as part of one run.
+            If a wildcard with a `*[bench1,bench2,...]` list is specified,
+            then only the subset of the benchmarks from the list is run.
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Path to the file into which to dump the benchmark results.
