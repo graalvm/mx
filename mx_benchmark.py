@@ -804,7 +804,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             if compiled(pat).search(out):
                 flaky = True
         if not flaky:
-            if retcode:
+            if retcode is not None:
                 if not self.validateReturnCode(retcode):
                     self.repairDatapointsAndFail(benchmarks, bmSuiteArgs, datapoints,
                         "Benchmark failed, exit code: {0}".format(retcode))
@@ -932,7 +932,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             for guest_reg in reg.get_known_guest_registries():
                 _acc(guest_reg)
         _acc(self.get_vm_registry())
-        return names
+        return super(VmBenchmarkSuite, self).parserNames() + names
 
     def vmAndRunArgs(self, bmSuiteArgs):
         return splitArgs(bmSuiteArgs, "--")
@@ -1044,6 +1044,7 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
     def before(self, bmSuiteArgs):
+        super(JavaBenchmarkSuite, self).before(bmSuiteArgs)
         with mx.DisableJavaDebugging():
             self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
 
