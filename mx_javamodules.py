@@ -365,6 +365,15 @@ def make_java_module(dist, jdk):
                 for arcname in names:
                     if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                         service = arcname[len('META-INF/services/'):]
+
+                        # While a META-INF provider configuration file must use a fully qualified binary
+                        # name[1] of the service, a provides directive in a module descriptor must use
+                        # the fully qualified non-binary name[2] of the service.
+                        #
+                        # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
+                        # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
+                        service = service.replace('$', '.')
+
                         assert '/' not in service
                         provides.setdefault(service, set()).update(zf.read(arcname).splitlines())
                         # Service types defined in the module are assumed to be used by the module
