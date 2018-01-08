@@ -531,8 +531,7 @@ public class CheckCopyright {
         }
 
         /**
-         * Process all the changeset data, storing in {@outMap}. Return updated value of
-         * {@code ix}.
+         * Process all the changeset data, storing in {@outMap}. Return updated value of {@code ix}.
          */
         private static int getChangeset(List<String> logInfo, int ixx, Map<String, String> outMap) {
             int ix = ixx;
@@ -743,8 +742,7 @@ public class CheckCopyright {
                     System.out.print("file " + fileName + " has missing copyright");
                     if (FIX.getValue()) {
                         final FileOutputStream os = new FileOutputStream(file);
-                        os.write(CopyrightHandler.getCopyrightText(fileName)
-                                        .getBytes());
+                        os.write(CopyrightHandler.getCopyrightText(fileName).getBytes());
                         os.write(fileContentBytes);
                         os.close();
                         System.out.println("...fixed");
