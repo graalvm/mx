@@ -5452,8 +5452,10 @@ class BinaryVC(VC):
 
     def getDistribution(self, vcdir, distribution):
         suiteName = basename(vcdir)
-        if not distribution.needsUpdate(TimeStampFile(join(vcdir, _mx_binary_distribution_version(suiteName)), followSymlinks=False)):
+        reason = distribution.needsUpdate(TimeStampFile(join(vcdir, _mx_binary_distribution_version(suiteName)), followSymlinks=False))
+        if not reason:
             return
+        log('Updating {} [{}]'.format(distribution, reason))
         metadata = self._readMetadata(vcdir)
         artifactId = distribution.maven_artifact_id()
         groupId = distribution.maven_group_id()
@@ -16627,7 +16629,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.135.1")  # [GR-7546] Jsonifiable: Allow comments in file header of suite.py.
+version = VersionSpec("5.135.2")  # GR-7671
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
