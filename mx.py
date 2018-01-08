@@ -6727,7 +6727,7 @@ class Suite(object):
         with open(suiteFile, "r") as f:
             suiteContents = f.read()
         try:
-            result = re.match("\\s*suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
+            result = re.match(".*?suite\\s*=\\s*(\\{.*)", suiteContents, re.DOTALL)
             part = result.group(1)
             stack = 0
             endIdx = 0
@@ -6742,10 +6742,13 @@ class Suite(object):
             part = part[:endIdx]
             part = re.sub("True", "true", part)
             part = re.sub("False", "false", part)
-            part = re.sub("(\\s*)#.*", "\\1", part)
+            part = re.sub("(.*?)#.*", "\\1", part)
+            def python_to_json_string(m):
+                return "\"" + m.group(1).replace("\n", "\\n") + "\""
             part = re.sub(",\\s*(\\]|\\})", "\\1", part)
-            part = re.sub("\"\"\"", "\"", part)
-            part = re.sub("'''", "\"", part)
+            part = re.sub("\"\"\"(.*?)\"\"\"", python_to_json_string, part, flags=re.DOTALL)
+            part = re.sub("'''(.*?)'''", python_to_json_string, part, flags=re.DOTALL)
+            part = re.sub("'(.*?)'", python_to_json_string, part, flags=re.DOTALL)
             json.loads(part)
             return (True, None)
         except:
@@ -16624,7 +16627,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.135.0")  # GR-7630
+version = VersionSpec("5.135.1")  # [GR-7546] Jsonifiable: Allow comments in file header of suite.py.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
