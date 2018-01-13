@@ -2614,6 +2614,9 @@ class JavacLikeCompiler(JavaCompiler):
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
         if compliance >= '1.8':
+            """ java 9 and later uses javac to generate native headers """
+            javacArgs += ['-h', outputDir]
+        if compliance >= '1.8':
             javacArgs.append('-parameters')
         if processorPath:
             ensure_dir_exists(sourceGenDir)
