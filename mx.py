@@ -2613,6 +2613,9 @@ class JavacLikeCompiler(JavaCompiler):
     def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
+        if jdk.javaCompliance >= "9":
+            # use javac to generate native headers
+            javacArgs += ['-h', outputDir]
         if compliance >= '1.8':
             javacArgs.append('-parameters')
         if processorPath:
