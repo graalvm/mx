@@ -4700,8 +4700,8 @@ class GitConfig(VC):
         VC.__init__(self, 'git', 'Git')
         self.missing = 'No Git executable found. You must install Git in order to proceed!'
         self.object_cache_mode = get_env('MX_GIT_CACHE') or None
-        if self.object_cache_mode not in [None, 'reference', 'dissociated']:
-            abort("MX_GIT_CACHE was '{}' expected '', 'reference', or 'dissociated'")
+        if self.object_cache_mode not in [None, 'reference', 'dissociated', 'refcache']:
+            abort("MX_GIT_CACHE was '{}' expected '', 'reference', 'dissociated' or 'refcache'")
 
     def check(self, abortOnError=True):
         return self
@@ -4973,17 +4973,25 @@ class GitConfig(VC):
             self.init(cache_path, bare=True)
         return cache_path
 
-    def _clone(self, url, dest=None, branch=None, abortOnError=True, **extra_args):
+    def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
+        hashed_url = hashlib.sha1(url).hexdigest()
         cmd = ['git', 'clone']
-        if branch:
-            cmd += ['--branch', branch]
-        if self.object_cache_mode:
+        if rev and self.object_cache_mode == 'refcache':
             cache = self._local_cache_repo()
-            self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashlib.sha1(url).hexdigest() + '/*')
-            cmd += ['--reference', cache]
-            if self.object_cache_mode == 'dissociated':
-                cmd += ['--dissociate']
-        cmd.append(url)
+            if not self.exists(cache, rev):
+                logvv("Requested revision " + rev + " not found in " + cache)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*', '+HEAD:refs/remotes/' + hashed_url + '/HEAD'])
+            cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
+        else:
+            if branch:
+                cmd += ['--branch', branch]
+            if self.object_cache_mode:
+                cache = self._local_cache_repo()
+                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*')
+                cmd += ['--reference', cache]
+                if self.object_cache_mode == 'dissociated':
+                    cmd += ['--dissociate']
+            cmd.append(url)
         if dest:
             cmd.append(dest)
         self._log_clone(url, dest)
@@ -5025,7 +5033,8 @@ class GitConfig(VC):
         # cloning it or fetching from it, and other repositories will be unable
         # to push to you, and you won't be able to push to other repositories.
         self._log_clone(url, dest, rev)
-        success = self._clone(url, dest=dest, abortOnError=abortOnError, branch=None if GitConfig._is_hash(rev) else rev, **extra_args)
+        branch = None if GitConfig._is_hash(rev) else rev
+        success = self._clone(url, dest=dest, abortOnError=abortOnError, branch=branch, rev=rev, **extra_args)
         if success and rev and GitConfig._is_hash(rev):
             success = self._reset_rev(rev, dest=dest, abortOnError=abortOnError, **extra_args)
             if not success:
@@ -5040,7 +5049,10 @@ class GitConfig(VC):
             if repository:
                 cmd.append(repository)
             if refspec:
-                cmd.append(refspec)
+                if isinstance(refspec, list):
+                    cmd += refspec
+                else:
+                    cmd.append(refspec)
             logvv(' '.join(map(pipes.quote, cmd)))
             return subprocess.check_call(cmd, cwd=vcdir)
         except subprocess.CalledProcessError:
@@ -8582,11 +8594,17 @@ environment variables:
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
-  MX_GIT_CACHE          Use a cache for git objects during clones. Setting it to `reference` will clone
-                        repositories using the cache and let them reference the cache (if the cache gets
-                        deleted these repositories will be incomplete). Setting it to `dissociated` will
-                        clone using the cache but then dissociate the repository from the cache. The cache
-                        is located at `~/.mx/git-cache`.
+  MX_GIT_CACHE          Use a cache for git objects during clones.
+                         * Setting it to `reference` will clone repositories using the cache and let them 
+                           reference the cache (if the cache gets deleted these repositories will be
+                           incomplete).
+                         * Setting it to `dissociated` will clone using the cache but then dissociate the 
+                           repository from the cache.
+                         * Setting it to `refcache` will synchronize with server only if a branch is
+                           requested or if a specific revision is requested which does not exist in the
+                           local cache. Hence, remote references will be synchronized occasionally. This
+                           allows cloning without even contacting the git server.
+                        The cache is located at `~/.mx/git-cache`.
 """ +_format_commands()
 
 
@@ -16696,7 +16714,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.0")  # javah deprecation
+version = VersionSpec("5.136.1")  # GR-7701: Implement local git ref caching.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
