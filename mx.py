@@ -3046,8 +3046,10 @@ class ECJCompiler(JavacLikeCompiler):
             def matchNative(line):
                 # simple heuristic to match the keyword 'native' outside of comments or strings
                 return re.match(r'[^"*/]*\bnative\b', line) is not None
-            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses.keys()
+            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
+            if len(nativeClasses) == 0:
+                abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses
 
         return (jdtArgs, javahArgs)
 
