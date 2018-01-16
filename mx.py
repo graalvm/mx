@@ -9876,7 +9876,7 @@ class JDKConfig:
         if not exists(self.javac):
             raise JDKConfigException('Javac launcher does not exist: ' + self.java)
         if not exists(self.javah):
-            # javah is deprecated and may disappear in future JDKs
+            # javah is removed as of JDK 10
             self.javah = None
 
         self.java_args = shlex.split(_opts.java_args) if _opts.java_args else []
