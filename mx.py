@@ -16677,7 +16677,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.135.2")  # GR-7671
+version = VersionSpec("5.136.0")  # javah deprecation
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
