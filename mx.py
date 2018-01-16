@@ -3039,10 +3039,26 @@ class ECJCompiler(JavacLikeCompiler):
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        return jdtArgs
+        javahArgs = None
+        if jnigenDir:
+            def matchNative(line):
+                # simple heuristic to match the keyword 'native' outside of comments or strings
+                return re.match(r'[^"*/]*\bnative\b', line) is not None
+            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative)
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses.keys()
 
-    def compile(self, jdk, jdtArgs):
+        return (jdtArgs, javahArgs)
+
+    def compile(self, jdk, compileArgs):
+        (jdtArgs, javahArgs) = compileArgs
         run_java(['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
+        self.post_compile(jdk, javahArgs)
+
+    def post_compile(self, jdk, javahArgs):
+        if javahArgs is not None:
+            if jdk.javah is None:
+                abort('Cannot use ECJ on JDK without javah command.')
+            run([jdk.javah] + javahArgs)
 
 class ECJDaemonCompiler(ECJCompiler):
     def __init__(self, jdtJar, extraJavacArgs=None):
@@ -3051,10 +3067,12 @@ class ECJDaemonCompiler(ECJCompiler):
     def name(self):
         return 'ecj-daemon'
 
-    def compile(self, jdk, jdtArgs):
-        return self.daemon.compile(jdk, jdtArgs)
+    def compile(self, jdk, compileArgs):
+        (jdtArgs, javahArgs) = compileArgs
+        self.daemon.compile(jdk, jdtArgs)
+        self.post_compile(jdk, javahArgs)
 
-    def prepare_daemon(self, jdk, daemons, jdtArgs):
+    def prepare_daemon(self, jdk, daemons, compileArgs):
         jvmArgs = jdk.java_args
         key = 'ecj-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
         self.daemon = daemons.get(key)
@@ -9819,6 +9837,7 @@ class JDKConfig:
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
         self.java = exe_suffix(join(self.home, 'bin', 'java'))
         self.javac = exe_suffix(join(self.home, 'bin', 'javac'))
+        self.javah = exe_suffix(join(self.home, 'bin', 'javah'))
         self.javap = exe_suffix(join(self.home, 'bin', 'javap'))
         self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
         self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
@@ -9834,6 +9853,9 @@ class JDKConfig:
             raise JDKConfigException('Java launcher does not exist: ' + self.java)
         if not exists(self.javac):
             raise JDKConfigException('Javac launcher does not exist: ' + self.java)
+        if not exists(self.javah):
+            # javah is deprecated and may disappear in future JDKs
+            self.javah = None
 
         self.java_args = shlex.split(_opts.java_args) if _opts.java_args else []
         self.java_args_pfx = sum(map(shlex.split, _opts.java_args_pfx), [])
