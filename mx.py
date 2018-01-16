@@ -13686,7 +13686,6 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     _intellij_exclude_if_exists(moduleXml, p, name, output=True)
                 moduleXml.close('content')
 
-            moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
             moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
             proj = p
@@ -13709,6 +13708,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
             p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+
+            moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
 
             moduleXml.close('component')
 
