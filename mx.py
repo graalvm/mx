@@ -13609,7 +13609,6 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     if doFsckProjects and not refreshOnly:
         fsckprojects([])
 
-
 def _intellij_library_file_name(library_name):
     return library_name.replace('.', '_').replace('-', '_') + '.xml'
 
@@ -13912,6 +13911,25 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         miscFile = join(ideaProjectDirectory, 'misc.xml')
         update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
+        # Generate a default configuration for debugging Graal
+        runConfig = XMLDoc()
+        runConfig.open('component', attributes={'name' : 'ProjectRunConfigurationManager'})
+        runConfig.open('configuration', attributes={'default' :'false', 'name' : 'GraalDebug', 'type' : 'Remote', 'factoryName': 'Remote'})
+        runConfig.element('option', attributes={'name' : 'USE_SOCKET_TRANSPORT', 'value' : 'true'})
+        runConfig.element('option', attributes={'name' : 'SERVER_MODE', 'value' : 'false'})
+        runConfig.element('option', attributes={'name' : 'SHMEM_ADDRESS', 'value' : 'javadebug'})
+        runConfig.element('option', attributes={'name' : 'HOST', 'value' : 'localhost'})
+        runConfig.element('option', attributes={'name' : 'PORT', 'value' : '8000'})
+        runConfig.open('RunnerSettings', attributes={'RunnerId' : 'Debug'})
+        runConfig.element('option', attributes={'name' : 'DEBUG_PORT', 'value' : '8000'})
+        runConfig.element('option', attributes={'name' : 'LOCAL', 'value' : 'false'})
+        runConfig.close('RunnerSettings')
+        runConfig.element('method')
+        runConfig.close('configuration')
+        runConfig.close('component')
+        runConfigFile = join(ideaProjectDirectory, 'runConfigurations', 'GraalDebug.xml')
+        ensure_dir_exists(join(ideaProjectDirectory, 'runConfigurations'))
+        update_file(runConfigFile, runConfig.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Eclipse formatter config
