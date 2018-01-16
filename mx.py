@@ -608,6 +608,8 @@ mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 def _get_jni_gen(pname):
     p = project(pname)
+    if p.jni_gen_dir() is None:
+        abort("Project {0} does not produce JNI headers, it can not be used in <jnigen:{0}> substitution.".format(pname))
     return join(p.suite.dir, p.jni_gen_dir())
 
 mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
