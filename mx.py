@@ -606,6 +606,13 @@ def _get_dependency_path(dname):
 mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 
+def _get_jni_gen(pname):
+    p = project(pname)
+    return join(p.suite.dir, p.jni_gen_dir())
+
+mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
+
+
 """
 A dependency that can be put on the classpath of a Java commandline.
 
@@ -1966,6 +1973,15 @@ class JavaProject(Project, ClasspathDependency):
             res = os.path.relpath(res, self.dir)
         return res
 
+    def jni_gen_dir(self, relative=False):
+        if hasattr(self, "jniHeaders") and self.jniHeaders:
+            res = join(self.get_output_root(), 'jni_gen')
+            if relative:
+                res = os.path.relpath(res, self.dir)
+            return res
+        else:
+            return None
+
     def output_dir(self, relative=False):
         """
         Get the directory in which the class files of this project are found/placed.
@@ -2491,6 +2507,7 @@ class JavaBuildTask(ProjectBuildTask):
                 outputDir=_cygpathU2W(outputDir),
                 classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance), ignoreStripped=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
+                jnigenDir=self.subject.jni_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
                 disableApiRestrictions=not self.args.warnAPI,
                 warningsAsErrors=self.args.warning_as_error,
@@ -2553,11 +2570,16 @@ class JavaBuildTask(ProjectBuildTask):
             logv('Cleaning {0}...'.format(outputDir))
             rmtree(outputDir)
 
+        jnigenDir = self.subject.jni_gen_dir()
+        if jnigenDir and exists(jnigenDir):
+            logv('Cleaning {0}...'.format(jnigenDir))
+            rmtree(jnigenDir)
+
 class JavaCompiler:
     def name(self):
         nyi('name', self)
 
-    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         """
         Prepares for a compilation with this compiler. This done in the main process.
@@ -2570,6 +2592,7 @@ class JavaCompiler:
         :param str classpath: where to find user class files
         :param str processorPath: where to find annotation processors
         :param str sourceGenDir: where to place generated source files
+        :param str jnigenDir: where to place generated JNI header files
         :param bool disableApiRestrictions: specifies if the compiler should not warning about accesses to restricted API
         :param bool warningsAsErrors: specifies if the compiler should treat warnings as errors
         :param bool forceDeprecationAsWarning: never treat deprecation warnings as errors irrespective of warningsAsErrors
@@ -2610,7 +2633,7 @@ class JavacLikeCompiler(JavaCompiler):
         """
         return get_jdk(compliance)
 
-    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir,
+    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
         if compliance >= '1.8':
@@ -2653,9 +2676,9 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
-        return self.prepareJavacLike(jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles)
+        return self.prepareJavacLike(jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir)
 
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
         """
         `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
         the JDK libraries that will be compiled against.
@@ -2670,7 +2693,10 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
+        if jnigenDir is not None:
+            javacArgs += ['-h', jnigenDir]
+
         lint = ['all', '-auxiliaryclass', '-processing']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -2976,7 +3002,7 @@ class ECJCompiler(JavacLikeCompiler):
             abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
         return jdk
 
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles):
+    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
