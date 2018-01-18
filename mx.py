@@ -6526,14 +6526,6 @@ class SuiteImport:
         if not resolved_version:
             abort('Resolving ' + version + ' against ' + git_url + ' failed')
         log('Resolved ' +  version + ' against ' + git_url + ' to ' + resolved_version)
-
-        # If git-bref is used binary suite import should be tried first
-        global _binary_suites
-        if _binary_suites is None:
-            _binary_suites = []
-        if self.name not in _binary_suites:
-            _binary_suites.append(self.name)
-
         return resolved_version
 
     @staticmethod
@@ -7361,30 +7353,26 @@ class Suite(object):
                 return suite_import
         return None
 
-    def import_suite(self, name, version=None, urlinfos=None, kind=None):
+    def import_suite(self, name, version=None, urlinfos=None, kind=None, in_subdir=False):
         """Dynamic import of a suite. Returns None if the suite cannot be found"""
-        suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True)
         imported_suite = suite(name, fatalIfMissing=False)
-        if not imported_suite:
-            imported_suite, _ = _find_suite_import(self, suite_import, fatalIfMissing=False, load=False)
-            if imported_suite:
-                imported_suite._preload_suite_dict()
         if imported_suite:
-            # if urlinfos is set, force the import to version in case it already existed
-            if urlinfos:
-                updated = imported_suite.vc.update(imported_suite.vc_dir, rev=suite_import.version, mayPull=True)
-                if isinstance(imported_suite, BinarySuite) and updated:
+            return imported_suite
+        suite_import = SuiteImport(name, version, urlinfos, kind, dynamicImport=True, in_subdir=in_subdir)
+        imported_suite, cloned = _find_suite_import(self, suite_import, fatalIfMissing=False, load=False, clone_binary_first=True)
+        if imported_suite:
+            if not cloned and imported_suite.isBinarySuite():
+                if imported_suite.vc.update(imported_suite.vc_dir, rev=suite_import.version, mayPull=True):
+                    imported_suite.re_init_imports()
                     imported_suite.reload_binary_suite()
-            # TODO Add support for imports in dynamically loaded suites (no current use case)
             for suite_import in imported_suite.suite_imports:
                 if not suite(suite_import.name, fatalIfMissing=False):
                     warn("Programmatically imported suite '{}' imports '{}' which is not loaded.".format(name, suite_import.name))
-            if not suite(name, fatalIfMissing=False):
-                _register_suite(imported_suite)
-            if not imported_suite.post_init:
-                imported_suite._load()
-                imported_suite._init_metadata()
-                imported_suite._post_init()
+            _register_suite(imported_suite)
+            assert not imported_suite.post_init
+            imported_suite._load()
+            imported_suite._init_metadata()
+            imported_suite._post_init()
         return imported_suite
 
     def scm_metadata(self, abortOnError=False):
@@ -16111,29 +16099,25 @@ def _use_binary_suite(suite_name):
     return _binary_suites is not None and (len(_binary_suites) == 0 or suite_name in _binary_suites)
 
 
-def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True):
-    initial_search_mode = 'binary' if _use_binary_suite(suite_import.name) else 'source'
-    search_mode = initial_search_mode
+def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False):
+    search_mode = 'binary' if _use_binary_suite(suite_import.name) else 'source'
+    clone_mode = 'binary' if clone_binary_first else search_mode
 
-    # The following two functions abstract state that varies between binary and source suites
-    def _is_binary_mode():
-        return search_mode == 'binary'
-
-    def _find_suite_dir():
+    def _find_suite_dir(mode):
         """
         Attempts to locate an existing suite in the local context
         Returns the path to the mx.name dir if found else None
         """
-        if _is_binary_mode():
+        if mode == 'binary':
             # binary suites are always stored relative to the importing suite in mx-private directory
             return importing_suite._find_binary_suite_dir(suite_import.name)
         else:
             # use the SuiteModel to locate a local source copy of the suite
             return _suitemodel.find_suite_dir(suite_import)
 
-    def _get_import_dir(url):
+    def _get_import_dir(url, mode):
         """Return directory where the suite will be cloned to"""
-        if _is_binary_mode():
+        if mode == 'binary':
             return importing_suite.binary_suite_dir(suite_import.name)
         else:
             # Try use the URL first so that a big repo is cloned to a local
@@ -16148,64 +16132,76 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
                 abort("Suite import directory ({0}) for suite '{1}' exists but no suite definition could be found.".format(import_dir, suite_import.name))
             return import_dir
 
-    def _clone_kwargs():
-        if _is_binary_mode():
+    def _clone_kwargs(mode):
+        if mode == 'binary':
             return dict(result=dict(), suite_name=suite_import.name)
         else:
             return dict()
 
     _clone_status = [False]
+    _found_mode = [None]
 
     def _find_or_clone():
-        _import_mx_dir = _find_suite_dir()
+        _import_mx_dir = _find_suite_dir(search_mode)
+        if _import_mx_dir is not None:
+            _found_mode[0] = search_mode
+            return _import_mx_dir
+        if clone_mode != search_mode:
+            _import_mx_dir = _find_suite_dir(clone_mode)
         if _import_mx_dir is None:
             # No local copy, so use the URLs in order to "download" one
-            clone_kwargs = _clone_kwargs()
+            clone_kwargs = _clone_kwargs(clone_mode)
             for urlinfo in suite_import.urlinfos:
-                if urlinfo.abs_kind() != search_mode or not urlinfo.vc.check(abortOnError=False):
+                if urlinfo.abs_kind() != clone_mode or not urlinfo.vc.check(abortOnError=False):
                     continue
-                import_dir = _get_import_dir(urlinfo.url)
+                import_dir = _get_import_dir(urlinfo.url, clone_mode)
                 if exists(import_dir):
                     warn("Trying to clone suite '{suite_name}' but directory {import_dir} already exists and does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
                     continue
                 if urlinfo.vc.clone(urlinfo.url, import_dir, suite_import.version, abortOnError=False, **clone_kwargs):
-                    _import_mx_dir = _find_suite_dir()
+                    _import_mx_dir = _find_suite_dir(clone_mode)
                     if _import_mx_dir is None:
                         warn("Cloned suite '{suite_name}' but the result ({import_dir}) does not seem to contain suite {suite_name}".format(suite_name=suite_import.name, import_dir=import_dir))
                     else:
                         _clone_status[0] = True
+                        break
                 else:
                     # it is possible that the clone partially populated the target
                     # which will mess up further attempts, so we "clean" it
                     if exists(import_dir):
                         shutil.rmtree(import_dir)
+        if _import_mx_dir is not None:
+            _found_mode[0] = clone_mode
         return _import_mx_dir
 
     import_mx_dir = _find_or_clone()
 
     if import_mx_dir is None:
-        if _is_binary_mode():
+        if clone_mode == 'binary':
             log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
-            search_mode = "source"
+            search_mode = 'source'
+            clone_mode = 'source'
             import_mx_dir = _find_or_clone()
         elif all(urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos):
             logv("Import suite '{0}' has no source urls, falling back to binary dependency".format(suite_import.name))
             search_mode = 'binary'
+            clone_mode = 'binary'
             import_mx_dir = _find_or_clone()
 
     if import_mx_dir is None:
         if fatalIfMissing:
             suffix = ''
-            if initial_search_mode == 'binary' and not any((urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos)):
+            if _use_binary_suite(suite_import.name) and not any((urlinfo.abs_kind() == 'binary' for urlinfo in suite_import.urlinfos)):
                 suffix = " No binary URLs in {} for import of '{}' into '{}'.".format(importing_suite.suite_py(), suite_import.name, importing_suite.name)
             abort("Imported suite '{}' not found (binary or source).{}".format(suite_import.name, suffix))
         else:
             return None, False
 
     # Factory method?
-    if search_mode == 'binary':
+    if _found_mode[0] == 'binary':
         return BinarySuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
     else:
+        assert _found_mode[0] == 'source'
         return SourceSuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
 
 
@@ -16717,7 +16713,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.5")  # GR-7798
+version = VersionSpec("5.137.0")  # import/export
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
