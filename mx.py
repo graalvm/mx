@@ -4980,7 +4980,7 @@ class GitConfig(VC):
     def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
         hashed_url = hashlib.sha1(url).hexdigest()
         cmd = ['git', 'clone']
-        if rev and self.object_cache_mode == 'refcache':
+        if rev and self.object_cache_mode == 'refcache' and GitConfig._is_hash(rev):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 logvv("Requested revision " + rev + " not found in " + cache)
@@ -16718,7 +16718,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.2")  # javah cleanup
+version = VersionSpec("5.136.3")  # GR-7701: Fix git ref caching in downstream scenario.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
