@@ -608,6 +608,8 @@ mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 def _get_jni_gen(pname):
     p = project(pname)
+    if p.jni_gen_dir() is None:
+        abort("Project {0} does not produce JNI headers, it can not be used in <jnigen:{0}> substitution.".format(pname))
     return join(p.suite.dir, p.jni_gen_dir())
 
 mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
@@ -3044,8 +3046,10 @@ class ECJCompiler(JavacLikeCompiler):
             def matchNative(line):
                 # simple heuristic to match the keyword 'native' outside of comments or strings
                 return re.match(r'[^"*/]*\bnative\b', line) is not None
-            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses.keys()
+            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
+            if len(nativeClasses) == 0:
+                abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses
 
         return (jdtArgs, javahArgs)
 
@@ -9872,7 +9876,7 @@ class JDKConfig:
         if not exists(self.javac):
             raise JDKConfigException('Javac launcher does not exist: ' + self.java)
         if not exists(self.javah):
-            # javah is deprecated and may disappear in future JDKs
+            # javah is removed as of JDK 10
             self.javah = None
 
         self.java_args = shlex.split(_opts.java_args) if _opts.java_args else []
@@ -16714,7 +16718,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.1")  # GR-7701: Implement local git ref caching.
+version = VersionSpec("5.136.2")  # javah cleanup
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
