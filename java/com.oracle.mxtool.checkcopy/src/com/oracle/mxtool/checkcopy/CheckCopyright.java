@@ -366,6 +366,7 @@ public class CheckCopyright {
                 boolean changed = false;
                 try (BufferedReader br = new BufferedReader(new FileReader(
                                 overrides))) {
+                    int lineNo = 1;
                     while (true) {
                         String line = br.readLine();
                         if (line == null) {
@@ -375,8 +376,13 @@ public class CheckCopyright {
                             lines.add(line);
                             continue;
                         }
-                        String[] parts = line.split(",");
                         // filename,copyright-file
+                        String[] parts = line.split(",");
+                        if (parts.length != 2) {
+                            System.err.printf("%s:%d: override pattern must be <filename>,<copyright-file>%n%s%n", overrides.getAbsolutePath(), lineNo, line);
+                            System.exit(1);
+                        }
+
                         CopyrightHandler defaultHandler = CopyrightHandler.getDefaultHandler(parts[0]);
                         if (defaultHandler == null) {
                             System.err.println("no default copyright handler for: " + parts[0]);
@@ -396,6 +402,7 @@ public class CheckCopyright {
                         }
                         CustomCopyrightHandler customhandler = (CustomCopyrightHandler) defaultHandler.customHandler;
                         customhandler.addFile(parts[0], new File(new File(customCopyrightDir), parts[1]).getAbsolutePath());
+                        lineNo++;
                     }
                 }
                 if (changed) {
@@ -437,10 +444,21 @@ public class CheckCopyright {
     private static VC vc;
 
     private abstract static class VC {
+        static boolean findInPath(String entry) {
+            File dir = new File(".").getAbsoluteFile();
+            while (dir != null) {
+                if (new File(dir, entry).exists()) {
+                    return true;
+                }
+                dir = dir.getParentFile();
+            }
+            return false;
+        }
+
         static VC create() {
-            if (new File(".git").exists()) {
+            if (findInPath(".git")) {
                 vc = new Git();
-            } else if (new File(".hg").exists()) {
+            } else if (findInPath(".hg")) {
                 vc = new Hg();
             } else {
                 System.err.println("wd contains neither a git nor an hg repository");

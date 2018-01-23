@@ -16718,7 +16718,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.3")  # GR-7701: Fix git ref caching in downstream scenario.
+version = VersionSpec("5.136.4")  # GR-7891
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
