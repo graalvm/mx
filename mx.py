@@ -14462,12 +14462,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
 
-    if len(snippetsPatterns) > 1:
-        abort(snippetsPatterns)
-    if len(snippetsPatterns) > 0:
-        snippetsPatterns = ['-snippetclasses', ''.join(snippetsPatterns)]
-    else:
-        snippetsPatterns = []
+    ap = []
+    for sp in snippetsPatterns:
+        ap += ['-snippetclasses', sp]
+
+    snippetsPatterns = ap
 
     if not projects:
         log('All projects were skipped.')
@@ -16718,7 +16717,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.136.4")  # GR-7891
+version = VersionSpec("5.136.5")  # GR-7798
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
