@@ -10376,6 +10376,12 @@ def expandvars_in_property(value):
         abort('Property contains an undefined environment variable: ' + value)
     return result
 
+def _is_process_alive(p):
+    if isinstance(p, subprocess.Popen):
+        return p.poll() is None
+    assert is_jython() or isinstance(p, multiprocessing.Process), p
+    return p.is_alive()
+
 def _send_sigquit():
     for p, args in _currentSubprocesses:
 
@@ -10385,7 +10391,7 @@ def _send_sigquit():
                 return name == "java"
             return False
 
-        if p is not None and _isJava():
+        if p is not None and _is_process_alive(p) and _isJava():
             if get_os() == 'windows':
                 log("mx: implement me! want to send SIGQUIT to my child process")
             else:
@@ -10411,27 +10417,21 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
         logv('sending SIGQUIT to subprocesses on abort')
         _send_sigquit()
 
-    def is_alive(p):
-        if isinstance(p, subprocess.Popen):
-            return p.poll() is None
-        assert is_jython() or isinstance(p, multiprocessing.Process), p
-        return p.is_alive()
-
     for p, args in _currentSubprocesses:
-        if is_alive(p):
+        if _is_process_alive(p):
             if get_os() == 'windows':
                 p.terminate()
             else:
                 _kill_process(p.pid, killsig)
             time.sleep(0.1)
-        if is_alive(p):
+        if _is_process_alive(p):
             try:
                 if get_os() == 'windows':
                     p.terminate()
                 else:
                     _kill_process(p.pid, signal.SIGKILL)
             except BaseException as e:
-                if is_alive(p):
+                if _is_process_alive(p):
                     log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
     if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
