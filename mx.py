@@ -412,6 +412,9 @@ class Dependency(SuiteConstituent):
     def isLibrary(self):
         return isinstance(self, Library)
 
+    def isResourceLibrary(self):
+        return isinstance(self, ResourceLibrary)
+
     def isJreLibrary(self):
         return isinstance(self, JreLibrary)
 
@@ -7798,6 +7801,11 @@ class BinarySuite(Suite):
         """
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
+        for l in self.libs:
+            if l.isLibrary() or l.isResourceLibrary():
+                l.get_path(resolve=True)
+            if l.isLibrary():
+                l.get_source_path(resolve=True)
 
     def _parse_env(self):
         pass
