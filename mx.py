@@ -16186,7 +16186,8 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
 
     if import_mx_dir is None:
         if clone_mode == 'binary':
-            log("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
+            if search_mode != 'source' or any((urlinfo.abs_kind() == 'source' for urlinfo in suite_import.urlinfos)):
+                warn("Binary import suite '{0}' not found, falling back to source dependency".format(suite_import.name))
             search_mode = 'source'
             clone_mode = 'source'
             import_mx_dir = _find_or_clone()
