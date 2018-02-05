@@ -7810,6 +7810,9 @@ class BinarySuite(Suite):
         """
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
+
+    def _load_libraries(self, libsMap):
+        super(BinarySuite, self)._load_libraries(libsMap)
         for l in self.libs:
             if l.isLibrary() or l.isResourceLibrary():
                 l.get_path(resolve=True)
