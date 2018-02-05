@@ -5575,6 +5575,7 @@ class BinaryVC(VC):
 
     def _tip(self, metadata):
         repo = MavenRepo(metadata.repourl)
+        warn("Using `tip` on a binary suite is unreliable.")
         latestSnapshotversion = repo.getArtifactVersions(_mavenGroupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
@@ -10466,7 +10467,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     raise SystemExit(error_code)
 
 
-def abort_or_warn(message, context, should_abort):
+def abort_or_warn(message, should_abort, context=None):
     if should_abort:
         abort(message, context)
     else:
