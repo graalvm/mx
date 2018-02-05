@@ -5575,6 +5575,7 @@ class BinaryVC(VC):
 
     def _tip(self, metadata):
         repo = MavenRepo(metadata.repourl)
+        warn("Using `tip` on a binary suite is unreliable.")
         latestSnapshotversion = repo.getArtifactVersions(_mavenGroupId(metadata.suiteName), _mx_binary_distribution_root(metadata.suiteName)).latestVersion
         assert latestSnapshotversion.endswith('-SNAPSHOT')
         return latestSnapshotversion[:-len('-SNAPSHOT')]
@@ -6486,11 +6487,12 @@ class NestedImportsSuiteModel(SuiteModel):
     def nestedsuites_dirname(self):
         return NestedImportsSuiteModel._imported_suites_dirname()
 
-"""
-Captures the info in the {"url", "kind"} dict,
-and adds a 'vc' field.
-"""
+
 class SuiteImportURLInfo:
+    """
+    Captures the info in the {"url", "kind"} dict,
+    and adds a 'vc' field.
+    """
     def __init__(self, url, kind, vc):
         self.url = url
         self.kind = kind
@@ -6501,11 +6503,12 @@ class SuiteImportURLInfo:
         """
         return self.kind if self.kind == 'binary' else 'source'
 
+
 class SuiteImport:
     def __init__(self, name, version, urlinfos, kind=None, dynamicImport=False, in_subdir=False, version_from=None, suite_dir=None):
         self.name = name
         self.urlinfos = [] if urlinfos is None else urlinfos
-        self.version = self.resolve_git_branchref(version)
+        self.version = self._deprecated_resolve_git_branchref(version)
         self.version_from = version_from
         self.dynamicImport = dynamicImport
         self.kind = kind
@@ -6515,20 +6518,26 @@ class SuiteImport:
     def __str__(self):
         return self.name
 
-    def resolve_git_branchref(self, version):
+    def _deprecated_resolve_git_branchref(self, version):
         prefix = 'git-bref:'
         if not version or not version.startswith(prefix):
             return version
+        if primary_suite() and not primary_suite().getMxCompatibility().supportSuiteImportGitBref():
+            abort("Invalid version: {}. Automatic translation of `git-bref:` is not supported anymore".format(version))
 
         bref_name = version[len(prefix):]
         git_urlinfos = [urlinfo for urlinfo in self.urlinfos if urlinfo.vc.kind == 'git']
         if len(git_urlinfos) != 1:
             abort('Using ' + version + ' requires exactly one git urlinfo')
         git_url = git_urlinfos[0].url
-        resolved_version = GitConfig.get_branch_remote(git_url, bref_name)
+        return SuiteImport.resolve_git_branchref(git_url, bref_name)
+
+    @staticmethod
+    def resolve_git_branchref(repo_url, bref_name, abortOnError=True):
+        resolved_version = GitConfig.get_branch_remote(repo_url, bref_name)
         if not resolved_version:
-            abort('Resolving ' + version + ' against ' + git_url + ' failed')
-        log('Resolved ' +  version + ' against ' + git_url + ' to ' + resolved_version)
+            abort_or_warn('Resolving ' + bref_name + ' against ' + repo_url + ' failed', abortOnError)
+        logv('Resolved ' + bref_name + ' against ' + repo_url + ' to ' + resolved_version)
         return resolved_version
 
     @staticmethod
@@ -7801,6 +7810,9 @@ class BinarySuite(Suite):
         """
         self._load_suite_dict()
         Suite._load_distributions(self, self._check_suiteDict('distributions'))
+
+    def _load_libraries(self, libsMap):
+        super(BinarySuite, self)._load_libraries(libsMap)
         for l in self.libs:
             if l.isLibrary() or l.isResourceLibrary():
                 l.get_path(resolve=True)
@@ -10456,6 +10468,14 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
         error_code = 1
     log_error(error_message)
     raise SystemExit(error_code)
+
+
+def abort_or_warn(message, should_abort, context=None):
+    if should_abort:
+        abort(message, context)
+    else:
+        warn(message, context)
+
 
 def _suggest_http_proxy_error(e):
     """
@@ -16722,7 +16742,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.137.0")  # import/export
+version = VersionSpec("5.138.0")  # brefs
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
