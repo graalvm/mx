@@ -127,6 +127,9 @@ class MxCompatibility500(object):
     def requireJsonifiableSuite(self):
         return False
 
+    def supportSuiteImportGitBref(self):
+        return True
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -282,6 +285,14 @@ class MxCompatibility51330(MxCompatibility51247):#pylint: disable=too-many-ances
 
     def requireJsonifiableSuite(self):
         return True
+
+class MxCompatibility51380(MxCompatibility51330):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.138.0")
+
+    def supportSuiteImportGitBref(self):
+        return False
 
 def minVersion():
     _ensureCompatLoaded()
