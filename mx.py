@@ -6536,7 +6536,9 @@ class SuiteImport:
     def resolve_git_branchref(repo_url, bref_name, abortOnError=True):
         resolved_version = GitConfig.get_branch_remote(repo_url, bref_name)
         if not resolved_version:
-            abort_or_warn('Resolving ' + bref_name + ' against ' + repo_url + ' failed', abortOnError)
+            if abortOnError:
+                abort('Resolving ' + bref_name + ' against ' + repo_url + ' failed')
+            return None
         logv('Resolved ' + bref_name + ' against ' + repo_url + ' to ' + resolved_version)
         return resolved_version
 
@@ -16742,7 +16744,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.138.0")  # brefs
+version = VersionSpec("5.138.1")  # brefs2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
