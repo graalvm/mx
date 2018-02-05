@@ -6537,6 +6537,7 @@ class SuiteImport:
         resolved_version = GitConfig.get_branch_remote(repo_url, bref_name)
         if not resolved_version:
             abort_or_warn('Resolving ' + bref_name + ' against ' + repo_url + ' failed', abortOnError)
+            return None
         logv('Resolved ' + bref_name + ' against ' + repo_url + ' to ' + resolved_version)
         return resolved_version
 
