@@ -64,7 +64,7 @@ class VerboseTextListener extends TextRunListener {
     }
 
     @Override
-    public void testClassFinished(Class<?> clazz) {
+    public void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
         getWriter().print(clazz.getName() + " finished");
     }
 

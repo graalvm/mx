@@ -23,6 +23,9 @@
 package com.oracle.mxtool.junit;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -65,6 +68,7 @@ public class MxJUnitWrapper {
         public boolean color = false;
         public boolean eagerStackTrace = false;
         public boolean gcAfterTest = false;
+        public boolean recordResults = false;
         public int repeatCount = 1;
     }
 
@@ -150,6 +154,8 @@ public class MxJUnitWrapper {
                     config.eagerStackTrace = true;
                 } else if (each.contentEquals("-JUnitGCAfterTest")) {
                     config.gcAfterTest = true;
+                } else if (each.contentEquals("-JUnitRecordResults")) {
+                    config.recordResults = true;
                 } else if (each.contentEquals("-JUnitRepeat")) {
                     if (i + 1 >= expandedArgs.length) {
                         system.out().println("Must include argument for -JUnitRepeat");
@@ -191,6 +197,18 @@ public class MxJUnitWrapper {
         System.exit(result.wasSuccessful() ? 0 : 1);
     }
 
+    private static PrintStream openFile(JUnitSystem system, String name) {
+        File file = new File(name).getAbsoluteFile();
+        try {
+            FileOutputStream fos = new FileOutputStream(file);
+            return new PrintStream(fos, true);
+        } catch (FileNotFoundException e) {
+            system.out().println("Could not open " + file + " for writing: " + e);
+            System.exit(1);
+            return null;
+        }
+    }
+
     public static Result runRequest(JUnitCore junitCore, JUnitSystem system, MxJUnitConfig config, MxJUnitRequest mxRequest) {
         final TextRunListener textListener;
         if (config.veryVerbose) {
@@ -212,6 +230,12 @@ public class MxJUnitWrapper {
         if (config.gcAfterTest) {
             mxListener = new GCAfterTestDecorator(mxListener);
         }
+        if (config.recordResults) {
+            PrintStream passed = openFile(system, "passed.txt");
+            PrintStream failed = openFile(system, "failed.txt");
+            mxListener = new TestResultLogger(passed, failed, system);
+        }
+
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
 
         Request request = mxRequest.getRequest();

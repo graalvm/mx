@@ -51,9 +51,9 @@ class TimingDecorator extends MxRunListenerDecorator {
     }
 
     @Override
-    public void testClassFinished(Class<?> clazz) {
+    public void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
         long totalTime = System.nanoTime() - classStartTime;
-        super.testClassFinished(clazz);
+        super.testClassFinished(clazz, numPassed, numFailed);
         if (beVerbose()) {
             getWriter().print(' ' + valueToString(totalTime));
         }

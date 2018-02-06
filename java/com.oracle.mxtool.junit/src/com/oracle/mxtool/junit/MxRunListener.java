@@ -35,28 +35,34 @@ interface MxRunListener {
      *
      * @param description describes the tests to be run
      */
-    void testRunStarted(Description description);
+    default void testRunStarted(Description description) {
+    }
 
     /**
      * Called when all tests have finished.
      *
      * @param result the summary of the test run, including all the tests that failed
      */
-    void testRunFinished(Result result);
+    default void testRunFinished(Result result) {
+    }
 
     /**
      * Called when a test class is about to be started.
      *
      * @param clazz the test class
      */
-    void testClassStarted(Class<?> clazz);
+    default void testClassStarted(Class<?> clazz) {
+    }
 
     /**
      * Called when all tests of a test class have finished.
      *
      * @param clazz the test class
+     * @param numPassed number of tests in {@code clazz} that passed
+     * @param numFailed number of tests in {@code clazz} that failed
      */
-    void testClassFinished(Class<?> clazz);
+    default void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
+    }
 
     /**
      * Called when an atomic test is about to be started. This is also called for ignored tests.
@@ -64,21 +70,24 @@ interface MxRunListener {
      * @param description the description of the test that is about to be run (generally a class and
      *            method name)
      */
-    void testStarted(Description description);
+    default void testStarted(Description description) {
+    }
 
     /**
      * Called when an atomic test has finished, whether the test succeeds, fails or is ignored.
      *
      * @param description the description of the test that just ran
      */
-    void testFinished(Description description);
+    default void testFinished(Description description) {
+    }
 
     /**
      * Called when an atomic test fails.
      *
      * @param failure describes the test that failed and the exception that was thrown
      */
-    void testFailed(Failure failure);
+    default void testFailed(Failure failure) {
+    }
 
     /**
      * Called when a test will not be run, generally because a test method is annotated with
@@ -86,14 +95,16 @@ interface MxRunListener {
      *
      * @param description describes the test that will not be run
      */
-    void testIgnored(Description description);
+    default void testIgnored(Description description) {
+    }
 
     /**
      * Called when an atomic test succeeds.
      *
      * @param description describes the test that will not be run
      */
-    void testSucceeded(Description description);
+    default void testSucceeded(Description description) {
+    }
 
     /**
      * Called when an atomic test flags that it assumes a condition that is false.
@@ -101,30 +112,36 @@ interface MxRunListener {
      * @param failure describes the test that failed and the {@link AssumptionViolatedException}
      *            that was thrown
      */
-    void testAssumptionFailure(Failure failure);
+    default void testAssumptionFailure(Failure failure) {
+    }
 
     /**
-     * Called after {@link #testClassFinished(Class)}.
+     * Called after {@link #testClassFinished(Class, int, int)}.
      */
-    void testClassFinishedDelimiter();
+    default void testClassFinishedDelimiter() {
+    }
 
     /**
      * Called after {@link #testClassStarted(Class)}.
      */
-    void testClassStartedDelimiter();
+    default void testClassStartedDelimiter() {
+    }
 
     /**
      * Called after {@link #testStarted(Description)}.
      */
-    void testStartedDelimiter();
+    default void testStartedDelimiter() {
+    }
 
     /**
      * Called after {@link #testFailed(Failure)}.
      */
-    void testFinishedDelimiter();
+    default void testFinishedDelimiter() {
+    }
 
-    boolean beVerbose();
+    default boolean beVerbose() {
+        return false;
+    }
 
     PrintStream getWriter();
-
 }

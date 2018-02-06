@@ -61,8 +61,8 @@ abstract class MxRunListenerDecorator implements MxRunListener {
     }
 
     @Override
-    public void testClassFinished(Class<?> clazz) {
-        l.testClassFinished(clazz);
+    public void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
+        l.testClassFinished(clazz, numPassed, numFailed);
     }
 
     @Override
