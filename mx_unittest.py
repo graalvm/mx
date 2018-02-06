@@ -246,7 +246,7 @@ def set_vm_launcher(name, launcher, jdk=None):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None, repeat=None):
+def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None, repeat=None, record_results=False):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -270,6 +270,8 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         coreArgs.append('-JUnitColor')
     if eager_stacktrace:
         coreArgs.append('-JUnitEagerStackTrace')
+    if record_results:
+        coreArgs.append('-JUnitRecordResults')
     if gc_after_test:
         coreArgs.append('-JUnitGCAfterTest')
     if repeat:
@@ -320,9 +322,9 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
 unittestHelpSuffix = """
     Unittest options:
 
-      --blacklist <file>     run all testcases not specified in the blacklist
-      --whitelist <file>     run only testcases which are included
-                             in the given whitelist
+      --blacklist <file>     run all testcases not specified in <file>
+      --whitelist <file>     run only testcases specified in <file>
+      --record-results       record test class results to passed.txt and failed.txt
       --very-verbose         enable very verbose JUnit output
       --verbose              enable verbose JUnit output
       --fail-fast            stop after first JUnit test class that has a failure
@@ -385,6 +387,7 @@ def unittest(args):
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
     parser.add_argument('--color', help='enable color output', action='store_true')
     parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')
+    parser.add_argument('--record-results', help='record test class results to passed.txt and failed.txt', action='store_true')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
     parser.add_argument('--repeat', help='run only the unit tests in <suite>', type=is_strictly_positive)
     eagerStacktrace = parser.add_mutually_exclusive_group()

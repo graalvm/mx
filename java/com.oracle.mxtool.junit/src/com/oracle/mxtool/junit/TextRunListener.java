@@ -22,11 +22,14 @@
  */
 package com.oracle.mxtool.junit;
 
-import java.io.*;
+import java.io.PrintStream;
 
-import org.junit.internal.*;
-import org.junit.runner.*;
-import org.junit.runner.notification.*;
+import org.junit.internal.JUnitSystem;
+import org.junit.internal.TextListener;
+import org.junit.runner.Description;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunListener;
 
 class TextRunListener implements MxRunListener {
 
@@ -55,32 +58,8 @@ class TextRunListener implements MxRunListener {
     }
 
     @Override
-    public void testRunStarted(Description description) {
-    }
-
-    @Override
-    public void testRunFinished(Result result) {
-    }
-
-    @Override
-    public void testAssumptionFailure(Failure failure) {
-    }
-
-    @Override
-    public void testClassStarted(Class<?> clazz) {
-    }
-
-    @Override
-    public void testClassFinished(Class<?> clazz) {
-    }
-
-    @Override
     public void testStarted(Description description) {
         getWriter().print('.');
-    }
-
-    @Override
-    public void testFinished(Description description) {
     }
 
     @Override
@@ -90,33 +69,15 @@ class TextRunListener implements MxRunListener {
     }
 
     @Override
-    public void testSucceeded(Description description) {
-    }
-
-    @Override
     public void testIgnored(Description description) {
         getWriter().print('I');
-    }
-
-    @Override
-    public void testClassFinishedDelimiter() {
-    }
-
-    @Override
-    public void testClassStartedDelimiter() {
-    }
-
-    @Override
-    public void testStartedDelimiter() {
-    }
-
-    @Override
-    public void testFinishedDelimiter() {
     }
 
     public static RunListener createRunListener(MxRunListener l) {
         return new TextListener(l.getWriter()) {
             private Class<?> lastClass;
+            private int passedInLastClass;
+            private int failedInLastClass;
             private boolean failed;
 
             @Override
@@ -124,10 +85,12 @@ class TextRunListener implements MxRunListener {
                 Class<?> currentClass = description.getTestClass();
                 if (currentClass != lastClass) {
                     if (lastClass != null) {
-                        l.testClassFinished(lastClass);
+                        l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
                         l.testClassFinishedDelimiter();
                     }
                     lastClass = currentClass;
+                    passedInLastClass = 0;
+                    failedInLastClass = 0;
                     l.testClassStarted(currentClass);
                     l.testClassStartedDelimiter();
                 }
@@ -139,6 +102,7 @@ class TextRunListener implements MxRunListener {
             @Override
             public void testFailure(Failure failure) {
                 failed = true;
+                failedInLastClass++;
                 l.testFailed(failure);
             }
 
@@ -147,6 +111,7 @@ class TextRunListener implements MxRunListener {
                 // we have to do this because there is no callback for successful tests
                 if (!failed) {
                     l.testSucceeded(description);
+                    passedInLastClass++;
                 }
                 l.testFinished(description);
                 l.testFinishedDelimiter();
@@ -168,7 +133,7 @@ class TextRunListener implements MxRunListener {
             @Override
             public void testRunFinished(Result result) {
                 if (lastClass != null) {
-                    l.testClassFinished(lastClass);
+                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
                 }
                 l.testRunFinished(result);
                 super.testRunFinished(result);
@@ -178,8 +143,6 @@ class TextRunListener implements MxRunListener {
             public void testAssumptionFailure(Failure failure) {
                 l.testAssumptionFailure(failure);
             }
-
         };
     }
-
 }
