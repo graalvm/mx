@@ -3001,11 +3001,7 @@ class ECJCompiler(JavacLikeCompiler):
         return 'JDT'
 
     def _get_compliance_jdk(self, compliance):
-        jdk = get_jdk(compliance)
-        esc = _convert_to_eclipse_supported_compliance(jdk.javaCompliance)
-        if esc < jdk.javaCompliance:
-            abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
-        return jdk
+        return get_jdk(compliance)
 
     def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
         jdtArgs = javacArgs
@@ -9786,6 +9782,8 @@ class JavaCompliance:
         assert not self.isLowerBound or not self.isExactBound
 
     def __str__(self):
+        if self.value >= 9:
+            return str(self.value)
         return '1.' + str(self.value)
 
     def __repr__(self):
@@ -12209,16 +12207,6 @@ def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
         projectLoc = 'PROJECT_LOC'
     return sep.join([projectLoc] + [n for n in names if n != '..'])
 
-def _convert_to_eclipse_supported_compliance(compliance):
-    """
-    Downgrades a given Java compliance to a level supported by Eclipse.
-    This accounts for the reality that Eclipse (and JDT) usually add support for JDK releases later
-    than javac support is available.
-    """
-    if compliance and compliance > "1.8":
-        return JavaCompliance("1.8")
-    return compliance
-
 def _get_eclipse_output_path(p, linkedResources=None):
     """
     Gets the Eclipse path attribute value for the output of project `p`.
@@ -12231,41 +12219,6 @@ def _get_eclipse_output_path(p, linkedResources=None):
         return outputDirName
     else:
         return outputDirRel
-
-def _get_jdk_module_classes_jar(module, suite, jdk, classes):
-    if isinstance(classes, types.StringTypes):
-        classes = [classes]
-    assert len(classes) > 0
-    module_jar = _get_jdk_module_jar(module, suite, jdk)
-    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
-    if len(classes) == 1:
-        jarClassName = classes[0]
-    else:
-        jarClassName = classes[0] + "_" + hashlib.sha1(':'.join(classes)).hexdigest()
-
-    jarName = module + '_' + jarClassName + '.jar'
-    jarPath = join(jdkOutputDir, jarName)
-    jdkExplodedModule = join(jdk.home, 'modules', module)
-    jdkModules = join(jdk.home, 'lib', 'modules')
-    if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
-        tmp_dir = None
-        try:
-            tmp_dir = mkdtemp()
-            logv("Preparing " + jarPath + " in " + tmp_dir)
-            class_files = [cls.replace('.', '/') + '.class' for cls in classes]
-            run([jdk.jar, 'xf', module_jar] + class_files, cwd=tmp_dir)
-            for class_file in class_files:
-                if not exists(join(tmp_dir, *class_file.split('/'))):
-                    abort("Could not find {} ({}) in {} ({})".format(class_file.replace('/', '.')[:-len('.class')], class_file, module, module_jar))
-            run([jdk.jar, 'cf', jarPath] + class_files, cwd=tmp_dir)
-        except BaseException as e:
-            if _opts.very_verbose:
-                tmp_dir = None
-            raise e
-        finally:
-            if tmp_dir and exists(tmp_dir):
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-    return jarPath
 
 def _get_jdk_module_jar(module, suite, jdk):
     """
@@ -12394,8 +12347,6 @@ public class %(className)s {
     return jarPath
 
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
-    eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
-
     ensure_dir_exists(p.dir)
 
     linkedResources = []
@@ -12428,9 +12379,6 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         if files:
             files.append(genDir)
 
-    # Every Java program depends on a JRE
-    out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(eclipseJavaCompliance)})
-
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
@@ -12438,21 +12386,6 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     libraryDeps = set()
     jdkLibraryDeps = set()
     projectDeps = set()
-    jdk = get_jdk(p.javaCompliance)
-    moduleDeps = {}
-
-    if jdk.javaCompliance >= '9':
-        moduleDeps = p.get_concealed_imported_packages()
-        if eclipseJavaCompliance < '9':
-            # If this project imports any JVMCI packages and Eclipse does not yet
-            # support JDK9, then the generated Eclipse project needs to see the classes
-            # in the jdk.internal.vm.ci module. Further down, a stub containing the classes
-            # in this module will be added as a library to generated project.
-            # Fortunately this works even when the class files are at version 53 (JDK9)
-            # even though Eclipse can only run on class files with verison 52 (JDK8).
-            for pkg in p.imported_java_packages(projectDepsOnly=False):
-                if pkg.startswith('jdk.vm.ci.'):
-                    moduleDeps.setdefault('jdk.internal.vm.ci', []).append(pkg)
     distributionDeps = set()
 
     def processDep(dep, edge):
@@ -12507,6 +12440,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         if libFiles:
             libFiles.append(path)
 
+    jdk = get_jdk(p.javaCompliance)
     for dep in sorted(jdkLibraryDeps):
         path = dep.classpath_repr(jdk, resolve=True)
         if path:
@@ -12524,16 +12458,25 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             allProjectPackages.update(dep.defined_java_packages())
             out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
-    if len(moduleDeps) != 0:
-        for module, pkgs in sorted(moduleDeps.iteritems()):
+    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
+
+    # Every Java program depends on a JRE
+    out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(p.javaCompliance)})
+    if jdk.javaCompliance >= '9':
+        moduleDeps = p.get_concealed_imported_packages()
+        if len(moduleDeps) != 0:
             # Ignore modules (such as jdk.internal.vm.compiler) that define packages
             # that are also defined by project deps as the latter will have the most
-            # recent API we care about.
-            if allProjectPackages.isdisjoint(pkgs):
-                moduleJar = _get_jdk_module_jar(module, p.suite, jdk)
-                out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : moduleJar})
+            # recent API.
+            exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
+            if exports:
+                out.open('attributes')
+                out.element('attribute', {'name' : 'module', 'value' : 'true'})
+                for module, pkgs in exports:
+                    out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join([module + '/' + pkg + '=ALL-UNNAMED' for pkg in pkgs])})
+                out.close('attributes')
+    out.close('classpathentry')
 
-    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
     out.close('classpath')
     classpathFile = join(p.dir, '.classpath')
     update_file(classpathFile, out.xml(indent='\t', newl='\n'))
@@ -12643,18 +12586,23 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             else:
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
-        if eclipseJavaCompliance >= '9':
+        if p.javaCompliance >= '9':
             # Annotation processors can only use JDK9 classes once Eclipse supports JDK9.
-            moduleAPDeps = {}
+            concealedAPDeps = {}
             for dep in classpath_entries(names=processors, preferProjects=True):
                 if dep.isJavaProject():
                     concealed = dep.get_concealed_imported_packages()
                     if concealed:
-                        for module in concealed.iterkeys():
-                            moduleAPDeps[module] = get_jdk(dep.javaCompliance)
-            for module in sorted(moduleAPDeps):
-                moduleJar = _get_jdk_module_jar(module, p.suite, moduleAPDeps[module])
-                out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : moduleJar, 'enabled' : 'true', 'runInBatchMode' : 'false'})
+                        for module, pkgs in concealed.iteritems():
+                            concealedAPDeps.setdefault(module, []).extend(pkgs)
+            if concealedAPDeps:
+                exports = []
+                for module, pkgs in concealedAPDeps.iteritems():
+                    for pkg in pkgs:
+                        exports.append('--add-exports=' + module + '/' + pkg + '=ALL-UNNAMED')
+                warn('Annotation processor(s) for ' + p.name +' uses non-exported module packages, requiring ' +
+                     'the following to be added to eclipse.ini:\n' +
+                     '\n'.join(exports))
 
         out.close('factorypath')
         update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
@@ -12765,7 +12713,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [_convert_to_eclipse_supported_compliance(p.javaCompliance) for p in relevantResourceDeps if p.isJavaProject()]
+        javaCompliances = [p.javaCompliance for p in relevantResourceDeps if p.isJavaProject()]
         if len(javaCompliances) > 0:
             dist.javaCompliance = max(javaCompliances)
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
@@ -15626,7 +15574,6 @@ def maven_install(args):
             print 'name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir)
 
 def _copy_eclipse_settings(p, files=None):
-    eclipseJavaCompliance = _convert_to_eclipse_supported_compliance(p.javaCompliance)
     processors = p.annotation_processors()
 
     settingsDir = join(p.dir, ".settings")
@@ -15639,8 +15586,8 @@ def _copy_eclipse_settings(p, files=None):
             print >> out, '# Source:', source
             with open(source) as f:
                 print >> out, f.read()
-        if eclipseJavaCompliance:
-            content = out.getvalue().replace('${javaCompliance}', str(eclipseJavaCompliance))
+        if p.javaCompliance:
+            content = out.getvalue().replace('${javaCompliance}', str(p.javaCompliance))
         else:
             content = out.getvalue()
         if processors:
@@ -16744,7 +16691,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.139.0")  # brefs2
+version = VersionSpec("5.140.0")  # GR-8152
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
