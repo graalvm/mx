@@ -133,11 +133,15 @@ class MxCompatibility500(object):
     def enforceTestDistributions(self):
         return False
 
+    def deprecateIsTestProject(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
     def __repr__(self):
         return str(self)
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -303,6 +307,9 @@ class MxCompatibility51400(MxCompatibility51380):#pylint: disable=too-many-ances
         return mx.VersionSpec("5.140.0")
 
     def enforceTestDistributions(self):
+        return True
+
+    def deprecateIsTestProject(self):
         return True
 
 def minVersion():

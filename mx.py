@@ -868,19 +868,19 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, isTestDistribution=False, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
-        if isTestDistribution is None:
-            self.isTestDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
+        if testDistribution is None:
+            self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
-            self.isTestDistribution = isTestDistribution
+            self.testDistribution = testDistribution
 
     def is_test_distribution(self):
-        return self.isTestDistribution
+        return self.testDistribution
 
     def isPlatformDependent(self):
         return self.platformDependent
@@ -1695,23 +1695,23 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=False, **kwArgs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
         self.workingSets = workingSets
         self.dir = d
-        self.isTestProject = isTestProject
-        if self.isTestProject is None:
+        self.testProject = testProject
+        if self.testProject is None:
             # The suite doesn't specify whether this is a test suite.  By default,
             # any project ending with .test is considered a test project.  Prior
             # to mx version 5.114.0, projects ending in .jtt are also treated this
             # way but starting with the version any non-standard names must be
             # explicitly marked as test projects.
-            self.isTestProject = self.name.endswith('.test')
-            if not self.isTestProject and not self.suite.getMxCompatibility().disableImportOfTestProjects():
-                self.isTestProject = self.name.endswith('.jtt')
+            self.testProject = self.name.endswith('.test')
+            if not self.testProject and not self.suite.getMxCompatibility().disableImportOfTestProjects():
+                self.testProject = self.name.endswith('.jtt')
 
         # Create directories for projects that don't yet exist
         ensure_dir_exists(d)
@@ -1843,7 +1843,7 @@ class Project(Dependency):
         pass
 
     def is_test_project(self):
-        return self.isTestProject
+        return self.testProject
 
 
 class ProjectBuildTask(BuildTask):
@@ -1939,8 +1939,8 @@ class MavenProject(Project, ClasspathDependency):
         return join(self.suite.dir, self.sourceDirs[0])
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, isTestProject=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=isTestProject, **kwArgs)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, testProject=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
@@ -3118,8 +3118,8 @@ Additional attributes:
   buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False, vpath=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject, **kwArgs)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath
@@ -6224,7 +6224,7 @@ def maven_deploy(args):
 
     if args.gpg_keyid and not args.gpg:
         args.gpg = True
-        logv('Implicitely setting gpg to true since a keyid was specified')
+        logv('Implicitly setting gpg to true since a keyid was specified')
 
     _mvn.check()
     def _versionGetter(suite):
@@ -7163,11 +7163,11 @@ class Suite(object):
         ext = '.tar' if native else '.jar'
         defaultPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + ext)
         path = attrs.pop('path', defaultPath)
-        isTestDistribution = attrs.pop('isTestDistribution', None)
+        testDistribution = attrs.pop('testDistribution', None)
         if native:
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, isTestDistribution=isTestDistribution, **attrs)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         else:
             defaultSourcesPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
@@ -7188,7 +7188,7 @@ class Suite(object):
                 abort("'buildDependencies' is not supported for JAR distributions")
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, maven=maven,
-                                stripConfigFileNames=stripConfigFileNames, isTestDistribution=isTestDistribution, **attrs)
+                                stripConfigFileNames=stripConfigFileNames, testDistribution=testDistribution, **attrs)
         self.dists.append(d)
         return d
 
@@ -7561,18 +7561,20 @@ class SourceSuite(Suite):
                     d = join(self.dir, subDir, name)
                 native = attrs.pop('native', False)
 
-
-                isTestProject = attrs.pop('isTestProject', None)
+                old_test_project = attrs.pop('isTestProject', None)
+                if old_test_project is not None:
+                    abort_or_warn("`isTestProject` attribute has been renamed to `testProject`", self.getMxCompatibility().deprecateIsTestProject())
+                testProject = attrs.pop('testProject', old_test_project)
 
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'results', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, testProject=testProject, **attrs)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, testProject=testProject, **attrs)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -11516,9 +11518,9 @@ def canonicalizeprojects(args):
                 project_list_str = '\n'.join((' - ' + pp.name for pp in different_test_status))
                 should_abort = d.suite.getMxCompatibility().enforceTestDistributions()
                 if d.is_test_distribution():
-                    abort_or_warn("{} is a test distribution but it contains projects which are not:\n{}".format(d.name, project_list_str), should_abort)
+                    abort_or_warn("{} is a test distribution but it contains non-test projects:\n{}".format(d.name, project_list_str), should_abort)
                 else:
-                    abort_or_warn("{} is not a test distribution but it contains projects which are:\n{}".format(d.name, project_list_str), should_abort)
+                    abort_or_warn("{} is not a test distribution but it contains test projects:\n{}".format(d.name, project_list_str), should_abort)
     if len(nonCanonical) != 0:
         for p in nonCanonical:
             canonicalDeps = p.canonical_deps()
