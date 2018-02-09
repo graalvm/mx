@@ -130,6 +130,9 @@ class MxCompatibility500(object):
     def supportSuiteImportGitBref(self):
         return True
 
+    def enforceTestDistributions(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -294,11 +297,20 @@ class MxCompatibility51380(MxCompatibility51330):#pylint: disable=too-many-ances
     def supportSuiteImportGitBref(self):
         return False
 
+class MxCompatibility51400(MxCompatibility51380):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.140.0")
+
+    def enforceTestDistributions(self):
+        return True
+
 def minVersion():
     _ensureCompatLoaded()
     return _versionsMap.keys()[0]
 
 def getMxCompatibility(version):
+    """:rtype: MxCompatibility500"""
     if version < minVersion():  # ensures compat loaded
         return None
     keys = _versionsMap.keys()
