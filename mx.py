@@ -11199,8 +11199,8 @@ def pylint(args):
             log_error('could not determine pylint version from ' + output)
             return -1
         major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        if major != 1 or minor != 1:
-            log_error('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
+        if major != 1 or minor < 1:
+            log_error('require pylint version >= 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
             return -1
     except BaseException as e:
         log_error('pylint is not available: ' + str(e))
