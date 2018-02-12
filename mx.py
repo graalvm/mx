@@ -868,12 +868,19 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
+        if testDistribution is None:
+            self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
+        else:
+            self.testDistribution = testDistribution
+
+    def is_test_distribution(self):
+        return self.testDistribution
 
     def isPlatformDependent(self):
         return self.platformDependent
@@ -1688,23 +1695,23 @@ Additional attributes:
   deps: list of dependencies, Project, Library or Distribution
 """
 class Project(Dependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=False, **kwArgs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.subDir = subDir
         self.srcDirs = srcDirs
         self.deps = deps
         self.workingSets = workingSets
         self.dir = d
-        self.isTestProject = isTestProject
-        if self.isTestProject == None:
+        self.testProject = testProject
+        if self.testProject is None:
             # The suite doesn't specify whether this is a test suite.  By default,
             # any project ending with .test is considered a test project.  Prior
             # to mx version 5.114.0, projects ending in .jtt are also treated this
             # way but starting with the version any non-standard names must be
             # explicitly marked as test projects.
-            self.isTestProject = self.name.endswith('.test')
-            if not self.isTestProject and not self.suite.getMxCompatibility().disableImportOfTestProjects():
-                self.isTestProject = self.name.endswith('.jtt')
+            self.testProject = self.name.endswith('.test')
+            if not self.testProject and not self.suite.getMxCompatibility().disableImportOfTestProjects():
+                self.testProject = self.name.endswith('.jtt')
 
         # Create directories for projects that don't yet exist
         ensure_dir_exists(d)
@@ -1836,7 +1843,7 @@ class Project(Dependency):
         pass
 
     def is_test_project(self):
-        return self.isTestProject
+        return self.testProject
 
 
 class ProjectBuildTask(BuildTask):
@@ -1932,8 +1939,8 @@ class MavenProject(Project, ClasspathDependency):
         return join(self.suite.dir, self.sourceDirs[0])
 
 class JavaProject(Project, ClasspathDependency):
-    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, isTestProject=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject=isTestProject, **kwArgs)
+    def __init__(self, suite, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=None, testProject=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
@@ -3111,8 +3118,8 @@ Additional attributes:
   buildEnv: a dictionary of custom environment variables that are passed to the `make` process
 """
 class NativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, isTestProject=False, vpath=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, isTestProject, **kwArgs)
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
+        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath
@@ -5968,6 +5975,9 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
     if not _opts.verbose:
         cmd.append('--quiet')
 
+    if _opts.verbose:
+        cmd.append('--errors')
+
     if _opts.very_verbose:
         cmd.append('--debug')
 
@@ -6010,7 +6020,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
 
     log('Deploying {0}:{1}...'.format(groupId, artifactId))
     if dryRun:
-        log(' '.join((pipes.quote(t) for t in cmd)))
+        logv(' '.join((pipes.quote(t) for t in cmd)))
     else:
         run_maven(cmd)
 
@@ -6214,35 +6224,35 @@ def maven_deploy(args):
 
     if args.gpg_keyid and not args.gpg:
         args.gpg = True
-        warn('Implicitely setting gpg to true since a keyid was specified')
+        logv('Implicitly setting gpg to true since a keyid was specified')
 
-    s = _primary_suite
     _mvn.check()
     def _versionGetter(suite):
         return suite.release_version(snapshotSuffix='SNAPSHOT')
-    dists = [d for d in s.dists if d.isJARDistribution() and d.maven]
-    if args.only:
-        only = args.only.split(',')
-        dists = [d for d in dists if d.name in only]
-    if not dists:
-        abort("No distribution to deploy")
+    for s in primary_or_specific_suites():
+        dists = [d for d in s.dists if d.isJARDistribution() and not d.is_test_distribution() and d.maven]
+        if args.only:
+            only = args.only.split(',')
+            dists = [d for d in dists if d.name in only]
+        if not dists:
+            abort("No distribution to deploy in " + s.name)
 
-    for dist in dists:
-        if not dist.exists():
-            abort("'{0}' is not built, run 'mx build' first".format(dist.name))
+        for dist in dists:
+            if not dist.exists():
+                abort("'{0}' is not built, run 'mx build' first".format(dist.name))
 
-    if args.url:
-        licenses = get_license(args.licenses.split(','))
-        repo = Repository(None, args.repository_id, args.url, licenses)
-    else:
-        if not s.getMxCompatibility().supportsRepositories():
-            abort("Repositories are not supported in {}'s suite version".format(s.name))
-        repo = repository(args.repository_id)
+        if args.url:
+            licenses = get_license(args.licenses.split(','))
+            repo = Repository(None, args.repository_id, args.url, licenses)
+        else:
+            if not s.getMxCompatibility().supportsRepositories():
+                abort("Repositories are not supported in {}'s suite version".format(s.name))
+            repo = repository(args.repository_id)
 
-    generateJavadoc = s.getMxCompatibility().mavenDeployJavadoc()
+        generateJavadoc = s.getMxCompatibility().mavenDeployJavadoc()
 
-    log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
-    _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
+        log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
+        _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
 
 class MavenConfig:
     def __init__(self):
@@ -6625,7 +6635,8 @@ class SCMMetadata(object):
 
 class Suite(object):
     """
-    Command state and methods for all suite subclasses
+    Command state and methods for all suite subclasses.
+    :type dists: list[Distribution]
     """
     def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
         self.imported_by = [] if primary else [importing_suite]
@@ -7152,10 +7163,11 @@ class Suite(object):
         ext = '.tar' if native else '.jar'
         defaultPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + ext)
         path = attrs.pop('path', defaultPath)
+        testDistribution = attrs.pop('testDistribution', None)
         if native:
             relpath = attrs.pop('relpath', False)
             output = attrs.pop('output', None)
-            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, **attrs)
+            d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         else:
             defaultSourcesPath = join(self.get_output_root(platformDependent=platformDependent), 'dists', _map_to_maven_dist_name(name) + '.src.zip')
             subDir = attrs.pop('subDir', None)
@@ -7176,7 +7188,7 @@ class Suite(object):
                 abort("'buildDependencies' is not supported for JAR distributions")
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, maven=maven,
-                                stripConfigFileNames=stripConfigFileNames, **attrs)
+                                stripConfigFileNames=stripConfigFileNames, testDistribution=testDistribution, **attrs)
         self.dists.append(d)
         return d
 
@@ -7549,18 +7561,20 @@ class SourceSuite(Suite):
                     d = join(self.dir, subDir, name)
                 native = attrs.pop('native', False)
 
-
-                isTestProject = attrs.pop('isTestProject', None)
+                old_test_project = attrs.pop('isTestProject', None)
+                if old_test_project is not None:
+                    abort_or_warn("`isTestProject` attribute has been renamed to `testProject`", self.getMxCompatibility().deprecateIsTestProject())
+                testProject = attrs.pop('testProject', old_test_project)
 
                 if native:
                     output = attrs.pop('output', None)
                     results = Suite._pop_list(attrs, 'results', context)
-                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
+                    p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, testProject=testProject, **attrs)
                 else:
                     javaCompliance = attrs.pop('javaCompliance', None)
                     if javaCompliance is None:
                         abort('javaCompliance property required for non-native project ' + name)
-                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, isTestProject=isTestProject, **attrs)
+                    p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, testProject=testProject, **attrs)
                     p.checkstyleProj = attrs.pop('checkstyle', name)
                     p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                     ap = Suite._pop_list(attrs, 'annotationProcessors', context)
@@ -8092,6 +8106,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True):
 def suite(name, fatalIfMissing=True, context=None):
     """
     Get the suite for a given name.
+    :rtype: Suite
     """
     s = _suites.get(name)
     if s is None and fatalIfMissing:
@@ -8099,7 +8114,16 @@ def suite(name, fatalIfMissing=True, context=None):
     return s
 
 def primary_suite():
+    """:rtype: Suite"""
     return _primary_suite
+
+
+def primary_or_specific_suites():
+    """:rtype: list[Suite]"""
+    if _opts.specific_suites:
+        return [suite(name) for name in _opts.specific_suites]
+    return [primary_suite()]
+
 
 def projects_from_names(projectNames):
     """
@@ -8306,10 +8330,12 @@ def dependency(name, fatalIfMissing=True, context=None):
         abort(_missing_dep_message(name, 'dependency'), context=context)
     return d
 
+
 def project(name, fatalIfMissing=True, context=None):
     """
     Get the project for a given name. This will abort if the named project does
     not exist and 'fatalIfMissing' is true.
+    :return Project:
     """
     p = _projects.get(name)
     if p is None and fatalIfMissing:
@@ -8318,10 +8344,12 @@ def project(name, fatalIfMissing=True, context=None):
         abort(_missing_dep_message(name, 'project'), context=context)
     return p
 
+
 def library(name, fatalIfMissing=True, context=None):
     """
     Gets the library for a given name. This will abort if the named library does
     not exist and 'fatalIfMissing' is true.
+    :return Library:
     """
     l = _libs.get(name) or _jreLibs.get(name) or _jdkLibs.get(name)
     if l is None and fatalIfMissing:
@@ -8329,6 +8357,7 @@ def library(name, fatalIfMissing=True, context=None):
             abort(name + ' is a project, not a library', context=context)
         abort(_missing_dep_message(name, 'library'), context=context)
     return l
+
 
 def classpath_entries(names=None, includeSelf=True, preferProjects=False, excludes=None):
     """
@@ -8656,7 +8685,7 @@ environment variables:
         self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='observe Java compliance for projects that set it explicitly', default=False)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
-        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to given suite', metavar='<name>', default=[])
+        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to the given suite', metavar='<name>', default=[])
         self.add_argument('--suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
         self.add_argument('--primary', action='store_true', help='limit command to primary suite')
         self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
@@ -11483,6 +11512,15 @@ def canonicalizeprojects(args):
             excess = frozenset([d for d in p.deps if d.isJavaProject()]) - set(p.canonical_deps())
             if len(excess) != 0:
                 nonCanonical.append(p)
+        for d in s.dists:
+            different_test_status = [pp for pp in d.archived_deps() if pp.isProject() and pp.is_test_project() != d.is_test_distribution()]
+            if different_test_status:
+                project_list_str = '\n'.join((' - ' + pp.name for pp in different_test_status))
+                should_abort = d.suite.getMxCompatibility().enforceTestDistributions()
+                if d.is_test_distribution():
+                    abort_or_warn("{} is a test distribution but it contains non-test projects:\n{}".format(d.name, project_list_str), should_abort)
+                else:
+                    abort_or_warn("{} is not a test distribution but it contains test projects:\n{}".format(d.name, project_list_str), should_abort)
     if len(nonCanonical) != 0:
         for p in nonCanonical:
             canonicalDeps = p.canonical_deps()
@@ -14518,7 +14556,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      nowarnAPI +
                      windowTitle +
                      list(pkgs))
-                log('Generated {2} for {0} in {1}'.format(p.name, out, docDir))
+                logv('Generated {2} for {0} in {1}'.format(p.name, out, docDir))
             finally:
                 if delOverviewFile:
                     os.remove(overviewFile)
@@ -14587,14 +14625,16 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
             def __call__(self, msg):
                 shouldPrint = self.forward
-                if ': warning - ' in  msg:
+                if ': warning - ' in msg:
                     if not self.ignoreBrokenRefs or not _javadocRefNotFound.search(msg):
                         self.warnings += 1
-                        shouldPrint = True
+                        shouldPrint = not args.allow_warnings
                     else:
                         shouldPrint = False
-                if shouldPrint or _opts.verbose:
-                    log(self.prefix + msg)
+                if shouldPrint:
+                    warn(self.prefix + msg.rstrip('\r\n'))
+                else:
+                    logv(self.prefix + msg.rstrip('\r\n'))
 
         captureOut = WarningCapture('stdout: ', False, partialJavadoc)
         captureErr = WarningCapture('stderr: ', True, partialJavadoc)
@@ -14623,7 +14663,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         if args.allow_warnings and not captureErr.warnings:
             logv("Warnings were allowed but there was none")
 
-        log('Generated {2} for {0} in {1}'.format(', '.join(names), out, docDir))
+        logv('Generated {2} for {0} in {1}'.format(', '.join(names), out, docDir))
 
 def site(args):
     """creates a website containing javadoc and the project dependency graph"""
@@ -16691,7 +16731,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.140.0")  # GR-8152
+version = VersionSpec("5.141.0")  # test distributions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
