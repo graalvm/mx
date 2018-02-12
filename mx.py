@@ -16470,7 +16470,11 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                 elif (update_existing or discovered_suite.isBinarySuite()) and suite_import.version:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
                     if _update_repo(discovered_suite, suite_import.version, forget=True, update_reason="(update_existing mode)"):
-                        _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
+                        actual_version = discovered_suite.vc.parent(discovered_suite.vc_dir)
+                        if actual_version != suite_import.version:
+                            warn("Failed to update {} (in {}) to version {}! Leaving it at {}.".format(discovered_suite.name, discovered_suite.vc_dir, suite_import.version, actual_version))
+                        else:
+                            _log_discovery("Updated {} after discovery (`update_existing` mode) to {}".format(discovered_suite.vc_dir, suite_import.version))
                     else:
                         _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
                 else:
