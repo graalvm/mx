@@ -561,11 +561,10 @@ def jacocoreport(args):
     dist = mx.distribution(dist_name)
     jdk = mx.get_jdk(dist.javaCompliance)
 
-    out = 'coverage'
-    if len(args) == 1:
-        out = args[0]
-    elif len(args) > 1:
-        mx.abort('jacocoreport takes only one argument : an output directory')
+    parser = ArgumentParser(prog='mx jacocoreport')
+    parser.add_argument('--format', help='Export format (HTML or XML)', default='html', choices=['html', 'xml'])
+    parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
+    args = parser.parse_args(args)
 
     # list of strings of the form "project-dir:binary-dir"
     includedirs = []
@@ -576,4 +575,4 @@ def jacocoreport(args):
                 includedirs.append(p.dir + ":" + p.classpath_repr(jdk))
 
     mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
-                 '--in', 'jacoco.exec', '--out', out] + sorted(includedirs), jdk=jdk)
+                 '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs), jdk=jdk)
