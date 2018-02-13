@@ -7464,8 +7464,9 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
     return None
 
-"""A source suite"""
+
 class SourceSuite(Suite):
+    """A source suite"""
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
@@ -7563,7 +7564,7 @@ class SourceSuite(Suite):
 
                 old_test_project = attrs.pop('isTestProject', None)
                 if old_test_project is not None:
-                    abort_or_warn("`isTestProject` attribute has been renamed to `testProject`", self.getMxCompatibility().deprecateIsTestProject())
+                    abort_or_warn("`isTestProject` attribute has been renamed to `testProject`", self.getMxCompatibility().deprecateIsTestProject(), context)
                 testProject = attrs.pop('testProject', old_test_project)
 
                 if native:
@@ -16735,7 +16736,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.141.0")  # test distributions
+version = VersionSpec("5.141.1")  # build deps
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
