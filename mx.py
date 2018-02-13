@@ -3168,7 +3168,7 @@ class NativeBuildTask(ProjectBuildTask):
         env = os.environ.copy()
         all_deps = self.subject.canonical_deps()
         if hasattr(self.subject, 'buildDependencies'):
-            all_deps += self.subject.buildDependencies
+            all_deps = set(all_deps) | set(self.subject.buildDependencies)
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
