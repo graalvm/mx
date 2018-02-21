@@ -34,6 +34,7 @@ from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 import os.path
 from collections import OrderedDict
+import platform
 
 import mx
 
@@ -1487,6 +1488,9 @@ class BenchmarkExecutor(object):
     def machineArch(self):
         return mx.get_arch()
 
+    def machinePlatform(self):
+        return platform.platform()
+
     def machineCpuCores(self):
         return mx.cpu_count()
 
@@ -1552,6 +1556,7 @@ class BenchmarkExecutor(object):
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
           "machine.ram": self.machineRam(),
+          "extra.machine.platform": self.machinePlatform(),
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
