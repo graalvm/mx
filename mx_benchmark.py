@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2016, 2016, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2018, 2016, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -1363,8 +1363,12 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         _, out, _ = jvm.run(cwd, args + ["-l"])
         benchs = out.splitlines()
-        assert benchs[0].startswith("Benchmarks:")
-        return benchs[1:]
+        linenumber = -1
+        for linenumber in range(len(benchs)):
+            if benchs[linenumber].startswith("Benchmarks:"):
+                break
+        assert linenumber >= 0, "No benchmarks output list found"
+        return benchs[linenumber + 1:]
 
     def benchSuiteName(self, bmSuiteArgs):
         return "jmh-" + self.jmhName(bmSuiteArgs)
