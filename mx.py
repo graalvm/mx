@@ -9610,17 +9610,26 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     if env is None:
         env = os.environ.copy()
 
+    vm_prefix = []
+    if hasattr(_opts, 'vm_prefix') and _opts.vm_prefix:
+        vm_prefix = _opts.vm_prefix.split()
+
     # Ideally the command line could be communicated directly in an environment
     # variable. However, since environment variables share the same resource
     # space as the command line itself (on Unix at least), this would cause the
     # limit to be exceeded too easily.
     with tempfile.NamedTemporaryFile(suffix='', prefix='mx_subprocess_command.', mode='w', delete=False) as fp:
         subprocessCommandFile = fp.name
-        for arg in args:
+
+        # Don't include the vm_prefix in arguments as this can have unpredictable effects
+        args_to_save = args
+        if vm_prefix == args[:len(vm_prefix)]:
+            args_to_save = args_to_save[len(vm_prefix):]
+
+        for arg in args_to_save:
             # TODO: handle newlines in args once there's a use case
             if '\n' in arg:
                 abort('cannot handle new line in argument to run: "' + arg + '"')
-            assert '\n' not in arg
             print >> fp, arg
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
@@ -16742,7 +16751,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.142.0")  # generic vm
+version = VersionSpec("5.143.0")  # vmprefix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
