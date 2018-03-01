@@ -16742,7 +16742,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.141.1")  # build deps
+version = VersionSpec("5.142.0")  # generic vm
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
