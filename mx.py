@@ -316,6 +316,10 @@ class DepEdge:
 
 
 class SuiteConstituent(object):
+    """
+    :type name: str
+    :type suite: Suite
+    """
     def __init__(self, suite, name):
         self.name = name
         self.suite = suite
@@ -634,6 +638,7 @@ class ClasspathDependency(Dependency):
 
         If 'resolve' is True, then this method aborts if the file or directory
         denoted by the class path element does not exist.
+        :rtype : str
         """
         nyi('classpath_repr', self)
 
@@ -8373,6 +8378,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             the return list (True)
     :return: a list of Dependency objects representing the transitive set of dependencies that should
             be on the class path for something depending on `names`
+    :rtype : list[ClasspathDependency]
     """
     if names is None:
         roots = set(dependencies())
@@ -16736,7 +16742,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.141.1")  # build deps
+version = VersionSpec("5.142.0")  # generic vm
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

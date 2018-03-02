@@ -1125,11 +1125,11 @@ def _get_default_java_vm(jvm_config, vms):
 java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
 
 
-class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
-    """A convenience class for running Java VMs."""
+class OutputCapturingVm(Vm): #pylint: disable=R0921
+    """A convenience class for running Non-Java VMs."""
 
     def post_process_command_line_args(self, suiteArgs):
-        """Adapts command-line arguments to run the specific JVMCI VM."""
+        """Adapts command-line arguments to run the specific VM configuration."""
         raise NotImplementedError()
 
     def dimensions(self, cwd, args, code, out):
@@ -1138,18 +1138,29 @@ class OutputCapturingJavaVm(JavaVm): #pylint: disable=R0921
         """
         return {}
 
-    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+    def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
 
     def run(self, cwd, args):
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_command_line_args(args)
-        mx.log("Running JVM with args: {0}".format(args))
-        code = self.run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        mx.log("Running {0} with args: {1}".format(self.name(), args))
+        code = self.run_vm(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
         out = out.underlying.data
         dims = self.dimensions(cwd, args, code, out)
         return code, out, dims
+
+
+class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
+    """A convenience class for running Java VMs."""
+
+    def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        """Runs JVM with the specified arguments stdout and stderr, and working dir."""
+        raise NotImplementedError()
+
+    def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        return self.run_java(args=args, out=out, err=err, cwd=cwd, nonZeroIsFatal=nonZeroIsFatal)
 
 
 class DefaultJavaVm(OutputCapturingJavaVm):
