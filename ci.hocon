@@ -1,5 +1,5 @@
 # overlay version
-overlay = 58fdd6649f85fae7bd7671a3a12d6221031901a5
+overlay = ee0a077676146f613685f11a2f049449202440ca
 
 # These are used in the overlay
 java7 : {name : oraclejdk, version : "7",    platformspecific: true}
@@ -91,3 +91,4 @@ builds = [
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
   ${downstream-truffleruby-binary-truffle} ${nocache} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle-nocache"}
 ]
+
