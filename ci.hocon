@@ -4,7 +4,7 @@ overlay = ee0a077676146f613685f11a2f049449202440ca
 # These are used in the overlay
 java7 : {name : oraclejdk, version : "7",    platformspecific: true}
 java8 : {name : labsjdk, version : "8u161-jvmci-0.41", platformspecific: true}
-java9 : {name : labsjdk, version : "9-20170810-210536", platformspecific: true}
+java9 : {name : labsjdk, version : "9+181", platformspecific: true}
 
 downloads.java : {
     JAVA_HOME : {name : oraclejdk, version : "8u66", platformspecific: true}
