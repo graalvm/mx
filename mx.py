@@ -10712,7 +10712,7 @@ def _before_fork():
         pass
 
 
-def build(args, parser=None):
+def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
 
     suppliedParser = parser is not None
@@ -10741,6 +10741,7 @@ def build(args, parser=None):
     parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="Use javac from each project's compliance levels rather than perform a cross compilation using the default JDK")
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--force-deprecation-as-warning', action='store_true', help='never treat deprecation warnings as errors irrespective of --warning-as-error')
+    parser.add_argument('--force-deprecation-as-warning-for-dependencies', action='store_true', help='never treat deprecation warnings as errors irrespective of --warning-as-error for projects outside of the primary suite')
     parser.add_argument('--jdt-show-task-tags', action='store_true', help='show task tags as Eclipse batch compiler warnings')
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
@@ -10755,7 +10756,17 @@ def build(args, parser=None):
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
 
-    args = parser.parse_args(args)
+    args = parser.parse_args(cmd_args)
+    if args.force_deprecation_as_warning_for_dependencies:
+        sub_args = cmd_args[:]
+        sub_args.remove("--force-deprecation-as-warning-for-dependencies")
+        command_function('build')(["--force-deprecation-as-warning"] + sub_args)
+        primary_java_projects = [p for p in _primary_suite.projects if p.isJavaProject()]
+        primary_java_project_dists = [d for d in _primary_suite.dists if any([p in d.deps for p in primary_java_projects])]
+        primary_build_elements = ["--projects", ",".join([e.name for e in primary_java_projects + primary_java_project_dists])]
+        command_function('clean')(primary_build_elements)
+        command_function('build')(sub_args + primary_build_elements)
+        return
 
     if get_os() == 'windows':
         if args.parallelize:
@@ -16751,7 +16762,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.143.0")  # vmprefix
+version = VersionSpec("5.144.0")  # deprecation as warnings for dependencies
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
