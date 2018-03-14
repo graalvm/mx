@@ -1154,6 +1154,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
 
         services = {}
+        manifestEntries = [] # list of "<name>: <value>" strings
         with Archiver(self.original_path()) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
@@ -1231,12 +1232,12 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if not participants__add__(arcname, contents):
                             arc.zf.writestr(arcname, contents)
 
-                def addSrcFromDir(srcDir):
+                def addSrcFromDir(srcDir, archivePrefix=''):
                     for root, _, files in os.walk(srcDir):
                         relpath = root[len(srcDir) + 1:]
                         for f in files:
                             if f.endswith('.java'):
-                                arcname = join(relpath, f).replace(os.sep, '/')
+                                arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
                                 if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
                                     with open(join(root, f), 'r') as fp:
                                         contents = fp.read()
@@ -1244,8 +1245,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         srcArc.zf.writestr(arcname, contents)
 
                 if self.mainClass:
-                    manifest = "Manifest-Version: 1.0\nMain-Class: %s\n\n" % (self.mainClass)
-                    arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
+                    manifestEntries.append('Main-Class: ' + self.mainClass)
 
                 for dep in self.archived_deps():
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
@@ -1297,8 +1297,21 @@ class JARDistribution(Distribution, ClasspathDependency):
                         outputDir = p.output_dir()
 
                         archivePrefix = ''
+                        mrjVersion = getattr(p, 'multiReleaseJarVersion', None)
                         if hasattr(p, 'archive_prefix'):
+                            if mrjVersion is not None:
+                                abort("Project cannot have both an 'archive_prefix' and a 'multiReleaseJarVersion' attribute", context=p)
                             archivePrefix = p.archive_prefix()
+                        if mrjVersion is not None:
+                            try:
+                                mrjVersion = int(mrjVersion)
+                                if mrjVersion < 9:
+                                    raise ValueError()
+                            except ValueError:
+                                abort("Value of 'multiReleaseJarVersion' attribute should be an integer greater or equal to 9: " + str(mrjVersion), context=p)
+                            archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
+                            if 'Multi-Release: true' not in manifestEntries:
+                                manifestEntries.append('Multi-Release: true')
 
                         for root, _, files in os.walk(outputDir):
                             reldir = root[len(outputDir) + 1:]
@@ -1311,7 +1324,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
-                                addSrcFromDir(srcDir)
+                                addSrcFromDir(srcDir, archivePrefix)
                     elif dep.isArchivableProject():
                         logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
                         archivePrefix = dep.archive_prefix()
@@ -1322,6 +1335,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
+                if len(manifestEntries) != 0:
+                    manifest = '\n'.join(['Manifest-Version: 1.0'] + manifestEntries) + '\n\n'
+                    arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
                 for a in self.archiveparticipants:
                     if hasattr(a, '__closing__'):
                         a.__closing__()
@@ -16762,7 +16778,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.144.0")  # deprecation as warnings for dependencies
+version = VersionSpec("5.145.0")  # GR-8762
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
