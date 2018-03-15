@@ -15567,7 +15567,7 @@ def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extr
                 subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output)] + classfiles, cwd=_cygpathU2W(binDir))
             logv('[created/updated ' + output + ']')
         except subprocess.CalledProcessError as e:
-            abort('failed to compile ' + javaSources + ' or create ' + output + ': ' + str(e))
+            abort('failed to compile ' + str(javaSources) + ' or create ' + output + ': ' + str(e))
     return myDir, output if as_jar else binDir
 
 def _add_command_primary_option(parser):
@@ -16782,7 +16782,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.145.0")  # GR-8762
+version = VersionSpec("5.145.1")  # GR-8830
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
