@@ -94,3 +94,4 @@ def as_engine(subst):
 
 results_substitutions = SubstitutionEngine()
 path_substitutions = SubstitutionEngine(results_substitutions)
+string_substitutions = SubstitutionEngine(path_substitutions)
