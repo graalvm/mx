@@ -2785,14 +2785,18 @@ class JavacCompiler(JavacLikeCompiler):
             jdkModulesOnClassPath = set()
             declaringJdkModule = None
 
-            def getDeclaringJDKModule(proj):
+            def getDeclaringJDKModule(dep):
                 """
-                Gets the JDK module, if any, declaring at least one package in `proj`.
+                Gets the JDK module, if any, declaring at least one package in `dep`.
                 """
+                if not dep.isJavaProject():
+                    return None
+                proj = dep
                 m = getattr(proj, '.declaringJDKModule', None)
                 if m is None:
                     modulepath = jdk.get_modules()
-                    for package in proj.defined_java_packages():
+                    java_packages = proj.defined_java_packages() | proj.extended_java_packages()
+                    for package in java_packages:
                         jmd, _ = lookup_package(modulepath, package, "<unnamed>")
                         if jmd:
                             m = jmd.name
