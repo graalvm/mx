@@ -2320,11 +2320,6 @@ class JavaProject(Project, ClasspathDependency):
         else:
             jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
-        if hasattr(args, "jdt") and args.jdt and not args.force_javac:
-            if not _is_supported_by_jdt(jdk):
-                # TODO: Test JDT version against those known to support JDK9
-                abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
-
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
@@ -2380,6 +2375,7 @@ class JavaBuildTask(ProjectBuildTask):
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
         self._newestOutput = None
+        self._compiler = None
 
     def __str__(self):
         return "Compiling {} with {}".format(self.subject.name, self._getCompiler().name())
@@ -2510,16 +2506,24 @@ class JavaBuildTask(ProjectBuildTask):
         return buildReason
 
     def _getCompiler(self):
-        if self.args.jdt and not self.args.force_javac:
-            if self.args.no_daemon:
-                return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+        if self._compiler is None:
+            useJDT = self.args.jdt and not self.args.force_javac
+            if useJDT and not _is_supported_by_jdt(self.jdk):
+                # Revisit once GR-8852 is resolved
+                logv('JDT does not yet support JDK9 - falling back to javac for ' + str(self.subject))
+                useJDT = False
+
+            if useJDT:
+                if self.args.no_daemon:
+                    self._compiler = ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+                else:
+                    self._compiler = ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
             else:
-                return ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
-        else:
-            if self.args.no_daemon or self.args.alt_javac:
-                return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
-            else:
-                return JavacDaemonCompiler(self.args.extra_javac_args)
+                if self.args.no_daemon or self.args.alt_javac:
+                    self._compiler = JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
+                else:
+                    self._compiler = JavacDaemonCompiler(self.args.extra_javac_args)
+        return self._compiler
 
     def prepare(self, daemons):
         """
