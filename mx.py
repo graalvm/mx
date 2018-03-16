@@ -2765,7 +2765,7 @@ class JavacCompiler(JavacLikeCompiler):
             else:
                 javacArgs.extend(['-classpath', os.pathsep.join(elements)])
 
-        if jdk.javaCompliance >= '9':
+        if jdk.javaCompliance >= '9' and compliance < '9':
             _, unsupported_jar = _compile_mx_class(['Unsafe', 'Signal', 'SignalHandler'], jdk=jdk, extraJavacArgs=['--release', str(compliance.value)], as_jar=True)
             _classpath_append(unsupported_jar)
         if disableApiRestrictions:
@@ -16782,7 +16782,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.145.1")  # GR-8830
+version = VersionSpec("5.145.2")  # GR-8762_2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
