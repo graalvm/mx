@@ -1382,10 +1382,13 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 # input and output jars
                 input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+                libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True).split(os.pathsep)
+                # Ignored versioned class files until multi-release jars are
+                # supported by ProGuard (https://sourceforge.net/p/proguard/bugs/671/)
                 strip_command += [
-                     '-injars', self.original_path(),
+                     '-injars', self.original_path() + '(!META-INF/versions/**)',
                      '-outjars', self.path, # only the jar of this distribution
-                     '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True),
+                     '-libraryjars', os.pathsep.join([e + '(!META-INF/versions/**)' for e in libraryjars]),
                      '-printmapping', self.strip_mapping_file(),
                 ]
 
