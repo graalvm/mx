@@ -2833,7 +2833,7 @@ class JavacCompiler(JavacLikeCompiler):
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
                 :param mx.JavaProject dep: a Java project that may be dependent on private JDK modules
-                :param exports: either None or a set of exports per module for which ``--add-exports`` args
+                :param dict exports: a set of exports per module for which ``--add-exports`` args
                    have already been added to `javacArgs`
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
@@ -2845,15 +2845,27 @@ class JavacCompiler(JavacLikeCompiler):
                         # as the class path classes are more recent than the module classes
                         continue
                     for package in packages:
-                        exportedPackages = None if exports is None else exports.setdefault(module, set())
-                        if exportedPackages is None or package not in exportedPackages:
-                            if exportedPackages is not None:
-                                exportedPackages.add(package)
+                        exportedPackages = exports.setdefault(module, set())
+                        if package not in exportedPackages:
+                            exportedPackages.add(package)
                             exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
+            def addRootModules(exports, prefix):
+                """
+                Makes all modules in `exports` root modules since modules exported
+                via ``--add-exports`` must be root modules.
+
+                :param dict exports: a set of exports per module for which ``--add-exports`` args
+                   have been added to `javacArgs`
+                """
+                if exports:
+                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.iterkeys()))
+
             if compliance >= '9':
-                addExportArgs(project)
+                exports = {}
+                addExportArgs(project, exports)
+                addRootModules(exports, '')
             else:
                 # We use --release n with n < 9 so we need to create JARs for JdkLibraries
                 # that are in modules and did not exist in JDK n
@@ -2887,15 +2899,11 @@ class JavacCompiler(JavacLikeCompiler):
                             if apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk)
 
-                # If modules are exported for use by an annotation processor then
-                # they need to be boot modules since --add-exports can only be used
-                # for boot modules.
-                if exports:
-                    javacArgs.append('-J--add-modules=' + ','.join(exports.iterkeys()))
+                addRootModules(exports, '-J')
 
                 if len(jdkModulesOnClassPath) != 0:
                     # We want annotation processors to use classes on the class path
-                    # instead of those in module(s) since the module classes may not
+                    # instead of those in modules since the module classes may not
                     # be in exported packages and/or may have different signatures.
                     # Unfortunately, there's no VM option for hiding modules, only the
                     # --limit-modules option for restricting modules observability.
@@ -16793,7 +16801,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.145.2")  # GR-8762_2
+version = VersionSpec("5.145.3")  # GR-8762_3
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
