@@ -2686,7 +2686,11 @@ class JavacLikeCompiler(JavaCompiler):
         if jdk.javaCompliance < "9":
             javacArgs += ['-source', str(compliance), '-target', str(compliance)]
         else:
-            javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
+            # Only use --release when targeting 8 otherwise JDK internal
+            # modules (such as jdk.internal.vm.ci) cannot be accessed.
+            # https://docs.oracle.com/javase/9/tools/javac.htm
+            if compliance < '9':
+                javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
         hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
