@@ -178,6 +178,9 @@ class Task:
             mx.abort(codeOrMessage)
         return self
 
+    def __repr__(self):
+        return "Task: " + self.title
+
 _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
@@ -323,8 +326,11 @@ def gate(args):
             mx.abort('out of bounds partial argument specified')
 
         tasks = _collect_tasks(cleanArgs, args)
-        buildTasks = [task for task in tasks if not task.skipped and Tags.build in task.tags]
-        nonBuildTasks = [task for task in tasks if not task.skipped and Tags.build not in task.tags]
+
+        # build and always tags must be run by every partial gate run
+        alwaysTags = [Tags.always, Tags.build]
+        buildTasks = [task for task in tasks if not task.skipped and any([f in t for t in alwaysTags for f in task.tags])]
+        nonBuildTasks = [task for task in tasks if not task.skipped and not any([f in t for t in alwaysTags for f in task.tags])]
 
         partialTasks = nonBuildTasks[selected::total]
         runTaskNames = [task.title for task in buildTasks + partialTasks]
