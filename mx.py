@@ -1382,10 +1382,13 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 # input and output jars
                 input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+                libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True).split(os.pathsep)
+                # Ignored versioned class files until multi-release jars are
+                # supported by ProGuard (https://sourceforge.net/p/proguard/bugs/671/)
                 strip_command += [
-                     '-injars', self.original_path(),
+                     '-injars', self.original_path() + '(!META-INF/versions/**)',
                      '-outjars', self.path, # only the jar of this distribution
-                     '-libraryjars', classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True),
+                     '-libraryjars', os.pathsep.join([e + '(!META-INF/versions/**)' for e in libraryjars]),
                      '-printmapping', self.strip_mapping_file(),
                 ]
 
@@ -2320,11 +2323,6 @@ class JavaProject(Project, ClasspathDependency):
         else:
             jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
 
-        if hasattr(args, "jdt") and args.jdt and not args.force_javac:
-            if not _is_supported_by_jdt(jdk):
-                # TODO: Test JDT version against those known to support JDK9
-                abort('JDT does not yet support JDK9 (--java-home/$JAVA_HOME must be JDK <= 8)')
-
         return JavaBuildTask(args, self, jdk, requiredCompliance)
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
@@ -2380,6 +2378,7 @@ class JavaBuildTask(ProjectBuildTask):
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
         self._newestOutput = None
+        self._compiler = None
 
     def __str__(self):
         return "Compiling {} with {}".format(self.subject.name, self._getCompiler().name())
@@ -2510,16 +2509,24 @@ class JavaBuildTask(ProjectBuildTask):
         return buildReason
 
     def _getCompiler(self):
-        if self.args.jdt and not self.args.force_javac:
-            if self.args.no_daemon:
-                return ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+        if self._compiler is None:
+            useJDT = self.args.jdt and not self.args.force_javac
+            if useJDT and not _is_supported_by_jdt(self.jdk):
+                # Revisit once GR-8852 is resolved
+                logv('JDT does not yet support JDK9 - falling back to javac for ' + str(self.subject))
+                useJDT = False
+
+            if useJDT:
+                if self.args.no_daemon:
+                    self._compiler = ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+                else:
+                    self._compiler = ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
             else:
-                return ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
-        else:
-            if self.args.no_daemon or self.args.alt_javac:
-                return JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
-            else:
-                return JavacDaemonCompiler(self.args.extra_javac_args)
+                if self.args.no_daemon or self.args.alt_javac:
+                    self._compiler = JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
+                else:
+                    self._compiler = JavacDaemonCompiler(self.args.extra_javac_args)
+        return self._compiler
 
     def prepare(self, daemons):
         """
@@ -2679,7 +2686,11 @@ class JavacLikeCompiler(JavaCompiler):
         if jdk.javaCompliance < "9":
             javacArgs += ['-source', str(compliance), '-target', str(compliance)]
         else:
-            javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
+            # Only use --release when targeting 8 otherwise JDK internal
+            # modules (such as jdk.internal.vm.ci) cannot be accessed.
+            # https://docs.oracle.com/javase/9/tools/javac.htm
+            if compliance < '9':
+                javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
         hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
@@ -2822,7 +2833,7 @@ class JavacCompiler(JavacLikeCompiler):
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
                 :param mx.JavaProject dep: a Java project that may be dependent on private JDK modules
-                :param exports: either None or a set of exports per module for which ``--add-exports`` args
+                :param dict exports: a set of exports per module for which ``--add-exports`` args
                    have already been added to `javacArgs`
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
@@ -2834,15 +2845,27 @@ class JavacCompiler(JavacLikeCompiler):
                         # as the class path classes are more recent than the module classes
                         continue
                     for package in packages:
-                        exportedPackages = None if exports is None else exports.setdefault(module, set())
-                        if exportedPackages is None or package not in exportedPackages:
-                            if exportedPackages is not None:
-                                exportedPackages.add(package)
+                        exportedPackages = exports.setdefault(module, set())
+                        if package not in exportedPackages:
+                            exportedPackages.add(package)
                             exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
+            def addRootModules(exports, prefix):
+                """
+                Makes all modules in `exports` root modules since modules exported
+                via ``--add-exports`` must be root modules.
+
+                :param dict exports: a set of exports per module for which ``--add-exports`` args
+                   have been added to `javacArgs`
+                """
+                if exports:
+                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.iterkeys()))
+
             if compliance >= '9':
-                addExportArgs(project)
+                exports = {}
+                addExportArgs(project, exports)
+                addRootModules(exports, '')
             else:
                 # We use --release n with n < 9 so we need to create JARs for JdkLibraries
                 # that are in modules and did not exist in JDK n
@@ -2876,15 +2899,11 @@ class JavacCompiler(JavacLikeCompiler):
                             if apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk)
 
-                # If modules are exported for use by an annotation processor then
-                # they need to be boot modules since --add-exports can only be used
-                # for boot modules.
-                if exports:
-                    javacArgs.append('-J--add-modules=' + ','.join(exports.iterkeys()))
+                addRootModules(exports, '-J')
 
                 if len(jdkModulesOnClassPath) != 0:
                     # We want annotation processors to use classes on the class path
-                    # instead of those in module(s) since the module classes may not
+                    # instead of those in modules since the module classes may not
                     # be in exported packages and/or may have different signatures.
                     # Unfortunately, there's no VM option for hiding modules, only the
                     # --limit-modules option for restricting modules observability.
@@ -16782,7 +16801,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.145.2")  # GR-8762_2
+version = VersionSpec("5.145.3")  # GR-8762_3
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
