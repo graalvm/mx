@@ -11377,10 +11377,11 @@ def pylint(args):
                 if f.endswith('.py'):
                     pyfile = join(root, f)
                     pyfiles.append(pyfile)
-    if args.walk:
-        findfiles_by_walk(pyfiles)
     else:
-        findfiles_by_vc(pyfiles)
+        if args.walk:
+            findfiles_by_walk(pyfiles)
+        else:
+            findfiles_by_vc(pyfiles)
 
     env = os.environ.copy()
 
