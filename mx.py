@@ -62,7 +62,7 @@ import json
 from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter
+from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
 from os.path import join, basename, dirname, exists, isabs, expandvars, isdir
 from tempfile import mkdtemp
 import fnmatch
@@ -1304,11 +1304,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                             archivePrefix = p.archive_prefix()
                         if mrjVersion is not None:
                             try:
-                                mrjVersion = int(mrjVersion)
-                                if mrjVersion < 9:
-                                    raise ValueError()
-                            except ValueError:
-                                abort("Value of 'multiReleaseJarVersion' attribute should be an integer greater or equal to 9: " + str(mrjVersion), context=p)
+                                mrjVersion = _parse_multireleasejar_version(mrjVersion)
+                            except ArgumentTypeError as e:
+                                abort(str(e), context=p)
                             archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
                             if 'Multi-Release: true' not in manifestEntries:
                                 manifestEntries.append('Multi-Release: true')
@@ -2310,6 +2308,47 @@ class JavaProject(Project, ClasspathDependency):
         Generates an Eclipse project configuration for this project.
         """
         _eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
+
+    def get_multireleasesources_flatten_map(self):
+        """
+        Gets a map from the versioned source directories in this project to the
+        non-versioned source directories they [preside over](https://docs.oracle.com/javase/9/docs/specs/jar/jar.html).
+        """
+        if not hasattr(self, 'multiReleaseJarVersion'):
+            return {}
+        def _find_version_base_project():
+            extended_packages = self.extended_java_packages()
+            if not extended_packages:
+                abort('Project with a multiReleaseJarVersion attribute must have sources in a package defined by project without multiReleaseJarVersion attribute', context=self)
+            base_project = None
+            base_package = None
+            for extended_package in extended_packages:
+                for p in projects():
+                    if self != p and p.isJavaProject() and not hasattr(p, 'multiReleaseJarVersion'):
+                        if extended_package in p.defined_java_packages():
+                            if base_project is None:
+                                base_project = p
+                                base_package = extended_package
+                            else:
+                                if base_project != p:
+                                    abort('Multi-release jar versioned project {} must extend packages from exactly one project but extends {} from {} and {} from {}'.format(self, extended_package, p, base_project, base_package))
+            if not base_project:
+                abort('Multi-release jar versioned project {} must extend package(s) from another project'.format(self))
+            return base_project
+
+        base = _find_version_base_project()
+        flatten_map = {}
+        self_packages = self.defined_java_packages() | self.extended_java_packages()
+        for package in self_packages:
+            relative_package_src_dir = package.replace('.', os.sep)
+            for self_package_src_dir in [join(s, relative_package_src_dir) for s in self.source_dirs()]:
+                if exists(self_package_src_dir):
+                    assert len(base.source_dirs()) != 0, '{} has no source directories!'.format(base)
+                    for base_package_src_dir in [join(s, relative_package_src_dir) for s in base.source_dirs()]:
+                        if exists(base_package_src_dir) or not flatten_map.has_key(self_package_src_dir):
+                            flatten_map[self_package_src_dir] = base_package_src_dir
+        assert len(self_packages) == len(flatten_map), 'could not find sources for all packages in ' + self.name
+        return flatten_map
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
@@ -11920,6 +11959,51 @@ Given a command name, print help for that command."""
         doc = doc.format(*fmtArgs)
     print 'mx {0} {1}\n\n{2}\n'.format(name, usage, doc)
 
+def _parse_multireleasejar_version(value):
+    try:
+        mrjVersion = int(value)
+        if mrjVersion < 9:
+            raise ArgumentTypeError('multi-release jar version ({}) must be greater than 8'.format(value))
+        return mrjVersion
+    except ValueError:
+        raise ArgumentTypeError('multi-release jar version ({}) must be an int value greater than 8'.format(value))
+
+def flattenMultiReleaseSources(args):
+    """print map for flattening multi-release sources
+
+    Prints space separated (versioned_dir, base_dir) pairs where versioned_dir contains versioned sources
+    for a multi-release jar and base_dir contains the corresponding non-versioned (or base versioned)
+    sources.
+    """
+    parser = ArgumentParser(prog='mx flattenmultireleasesources')
+    parser.add_argument('-c', '--commands', action='store_true', help='format the output as a series of commands to copy '\
+                        'the versioned sources to the location of the non-versioned sources')
+    parser.add_argument('version', type=_parse_multireleasejar_version, help='major version of the Java release for which flattened sources will be produced')
+
+    args = parser.parse_args(args)
+    versions = {}
+    for p in projects():
+        if p.isJavaProject() and hasattr(p, 'multiReleaseJarVersion'):
+            version = _parse_multireleasejar_version(getattr(p, 'multiReleaseJarVersion'))
+            if version <= args.version:
+                versions.setdefault(version, []).append(p.get_multireleasesources_flatten_map())
+            else:
+                # Ignore overlays for versions higher than the one requested
+                pass
+
+    # Process versioned overlays in ascending order such that higher versions
+    # override lower versions. This corresponds with how versioned classes in
+    # multi-release jars are resolved.
+    for version, maps in sorted(versions.items()):
+        for flatten_map in maps:
+            for src_dir, dst_dir in flatten_map.iteritems():
+                if not args.commands:
+                    print src_dir, dst_dir
+                else:
+                    if not exists(dst_dir):
+                        print 'mkdir -p {}'.format(dst_dir)
+                    print 'cp {}{}* {}'.format(src_dir, os.sep, dst_dir)
+
 def projectgraph(args, suite=None):
     """create graph for project structure ("mx projectgraph | dot -Tpdf -oprojects.pdf" or "mx projectgraph --igv")"""
 
@@ -15941,6 +16025,7 @@ _commands = {
     'eclipseinit': [eclipseinit_cli, ''],
     'envs': [show_envs, '[options]'],
     'exportlibs': [exportlibs, ''],
+    'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
     'findbugs': [mx_findbugs.findbugs, ''],
     'findclass': [findclass, ''],
     'fsckprojects': [fsckprojects, ''],
@@ -16801,7 +16886,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.146")  # always tasks
+version = VersionSpec("5.147.0")  # GR-8893
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
