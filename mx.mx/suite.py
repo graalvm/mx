@@ -120,6 +120,20 @@ suite = {
       }
     },
 
+    "CHECKSTYLE_8.8" : {
+      "urls" : [
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-8.8-all.jar",
+        "http://sourceforge.net/projects/checkstyle/files/checkstyle/8.8/checkstyle-8.8-all.jar",
+      ],
+      "sha1" : "9712a8124c40298015f04a74f61b3d81a51513af",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "8.8",
+      }
+    },
+
     "HAMCREST" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/hamcrest-core-1.3.jar",
