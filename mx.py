@@ -9190,7 +9190,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += '(version ' + str(versionDescription) + ')'
             selected = configs[0]
             msg += ". Selecting " + str(selected)
-            log(msg)
+            warn(msg)
         else:
             msg = 'Please select a '
             if isDefaultJdk:
@@ -9222,7 +9222,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg = msg + ' ' + str(versionDescription)
         if purpose:
             msg += ' for ' + purpose
-        log(msg)
+        warn(msg)
     else:
         msg = 'Could not find any JDK'
         if purpose:
@@ -9230,7 +9230,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         msg += ' '
         if versionDescription:
             msg = msg + '(version ' + str(versionDescription) + ')'
-        log(msg)
+        warn(msg)
         selected = None
 
     while not selected:
@@ -9240,7 +9240,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
-            log("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
+            log_error("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
