@@ -2550,9 +2550,9 @@ class JavaBuildTask(ProjectBuildTask):
     def _getCompiler(self):
         if self._compiler is None:
             useJDT = self.args.jdt and not self.args.force_javac
-            if hasattr(self.subject, 'forceJavac'):
-                # Revisit once GR-8852 is resolved
-                logv('JavaC insted of JDT compilation is forced - falling back to javac for ' + str(self.subject))
+            if hasattr(self.subject, 'forceJavac') and getattr(self.subject, 'forceJavac', False):
+                # Revisit once GR-8992 is resolved
+                logv('Project {} has "forceJavac" attribute set to True - falling back to javac'.format(self.subject))
                 useJDT = False
 
             if useJDT and not _is_supported_by_jdt(self.jdk):
