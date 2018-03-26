@@ -2550,6 +2550,11 @@ class JavaBuildTask(ProjectBuildTask):
     def _getCompiler(self):
         if self._compiler is None:
             useJDT = self.args.jdt and not self.args.force_javac
+            if hasattr(self.subject, 'forceJavac'):
+                # Revisit once GR-8852 is resolved
+                logv('JavaC insted of JDT compilation is forced - falling back to javac for ' + str(self.subject))
+                useJDT = False
+
             if useJDT and not _is_supported_by_jdt(self.jdk):
                 # Revisit once GR-8852 is resolved
                 logv('JDT does not yet support JDK9 - falling back to javac for ' + str(self.subject))
@@ -16887,7 +16892,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.148.0")  # GR-8952 define checkstyle 8.8
+version = VersionSpec("5.149.0")  # GR-8992 JDT fails to compile deprecated classes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
