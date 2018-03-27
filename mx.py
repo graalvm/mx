@@ -2796,7 +2796,6 @@ class JavacCompiler(JavacLikeCompiler):
             if lint != ['none'] and warningsAsErrors:
                 # disable the "bootstrap class path not set in conjunction with -source N" warning
                 # since we are not in strict compliance mode
-                assert not _opts.strict_compliance or project.name == 'com.oracle.mxtool.compilerserver'
                 lint += ['-options']
 
         if forceDeprecationAsWarning:
@@ -16892,7 +16891,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.0")  # GR-8992 JDT fails to compile deprecated classes
+version = VersionSpec("5.149.1")  # GR-9010
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
