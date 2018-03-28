@@ -9240,7 +9240,12 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     while not selected:
         if not is_interactive():
             return None
-        jdkLocation = raw_input('Enter path of JDK: ')
+        if cancel:
+            jdkLocation = raw_input('Enter path of JDK or leave empty to cancel (' + cancel + '): ')
+            if len(jdkLocation) == 0:
+                return None
+        else:
+            jdkLocation = raw_input('Enter path of JDK: ')
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
