@@ -136,6 +136,13 @@ class MxCompatibility500(object):
     def deprecateIsTestProject(self):
         return False
 
+    def filterFindbugsProjectsByJavaCompliance(self):
+        """
+        Should selection of projects to analyze with FindBugs filter
+        out projects whose Java compliance is greater than 8.
+        """
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -310,6 +317,14 @@ class MxCompatibility51400(MxCompatibility51380):#pylint: disable=too-many-ances
         return True
 
     def deprecateIsTestProject(self):
+        return True
+
+class MxCompatibility51492(MxCompatibility51400):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.149.2")
+
+    def filterFindbugsProjectsByJavaCompliance(self):
         return True
 
 def minVersion():

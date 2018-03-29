@@ -46,8 +46,7 @@ def _should_test_project(p):
         return p.findbugs.lower() == 'true' or p.findbugs is True
     if p.name.endswith('.test'):
         return False
-    # FindBugs does not yet support JDK9
-    if p.javaCompliance >= '9':
+    if p.javaCompliance >= '9' and p.suite.getMxCompatibility().filterFindbugsProjectsByJavaCompliance():
         return False
     return True
 
