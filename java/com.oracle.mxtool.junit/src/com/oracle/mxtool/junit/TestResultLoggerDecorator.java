@@ -24,16 +24,15 @@ package com.oracle.mxtool.junit;
 
 import java.io.PrintStream;
 
-import org.junit.internal.JUnitSystem;
 import org.junit.runner.Result;
 
-class TestResultLogger extends TextRunListener {
+class TestResultLoggerDecorator extends MxRunListenerDecorator {
 
     private final PrintStream passed;
     private final PrintStream failed;
 
-    TestResultLogger(PrintStream passed, PrintStream failed, JUnitSystem system) {
-        super(system);
+    TestResultLoggerDecorator(PrintStream passed, PrintStream failed, MxRunListener l) {
+        super(l);
         this.passed = passed;
         this.failed = failed;
     }

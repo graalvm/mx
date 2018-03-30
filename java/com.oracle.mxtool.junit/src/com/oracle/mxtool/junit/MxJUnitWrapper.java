@@ -233,7 +233,7 @@ public class MxJUnitWrapper {
         if (config.recordResults) {
             PrintStream passed = openFile(system, "passed.txt");
             PrintStream failed = openFile(system, "failed.txt");
-            mxListener = new TestResultLogger(passed, failed, system);
+            mxListener = new TestResultLoggerDecorator(passed, failed, mxListener);
         }
 
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
