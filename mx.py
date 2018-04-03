@@ -1060,6 +1060,7 @@ class Distribution(Dependency):
     def overlapped_distributions(self):
         return self.resolved_overlaps
 
+
 class JARDistribution(Distribution, ClasspathDependency):
     """
     A distribution represents a jar file built from the class files and resources defined by a set of
@@ -1069,20 +1070,20 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
     :param list stripConfigFileNames: names of stripping configurations that are located in `<mx_dir>/proguard/` and suffixed with `.proguard`
-    :param str subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
+    :param str | None subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
     :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
            it is interpreted to be relative to `suite.dir`.
-    :param str sourcesPath: the path of the zip file created for the source files corresponding to the class files of this distribution.
+    :param str | None sourcesPath: the path of the zip file created for the source files corresponding to the class files of this distribution.
            If this is not an absolute path, it is interpreted to be relative to `suite.dir`.
     :param list deps: the `JavaProject` and `Library` dependencies that are the root sources for this distribution's jar
-    :param str mainClass: the class name representing application entry point for this distribution's executable jar. This
+    :param str | None mainClass: the class name representing application entry point for this distribution's executable jar. This
            value (if not None) is written to the ``Main-Class`` header in the jar's manifest.
     :param list excludedLibs: libraries whose contents should be excluded from this distribution's jar
     :param list distDependencies: the `JARDistribution` dependencies that must be on the class path when this distribution
            is on the class path (at compile or run time)
-    :param str javaCompliance:
+    :param str | None javaCompliance:
     :param bool platformDependent: specifies if the built artifact is platform dependent
-    :param str theLicense: license applicable when redistributing the built artifact of the distribution
+    :param str | None theLicense: license applicable when redistributing the built artifact of the distribution
     :param str javadocType: specifies if the javadoc generated for this distribution should include implementation documentation
            or only API documentation. Accepted values are "implementation" and "API".
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
@@ -1093,11 +1094,18 @@ class JARDistribution(Distribution, ClasspathDependency):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
-        self._path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
+        if path:
+            path = mx_subst.path_substitutions.substitute(path)
+            self._path = _make_absolute(path.replace('/', os.sep), suite.dir)
+        else:
+            self._path = _make_absolute(self._default_path(), suite.dir)
         if sourcesPath == '<none>':
             self.sourcesPath = None
+        elif sourcesPath:
+            sourcesPath = mx_subst.path_substitutions.substitute(sourcesPath)
+            self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir)
         else:
-            self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep) if sourcesPath else self._default_source_path(), suite.dir)
+            self.sourcesPath =_make_absolute(self._default_source_path(), suite.dir)
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
@@ -7780,6 +7788,9 @@ class Suite(object):
                 if hasattr(mod, 'mx_post_parse_cmd_line'):
                     self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
+                if hasattr(mod, 'mx_register_dynamic_suite_constituents'):
+                    self.mx_register_dynamic_suite_constituents = mod.mx_register_dynamic_suite_constituents
+
                 if hasattr(mod, 'mx_init'):
                     mod.mx_init(self)
                 self.extensions = mod
@@ -8237,8 +8248,15 @@ class SourceSuite(Suite):
         return SCMMetadata(pull, pull, push)
 
     def _load_metadata(self):
-        Suite._load_metadata(self)
+        super(SourceSuite, self)._load_metadata()
         self._load_projects()
+        if hasattr(self, 'mx_register_dynamic_suite_constituents'):
+            def _register_project(proj):
+                self.projects.append(proj)
+            def _register_distribution(dist):
+                self.dists.append(dist)
+            self.mx_register_dynamic_suite_constituents(_register_project, _register_distribution)
+        self._finish_load_projects()
 
     def _load_projects(self):
         """projects are unique to source suites"""
@@ -8307,7 +8325,7 @@ class SourceSuite(Suite):
                 log_error("Error while creating project {}".format(name))
                 raise
 
-
+    def _finish_load_projects(self):
         # Record the projects that define annotation processors
         apProjects = {}
         for p in self.projects:
@@ -8556,8 +8574,15 @@ class BinarySuite(Suite):
         # so, in that mode, we don't want to call the superclass method again
         pass
 
+    def _load_metadata(self):
+        super(BinarySuite, self)._load_metadata()
+        if hasattr(self, 'mx_register_dynamic_suite_constituents'):
+            def _register_distribution(dist):
+                self.dists.append(dist)
+            self.mx_register_dynamic_suite_constituents(None, _register_distribution)
+
     def _load_distribution(self, name, attrs):
-        ret = Suite._load_distribution(self, name, attrs)
+        ret = super(BinarySuite, self)._load_distribution(name, attrs)
         self.vc.getDistribution(self.dir, ret)
         return ret
 
@@ -17445,6 +17470,7 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
 
     opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
     urllib2.install_opener(opener)
+
 
 def main():
     # make sure logv, logvv and warn work as early as possible
