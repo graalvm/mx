@@ -10525,12 +10525,16 @@ def add_debug_lib_suffix(name):
 
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
+mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
 
 
 def get_mxbuild_dir(dependency, **kwargs):
     return dependency.get_output_base()
 
 mx_subst.results_substitutions.register_no_arg('mxbuild', get_mxbuild_dir, keywordArgs=True)
+
+_this_year = str(datetime.now().year)
+mx_subst.string_substitutions.register_no_arg('year', lambda: _this_year)
 
 
 """
