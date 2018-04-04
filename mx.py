@@ -680,6 +680,7 @@ class ClasspathDependency(Dependency):
 
 
 class BuildTask(object):
+    __metaclass__ = ABCMeta
     """
     A build task is used to build a dependency.
     :type deps: list[BuildTask]
@@ -5597,15 +5598,17 @@ class GitConfig(VC):
         :rtype: str
         """
         tag_prefix = prefix + '-'
-        matching_tags = self._tags(vcdir, tag_prefix, abortOnError=abortOnError)
-        latest_rev = self._latest_revision(vcdir, abortOnError=abortOnError)
-        if latest_rev and matching_tags:
-            matching_versions = [[int(x) for x in tag[len(tag_prefix):].split('.')] for tag in matching_tags]
-            matching_versions = sorted(matching_versions, reverse=True)
-            most_recent_version = matching_versions[0]
-            most_recent_tag = tag_prefix + '.'.join((str(x) for x in most_recent_version))
-            most_recent_tag_revision = self._commitish_revision(vcdir, most_recent_tag)
-            return VC._version_string_helper(latest_rev, most_recent_tag_revision, most_recent_version, snapshotSuffix)
+        v_re = re.compile("^" + re.escape(tag_prefix) + r"\d+(?:\.\d+)*$")
+        matching_tags = [t for t in self._tags(vcdir, tag_prefix, abortOnError=abortOnError) if v_re.match(t)]
+        if matching_tags:
+            latest_rev = self._latest_revision(vcdir, abortOnError=abortOnError)
+            if latest_rev:
+                matching_versions = [[int(x) for x in tag[len(tag_prefix):].split('.')] for tag in matching_tags]
+                matching_versions = sorted(matching_versions, reverse=True)
+                most_recent_version = matching_versions[0]
+                most_recent_tag = tag_prefix + '.'.join((str(x) for x in most_recent_version))
+                most_recent_tag_revision = self._commitish_revision(vcdir, most_recent_tag)
+                return VC._version_string_helper(latest_rev, most_recent_tag_revision, most_recent_version, snapshotSuffix)
         return None
 
     def parent_tags(self, vcdir):
