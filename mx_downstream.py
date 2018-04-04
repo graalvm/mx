@@ -110,7 +110,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                 mx.log('Omitting ' + output_root)
                 return [os.path.basename(output_root)]
             return []
-        shutil.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root)
+        shutil.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root, symlinks=True)
 
     targetDir = None
     for repoUrl in repoUrls:

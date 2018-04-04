@@ -16896,7 +16896,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.2")  # GR-9038
+version = VersionSpec("5.149.3")  # copy symlinks as symlinks in testdownstream
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
