@@ -275,12 +275,14 @@ suite = {
         "JUNIT",
       ],
       "javaCompliance" : "1.8",
+      "checkstyleVersion" : "8.8",
     },
 
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.7+", # jdk7 or later
+      "checkstyleVersion" : "8.8",
     },
 
     "com.oracle.mxtool.checkcopy" : {
