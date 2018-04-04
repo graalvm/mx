@@ -39,6 +39,7 @@ class TestResultLoggerDecorator extends MxRunListenerDecorator {
 
     @Override
     public void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
+        super.testClassFinished(clazz, numPassed, numFailed);
         if (numFailed != 0) {
             failed.println(clazz.getName());
         } else {
@@ -48,6 +49,7 @@ class TestResultLoggerDecorator extends MxRunListenerDecorator {
 
     @Override
     public void testRunFinished(Result result) {
+        super.testRunFinished(result);
         passed.close();
         failed.close();
     }
