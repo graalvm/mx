@@ -2,7 +2,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2018, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -8854,9 +8854,6 @@ environment variables:
                 os.environ['JAVA_HOME'] = opts.java_home
             os.environ['HOME'] = opts.user_home
 
-            if os.environ.get('STRICT_COMPLIANCE'):
-                opts.strict_compliance = True
-
             global _primary_suite_path
             _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
             if _primary_suite_path:
@@ -16896,7 +16893,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.3")  # copy symlinks as symlinks in testdownstream
+version = VersionSpec("5.149.4")  # GR-9132: Remove STRICT_COMPLIANCE environment option.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
