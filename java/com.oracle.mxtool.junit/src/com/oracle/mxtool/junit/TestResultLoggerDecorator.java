@@ -24,22 +24,22 @@ package com.oracle.mxtool.junit;
 
 import java.io.PrintStream;
 
-import org.junit.internal.JUnitSystem;
 import org.junit.runner.Result;
 
-class TestResultLogger extends TextRunListener {
+class TestResultLoggerDecorator extends MxRunListenerDecorator {
 
     private final PrintStream passed;
     private final PrintStream failed;
 
-    TestResultLogger(PrintStream passed, PrintStream failed, JUnitSystem system) {
-        super(system);
+    TestResultLoggerDecorator(PrintStream passed, PrintStream failed, MxRunListener l) {
+        super(l);
         this.passed = passed;
         this.failed = failed;
     }
 
     @Override
     public void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
+        super.testClassFinished(clazz, numPassed, numFailed);
         if (numFailed != 0) {
             failed.println(clazz.getName());
         } else {
@@ -49,6 +49,7 @@ class TestResultLogger extends TextRunListener {
 
     @Override
     public void testRunFinished(Result result) {
+        super.testRunFinished(result);
         passed.close();
         failed.close();
     }
