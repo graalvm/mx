@@ -5066,7 +5066,7 @@ class GitConfig(VC):
 
     def _local_cache_repo(self):
         cache_path = get_env('MX_GIT_CACHE_DIR') or join(dot_mx_dir(), 'git-cache')
-        if not exists(cache_path):
+        if not exists(cache_path) or len(os.listdir(cache_path)) == 0:
             self.init(cache_path, bare=True)
         return cache_path
 
@@ -16893,7 +16893,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.4")  # GR-9132: Remove STRICT_COMPLIANCE environment option.
+version = VersionSpec("5.149.5") # GR-8967: Init git-cache repository when directory exists but is empty.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
