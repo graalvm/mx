@@ -621,12 +621,15 @@ def _replacePathVar(m):
 
 def _get_dependency_path(dname):
     d = dependency(dname)
+    path = None
     if d.isJARDistribution() and hasattr(d, "path"):
         path = d.path
     elif d.isTARDistribution() and hasattr(d, "output"):
         path = d.output
     elif d.isLibrary():
         path = d.get_path(resolve=True)
+    elif d.isProject():
+        path = d.dir
     if path:
         return join(d.suite.dir, path)
     else:
@@ -3945,7 +3948,7 @@ class NativeBuildTask(ProjectBuildTask):
         if not forBuild:  # assume make can do incremental builds
             if hasattr(self.subject, "vpath") and self.subject.vpath:
                 output = self.subject.getOutput()
-                if os.path.exists(output):
+                if os.path.exists(output) and output != '.':
                     shutil.rmtree(output)
             else:
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
