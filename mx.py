@@ -8982,18 +8982,17 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
     if missingParams:
         abort('Missing parameters while instantiating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=t)
 
-    def _patchAttrs(attrs):
-        result = {}
-        for k, v in attrs.iteritems():
-            if isinstance(v, types.StringType):
-                result[k] = _patchTemplateString(v, args, context)
-            elif isinstance(v, types.DictType):
-                result[k] = _patchAttrs(v)
-            else:
-                result[k] = v
-        return result
+    def _patch(v):
+        if isinstance(v, types.StringType):
+            return _patchTemplateString(v, args, context)
+        elif isinstance(v, types.DictType):
+            return {kk: _patch(vv) for kk, vv in v.items()}
+        elif isinstance(v, types.ListType):
+            return [_patch(e) for e in v]
+        else:
+            return v
 
-    d = t.suite._load_distribution(instantiatedDistributionName(t.name, args, context), _patchAttrs(t.attrs))
+    d = t.suite._load_distribution(instantiatedDistributionName(t.name, args, context), _patch(t.attrs))
     if d is None and fatalIfMissing:
         abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=t)
     t.suite._register_distribution(d)
