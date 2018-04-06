@@ -791,7 +791,7 @@ class BuildTask(object):
 
             if newestInput and shallow_dependency_checks and not self.subject.isNativeProject():
                 newestInput = None
-            if __name__ != self.__module__ and self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
+            if __name__ != self.__module__ and not self.subject.suite.getMxCompatibility().newestInputIsTimeStampFile():
                 newestInput = newestInput.timestamp if newestInput else float(0)
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
