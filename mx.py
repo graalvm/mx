@@ -583,6 +583,7 @@ class Dependency(SuiteConstituent):
         by the strings. The 'deps' list is updated in place.
         """
         if deps:
+            assert all((isinstance(d, str) or isinstance(d, Dependency) for d in deps))
             if isinstance(deps[0], str):
                 assert all((isinstance(d, str) for d in deps))
                 resolvedDeps = []
@@ -596,7 +597,7 @@ class Dependency(SuiteConstituent):
                         continue
                     if dep.isProject() and self.suite is not dep.suite:
                         abort('cannot have an inter-suite reference to a project: ' + dep.name, context=self)
-                    if s is None and self.suite is not dep.suite:
+                    if s is None and self.suite is not dep.suite and dep != self.suite.dependency(dep.name, fatalIfMissing=False):
                         abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
@@ -607,9 +608,7 @@ class Dependency(SuiteConstituent):
                             abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
                     resolvedDeps.append(dep)
                 deps[:] = resolvedDeps
-            else:
-                # If the first element has been resolved, then all elements should have been resolved
-                assert len([d for d in deps if not isinstance(d, str)])
+            assert all((isinstance(d, Dependency) for d in deps))
 
 # for backwards compatibility
 def _replaceResultsVar(m):
@@ -7363,6 +7362,7 @@ class Suite(object):
         self._metadata_initialized = False
         self.loading_imports = False
         self.post_init = False
+        self.resolved_dependencies = False
         self.distTemplates = []
         self.licenseDefs = []
         self.repositoryDefs = []
@@ -7393,6 +7393,19 @@ class Suite(object):
 
     def getMxCompatibility(self):
         return mx_compat.getMxCompatibility(self.requiredMxVersion)
+
+    def dependency(self, name, fatalIfMissing=True, context=None):
+        def _find_in_registry(reg):
+            for lib in reg:
+                if lib.name == name:
+                    return lib
+        result = _find_in_registry(self.libs) or \
+                 _find_in_registry(self.jreLibs) or \
+                 _find_in_registry(self.jdkLibs) or \
+                 _find_in_registry(self.dists)
+        if fatalIfMissing and result is None:
+            abort("Couldn't find '{}' in '{}'".format(name, self.name), context=context)
+        return result
 
     def _parse_env(self):
         nyi('_parse_env', self)
@@ -7661,6 +7674,7 @@ class Suite(object):
             d.resolveDeps()
         for r in self.repositoryDefs:
             r.resolveLicenses()
+        self.resolved_dependencies = True
 
     def _post_init_finish(self):
         if hasattr(self, 'mx_post_parse_cmd_line'):
@@ -8050,6 +8064,8 @@ class Suite(object):
         """depth first _post_init driven by imports graph"""
         self.visit_imports(Suite._init_metadata_visitor)
         self._init_metadata()
+        self.visit_imports(Suite._resolve_dependencies_visitor)
+        self._resolve_dependencies()
         self.visit_imports(Suite._post_init_visitor)
         self._post_init()
 
@@ -8069,10 +8085,16 @@ class Suite(object):
             imported_suite.visit_imports(imported_suite._post_init_visitor)
             imported_suite._post_init()
 
+    @staticmethod
+    def _resolve_dependencies_visitor(importing_suite, suite_import, **extra_args):
+        imported_suite = suite(suite_import.name)
+        if not imported_suite.resolved_dependencies:
+            imported_suite.visit_imports(imported_suite._resolve_dependencies_visitor)
+            imported_suite._resolve_dependencies()
+
     def _init_metadata(self):
         self._load_metadata()
         self._register_metadata()
-        self._resolve_dependencies()
 
     def _post_init(self):
         self._post_init_finish()
@@ -8114,6 +8136,7 @@ class Suite(object):
             assert not imported_suite.post_init
             imported_suite._load()
             imported_suite._init_metadata()
+            imported_suite._resolve_dependencies()
             imported_suite._post_init()
         return imported_suite
 
@@ -8194,6 +8217,12 @@ class SourceSuite(Suite):
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
         self._releaseVersion = None
+
+    def dependency(self, name, fatalIfMissing=True, context=None):
+        for p in self.projects:
+            if p.name == name:
+                return p
+        return super(SourceSuite, self).dependency(name, fatalIfMissing=fatalIfMissing, context=context)
 
     def _resolve_dependencies(self):
         super(SourceSuite, self)._resolve_dependencies()
@@ -9046,17 +9075,12 @@ def dependency(name, fatalIfMissing=True, context=None):
         # reference to a distribution or library from a suite
         referencedSuite = suite(suite_name, context=context)
         if referencedSuite:
-            d = _dists.get(name) or _libs.get(name) or _jdkLibs.get(name) or _jreLibs.get(name)
+            d = referencedSuite.dependency(name, fatalIfMissing=False, context=context)
             if d:
-                if d.suite != referencedSuite:
-                    if fatalIfMissing:
-                        abort('{dep} exported by {depSuite}, expected {dep} from {referencedSuite}'.format(dep=d.name, referencedSuite=referencedSuite, depSuite=d.suite), context=context)
-                    return None
-                else:
-                    return d
+                return d
             else:
                 if fatalIfMissing:
-                    abort('cannot resolve ' + name + ' as a distribution or library of ' + suite_name, context=context)
+                    abort('cannot resolve ' + name + ' as a dependency defined by ' + suite_name, context=context)
                 return None
     d = _projects.get(name)
     if d is None:
@@ -17541,6 +17565,7 @@ def main():
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
     _mx_suite._init_metadata()
+    _mx_suite._resolve_dependencies()
     _mx_suite._post_init()
 
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
