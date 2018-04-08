@@ -8956,6 +8956,8 @@ def annotation_processors():
 def get_license(names, fatalIfMissing=True, context=None):
 
     def get_single_licence(name):
+        if isinstance(name, License):
+            return name
         _, name = splitqualname(name)
         l = _licenses.get(name)
         if l is None and fatalIfMissing:
