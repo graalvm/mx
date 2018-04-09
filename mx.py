@@ -697,7 +697,8 @@ class BuildTask(object):
         since the last time it was built.
         Returns True if file already existed and did not reflect the current dependencies.
         """
-        savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', self.subject.name)
+        typePrefix = type(self.subject).__name__
+        savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix, self.subject.name)
         currentDeps = [d.subject.name for d in self.deps]
         outOfDate = False
         if exists(savedDepsFile):
@@ -16893,7 +16894,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.5") # GR-8967: Init git-cache repository when directory exists but is empty.
+version = VersionSpec("5.149.5") # GR-8928 Ruby rebuilds every timeGR
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
