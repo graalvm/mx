@@ -2849,21 +2849,13 @@ class JavacCompiler(JavacLikeCompiler):
                 proj = dep
                 m = getattr(proj, '.declaringJDKModule', None)
                 if m is None:
-                    # Look in modules declared in the same suite at proj first
-                    for dist in dep.suite.dists:
-                        moduleName = getattr(dist, 'moduleName', None)
-                        if proj in dist.archived_deps():
-                            m = moduleName
-
-                    if m is None:
-                        # Now look in modules of the JDK
-                        modulepath = jdk.get_modules()
-                        java_packages = proj.defined_java_packages() | proj.extended_java_packages()
-                        for package in java_packages:
-                            jmd, _ = lookup_package(modulepath, package, "<unnamed>")
-                            if jmd:
-                                m = jmd.name
-                                break
+                    modulepath = jdk.get_modules()
+                    java_packages = proj.defined_java_packages() | proj.extended_java_packages()
+                    for package in java_packages:
+                        jmd, _ = lookup_package(modulepath, package, "<unnamed>")
+                        if jmd:
+                            m = jmd.name
+                            break
                     if m is None:
                         # Use proj to denote that proj is not declared by any JDK module
                         m = proj
@@ -16902,7 +16894,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.150.0") # GR-9267
+version = VersionSpec("5.149.6") # GR-8928 Ruby rebuilds every time
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
