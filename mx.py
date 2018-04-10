@@ -7829,8 +7829,11 @@ class Suite(object):
                     abort('suite import entry must be a dict')
 
                 import_dict = entry
+                imported_suite_name = import_dict.get('name', '<unknown>')
                 if import_dict.get('ignore', False):
-                    log("Ignoring '{}' on your platform ({}/{})".format(import_dict.get('name', '<unknown>'), get_os(), get_arch()))
+                    log("Ignoring '{}' on your platform ({}/{})".format(imported_suite_name, get_os(), get_arch()))
+                    continue
+                if import_dict.get('dynamic', False) and imported_suite_name not in (name for name, _ in get_dynamic_imports()):
                     continue
                 suite_import = SuiteImport.parse_specification(import_dict, context=self, importer=self, dynamicImport=self.dynamicallyImported)
                 jdkProvidedSince = import_dict.get('jdkProvidedSince', None)
@@ -7838,25 +7841,6 @@ class Suite(object):
                     _jdkProvidedSuites.add(suite_import.name)
                 else:
                     self.suite_imports.append(suite_import)
-        if self.primary:
-            dynamicImports = _opts.dynamic_imports
-            if dynamicImports:
-                expandedDynamicImports = []
-                for dynamicImport in dynamicImports:
-                    expandedDynamicImports += [name for name in dynamicImport.split(',')]
-                dynamicImports = expandedDynamicImports
-            else:
-                envDynamicImports = os.environ.get('DEFAULT_DYNAMIC_IMPORTS')
-                if envDynamicImports:
-                    dynamicImports = envDynamicImports.split(',')
-            if dynamicImports:
-                for dynamic_import in dynamicImports:
-                    in_subdir = '/' in dynamic_import
-                    if in_subdir:
-                        name = dynamic_import[dynamic_import.index('/') + 1:]
-                    else:
-                        name = dynamic_import
-                    self.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
 
     def re_init_imports(self):
         """
@@ -8207,6 +8191,34 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         else:
             abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
     return None
+
+
+_dynamic_imports = None
+
+
+def get_dynamic_imports():
+    """
+    :return: a list of tuples (suite_name, in_subdir)
+    :rtype: (str, bool)
+    """
+    global _dynamic_imports
+    if _dynamic_imports is None:
+        dynamic_imports = []
+        if _opts.dynamic_imports:
+            for opt in _opts.dynamic_imports:
+                dynamic_imports += opt.split(',')
+        else:
+            env_dynamic_imports = os.environ.get('DEFAULT_DYNAMIC_IMPORTS')
+            if env_dynamic_imports:
+                dynamic_imports += env_dynamic_imports.split(',')
+        _dynamic_imports = []
+        for dynamic_import in dynamic_imports:
+            idx = dynamic_import.find('/')
+            if idx < 0:
+                _dynamic_imports.append((dynamic_import, False))
+            else:
+                _dynamic_imports.append((dynamic_import[idx + 1:], True))
+    return _dynamic_imports
 
 
 class SourceSuite(Suite):
@@ -17404,6 +17416,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         return True
 
     try:
+        dynamic_imports_added = False
         while worklist:
             importing_suite_name, imported_suite_name = worklist.popleft()
             importing_suite = discovered[importing_suite_name]
@@ -17452,6 +17465,15 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
                 else:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
+            if not worklist and not dynamic_imports_added:
+                for name, in_subdir in get_dynamic_imports():
+                    if name not in discovered:
+                        primary.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
+                        worklist.append((primary.name, name))
+                        _log_discovery("Adding {}->{} dynamic import".format(primary.name, name))
+                    else:
+                        _log_discovery("Skipping {}->{} dynamic import (already imported)".format(primary.name, name))
+                dynamic_imports_added = True
     except SystemExit as se:
         cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
         if cloned_during_discovery:
