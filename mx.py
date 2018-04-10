@@ -16894,7 +16894,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.149.6") # GR-8928 Ruby rebuilds every time
+version = VersionSpec("5.150.1") # GR-9267 (revert)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
