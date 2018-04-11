@@ -2844,18 +2844,29 @@ class JavacCompiler(JavacLikeCompiler):
                 """
                 Gets the JDK module, if any, declaring at least one package in `dep`.
                 """
-                if not dep.isJavaProject():
+                if dep.isJARDistribution():
+                    return getattr(dep, 'moduleName', None)
+                if not dep.isJavaProject() and not dep.isJARDistribution():
                     return None
                 proj = dep
                 m = getattr(proj, '.declaringJDKModule', None)
                 if m is None:
-                    modulepath = jdk.get_modules()
-                    java_packages = proj.defined_java_packages() | proj.extended_java_packages()
-                    for package in java_packages:
-                        jmd, _ = lookup_package(modulepath, package, "<unnamed>")
-                        if jmd:
-                            m = jmd.name
+                    # Look in modules declared in distributions first
+                    for dist in sorted_dists():
+                        moduleName = getattr(dist, 'moduleName', None)
+                        if moduleName and proj in dist.archived_deps():
+                            m = moduleName
                             break
+
+                    if m is None:
+                        # Now look in modules of the JDK
+                        modulepath = jdk.get_modules()
+                        java_packages = proj.defined_java_packages() | proj.extended_java_packages()
+                        for package in java_packages:
+                            jmd, _ = lookup_package(modulepath, package, "<unnamed>")
+                            if jmd:
+                                m = jmd.name
+                                break
                     if m is None:
                         # Use proj to denote that proj is not declared by any JDK module
                         m = proj
@@ -2908,6 +2919,11 @@ class JavacCompiler(JavacLikeCompiler):
 
             if compliance >= '9':
                 exports = {}
+                entries = classpath_entries(project.name, includeSelf=False)
+                for e in entries:
+                    m = getDeclaringJDKModule(e)
+                    if m:
+                        jdkModulesOnClassPath.add(m)
                 addExportArgs(project, exports)
                 addRootModules(exports, '')
             else:
@@ -2915,7 +2931,8 @@ class JavacCompiler(JavacLikeCompiler):
                 # that are in modules and did not exist in JDK n
                 assert '--release' in javacArgs
                 jdk_module_jars = set()
-                for e in classpath_entries(project.name, includeSelf=False):
+                entries = classpath_entries(project.name, includeSelf=False)
+                for e in entries:
                     if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince:
                         jdkModulesOnClassPath.add(e.module)
                         jdk_module_jars.add(_get_jdk_module_jar(e.module, primary_suite(), jdk))
@@ -2928,19 +2945,24 @@ class JavacCompiler(JavacLikeCompiler):
             if aps:
                 exports = {}
 
-                for dep in classpath_entries(aps, preferProjects=True):
-                    if dep.isJavaProject():
-                        m = getDeclaringJDKModule(dep)
-                        if m:
-                            jdkModulesOnClassPath.add(m)
+                entries = classpath_entries(aps, preferProjects=True)
+                for dep in entries:
+                    m = getDeclaringJDKModule(dep)
+                    if m:
+                        jdkModulesOnClassPath.add(m)
+                    elif dep.isJavaProject():
                         addExportArgs(dep, exports, '-J', jdk)
 
                 # An annotation processor may have a dependency on other annotation
                 # processors. The latter might need extra exports.
-                for dep in classpath_entries(aps, preferProjects=False):
+                entries = classpath_entries(aps, preferProjects=False)
+                for dep in entries:
                     if dep.isJARDistribution() and dep.definedAnnotationProcessors:
                         for apDep in dep.deps:
-                            if apDep.isJavaProject():
+                            m = getDeclaringJDKModule(apDep)
+                            if m:
+                                jdkModulesOnClassPath.add(m)
+                            elif apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk)
 
                 addRootModules(exports, '-J')
@@ -8724,10 +8746,10 @@ environment variables:
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
   MX_GIT_CACHE          Use a cache for git objects during clones.
-                         * Setting it to `reference` will clone repositories using the cache and let them 
+                         * Setting it to `reference` will clone repositories using the cache and let them
                            reference the cache (if the cache gets deleted these repositories will be
                            incomplete).
-                         * Setting it to `dissociated` will clone using the cache but then dissociate the 
+                         * Setting it to `dissociated` will clone using the cache but then dissociate the
                            repository from the cache.
                          * Setting it to `refcache` will synchronize with server only if a branch is
                            requested or if a specific revision is requested which does not exist in the
