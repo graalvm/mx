@@ -16464,7 +16464,72 @@ def verify_library_urls(args):
     if not ok:
         abort('Some libraries are not reachable')
 
+
 _java_package_regex = re.compile(r"^package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
+
+
+def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, extension=".hocon"):
+    """
+    Verify CI configuration
+
+    :type args: list[str] or None
+    :type base_suite: SourceSuite
+    :type dest_suite: SourceSuite
+    :type common_file: str | None
+    :type common_dirs: list[str] | None
+    :type extension: str
+    """
+    parser = ArgumentParser(prog='mx verify-ci')
+    parser.add_argument('-s', '--sync', action='store_true', help='synchronize with graal configuration')
+    parser.add_argument('-q', '--quiet', action='store_true', help='Only produce output if something is changed')
+
+    args = parser.parse_args(args)
+
+    def _handle_error(msg, base_file, dest_file):
+        if args.sync:
+            import shutil
+            log("Overriding {1} from {0}".format(os.path.normpath(base_file), os.path.normpath(dest_file)))
+            shutil.copy(base_file, dest_file)
+        else:
+            log(msg + ": " + os.path.normpath(dest_file))
+            log("Try synchronizing the following directories:")
+            log("  " + base_dir)
+            log("  " + dest_dir)
+            log("Or execute 'mx verify-ci' with the  '--sync' option.")
+            abort(1)
+
+    def _common_string_end(s1, s2):
+        l = 0
+        while s1[l-1] == s2[l-1]:
+            l -= 1
+        return s1[:l]
+
+    def _verify_file(base_file, dest_file):
+        if not os.path.isfile(dest_file):
+            _handle_error('Common CI file not found', base_file, dest_file)
+        if not filecmp.cmp(base_file, dest_file):
+            _handle_error('Common CI file mismatch', base_file, dest_file)
+        logv("CI File '{0}' matches.".format(_common_string_end(base_file, dest_file)))
+
+    for d in common_dirs:
+        base_dir = join(base_suite.dir, d)
+        dest_dir = join(dest_suite.dir, d)
+
+        for root, _, files in os.walk(base_dir):
+            rel_root = os.path.relpath(root, base_dir)
+            for f in files:
+                if f.endswith(extension):
+                    community_file = join(base_dir, rel_root, f)
+                    enterprise_file = join(dest_dir, rel_root, f)
+                    _verify_file(community_file, enterprise_file)
+    if common_file:
+        base_common = join(base_suite.vc_dir, common_file)
+        dest_common = join(dest_suite.vc_dir, common_file)
+        _verify_file(base_common, dest_common)
+
+    if not args.quiet:
+        log("CI setup is fine.")
+
 
 def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
     if not isinstance(javaClassNames, list):
