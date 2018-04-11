@@ -12233,7 +12233,8 @@ def _source_locator_memento(deps, jdk=None):
                 javaCompliance = dep.javaCompliance
 
     if javaCompliance:
-        jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(javaCompliance)
+        ejee = _to_EclipseJavaExecutionEnvironment(javaCompliance)
+        jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(ejee)
         memento = XMLDoc().element('classpathContainer', {'path' : jdkContainer}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
         sources.append(jdkContainer + ' [classpathContainer]')
@@ -12255,7 +12256,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     slm, sources = _source_locator_memento(deps, jdk=jdk)
     # Without an entry for the "Project:" field in an attach configuration, Eclipse Neon has problems connecting
     # to a waiting VM and leaves it hanging. Putting any valid project entry in the field seems to solve it.
-    firstProjectName = suite.projects[0].name if suite.projects else ''
+    firstProjectName = [p for p in suite.projects if p.isJavaProject()][0].name if suite.projects else ''
 
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
@@ -12564,6 +12565,17 @@ public class %(className)s {
         run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
     return jarPath
 
+def _to_EclipseJavaExecutionEnvironment(compliance):
+    """
+    Converts a Java compliance value to the max supported
+    Eclipse Execution Environment value.
+    """
+    if not isinstance(compliance, JavaCompliance):
+        compliance = JavaCompliance(compliance)
+    if compliance > '9':
+        return JavaCompliance('9')
+    return compliance
+
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     ensure_dir_exists(p.dir)
 
@@ -12679,8 +12691,11 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
 
     # Every Java program depends on a JRE
-    out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(p.javaCompliance)})
+    ejee = _to_EclipseJavaExecutionEnvironment(p.javaCompliance)
+    out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(ejee)})
     if jdk.javaCompliance >= '9':
+        out.open('attributes')
+        out.element('attribute', {'name' : 'module', 'value' : 'true'})
         moduleDeps = p.get_concealed_imported_packages()
         if len(moduleDeps) != 0:
             # Ignore modules (such as jdk.internal.vm.compiler) that define packages
@@ -12688,11 +12703,9 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             # recent API.
             exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
             if exports:
-                out.open('attributes')
-                out.element('attribute', {'name' : 'module', 'value' : 'true'})
                 for module, pkgs in exports:
                     out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join([module + '/' + pkg + '=ALL-UNNAMED' for pkg in pkgs])})
-                out.close('attributes')
+        out.close('attributes')
     out.close('classpathentry')
 
     out.close('classpath')
@@ -15807,7 +15820,7 @@ def _copy_eclipse_settings(p, files=None):
             with open(source) as f:
                 print >> out, f.read()
         if p.javaCompliance:
-            content = out.getvalue().replace('${javaCompliance}', str(p.javaCompliance))
+            content = out.getvalue().replace('${javaCompliance}', str(_to_EclipseJavaExecutionEnvironment(p.javaCompliance)))
         else:
             content = out.getvalue()
         if processors:
@@ -16916,7 +16929,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.150.1") # GR-9267 (revert)
+version = VersionSpec("5.151.0") # GR-9267v2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
