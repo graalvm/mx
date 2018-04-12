@@ -3852,6 +3852,7 @@ class NativeProject(Project):
                     filename = basename(h)
                 yield os.path.join(srcdir, h), filename
 
+
 class NativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
@@ -6433,7 +6434,7 @@ class MavenSnapshotArtifact:
                 version=self.version,
                 snapshotBuildVersion=self.snapshotBuildVersion,
                 extension=sub.extension)
-        return (url, url + '.sha1')
+        return url, url + '.sha1'
 
     def getSubArtifact(self, extension, classifier=None):
         return self._getUniqueSubArtifact(lambda e, c: e == extension and c == classifier)
