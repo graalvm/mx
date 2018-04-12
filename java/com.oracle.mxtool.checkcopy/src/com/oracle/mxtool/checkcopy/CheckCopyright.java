@@ -222,7 +222,13 @@ public class CheckCopyright {
             String fileName = "copyrights/" + name + "." + suffix;
             String copyrightPath;
             if (copyRightDir != null) {
-                copyrightPath = new File(new File(copyRightDir), fileName).getAbsolutePath();
+                // try to find the default copyright first in the custom copyright directory
+                String customCopyDir = CUSTOM_COPYRIGHT_DIR.getValue();
+                File file = new File(new File(customCopyDir), name + "." + suffix);
+                if (!file.exists()) {
+                    file = new File(new File(copyRightDir), fileName);
+                }
+                copyrightPath = file.getAbsolutePath();
             } else {
                 URL url = CheckCopyright.class.getResource(fileName);
                 try {
