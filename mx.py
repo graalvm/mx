@@ -2122,7 +2122,7 @@ class LayoutDistribution(AbstractDistribution):
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.output)
-        with self.archive_factory(self.path, kind=self.localExtension(), duplicates_action='warn', context=self) as arc:
+        with self.archive_factory(self.path, kind=self.localExtension(), duplicates_action='warn', context=self, reset_user_group=getattr(self, 'reset_user_group', False)) as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
