@@ -12227,6 +12227,7 @@ class Archiver(SafeFileCreation):
         tarinfo.name = archive_name
         tarinfo.type = tarfile.SYMTYPE
         tarinfo.linkname = target
+        tarinfo.mtime = calendar.timegm(datetime.now().utctimetuple())
         self.zf.addfile(self._tarinfo_filter(tarinfo))
 
     def _tarinfo_filter(self, tarinfo):
