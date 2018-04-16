@@ -9204,8 +9204,11 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     configs = _sorted_unique_jdk_configs(configs)
 
+    selection_prompt_prefix = None
     if len(configs) > 1:
-        if not is_interactive():
+        # Don't force user to make a selection unless strict compliance
+        # is being requested
+        if not is_interactive() or not _opts.strict_compliance:
             msg = "Multiple possible choices for a JDK"
             if purpose:
                 msg += ' for ' + purpose
@@ -9214,7 +9217,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
                 msg += '(version ' + str(versionDescription) + ')'
             selected = configs[0]
             msg += ". Selecting " + str(selected)
-            warn(msg)
+            logv(msg)
         else:
             msg = 'Please select a '
             if isDefaultJdk:
@@ -9246,7 +9249,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
             msg = msg + ' ' + str(versionDescription)
         if purpose:
             msg += ' for ' + purpose
-        warn(msg)
+        logv(msg)
     else:
         msg = 'Could not find any JDK'
         if purpose:
@@ -9254,38 +9257,49 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         msg += ' '
         if versionDescription:
             msg = msg + '(version ' + str(versionDescription) + ')'
-        warn(msg)
+        selection_prompt_prefix = msg
         selected = None
 
     while not selected:
         if not is_interactive():
             return None
         if cancel:
+            # Don't prompt user to input a JDK path unless strict compliance
+            # is being requested
+            if not _opts.strict_compliance:
+                return None
+            if selection_prompt_prefix: log(selection_prompt_prefix)
             jdkLocation = raw_input('Enter path of JDK or leave empty to cancel (' + cancel + '): ')
             if len(jdkLocation) == 0:
                 return None
         else:
+            if selection_prompt_prefix: log(selection_prompt_prefix)
             jdkLocation = raw_input('Enter path of JDK: ')
         selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
         if not selected:
             assert versionDescription
             log_error("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
+        selection_prompt_prefix = None
 
     varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
     allowMultiple = not isDefaultJdk
     valueSeparator = os.pathsep if allowMultiple else None
-    varName = ask_persist_env(varName, selected.home, valueSeparator)
+    varName = _ask_persist_env(varName, selected.home, valueSeparator)
 
     os.environ[varName] = selected.home
 
     return selected
 
-def ask_persist_env(varName, value, valueSeparator=None):
+def _ask_persist_env(varName, value, valueSeparator=None):
     if not _primary_suite:
         def _deferrable():
             assert _primary_suite
-            ask_persist_env(varName, value, valueSeparator)
+            _ask_persist_env(varName, value, valueSeparator)
         _primary_suite_deferrables.append(_deferrable)
+        return varName
+
+    # Don't prompt the user unless they want strict compliance
+    if not _opts.strict_compliance:
         return varName
 
     envPath = join(_primary_suite.mxDir, 'env')
@@ -9406,7 +9420,7 @@ def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source
                 filtered.append(config)
         except JDKConfigException as e:
             if warnInvalidJDK and source:
-                message = 'Path in ' + source + ' is not pointing to a JDK (' + e.message + ')'
+                message = 'Path in ' + source + ' is not pointing to a JDK (' + e.message + '): ' + candidate
                 try:
                     candidate = join(candidate, 'Contents', 'Home')
                     JDKConfig(candidate)
@@ -10047,6 +10061,8 @@ class JDKConfig:
         try:
             output = subprocess.check_output([self.java, '-d64', '-version'], stderr=subprocess.STDOUT)
             self.java_args = ['-d64'] + self.java_args
+        except OSError as e:
+            raise JDKConfigException('{}: {}'.format(e.errno, e.strerror))
         except subprocess.CalledProcessError as e:
             try:
                 output = subprocess.check_output([self.java, '-version'], stderr=subprocess.STDOUT)
