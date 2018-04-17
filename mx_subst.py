@@ -89,7 +89,7 @@ class CompatSubstitutionEngine(SubstitutionEngine):
         super(CompatSubstitutionEngine, self).__init__()
         self._replaceFn = replaceFn
 
-    def _replace(self, m, **kwArgs):
+    def _replace(self, m, skip_unknown_substitutions, **kwArgs):
         # simulate behavior of old regex matcher
         return re.sub(r'<(.+?)>', self._replaceFn, m.group(0))
 
