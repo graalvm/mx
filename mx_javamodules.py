@@ -107,6 +107,8 @@ class JavaModuleDescriptor(object):
                 resolved.append(jdkmodules[name])
         jmd.modulepath = resolved
         jmd.dist = mx.distribution(jmd.dist)
+        if not os.path.isabs(jmd.jarpath):
+            jmd.jarpath = join(dirname(path), jmd.jarpath)
         return jmd
 
     def save(self):
@@ -123,14 +125,17 @@ class JavaModuleDescriptor(object):
         _, moduleDir, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
         path = moduleDir + '.pickled'
         modulepath = self.modulepath
+        jarpath = self.jarpath
         self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
         self.dist = dist.name
+        self.jarpath = os.path.relpath(jarpath, dirname(path))
         try:
             with mx.SafeFileCreation(path) as sfc, open(sfc.tmpPath, 'wb') as f:
                 pickle.dump(self, f)
         finally:
             self.modulepath = modulepath
             self.dist = dist
+            self.jarpath = jarpath
 
     def as_module_info(self):
         """
