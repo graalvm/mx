@@ -25,12 +25,13 @@
 # ----------------------------------------------------------------------------------------------------
 
 import os
+import re
 import zipfile
 import pickle
 import StringIO
 import shutil
 import itertools
-from os.path import join, exists
+from os.path import join, exists, dirname
 
 import mx
 
@@ -362,9 +363,50 @@ def make_java_module(dist, jdk):
                 # in the output directory.
                 zf.extractall(path=moduleDir)
                 names = frozenset(zf.namelist())
+
+                # Flatten versioned resources
+                versionsDir = join(moduleDir, 'META-INF', 'versions')
+                if exists(versionsDir):
+                    versionedRE = re.compile(r'META-INF/versions/([1-9][0-9]*)/(.+)')
+                    versions = {}
+                    for arcname in sorted(names):
+                        m = versionedRE.match(arcname)
+                        if m:
+                            version = int(m.group(1))
+                            unversionedName = m.group(2)
+                            versions.setdefault(version, {})[unversionedName] = zf.read(arcname)
+
+                    for version, resources in sorted(versions.iteritems()):
+                        for unversionedName, content in resources.iteritems():
+                            dst = join(moduleDir, unversionedName)
+                            if version <= jdk.javaCompliance.value:
+                                parent = dirname(dst)
+                                if parent and not exists(parent):
+                                    os.makedirs(parent)
+                                with open(dst, 'wb') as fp:
+                                    fp.write(content)
+                            else:
+                                # Ignore resource whose version is too high
+                                pass
+
+                    shutil.rmtree(versionsDir)
+                    manifest = join(moduleDir, 'META-INF/MANIFEST.MF')
+                    # Remove Multi-Release attribute from manifest as the jar
+                    # is now flattened. This is also a workaround for
+                    # https://bugs.openjdk.java.net/browse/JDK-8193802
+                    if exists(manifest):
+                        with open(manifest) as fp:
+                            content = fp.readlines()
+                            newContent = [l for l in content if not 'Multi-Release:' in l]
+                        if newContent != content:
+                            with open(manifest, 'w') as fp:
+                                fp.write(''.join(newContent))
+
+                serviceRE = re.compile(r'META-INF/services/(.+)')
                 for arcname in names:
-                    if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                        service = arcname[len('META-INF/services/'):]
+                    m = serviceRE.match(arcname)
+                    if m:
+                        service = m.group(1)
 
                         # While a META-INF provider configuration file must use a fully qualified binary
                         # name[1] of the service, a provides directive in a module descriptor must use
@@ -380,6 +422,9 @@ def make_java_module(dist, jdk):
                         serviceClass = service.replace('.', '/') + '.class'
                         if serviceClass in names:
                             uses.add(service)
+                servicesDir = join(moduleDir, 'META-INF', 'services')
+                if exists(servicesDir):
+                    shutil.rmtree(servicesDir)
 
     jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
                                jarpath=moduleJar, dist=dist, modulepath=modulepath)
@@ -398,6 +443,10 @@ def make_java_module(dist, jdk):
     if upgrademodulepathJars:
         javacCmd.append('--upgrade-module-path')
         javacCmd.append(os.pathsep.join(upgrademodulepathJars))
+    if concealedRequires:
+        for module, packages in concealedRequires.iteritems():
+            for package in packages:
+                javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
     javacCmd.append(moduleInfo)
     mx.run(javacCmd)
 
