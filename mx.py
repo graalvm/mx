@@ -544,7 +544,7 @@ class Dependency(SuiteConstituent):
 
     def getArchivableResults(self, use_relpath=True, single=False):
         """
-        Generates (file_path, archive_path) tuples.
+        Generates (file_path, archive_path) tuples for all the build results of this dependency.
         :param use_relpath: When `False` flattens all the results to the root of the archive
         :param single: When `True` expects a single result.
                         Might throw `ValueError` if that does not make sense for this dependency type.
@@ -651,6 +651,7 @@ class ClasspathDependency(Dependency):
     A dependency that can be put on the classpath of a Java commandline.
     """
     __metaclass__ = ABCMeta
+
     def __init__(self, **kwArgs): # pylint: disable=super-init-not-called
         pass
 
@@ -1803,6 +1804,7 @@ class LayoutDistribution(AbstractDistribution):
 
     def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, **kw_args):
         """
+        See docs/layout-distribution.md
         :type layout: dict[str, str]
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
@@ -7827,6 +7829,11 @@ class Suite(object):
 
                 if hasattr(mod, 'mx_register_dynamic_suite_constituents'):
                     self.mx_register_dynamic_suite_constituents = mod.mx_register_dynamic_suite_constituents  # pylint: disable=C0103
+                    """
+                    Extension point for suites that want to dynamically create projects or distributions.
+                    Such suites should define `mx_register_dynamic_suite_constituents(register_project, register_distribution)` at the
+                    module level. `register_project` and `register_distribution` take 1 argument (the project/distribution object).
+                    """
 
                 if hasattr(mod, 'mx_init'):
                     mod.mx_init(self)
@@ -8317,6 +8324,7 @@ class SourceSuite(Suite):
         if hasattr(self, 'mx_register_dynamic_suite_constituents'):
             def _register_project(proj):
                 self.projects.append(proj)
+
             def _register_distribution(dist):
                 self.dists.append(dist)
             self.mx_register_dynamic_suite_constituents(_register_project, _register_distribution)
