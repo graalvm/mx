@@ -2099,6 +2099,8 @@ class LayoutDistribution(AbstractDistribution):
             except IOError as e:
                 abort("Cannot create symlink. Target: '{}'; Destination: '{}'\nError: '{}'".format(link_target, absolute_destination, e))
         elif source_type == 'string':
+            if destination.endswith('/'):
+                abort("Can not use `string` source with a destination ending with `/` ({})".format(destination), context=self)
             ensure_dir_exists(dirname(absolute_destination))
             s = source['value']
             with open(absolute_destination, 'w') as f:
