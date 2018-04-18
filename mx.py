@@ -12457,7 +12457,7 @@ def _get_eclipse_output_path(p, linkedResources=None):
 
 def _get_jdk_module_jar(module, suite, jdk):
     """
-    Gets the path to a jar containing the class files in a specified JDK9 module, creating it first
+    Gets the path to a jar containing the class files in a specified JDK module, creating it first
     if it doesn't exist by extracting the class files from the given jdk using the
     JRT FileSystem provider (introduced by `JEP 220 <http://openjdk.java.net/jeps/220>`_).
 
@@ -12687,8 +12687,15 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             libFiles.append(path)
 
     jdk = get_jdk(p.javaCompliance)
+    jdk_module_jars = set()
     for dep in sorted(jdkLibraryDeps):
-        path = dep.classpath_repr(jdk, resolve=True)
+        if jdk.javaCompliance >= '9' and dep.module and p.javaCompliance < dep.jdkStandardizedSince:
+            path = _get_jdk_module_jar(dep.module, primary_suite(), jdk)
+            if path in jdk_module_jars:
+                continue
+            jdk_module_jars.add(path)
+        else:
+            path = dep.classpath_repr(jdk, resolve=True)
         if path:
             attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
             sourcePath = dep.get_source_path(jdk)
@@ -12709,7 +12716,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     # Every Java program depends on a JRE
     ejee = _to_EclipseJavaExecutionEnvironment(p.javaCompliance)
     out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(ejee)})
-    if jdk.javaCompliance >= '9':
+    if jdk.javaCompliance >= '9' and ejee >= '9':
         out.open('attributes')
         out.element('attribute', {'name' : 'module', 'value' : 'true'})
         moduleDeps = p.get_concealed_imported_packages()
@@ -12719,8 +12726,10 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             # recent API.
             exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
             if exports:
+                addExportsValue = []
                 for module, pkgs in exports:
-                    out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join([module + '/' + pkg + '=ALL-UNNAMED' for pkg in pkgs])})
+                    addExportsValue.extend([module + '/' + pkg + '=ALL-UNNAMED' for pkg in pkgs])
+                out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join(addExportsValue)})
         out.close('attributes')
     out.close('classpathentry')
 
@@ -16945,7 +16954,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.152.0") # GR-9405
+version = VersionSpec("5.152.1") # GR-9418
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
