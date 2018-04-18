@@ -7417,6 +7417,9 @@ class Suite(object):
         return mx_compat.getMxCompatibility(self.requiredMxVersion)
 
     def dependency(self, name, fatalIfMissing=True, context=None):
+        """
+        Find a dependency defined by this Suite.
+        """
         def _find_in_registry(reg):
             for lib in reg:
                 if lib.name == name:
