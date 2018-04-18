@@ -832,7 +832,7 @@ class BuildTask(object):
             return (True, 'forced build')
         return (False, 'unimplemented')
 
-    @abstractmethod
+    # @abstractmethod should be abstract but subclasses in some suites miss this method
     def newestOutput(self):
         """
         Gets a TimeStampFile representing the build output file for this task
@@ -2434,18 +2434,19 @@ class Project(Dependency):
 
 class ProjectBuildTask(BuildTask):
     __metaclass__ = ABCMeta
+
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
 
 
 class ArchivableProject(Project):  # Used from other suites. pylint: disable=r0921
-    __metaclass__ = ABCMeta
     """
     A project that can be part of any distribution, native or not.
     Users should subclass this class and implement the nyi() methods.
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
+    __metaclass__ = ABCMeta
     def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
         d = suite.dir
         Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
