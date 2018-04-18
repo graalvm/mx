@@ -1107,7 +1107,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             sourcesPath = mx_subst.path_substitutions.substitute(sourcesPath)
             self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir)
         else:
-            self.sourcesPath =_make_absolute(self._default_source_path(), suite.dir)
+            self.sourcesPath = _make_absolute(self._default_source_path(), suite.dir)
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
@@ -1807,7 +1807,7 @@ class LayoutDistribution(AbstractDistribution):
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
         deps = []
-        for destination, source in LayoutDistribution._walk_static_layout(layout, distribution_name, context=suite):
+        for _, source in LayoutDistribution._walk_static_layout(layout, distribution_name, context=suite):
             if 'dependency' in source:
                 deps.append(source['dependency'])
         return sorted(deps)
@@ -1964,7 +1964,7 @@ class LayoutDistribution(AbstractDistribution):
                 assert e.message == 'single not supported'
                 raise abort("Can not use '{}' of type {} for an 'extracted-dependency' ('{}').".format(d.name, d.__class__.__name__, destination))
 
-            unarchiver_destination_directory = absolute_destination
+            unarchiver_dest_directory = absolute_destination
             if not destination.endswith('/'):
                 if path is None:
                     abort("Invalid source '{type}:{dependency}' used in destination '{dest}':\n"
@@ -1975,8 +1975,8 @@ class LayoutDistribution(AbstractDistribution):
                             dependency=d.name,
                             type=source_type,
                             context=self))
-                unarchiver_destination_directory = dirname(unarchiver_destination_directory)
-            ensure_dir_exists(unarchiver_destination_directory)
+                unarchiver_dest_directory = dirname(unarchiver_dest_directory)
+            ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
             first_file_box = [True]
 
@@ -2006,7 +2006,7 @@ class LayoutDistribution(AbstractDistribution):
                     zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
                     if not zipinfo.filename:
                         continue
-                    extracted_file = zf.extract(zipinfo, unarchiver_destination_directory)
+                    extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
                     archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
                 tf = tarfile.TarFile.open(source_archive_file)
@@ -2021,17 +2021,17 @@ class LayoutDistribution(AbstractDistribution):
                         directories.append(tarinfo)
                         tarinfo = copy.copy(tarinfo)
                         tarinfo.mode = 0700
-                    extracted_file = join(unarchiver_destination_directory, tarinfo.name.replace("/", os.sep))
+                    extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
                     arcname = os.path.relpath(extracted_file, output)
                     if tarinfo.issym():
                         if root_match:
                             tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                             archiver.add(extracted_file, arcname, provenance)
                         else:
-                            tf.extract(tarinfo, unarchiver_destination_directory)
+                            tf.extract(tarinfo, unarchiver_dest_directory)
                             archiver.add_link(tarinfo.linkname, arcname, provenance)
                     else:
-                        tf.extract(tarinfo, unarchiver_destination_directory)
+                        tf.extract(tarinfo, unarchiver_dest_directory)
                         archiver.add(extracted_file, arcname, provenance)
 
                 # Reverse sort directories.
@@ -2082,7 +2082,7 @@ class LayoutDistribution(AbstractDistribution):
             archiver.add_link(link_target, clean_destination, provenance)
             try:
                 os.symlink(link_target, absolute_destination)
-            except Exception as e:
+            except IOError as e:
                 abort("Cannot create symlink. Target: '{}'; Destination: '{}'\nError: '{}'".format(link_target, absolute_destination, e))
         elif source_type == 'string':
             ensure_dir_exists(dirname(absolute_destination))
@@ -2104,7 +2104,7 @@ class LayoutDistribution(AbstractDistribution):
             if not destination:
                 abort("Destination (layout keys) can not be empty", context=self)
             for source in sources:
-                if not isinstance(source, (basestring,dict)):
+                if not isinstance(source, (basestring, dict)):
                     abort("Error in '{}': sources should be strings or dicts".format(destination), context=self)
             if isabs(destination):
                 abort("Invalid destination: '{}': destination should not be absolute".format(destination), context=self)
@@ -2419,10 +2419,12 @@ class Project(Dependency):
 
 
 class ProjectBuildTask(BuildTask):
+    __metaclass__ = ABCMeta
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
 
-class ArchivableProject(Project):
+
+class ArchivableProject(Project):  # Used from other suites. pylint: disable=r0921
     __metaclass__ = ABCMeta
     """
     A project that can be part of any distribution, native or not.
@@ -7807,7 +7809,7 @@ class Suite(object):
                     self.mx_post_parse_cmd_line = mod.mx_post_parse_cmd_line
 
                 if hasattr(mod, 'mx_register_dynamic_suite_constituents'):
-                    self.mx_register_dynamic_suite_constituents = mod.mx_register_dynamic_suite_constituents
+                    self.mx_register_dynamic_suite_constituents = mod.mx_register_dynamic_suite_constituents  # pylint: disable=C0103
 
                 if hasattr(mod, 'mx_init'):
                     mod.mx_init(self)
@@ -16489,7 +16491,6 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
 
     def _handle_error(msg, base_file, dest_file):
         if args.sync:
-            import shutil
             log("Overriding {1} from {0}".format(os.path.normpath(base_file), os.path.normpath(dest_file)))
             shutil.copy(base_file, dest_file)
         else:
