@@ -1769,8 +1769,14 @@ class DefaultArchiveTask(AbstractArchiveTask):
             abort('should not reach here')
         if exists(self.subject.path):
             os.remove(self.subject.path)
-        if self.subject.output and exists(self.subject.output) and self.subject.output != '.':
-            rmtree(self.subject.output)
+        if self.subject.output and (self.clean_output_for_build() or not forBuild) and self.subject.output != '.':
+            output_dir = join(self.subject.suite.dir, self.subject.output)
+            if exists(output_dir):
+                rmtree(output_dir)
+
+    def clean_output_for_build(self):
+        # some distributions have `output` set to the same directory as their input or to some directory that contains other files
+        return False
 
     def cleanForbidden(self):
         if AbstractArchiveTask.cleanForbidden(self):
@@ -1779,8 +1785,13 @@ class DefaultArchiveTask(AbstractArchiveTask):
             return True
         return False
 
+
+class LayoutArchiveTask(DefaultArchiveTask):
+    def clean_output_for_build(self):
+        return True
+
     def needsBuild(self, newestInput):
-        sup = super(DefaultArchiveTask, self).needsBuild(newestInput)
+        sup = super(LayoutArchiveTask, self).needsBuild(newestInput)
         if sup[0]:
             return sup
         # TODO check for *extra* files that should be removed in `output`
@@ -1803,6 +1814,9 @@ class LayoutDistribution(AbstractDistribution):
         self.string_substitutions = string_substitutions or mx_subst.string_substitutions
         self._source_location_cache = {}
         self.archive_factory = archive_factory or Archiver
+
+    def getBuildTask(self, args):
+        return LayoutArchiveTask(args, self)
 
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
