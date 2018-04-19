@@ -27,31 +27,38 @@
 import re
 import mx
 
+_var_re = re.compile(r"^[\w-]+$")
+
 
 class SubstitutionEngine(object):
-    def __init__(self, chain=None):
+    def __init__(self, chain=None, skip_unknown_substitutions=False):
         assert chain is None or isinstance(chain, SubstitutionEngine)
         self._chain = chain
         self._subst = {}
         self._hasArg = {}
         self._keywordArgs = {}
+        self.skip_unknown_substitutions = skip_unknown_substitutions
 
     def register_with_arg(self, var, function, keywordArgs=False):
+        assert _var_re.match(var)
         self._subst[var] = function
         self._hasArg[var] = True
         self._keywordArgs[var] = keywordArgs
 
     def register_no_arg(self, var, function, keywordArgs=False):
+        assert _var_re.match(var)
         self._subst[var] = function
         self._hasArg[var] = False
         self._keywordArgs[var] = keywordArgs
 
-    def _replace(self, m, **kwArgs):
+    def _replace(self, m, skip_unknown_substitutions, **kwArgs):
         var = m.group(1)
         if var in self._subst:
             fn = self._subst[var]
             if self._hasArg[var]:
                 arg = m.group(3)
+                if not arg:
+                    mx.warn('Missing argument for substitution ' + var)
                 if self._keywordArgs[var]:
                     return fn(arg, **kwArgs)
                 else:
@@ -67,12 +74,14 @@ class SubstitutionEngine(object):
                 else:
                     return fn
         elif self._chain is not None:
-            return self._chain._replace(m, **kwArgs)
-        else:
+            return self._chain._replace(m, skip_unknown_substitutions, **kwArgs)
+        elif not skip_unknown_substitutions:
             mx.abort('Unknown substitution: ' + m.group(0))
+        else:
+            return m.group(0)
 
     def substitute(self, string, **kwArgs):
-        return re.sub(r'<(.+?)(:(.+?))?>', lambda m: self._replace(m, **kwArgs), string)
+        return re.sub(r'<([\w\-]+?)(:(.+?))?>', lambda m: self._replace(m, self.skip_unknown_substitutions, **kwArgs), string)
 
 
 class CompatSubstitutionEngine(SubstitutionEngine):
@@ -80,7 +89,7 @@ class CompatSubstitutionEngine(SubstitutionEngine):
         super(CompatSubstitutionEngine, self).__init__()
         self._replaceFn = replaceFn
 
-    def _replace(self, m, **kwArgs):
+    def _replace(self, m, skip_unknown_substitutions, **kwArgs):
         # simulate behavior of old regex matcher
         return re.sub(r'<(.+?)>', self._replaceFn, m.group(0))
 
@@ -94,3 +103,4 @@ def as_engine(subst):
 
 results_substitutions = SubstitutionEngine()
 path_substitutions = SubstitutionEngine(results_substitutions)
+string_substitutions = SubstitutionEngine(path_substitutions)

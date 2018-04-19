@@ -73,15 +73,7 @@ suite = {
     },
 
     "JUNIT" : {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.12.jar",
-        "https://search.maven.org/remotecontent?filepath=junit/junit/4.12/junit-4.12.jar",
-      ],
       "sha1" : "2973d150c0dc1fefe998f834810d68f278ea58ec",
-      "sourceUrls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/junit-4.12-sources.jar",
-        "https://search.maven.org/remotecontent?filepath=junit/junit/4.12/junit-4.12-sources.jar",
-      ],
       "sourceSha1" : "a6c32b40bf3d76eca54e3c601e5d1470c86fcdfa",
       "dependencies" : ["HAMCREST"],
       "licence" : "CPL",
@@ -135,15 +127,7 @@ suite = {
     },
 
     "HAMCREST" : {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/hamcrest-core-1.3.jar",
-        "https://search.maven.org/remotecontent?filepath=org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
-      ],
       "sha1" : "42a25dc3219429f0e5d060061f71acb49bf010a0",
-      "sourceUrls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/hamcrest-core-1.3-sources.jar",
-        "https://search.maven.org/remotecontent?filepath=org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-sources.jar",
-      ],
       "sourceSha1" : "1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b",
       "licence" : "BSD-new",
       "maven" : {
