@@ -597,8 +597,11 @@ class Dependency(SuiteConstituent):
                         continue
                     if dep.isProject() and self.suite is not dep.suite:
                         abort('cannot have an inter-suite reference to a project: ' + dep.name, context=self)
-                    if s is None and self.suite is not dep.suite and dep != self.suite.dependency(dep.name, fatalIfMissing=False):
-                        abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                    if s is None and self.suite is not dep.suite:
+                        current_suite_dep = self.suite.dependency(dep.name, fatalIfMissing=False)
+                        if dep != current_suite_dep:
+                            raise abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
+                        dep = current_suite_dep # prefer our version
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
                     selfJC = getattr(self, 'javaCompliance', None)
