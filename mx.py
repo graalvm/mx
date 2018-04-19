@@ -9240,10 +9240,15 @@ def _entries_to_classpath(cpEntries, resolve=True, includeBootClasspath=False, j
     bcp_str = jdk.bootclasspath()
     bcp = bcp_str.split(os.pathsep) if bcp_str else []
 
+    def _filecmp(a, b):
+        if not exists(a) or not exists(b):
+            return a == b
+        return filecmp.cmp(a, b)
+
     def _appendUnique(cp_addition):
         for new_path in cp_addition.split(os.pathsep):
-            if (not unique or not any((filecmp.cmp(d, new_path) for d in cp))) \
-                    and (includeBootClasspath or not any((filecmp.cmp(d, new_path) for d in bcp))):
+            if (not unique or not any((_filecmp(d, new_path) for d in cp))) \
+                    and (includeBootClasspath or not any((_filecmp(d, new_path) for d in bcp))):
                 cp.append(new_path)
     if includeBootClasspath:
         if bcp_str:
