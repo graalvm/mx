@@ -19,11 +19,11 @@ suite = {
 }
 ```
 
-A distribution is uses the "layout" mechanism as soon as it has a `layout` attribute.
+A distribution uses the "layout" mechanism as soon as it has a `layout` attribute.
 The example above would create a distribution that contains 2 directories: `lib` and `include`.
 The `lib` directory contains the files matched by `<suite-dir>/libs/*`.
 The `include` directory contains the files matched by `<suite-dir>/include/*` as well as all the files contained in the
-`DEVEL` archive matching `include/*`.
+`DEVEL` archive matching `include/*` (`DEVEL` can be a library or an other distribution).
 The distribution also contains a `LICENCE` file at the root which is copied from `<suite-dir>/misc/license`.
 
 ## Layout dictionary
@@ -34,11 +34,11 @@ that are added to this directory.
 ### Destination
 If the destination ends with a `/`, a directory with that name will be created in the archive and all the source files
 will be copied into this directory.
-On the contrary, if the destination does not end with a `/` then it is the named which should be used when copying the source.
+On the contrary, if the destination does not end with a `/` then it is the name which should be used when copying the source.
 In this case there can be only a single source (similar to the `-T` flag of `cp`).
 
 ### Sources
-The values in the layout dictionary can either be a list if there are multiple sources.
+The values in the layout dictionary can either be a string or a list if there are multiple sources.
 Each source is usually a string with a prefix denoting the type of source.
 
 The following types are available:
@@ -46,10 +46,10 @@ The following types are available:
   The `file:` prefix is followed by a glob pattern describing which files should be copied. For example: `file:libs/*`.
 * `dependency` copies the result of an other dependency (distributions, libraries, projects, etc.).
   The `dependency:` prefix is followed by a dependency name.
-  Like in the rest of the suite definition, dependencies from other suites should be qualified (`<suite-name>:<dpendency-name>`).
+  Like in the rest of the suite definition, dependencies from other suites should be qualified (`<suite-name>:<dependency-name>`).
 
   If that dependency produces multiple files they can be selected by appending `/` followed by a glob pattern
-  e.g., `depedency:SOME_JAR/*.src.zip`.
+  e.g., `dependency:SOME_JAR/*.src.zip`.
   Some distributions produce multiple files but logically have a "main" output file,
   in this case, if the `/<pattern>` is omitted, that "main" output is selected.
   For example `depedency:SOME_JAR` selects `some-jar.jar`.

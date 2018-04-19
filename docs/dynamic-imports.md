@@ -59,4 +59,5 @@ suite = {
 ```
 
 With this definition, the `compiler` import would only be activated when using `--dy /compiler`.
-If it is not available locally it is cloned at the specified version.
+If it is not available locally, it is cloned at the specified version using the provided URLs
+(cloning the sources by default or binaries if the suite is mentioned in `MX_BINARY_SUITES`).

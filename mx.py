@@ -1103,11 +1103,13 @@ class JARDistribution(Distribution, ClasspathDependency):
         else:
             self._path = _make_absolute(self._default_path(), suite.dir)
         if sourcesPath == '<none>':
+            # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
             self.sourcesPath = None
         elif sourcesPath:
             sourcesPath = mx_subst.path_substitutions.substitute(sourcesPath)
             self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir)
         else:
+            # sourcesPath=None denotes that no sourcesPath was specified in `suite.py` and we should generate one.
             self.sourcesPath = _make_absolute(self._default_source_path(), suite.dir)
         self.archiveparticipants = []
         self.mainClass = mainClass
