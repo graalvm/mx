@@ -16977,7 +16977,7 @@ _commands = {
     'init' : [suite_init_cmd, '[options] name'],
     'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
-    'jacocoreport' : [mx_gate.jacocoreport, '[output directory]'],
+    'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
     'javadoc': [javadoc, '[options]'],
     'javap': [javap, '[options] <class name patterns>'],
@@ -17837,7 +17837,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.153.0")  # copytree
+version = VersionSpec("5.154.0")  # GR-5903
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
