@@ -24,6 +24,7 @@ package com.oracle.mxtool.jacoco;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ import org.jacoco.report.IReportGroupVisitor;
 import org.jacoco.report.IReportVisitor;
 import org.jacoco.report.InputStreamSourceFileLocator;
 import org.jacoco.report.html.HTMLFormatter;
+import org.jacoco.report.xml.XMLFormatter;
 
 import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.NonOptionArgumentSpec;
@@ -81,6 +83,7 @@ public class JacocoReport {
         ArgumentAcceptingOptionSpec<File> inputsSpec = parser.accepts("in", "Input converage file produced by JaCoCo").withRequiredArg().ofType(File.class).required();
         NonOptionArgumentSpec<ProjectSpec> projectsSpec = parser.nonOptions("The project directories to analyse").ofType(ProjectSpec.class);
         ArgumentAcceptingOptionSpec<File> outSpec = parser.accepts("out").withRequiredArg().ofType(File.class).defaultsTo(new File("coverage"));
+        ArgumentAcceptingOptionSpec<String> formatSpec = parser.accepts("format").withRequiredArg().ofType(String.class).defaultsTo("html");
         OptionSet options;
         try {
             options = parser.parse(args);
@@ -96,10 +99,10 @@ public class JacocoReport {
             return;
         }
 
-        new JacocoReport().makeReport(options.valueOf(outSpec), options.valuesOf(projectsSpec), options.valuesOf(inputsSpec));
+        new JacocoReport().makeReport(options.valueOf(outSpec), options.valuesOf(projectsSpec), options.valuesOf(inputsSpec), options.valueOf(formatSpec));
     }
 
-    public void makeReport(File reportDirectory, List<ProjectSpec> projects, List<File> execDatas) throws IOException {
+    public void makeReport(File reportDirectory, List<ProjectSpec> projects, List<File> execDatas, String format) throws IOException {
         for (File execData : execDatas) {
             System.out.print("Loading '" + execData.getName() + "'... ");
             loadExecutionData(execData);
@@ -111,9 +114,17 @@ public class JacocoReport {
             bundles.add(new BundleAndProject(analyseProject(project.binDir, project.srcDir.getName()), project.srcDir));
             System.out.println("OK");
         }
-        System.out.print("Creating HTML report... ");
-        createHtmlReport(reportDirectory, bundles);
-        System.out.println("OK");
+        if (format.equals("html")) {
+            System.out.print("Creating HTML report... ");
+            createHtmlReport(reportDirectory, bundles);
+            System.out.println("OK");
+        } else if (format.equals("xml")) {
+            System.out.print("Creating XML report... ");
+            createXmlReport(reportDirectory, bundles);
+            System.out.println("OK");
+        } else {
+            System.err.println("Unsupported format: " + format);
+        }
     }
 
     private static class BundleAndProject {
@@ -167,7 +178,16 @@ public class JacocoReport {
     public void createHtmlReport(File reportDirectory, List<BundleAndProject> bundleAndProjects) throws IOException {
         final HTMLFormatter htmlFormatter = new HTMLFormatter();
         final IReportVisitor visitor = htmlFormatter.createVisitor(new FileMultiReportOutput(reportDirectory));
+        executeReportVisitor(bundleAndProjects, visitor);
+    }
 
+    public void createXmlReport(File reportDirectory, List<BundleAndProject> bundleAndProjects) throws IOException {
+        final XMLFormatter htmlFormatter = new XMLFormatter();
+        final IReportVisitor visitor = htmlFormatter.createVisitor(new FileOutputStream(reportDirectory.getAbsolutePath() + File.separator + "jacoco.xml"));
+        executeReportVisitor(bundleAndProjects, visitor);
+    }
+
+    private void executeReportVisitor(List<BundleAndProject> bundleAndProjects, IReportVisitor visitor) throws IOException {
         visitor.visitInfo(sessionInfoStore.getInfos(), executionDataStore.getContents());
         IReportGroupVisitor group = visitor.visitGroup("Graal");
         for (BundleAndProject bundleAndProject : bundleAndProjects) {
