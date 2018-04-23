@@ -12215,6 +12215,9 @@ class SafeFileCreation(object):
                     # Correct the permissions on the temporary file which is created with restrictive permissions
                     os.chmod(tmpPath, 0o666 & ~currentUmask)
                     # Atomic if self.path does not already exist.
+                    if exists(path):
+                        # Needed on Windows
+                        os.remove(path)
                     os.rename(tmpPath, path)
         _handle_file(self.tmpPath, self.path)
         for companion_pattern in self.companion_patterns:
@@ -17837,7 +17840,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.154.0")  # GR-5903
+version = VersionSpec("5.154.1")  # GR-9490
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
