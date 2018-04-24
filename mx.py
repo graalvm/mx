@@ -12867,54 +12867,8 @@ def projectgraph(args, suite=None):
     parser = ArgumentParser(prog='mx projectgraph')
     parser.add_argument('--dist', action='store_true', help='group projects by distribution')
     parser.add_argument('--ignore', action='append', help='dependencies to ignore', default=[])
-    parser.add_argument('--igv', action='store_true', help='output to IGV listening on 127.0.0.1:4444')
-    parser.add_argument('--igv-format', action='store_true', help='output graph in IGV format')
 
     args = parser.parse_args(args)
-
-    if args.igv or args.igv_format:
-        if args.dist:
-            abort("--dist is not supported in combination with IGV output")
-        ids = {}
-        nextToIndex = {}
-        igv = XMLDoc()
-        igv.open('graphDocument')
-        igv.open('group')
-        igv.open('properties')
-        igv.element('p', {'name' : 'name'}, 'GraalProjectDependencies')
-        igv.close('properties')
-        igv.open('graph', {'name' : 'dependencies'})
-        igv.open('nodes')
-        def visit(dep, edge):
-            ident = len(ids)
-            ids[dep.name] = str(ident)
-            igv.open('node', {'id' : str(ident)})
-            igv.open('properties')
-            igv.element('p', {'name' : 'name'}, dep.name)
-            igv.close('properties')
-            igv.close('node')
-        walk_deps(visit=visit)
-        igv.close('nodes')
-        igv.open('edges')
-        for p in projects():
-            fromIndex = 0
-            for dep in p.canonical_deps():
-                toIndex = nextToIndex.get(dep, 0)
-                nextToIndex[dep] = toIndex + 1
-                igv.element('edge', {'from' : ids[p.name], 'fromIndex' : str(fromIndex), 'to' : ids[dep.name], 'toIndex' : str(toIndex), 'label' : 'dependsOn'})
-                fromIndex = fromIndex + 1
-        igv.close('edges')
-        igv.close('graph')
-        igv.close('group')
-        igv.close('graphDocument')
-
-        if args.igv:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(('127.0.0.1', 4444))
-            s.send(igv.xml())
-        else:
-            print igv.xml(indent='  ', newl='\n')
-        return
 
     def should_ignore(name):
         return any((ignored in name for ignored in args.ignore))
@@ -17840,7 +17794,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.154.1")  # GR-9490
+version = VersionSpec("5.155.0")  # GR-8138
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
