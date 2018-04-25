@@ -11603,17 +11603,17 @@ def build(cmd_args, parser=None):
     if suppliedParser:
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
 
-    args = parser.parse_args(cmd_args)
+    args = parser.parse_args(cmd_args[:])
+    deps_w_deprecation_errors = []
+    deprecation_as_error_args = args
     if args.force_deprecation_as_warning_for_dependencies:
-        sub_args = cmd_args[:]
-        sub_args.remove("--force-deprecation-as-warning-for-dependencies")
-        command_function('build')(["--force-deprecation-as-warning"] + sub_args)
+        args.force_deprecation_as_warning = True
+        deprecation_as_error_args = parser.parse_args(cmd_args[:])
+        deprecation_as_error_args.force_deprecation_as_warning = False
         primary_java_projects = [p for p in _primary_suite.projects if p.isJavaProject()]
         primary_java_project_dists = [d for d in _primary_suite.dists if any([p in d.deps for p in primary_java_projects])]
-        primary_build_elements = ["--projects", ",".join([e.name for e in primary_java_projects + primary_java_project_dists])]
-        command_function('clean')(primary_build_elements)
-        command_function('build')(sub_args + primary_build_elements)
-        return
+        deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
+        logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
     if get_os() == 'windows':
         if args.parallelize:
@@ -11664,7 +11664,10 @@ def build(cmd_args, parser=None):
     depsMap = {}
 
     def _createTask(dep, edge):
-        task = dep.getBuildTask(args)
+        if dep.name in deps_w_deprecation_errors:
+            task = dep.getBuildTask(deprecation_as_error_args)
+        else:
+            task = dep.getBuildTask(args)
         if task.subject in taskMap:
             return
         taskMap[dep] = task
