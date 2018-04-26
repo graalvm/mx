@@ -12088,6 +12088,7 @@ def pylint(args):
     parser = ArgumentParser(prog='mx pylint')
     _add_command_primary_option(parser)
     parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
+    parser.add_argument('--all', action='store_true', help='check all files, not just files in the mx.* directory.')
     args = parser.parse_args(args)
 
     rcfile = join(dirname(__file__), '.pylintrc')
@@ -12113,7 +12114,7 @@ def pylint(args):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
                 continue
-            for root, dirs, files in os.walk(suite.dir):
+            for root, dirs, files in os.walk(suite.dir if args.all else suite.mxDir):
                 for f in files:
                     if f.endswith('.py'):
                         pyfile = join(root, f)
@@ -12128,7 +12129,7 @@ def pylint(args):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
                 continue
-            suite_location = os.path.relpath(suite.dir, suite.vc_dir)
+            suite_location = os.path.relpath(suite.dir if args.all else suite.mxDir, suite.vc_dir)
             files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
             compat = suite.getMxCompatibility()
             if compat.makePylintVCInputsAbsolute():
