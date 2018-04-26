@@ -7612,7 +7612,8 @@ class Suite(object):
             'javac.lint.overrides',
             'urlrewrites',
             'scm',
-            'version'
+            'version',
+            'externalProjects'
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -14579,13 +14580,14 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 def intellijinit_cli(args):
     parser = ArgumentParser(prog='mx ideinit')
     parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
+    parser.add_argument('--no-external-projects', action='store_false', dest='externalProjects', help='Do not generate external projects.')
     parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
-    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules)
+    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules, generate_external_projects=args.externalProjects)
 
 
-def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True):
+def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True, generate_external_projects=True):
     """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
@@ -14593,7 +14595,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     declared_modules = set()
     referenced_modules = set()
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules, java_modules and not suite.isBinarySuite(), suite != primary_suite())
+        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules, generate_external_projects, java_modules and not suite.isBinarySuite(), suite != primary_suite())
 
     if len(referenced_modules - declared_modules) != 0:
         abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
@@ -14625,7 +14627,7 @@ def _intellij_library_file_name(library_name):
     return library_name.replace('.', '_').replace('-', '_') + '.xml'
 
 
-def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False, java_modules=True, module_files_only=False):
+def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False, generate_external_projects=True, java_modules=True, module_files_only=False):
     libraries = set()
     jdk_libraries = set()
 
@@ -14653,6 +14655,80 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
     def _complianceToIntellijLanguageLevel(compliance):
         return 'JDK_1_' + str(compliance.value)
+
+    def _intellij_external_project(externalProjects, host):
+        if externalProjects:
+            for project_name, project_definition in externalProjects.iteritems():
+                if not project_definition.get('path', None):
+                    abort("external project {} is missing path attribute".format(project_name))
+                if not project_definition.get('type', None):
+                    abort("external project {} is missing type attribute".format(project_name))
+
+                path = os.path.realpath(join(host.dir, project_definition["path"]))
+                module_type = project_definition["type"]
+
+                moduleXml = XMLDoc()
+                moduleXml.open('module',
+                               attributes={'type': {'ruby': 'RUBY_MODULE',
+                                                    'python': 'PYTHON_MODULE',
+                                                    'web': 'WEB_MODULE'}.get(module_type, 'UKNOWN_MODULE'),
+                                           'version': '4'})
+                moduleXml.open('component',
+                               attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
+                moduleXml.element('exclude-output')
+
+                moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+                for name in project_definition.get('source', []):
+                    moduleXml.element('sourceFolder',
+                                      attributes={'url':'file://$MODULE_DIR$/' + name, 'isTestSource': str(False)})
+                for name in project_definition.get('test', []):
+                    moduleXml.element('sourceFolder',
+                                      attributes={'url':'file://$MODULE_DIR$/' + name, 'isTestSource': str(True)})
+                for name in project_definition.get('excluded', []):
+                    _intellij_exclude_if_exists(moduleXml, type('', (object,), {"dir": path})(), name)
+                moduleXml.close('content')
+
+                if module_type == "ruby":
+                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'RUBY_SDK', 'jdkName': 'truffleruby'})
+                elif module_type == "python":
+                    python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
+                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
+                elif module_type == "web":
+                    # nothing to do
+                    None
+                else:
+                    abort("External project type {} not supported".format(type))
+
+                moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
+                moduleXml.close('component')
+
+                load_paths = project_definition.get('load_path', [])
+                if load_paths:
+                    if not module_type == "ruby":
+                        abort("load_path is supported only for ruby type external project")
+                    moduleXml.open('component', attributes={'name': 'RModuleSettingsStorage'})
+                    load_paths_attributes = {}
+                    load_paths_attributes['number'] = str(len(load_paths))
+                    for i, name in enumerate(load_paths):
+                        load_paths_attributes["string" + str(i)] = "$MODULE_DIR$/" + name
+                    moduleXml.element('LOAD_PATH', load_paths_attributes)
+                    moduleXml.close('component')
+
+                moduleXml.close('module')
+                moduleFile = join(path, project_name + '.iml')
+                update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+
+                declared_modules.add(project_name)
+                if getattr(host, "suite", None):
+                    suite = host.suite
+                else:
+                    suite = host
+                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, suite.dir)
+                modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+
+    if generate_external_projects:
+        for p in s.projects_recursive() + _mx_suite.projects_recursive():
+            _intellij_external_project(getattr(p, 'externalProjects', None), p)
 
     max_checkstyle_version = None
     if java_modules:
@@ -14801,6 +14877,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
             mxModuleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + mxModuleFilePath, 'filepath': mxModuleFilePath})
+
+    if generate_external_projects:
+        _intellij_external_project(s.suiteDict.get('externalProjects', None), s)
 
     if not module_files_only:
         modulesXml.close('modules')
@@ -17797,7 +17876,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.155.0")  # GR-8138
+version = VersionSpec("5.156.0")  # GR-9578
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
