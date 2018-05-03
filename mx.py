@@ -14700,7 +14700,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
                 elif module_type == "web":
                     # nothing to do
-                    None
+                    pass
                 else:
                     abort("External project type {} not supported".format(module_type))
 
