@@ -14702,7 +14702,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     # nothing to do
                     None
                 else:
-                    abort("External project type {} not supported".format(type))
+                    abort("External project type {} not supported".format(module_type))
 
                 moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
                 moduleXml.close('component')
