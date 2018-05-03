@@ -14664,6 +14664,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 if not project_definition.get('type', None):
                     abort("external project {} is missing type attribute".format(project_name))
 
+                supported = ['path', 'type', 'source', 'test', 'excluded', 'load_path']
+                unknown = set(project_definition.keys()) - frozenset(supported)
+                if unknown:
+                    abort("There are unsupported {} keys in {} external project".format(unknown, project_name))
+
                 path = os.path.realpath(join(host.dir, project_definition["path"]))
                 module_type = project_definition["type"]
 
