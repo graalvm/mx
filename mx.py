@@ -2912,7 +2912,7 @@ class JavaProject(Project, ClasspathDependency):
         def _find_version_base_project():
             extended_packages = self.extended_java_packages()
             if not extended_packages:
-                abort('Project with a multiReleaseJarVersion attribute must have sources in a package defined by project without multiReleaseJarVersion attribute', context=self)
+                abort('Project with a multiReleaseJarVersion attribute must depend on a project that defines a package extended by ' + self.name, context=self)
             base_project = None
             base_package = None
             for extended_package in extended_packages:
@@ -2926,7 +2926,7 @@ class JavaProject(Project, ClasspathDependency):
                                 if base_project != p:
                                     abort('Multi-release jar versioned project {} must extend packages from exactly one project but extends {} from {} and {} from {}'.format(self, extended_package, p, base_project, base_package))
             if not base_project:
-                abort('Multi-release jar versioned project {} must extend package(s) from another project'.format(self))
+                abort('Multi-release jar versioned project {} must extend package(s) from one of its dependencies'.format(self))
             return base_project
 
         base = _find_version_base_project()
@@ -8086,6 +8086,7 @@ class Suite(object):
         self._init_metadata()
         self.visit_imports(Suite._resolve_dependencies_visitor)
         self._resolve_dependencies()
+        self._verify_multirelease_projects()
         self.visit_imports(Suite._post_init_visitor)
         self._post_init()
 
@@ -8276,6 +8277,11 @@ class SourceSuite(Suite):
         super(SourceSuite, self)._resolve_dependencies()
         for d in self.projects:
             d.resolveDeps()
+
+    def _verify_multirelease_projects(self):
+        for d in self.projects:
+            if hasattr(d, 'multiReleaseJarVersion'):
+                d.get_multireleasesources_flatten_map()
 
     def version(self, abortOnError=True):
         """
@@ -17882,7 +17888,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.156.0")  # GR-9578
+version = VersionSpec("5.157.0")  # GR-9688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
