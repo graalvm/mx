@@ -13243,7 +13243,8 @@ def _get_jdk_module_jar(module, suite, jdk):
 
     """
     assert jdk.javaCompliance >= '9', module
-    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), os.path.abspath(jdk.home)[1:]))
+    suffix = os.path.splitdrive(os.path.abspath(jdk.home))[1][1:]
+    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), suffix))
     jarName = module + '.jar'
     jarPath = join(jdkOutputDir, jarName)
     jdkExplodedModule = join(jdk.home, 'modules', module)
@@ -17888,7 +17889,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.157.0")  # GR-9688
+version = VersionSpec("5.157.1")  # GR-9735
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
