@@ -6988,6 +6988,34 @@ def maven_deploy(args):
         log('Deploying {0} distributions for version {1}'.format(s.name, _versionGetter(s)))
         _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, licenses=repo.licenses, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
 
+
+def binary_url(args):
+    parser = ArgumentParser(prog='mx binary-url')
+    parser.add_argument('repository_id', action='store', help='Repository name')
+    parser.add_argument('dist_name', action='store', help='Distribution name')
+    args = parser.parse_args(args)
+
+    repo = repository(args.repository_id)
+    dist = distribution(args.dist_name)
+
+    group_id = dist.maven_group_id()
+    artifact_id = dist.maven_artifact_id()
+    snapshot_version = '{0}-SNAPSHOT'.format(dist.suite.vc.parent(dist.suite.vc_dir))
+    extension = dist.remoteExtension()
+
+    maven_repo = MavenRepo(repo.url)
+    snapshot = maven_repo.getSnapshot(group_id, artifact_id, snapshot_version)
+    if not snapshot:
+        url = maven_repo.getSnapshotUrl(group_id, artifact_id, snapshot_version)
+        abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `mx deploy-binary`'.format(snapshot_version, group_id, artifact_id, url))
+    build = snapshot.getCurrentSnapshotBuild()
+    try:
+        url, sha1_url = build.getSubArtifact(extension)
+        log(url)
+        log(sha1_url)
+    except MavenSnapshotArtifact.NonUniqueSubArtifactException:
+        abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, dist.remoteName(), build.version, maven_repo.repourl))
+
 class MavenConfig:
     def __init__(self):
         self.has_maven = None
@@ -9025,6 +9053,7 @@ def get_license(names, fatalIfMissing=True, context=None):
     return [get_single_licence(name) for name in names]
 
 def repository(name, fatalIfMissing=True, context=None):
+    """ :rtype: Repository"""
     _, name = splitqualname(name)
     r = _repositories.get(name)
     if r is None and fatalIfMissing:
@@ -9112,6 +9141,8 @@ def distribution(name, fatalIfMissing=True, context=None):
     """
     Get the distribution for a given name. This will abort if the named distribution does
     not exist and 'fatalIfMissing' is true.
+
+    :rtype: Distribution
     """
     _, name = splitqualname(name)
     d = _dists.get(name)
@@ -17005,6 +17036,7 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 _commands = {
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
+    'binary-url': [binary_url, '<distribution name>'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -17889,7 +17921,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.157.1")  # GR-9735
+version = VersionSpec("5.158.0")  # Binary URL
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
