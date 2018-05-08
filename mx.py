@@ -1744,6 +1744,9 @@ class NativeTARDistribution(AbstractTARDistribution):
 
                 if self.output:
                     dest = join(self.suite.dir, self.output, arcname)
+                    # Make path separators consistent for string compare
+                    dest = os.path.normpath(dest)
+                    name = os.path.normpath(name)
                     if name != dest:
                         ensure_dir_exists(os.path.dirname(dest))
                         shutil.copy2(name, dest)
@@ -11440,6 +11443,7 @@ def _attempt_download(url, path, jarEntryName=None):
         try:
 
             # 10 second timeout to establish connection
+            url = url.replace('\\', '/')
             conn = _urlopen(url, timeout=10)
 
             # Not all servers support the "Content-Length" header
@@ -12780,7 +12784,8 @@ def open(name, mode='r'): # pylint: disable=redefined-builtin
 def rmtree(dirPath):
     path = dirPath
     if get_os() == 'windows':
-        path = unicode(_safe_path(dirPath))
+        # normpath needed to fix mixed path separators or rmtree fails
+        path = unicode(_safe_path(os.path.normpath(dirPath)))
     if os.path.isdir(path):
         shutil.rmtree(path)
     else:
