@@ -14767,13 +14767,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 moduleFile = join(path, project_name + '.iml')
                 update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
-                declared_modules.add(project_name)
-                if getattr(host, "suite", None):
-                    suite = host.suite
-                else:
-                    suite = host
-                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, suite.dir)
-                modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+                if not module_files_only:
+                    declared_modules.add(project_name)
+                    if getattr(host, "suite", None):
+                        suite = host.suite
+                    else:
+                        suite = host
+                    moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, suite.dir)
+                    modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_external_projects:
         for p in s.projects_recursive() + _mx_suite.projects_recursive():
@@ -17926,7 +17927,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.158.0")  # Binary URL
+version = VersionSpec("5.158.1")  # intellijinit external projects
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
