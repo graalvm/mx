@@ -90,5 +90,17 @@ builds = [
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
   ${downstream-truffleruby-binary-truffle} ${nocache} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle-nocache"}
+
+  {capabilities : [linux, amd64], targets : [gate], name: "gate-version-update-check"} {
+    run: [
+      [ "./tag_version.py", "--check-only", "HEAD" ]
+    ]
+  }
+  {capabilities : [linux, amd64], targets : [post-merge], name: "post-merge-tag-version"} {
+    run: [
+      [ "./tag_version.py", "HEAD" ]
+    ]
+    notify_emails: [ "doug.simon@oracle.com" ]
+  }
 ]
 
