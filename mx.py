@@ -8491,8 +8491,8 @@ class SourceSuite(Suite):
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
-    def _load_env_in_mxDir(mxDir, env=None):
-        e = join(mxDir, 'env')
+    def _load_env_in_mxDir(mxDir, env=None, file_name='env'):
+        e = join(mxDir, file_name)
         SourceSuite._load_env_file(e, env)
 
     @staticmethod
@@ -9568,7 +9568,8 @@ environment variables:
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
-        self.add_argument('--strip-jars', action='store_true', help='Produce and use stripped jars in all mx commands.')
+        self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
+        self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
 
         if get_os() != 'windows':
             # Time outs are (currently) implemented with Unix specific functionality
@@ -17829,6 +17830,9 @@ def main():
             # are seen.  The primary suite must have everything required for loading
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
+            if _opts.additional_env:
+                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env)
+
             _setup_binary_suites()
             if should_discover_suites:
                 primary = _discover_suites(primarySuiteMxDir, load=should_load_suites)
