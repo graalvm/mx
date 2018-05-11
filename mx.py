@@ -8271,7 +8271,8 @@ def get_dynamic_imports():
     """
     global _dynamic_imports
     if _dynamic_imports is None:
-        dynamic_imports = []
+        dynamic_imports_from_env = get_env('DYNAMIC_IMPORTS')
+        dynamic_imports = dynamic_imports_from_env.split(',') if dynamic_imports_from_env else []
         if _opts.dynamic_imports:
             for opt in _opts.dynamic_imports:
                 dynamic_imports += opt.split(',')
