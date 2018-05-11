@@ -30,7 +30,9 @@ This requires the `compiler` suite to already be checked-out. For example:
 
 In such a structure, `mx --dy /compiler ...` could be run from `workspace/mylang`.
 
-Dynamic imports can also be set through the `DEFAULT_DYNAMIC_IMPORTS` environment variable.
+Dynamic imports can also be set through the following environment variables:
+- `DYNAMIC_IMPORTS`: comma-separated list of suites that are always dynamically imported
+- `DEFAULT_DYNAMIC_IMPORTS`: comma-separated list of suites that are dynamically imported only if dynamic imports are not specified (via `--dynamicimports` or `DYNAMIC_IMPORTS`)
 
 ## Versioned dynamic imports
 
