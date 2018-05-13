@@ -2962,7 +2962,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
         """
-        Gets the concealed packages imported by this Java project.
+        Gets the concealed packages imported by this Java project and its transitive project dependencies.
 
         :param JDKConfig jdk: the JDK whose modules are to be searched for concealed packages
         :param list modulepath: extra modules to be searched for concealed packages
@@ -2979,6 +2979,12 @@ class JavaProject(Project, ClasspathDependency):
             concealed = {}
             if jdk.javaCompliance >= '9':
                 modulepath = list(jdk.get_modules()) + modulepath
+                def visit(dep, edge):
+                    if dep is not self and dep.isJavaProject():
+                        dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
+                        for module, packages in dep_concealed.iteritems():
+                            concealed.setdefault(module, set()).update(packages)
+                self.walk_deps(visit=visit)
 
                 imports = getattr(self, 'imports', [])
                 if imports:
