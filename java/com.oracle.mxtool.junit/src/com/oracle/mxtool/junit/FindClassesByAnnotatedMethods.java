@@ -106,7 +106,8 @@ public class FindClassesByAnnotatedMethods {
                 }
             }
             if (unsupportedClasses != 0) {
-                System.err.printf("Warning: %s contained %d class files with an unsupported class file version%n", jarFilePath, unsupportedClasses);
+                System.err.printf("Warning: %d classes in %s skipped as their class file version is not supported by %s%n", unsupportedClasses, jarFilePath,
+                                FindClassesByAnnotatedMethods.class.getSimpleName());
             }
             System.out.println();
         }
@@ -124,7 +125,6 @@ public class FindClassesByAnnotatedMethods {
      * Small bytecode parser that extract annotations.
      */
     private static final int MAJOR_VERSION_JAVA7 = 51;
-    private static final int MAJOR_VERSION_JAVA9 = 53;
     private static final byte CONSTANT_Utf8 = 1;
     private static final byte CONSTANT_Integer = 3;
     private static final byte CONSTANT_Float = 4;
@@ -138,6 +138,7 @@ public class FindClassesByAnnotatedMethods {
     private static final byte CONSTANT_NameAndType = 12;
     private static final byte CONSTANT_MethodHandle = 15;
     private static final byte CONSTANT_MethodType = 16;
+    private static final byte CONSTANT_Dynamic = 17;
     private static final byte CONSTANT_InvokeDynamic = 18;
 
     private static void readClassfile(DataInputStream stream, Collection<String> methodAnnotationTypes) throws IOException {
@@ -147,11 +148,11 @@ public class FindClassesByAnnotatedMethods {
 
         int minor = stream.readUnsignedShort();
         int major = stream.readUnsignedShort();
-        if (major < MAJOR_VERSION_JAVA7 || major > MAJOR_VERSION_JAVA9) {
+        if (major < MAJOR_VERSION_JAVA7) {
             throw new UnsupportedClassVersionError("Unsupported class file version: " + major + "." + minor);
         }
 
-        String[] cp = readConstantPool(stream);
+        String[] cp = readConstantPool(stream, major, minor);
 
         // access_flags, this_class, super_class
         stream.skipBytes(6);
@@ -181,7 +182,7 @@ public class FindClassesByAnnotatedMethods {
         } while (skipped != n);
     }
 
-    private static String[] readConstantPool(DataInputStream stream) throws IOException {
+    private static String[] readConstantPool(DataInputStream stream, int major, int minor) throws IOException {
         int count = stream.readUnsignedShort();
         String[] cp = new String[count];
 
@@ -201,6 +202,7 @@ public class FindClassesByAnnotatedMethods {
                 case CONSTANT_NameAndType:
                 case CONSTANT_Float:
                 case CONSTANT_Integer:
+                case CONSTANT_Dynamic:
                 case CONSTANT_InvokeDynamic: {
                     skipFully(stream, 4);
                     break;
@@ -219,7 +221,8 @@ public class FindClassesByAnnotatedMethods {
                     break;
                 }
                 default: {
-                    throw new InternalError("Invalid constant pool tag: " + tag);
+                    throw new InternalError(String.format("Invalid constant pool tag: " + tag + ". Maybe %s needs updating for changes introduced by class file version %d.%d?",
+                                    FindClassesByAnnotatedMethods.class, major, minor));
                 }
             }
             if ((tag == CONSTANT_Double) || (tag == CONSTANT_Long)) {
