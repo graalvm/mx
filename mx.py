@@ -13412,8 +13412,8 @@ def _to_EclipseJavaExecutionEnvironment(compliance):
     """
     if not isinstance(compliance, JavaCompliance):
         compliance = JavaCompliance(compliance)
-    if compliance > '9':
-        return JavaCompliance('9')
+    if compliance > '10':
+        return JavaCompliance('10')
     return compliance
 
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
@@ -13667,7 +13667,6 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
         if p.javaCompliance >= '9':
-            # Annotation processors can only use JDK9 classes once Eclipse supports JDK9.
             concealedAPDeps = {}
             for dep in classpath_entries(names=processors, preferProjects=True):
                 if dep.isJavaProject():
