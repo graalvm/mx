@@ -3337,6 +3337,9 @@ class JavacLikeCompiler(JavaCompiler):
             # https://docs.oracle.com/javase/9/tools/javac.htm
             if compliance < '9':
                 javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
+            else:
+                c = compliance.to_str(jdk.javaCompliance)
+                javacArgs += ['-target', c, '-source', c]
         hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
