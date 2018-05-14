@@ -4570,11 +4570,13 @@ class Library(BaseLibrary, ClasspathDependency):
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
         if not single:
             src_path = self.get_source_path(False)
-            ext = get_file_extension(src_path)
-            if 'src' not in ext and 'source' not in ext:
-                ext = "src." + ext
-            src_filename = _map_to_maven_dist_name(self.name) + '.' + ext
-            yield src_path, src_filename
+            if src_path:
+                ext = get_file_extension(src_path)
+                if 'src' not in ext and 'source' not in ext:
+                    ext = "src." + ext
+                src_filename = _map_to_maven_dist_name(self.name) + '.' + ext
+                yield src_path, src_filename
+
 
 class LibraryDownloadTask(BuildTask):
     def __init__(self, args, lib):
