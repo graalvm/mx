@@ -487,6 +487,8 @@ class BaseRule(Rule):
                         inst = str(v)
                     elif vtype is int:
                         inst = int(v)
+                    elif vtype is long:
+                        inst = long(v)
                     elif vtype is float:
                         inst = float(v)
                     elif vtype is bool:
@@ -494,9 +496,9 @@ class BaseRule(Rule):
                     elif hasattr(vtype, '__call__'):
                         inst = vtype(v)
                     else:
-                        raise RuntimeError("Cannot handle type {0}".format(vtype))
-                if type(inst) not in [str, int, float, bool]:
-                    raise RuntimeError("Object has unknown type: {0}".format(inst))
+                        raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
+                if type(inst) not in [str, int, long, float, bool]:
+                    raise RuntimeError("Object '{0}' has unknown type: {1}".format(inst, type(inst)))
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
