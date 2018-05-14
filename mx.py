@@ -1852,6 +1852,7 @@ class LayoutDistribution(AbstractDistribution):
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
                 else:
                     source_dict["dependency"], source_dict["path"] = source_spec, None
+                source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict["path"] = source_spec
             elif source_type == 'link':
@@ -1868,6 +1869,8 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
+                if 'optional' not in source_dict:
+                    source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict['_str_'] = "file:" + source_dict['path']
             elif source_type == 'link':
@@ -1932,7 +1935,7 @@ class LayoutDistribution(AbstractDistribution):
                 archiver.add(src, dst, provenance)
                 shutil.copy(src, absolute_destination)
 
-        def _install_source_files(files, include=None, excludes=None):
+        def _install_source_files(files, include=None, excludes=None, optional=False):
             excludes = excludes or []
             if destination.endswith('/'):
                 ensure_dir_exists(absolute_destination)
@@ -1958,11 +1961,17 @@ class LayoutDistribution(AbstractDistribution):
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
                 merge_recursive(_source_file, _dst, _arcname, excludes)
                 first_file = False
-            if first_file:
+            if first_file and not optional:
                 abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
 
         if source_type == 'dependency':
             d = dependency(source['dependency'], context=self)
+            if_stripped = source.get('if_stripped')
+            if if_stripped is not None and d.isJARDistribution():
+                if if_stripped not in ('include', 'exclude'):
+                    abort("Could not understand `if_stripped` value ''. Valid values are 'include' and 'exclude'".format(if_stripped), context=self)
+                if (if_stripped == 'exclude' and d.is_stripped()) or (if_stripped == 'include' and not d.is_stripped()):
+                    return
             if source.get('path') is None:
                 try:
                     _install_source_files([next(d.getArchivableResults(single=True))])
@@ -1977,7 +1986,7 @@ class LayoutDistribution(AbstractDistribution):
             else:
                 _install_source_files((
                     (source_file, arcname) for source_file, arcname in d.getArchivableResults()
-                ), include=source['path'], excludes=source.get('exclude'))
+                ), include=source['path'], excludes=source.get('exclude'), optional=source['optional'])
         elif source_type == 'extracted-dependency':
             path = source['path']
             exclude = source.get('exclude', [])
@@ -2073,7 +2082,7 @@ class LayoutDistribution(AbstractDistribution):
                         abort("tarfile: " + str(e))
             else:
                 abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
-            if first_file_box[0] and path is not None:
+            if first_file_box[0] and path is not None and not source['optional']:
                 abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
         elif source_type == 'file':
             files_root = self.suite.dir
@@ -17932,7 +17941,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.163.0")  # GR-9819-revert
+version = VersionSpec("5.164.0")  # layout: optional, if_stripped
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
