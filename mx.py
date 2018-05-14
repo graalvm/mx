@@ -2962,7 +2962,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
         """
-        Gets the concealed packages imported by this Java project and its transitive project dependencies.
+        Gets the concealed packages imported by this Java project.
 
         :param JDKConfig jdk: the JDK whose modules are to be searched for concealed packages
         :param list modulepath: extra modules to be searched for concealed packages
@@ -2979,12 +2979,6 @@ class JavaProject(Project, ClasspathDependency):
             concealed = {}
             if jdk.javaCompliance >= '9':
                 modulepath = list(jdk.get_modules()) + modulepath
-                def visit(dep, edge):
-                    if dep is not self and dep.isJavaProject():
-                        dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
-                        for module, packages in dep_concealed.iteritems():
-                            concealed.setdefault(module, set()).update(packages)
-                self.walk_deps(visit=visit)
 
                 imports = getattr(self, 'imports', [])
                 if imports:
@@ -3337,9 +3331,6 @@ class JavacLikeCompiler(JavaCompiler):
             # https://docs.oracle.com/javase/9/tools/javac.htm
             if compliance < '9':
                 javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
-            else:
-                c = compliance.to_str(jdk.javaCompliance)
-                javacArgs += ['-target', c, '-source', c]
         hybridCrossCompilation = False
         if jdk.javaCompliance != compliance:
             # cross-compilation
@@ -13412,8 +13403,8 @@ def _to_EclipseJavaExecutionEnvironment(compliance):
     """
     if not isinstance(compliance, JavaCompliance):
         compliance = JavaCompliance(compliance)
-    if compliance > '10':
-        return JavaCompliance('10')
+    if compliance > '9':
+        return JavaCompliance('9')
     return compliance
 
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
@@ -13667,6 +13658,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 out.element('factorypathentry', {'kind' : 'EXTJAR', 'id' : e.classpath_repr(resolve=True), 'enabled' : 'true', 'runInBatchMode' : 'false'})
 
         if p.javaCompliance >= '9':
+            # Annotation processors can only use JDK9 classes once Eclipse supports JDK9.
             concealedAPDeps = {}
             for dep in classpath_entries(names=processors, preferProjects=True):
                 if dep.isJavaProject():
@@ -17940,7 +17932,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.162.1")  # GR-9857
+version = VersionSpec("5.163.0")  # GR-9819-revert
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
