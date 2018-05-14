@@ -1249,26 +1249,48 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 claimer = a
                     return claimer is not None
 
-                def overwriteCheck(zf, arcname, source, lp=None):
-                    if os.path.basename(arcname).startswith('.'):
-                        logv('Excluding dotfile: ' + source)
-                        return True
-                    elif arcname == "META-INF/MANIFEST.MF": # Do not inherit the manifest from other jars
-                        logv('Excluding META-INF/MANIFEST.MF from ' + source)
-                        return True
-                    if not hasattr(zf, '_provenance'):
-                        zf._provenance = {}
-                    existingSource = zf._provenance.get(arcname, None)
-                    if existingSource and existingSource != source:
-                        if arcname[-1] != os.path.sep:
-                            if lp and lp.read(arcname) == zf.read(arcname):
-                                logv(self.original_path() + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
-                            else:
-                                warn(self.original_path() + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
-                        return True
-                    else:
-                        zf._provenance[arcname] = source
-                        return False
+                class ArchiveWriteGuard:
+                    """
+                    A scope for adding an entry to an archive. The addition should only be performed
+                    if the scope object is not None when entered:
+                    ```
+                    with ArchiveWriteGuard(...) as guard:
+                        if guard: <add entry to archive
+                    ```
+                    """
+                    def __init__(self, path, zf, arcname, source, lp=None):
+                        self.path = path
+                        self.zf = zf
+                        self.arcname = arcname
+                        self.source = source
+                        self.lp = lp
+                        self._can_write = False
+                    def __enter__(self):
+                        arcname = self.arcname
+                        source = self.source
+                        if os.path.basename(arcname).startswith('.'):
+                            logv('Excluding dotfile: ' + source)
+                            return None
+                        elif arcname == "META-INF/MANIFEST.MF": # Do not inherit the manifest from other jars
+                            logv('Excluding META-INF/MANIFEST.MF from ' + source)
+                            return None
+                        if not hasattr(self.zf, '_provenance'):
+                            self.zf._provenance = {}
+                        existingSource = self.zf._provenance.get(arcname, None)
+                        if existingSource and existingSource != source:
+                            if arcname[-1] != os.path.sep:
+                                if self.lp and self.lp.read(arcname) == self.zf.read(arcname):
+                                    logv(self.path + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
+                                else:
+                                    warn(self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
+                            return None
+                        self._can_write = True
+                        return self
+
+                    def __exit__(self, exc_type, exc_value, traceback):
+                        if self._can_write:
+                            if self.arcname in self.zf.namelist():
+                                self.zf._provenance[self.arcname] = self.source
 
                 def addFromJAR(jarPath):
                     with zipfile.ZipFile(jarPath, 'r') as lp:
@@ -1279,10 +1301,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 assert '/' not in service
                                 services.setdefault(service, []).extend(lp.read(arcname).splitlines())
                             else:
-                                if not overwriteCheck(arc.zf, arcname, jarPath + '!' + arcname, lp=lp):
-                                    contents = lp.read(arcname)
-                                    if not participants__add__(arcname, contents):
-                                        arc.zf.writestr(arcname, contents)
+                                with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, jarPath + '!' + arcname, lp=lp) as guard:
+                                    if guard:
+                                        contents = lp.read(arcname)
+                                        if not participants__add__(arcname, contents):
+                                            arc.zf.writestr(arcname, contents)
 
                 def addFile(outputDir, relpath, archivePrefix):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
@@ -1305,11 +1328,12 @@ class JARDistribution(Distribution, ClasspathDependency):
                         for f in files:
                             if f.endswith('.java'):
                                 arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
-                                if not overwriteCheck(srcArc.zf, arcname, join(root, f)):
-                                    with open(join(root, f), 'r') as fp:
-                                        contents = fp.read()
-                                    if not participants__add__(arcname, contents, addsrc=True):
-                                        srcArc.zf.writestr(arcname, contents)
+                                with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
+                                    if guard:
+                                        with open(join(root, f), 'r') as fp:
+                                            contents = fp.read()
+                                        if not participants__add__(arcname, contents, addsrc=True):
+                                            srcArc.zf.writestr(arcname, contents)
 
                 if self.mainClass:
                     manifestEntries.append('Main-Class: ' + self.mainClass)
@@ -1345,10 +1369,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as lp:
                                 for arcname in lp.namelist():
-                                    if not overwriteCheck(srcArc.zf, arcname, jarPath + '!' + arcname, lp=lp):
-                                        contents = lp.read(arcname)
-                                        if not participants__add__(arcname, contents, addsrc=True):
-                                            srcArc.zf.writestr(arcname, contents)
+                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, jarPath + '!' + arcname, lp=lp) as guard:
+                                        if guard:
+                                            contents = lp.read(arcname)
+                                            if not participants__add__(arcname, contents, addsrc=True):
+                                                srcArc.zf.writestr(arcname, contents)
                     elif dep.isMavenProject():
                         logv('[' + self.original_path() + ': adding jar from Maven project ' + dep.name + ']')
                         addFromJAR(dep.classpath_repr())
@@ -17943,7 +17968,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.164.0")  # layout: optional, if_stripped
+version = VersionSpec("5.164.1")  # GR-9861
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
