@@ -2999,7 +2999,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
         """
-        Gets the concealed packages imported by this Java project.
+        Gets the concealed packages imported by this Java project and its transitive project dependencies.
 
         :param JDKConfig jdk: the JDK whose modules are to be searched for concealed packages
         :param list modulepath: extra modules to be searched for concealed packages
@@ -3016,6 +3016,12 @@ class JavaProject(Project, ClasspathDependency):
             concealed = {}
             if jdk.javaCompliance >= '9':
                 modulepath = list(jdk.get_modules()) + modulepath
+                def visit(dep, edge):
+                    if dep is not self and dep.isJavaProject():
+                        dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
+                        for module, packages in dep_concealed.iteritems():
+                            concealed.setdefault(module, set()).update(packages)
+                self.walk_deps(visit=visit)
 
                 imports = getattr(self, 'imports', [])
                 if imports:
@@ -3514,7 +3520,7 @@ class JavacCompiler(JavacLikeCompiler):
                 if jdk._javacXModuleOptionExists:
                     javacArgs.append('-Xmodule:' + declaringJdkModule)
 
-            def addExportArgs(dep, exports=None, prefix='', jdk=None):
+            def addExportArgs(dep, exports=None, prefix='', jdk=None, observable_modules=None):
                 """
                 Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
@@ -3524,8 +3530,11 @@ class JavacCompiler(JavacLikeCompiler):
                    have already been added to `javacArgs`
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
+                :param observable_modules: only consider modules in this set if not None
                 """
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
+                    if observable_modules is not None and module not in observable_modules:
+                        continue 
                     if module in jdkModulesOnClassPath:
                         # If the classes in a JDK module declaring the dependency are also
                         # resolvable on the class path, then do not export the module
@@ -3575,15 +3584,25 @@ class JavacCompiler(JavacLikeCompiler):
                 _classpath_append(jdk_module_jars)
             aps = project.annotation_processors()
             if aps:
-                exports = {}
+                # We want annotation processors to use classes on the class path
+                # instead of those in modules since the module classes may not
+                # be in exported packages and/or may have different signatures.
+                # Unfortunately, there's no VM option for hiding modules, only the
+                # --limit-modules option for restricting modules observability.
+                # We limit module observability to those required by javac and
+                # the module declaring sun.misc.Unsafe which is used by annotation
+                # processors such as JMH.
+                observable_modules = frozenset(['jdk.compiler', 'java.compiler', 'jdk.zipfs', 'jdk.unsupported'])
 
+                exports = {}
                 entries = classpath_entries(aps, preferProjects=True)
                 for dep in entries:
                     m = getDeclaringJDKModule(dep)
                     if m:
                         jdkModulesOnClassPath.add(m)
                     elif dep.isJavaProject():
-                        addExportArgs(dep, exports, '-J', jdk)
+                        pass
+                        addExportArgs(dep, exports, '-J', jdk, observable_modules)
 
                 # An annotation processor may have a dependency on other annotation
                 # processors. The latter might need extra exports.
@@ -3595,7 +3614,7 @@ class JavacCompiler(JavacLikeCompiler):
                             if m:
                                 jdkModulesOnClassPath.add(m)
                             elif apDep.isJavaProject():
-                                addExportArgs(apDep, exports, '-J', jdk)
+                                addExportArgs(apDep, exports, '-J', jdk, observable_modules)
 
                 addRootModules(exports, '-J')
 
@@ -3608,7 +3627,7 @@ class JavacCompiler(JavacLikeCompiler):
                     # We limit module observability to those required by javac and
                     # the module declaring sun.misc.Unsafe which is used by annotation
                     # processors such as JMH.
-                    javacArgs.append('-J--limit-modules=jdk.compiler,java.compiler,jdk.zipfs,jdk.unsupported')
+                    javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
 
         return javacArgs
 
@@ -3662,8 +3681,10 @@ class CompilerDaemon(Daemon):
         p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags, stdout=subprocess.PIPE)
 
         # scan stdout to capture the port number
+        pout = []
         def redirect(stream):
             for line in iter(stream.readline, ''):
+                pout.append(line)
                 self._noticePort(line)
             stream.close()
         t = Thread(target=redirect, args=(p.stdout,))
@@ -3677,8 +3698,11 @@ class CompilerDaemon(Daemon):
         retries = 0
         while self.port is None:
             retries = retries + 1
+            returncode = p.poll()
+            if returncode is not None:
+                raise RuntimeError('Error starting ' + self.name() + ': returncode=' + str(returncode) + '\n' + ''.join(pout))
             if retries > 300:
-                raise RuntimeError('[Error starting ' + str(self) + ': No port number was found in output after 30 seconds]')
+                raise RuntimeError('Error starting ' + self.name() + ': No port number was found in output after 30 seconds\n' + ''.join(pout))
             else:
                 time.sleep(0.1)
 
