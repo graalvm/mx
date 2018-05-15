@@ -3537,7 +3537,7 @@ class JavacCompiler(JavacLikeCompiler):
                 """
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
                     if observable_modules is not None and module not in observable_modules:
-                        continue 
+                        continue
                     if module in jdkModulesOnClassPath:
                         # If the classes in a JDK module declaring the dependency are also
                         # resolvable on the class path, then do not export the module
@@ -3604,7 +3604,6 @@ class JavacCompiler(JavacLikeCompiler):
                     if m:
                         jdkModulesOnClassPath.add(m)
                     elif dep.isJavaProject():
-                        pass
                         addExportArgs(dep, exports, '-J', jdk, observable_modules)
 
                 # An annotation processor may have a dependency on other annotation
@@ -17997,7 +17996,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.164.2")  # PR-652
+version = VersionSpec("5.165.0")  # GR-9819_attempt2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
