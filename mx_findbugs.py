@@ -46,7 +46,10 @@ def _should_test_project(p):
         return p.findbugs.lower() == 'true' or p.findbugs is True
     if p.name.endswith('.test'):
         return False
-    if p.javaCompliance >= '9' and p.suite.getMxCompatibility().filterFindbugsProjectsByJavaCompliance():
+    if p.javaCompliance >= '9':
+        # We no longer use p.suite.getMxCompatibility().filterFindbugsProjectsByJavaCompliance()
+        # as we don't want projects with Java compliance greater than 8 to ever prevent FindBugs
+        # being run on projects with compliance less than or equal to 8.
         return False
     return True
 
