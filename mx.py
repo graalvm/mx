@@ -1317,10 +1317,13 @@ class JARDistribution(Distribution, ClasspathDependency):
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
-                        with open(join(outputDir, relpath), 'rb') as fp:
-                            contents = fp.read()
-                        if not participants__add__(arcname, contents):
-                            arc.zf.writestr(arcname, contents)
+                        source = join(outputDir, relpath)
+                        with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
+                            if guard:
+                                with open(source, 'rb') as fp:
+                                    contents = fp.read()
+                                if not participants__add__(arcname, contents):
+                                    arc.zf.writestr(arcname, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix=''):
                     for root, _, files in os.walk(srcDir):
