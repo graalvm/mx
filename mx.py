@@ -1317,10 +1317,13 @@ class JARDistribution(Distribution, ClasspathDependency):
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
-                        with open(join(outputDir, relpath), 'rb') as fp:
-                            contents = fp.read()
-                        if not participants__add__(arcname, contents):
-                            arc.zf.writestr(arcname, contents)
+                        source = join(outputDir, relpath)
+                        with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
+                            if guard:
+                                with open(source, 'rb') as fp:
+                                    contents = fp.read()
+                                if not participants__add__(arcname, contents):
+                                    arc.zf.writestr(arcname, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix=''):
                     for root, _, files in os.walk(srcDir):
@@ -17968,7 +17971,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.164.1")  # GR-9861
+version = VersionSpec("5.164.2")  # PR-652
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
