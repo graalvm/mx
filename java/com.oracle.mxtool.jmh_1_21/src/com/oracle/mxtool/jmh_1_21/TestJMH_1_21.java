@@ -20,7 +20,7 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package com.oracle.mxtool.jmh_1_18;
+package com.oracle.mxtool.jmh_1_21;
 
 import org.openjdk.jmh.annotations.*;
 
@@ -30,7 +30,7 @@ import org.openjdk.jmh.annotations.*;
 @Warmup(iterations = 2)
 @Measurement(iterations = 2)
 @Fork(2)
-public class TestJMH_1_18 {
+public class TestJMH_1_21 {
 
     @Benchmark
     @BenchmarkMode(Mode.All)

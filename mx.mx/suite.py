@@ -170,6 +170,17 @@ suite = {
       }
     },
 
+    "JMH_GENERATOR_ANNPROCESS_1_21" : {
+      "sha1": "7aac374614a8a76cad16b91f1a4419d31a7dcda3",
+      "sourceSha1" : "fb48e2a97df95f8b9dced54a1a37749d2a64d2ae",
+      "licence": "GPLv2-CPE",
+      "maven" : {
+        "groupId" : "org.openjdk.jmh",
+        "artifactId" : "jmh-generator-annprocess",
+        "version" : "1.21",
+      }
+    },
+
     "JMH_1_18" : {
       "sha1": "0174aa0077e9db596e53d7f9ec37556d9392d5a6",
       "sourceSha1": "7ff1e1aafea436b6aa8b29a8b8f1c2d66be26f5b",
@@ -179,6 +190,18 @@ suite = {
         "groupId" : "org.openjdk.jmh",
         "artifactId" : "jmh-core",
         "version" : "1.18",
+      }
+    },
+
+    "JMH_1_21" : {
+      "sha1": "442447101f63074c61063858033fbfde8a076873",
+      "sourceSha1": "a6fe84788bf8cf762b0e561bf48774c2ea74e370",
+      "licence": "GPLv2-CPE",
+      "dependencies" : ["JOPTSIMPLE_4_6", "JMH_GENERATOR_ANNPROCESS_1_21", "COMMONS_MATH3_3_2"],
+      "maven" : {
+        "groupId" : "org.openjdk.jmh",
+        "artifactId" : "jmh-core",
+        "version" : "1.21",
       }
     },
 
@@ -241,14 +264,14 @@ suite = {
 
   "projects" : {
 
-    "com.oracle.mxtool.jmh_1_18" : {
+    "com.oracle.mxtool.jmh_1_21" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "dependencies" : [
-        "JMH_1_18",
+        "JMH_1_21",
       ],
       "javaCompliance" : "1.8",
-      "annotationProcessors" : ["JMH_1_18"],
+      "annotationProcessors" : ["JMH_1_21"],
       "findbugsIgnoresGenerated" : True,
     },
 
@@ -308,7 +331,7 @@ suite = {
 
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
-      "dependencies" : ["com.oracle.mxtool.jmh_1_18"],
+      "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
     }
   },
 }
