@@ -6733,6 +6733,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     if directDistDeps or directLibDeps:
         pom.open('dependencies')
         for dep in directDistDeps:
+            if dep.suite.internal:
+                continue
             if validateMetadata != 'none' and not (dep.isJARDistribution() and dep.maven):
                 if validateMetadata == 'full':
                     dist.abort("Distribution depends on non-maven distribution {}".format(dep))
@@ -6746,6 +6748,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                     dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
                 dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
             pom.element('version', data=dep_version)
+            if dep.remoteExtension() != 'jar':
+                pom.element('type', data=dep.remoteExtension())
             pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
@@ -7454,7 +7458,7 @@ def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
     url = urlparse.urlsplit(urlstr)
-    return url.scheme and url.netloc
+    return url.scheme and (url.netloc or url.path)
 
 class SCMMetadata(object):
     def __init__(self, url, read, write):
@@ -17996,7 +18000,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.165.0")  # GR-9819_attempt2
+version = VersionSpec("5.166.0")  # GR-9937
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
