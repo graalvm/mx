@@ -361,7 +361,7 @@ def make_java_module(dist, jdk):
         shutil.rmtree(moduleDir)
     for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
         if d.isJARDistribution():
-            with zipfile.ZipFile(d.path, 'r') as zf:
+            with zipfile.ZipFile(d.original_path(), 'r') as zf:
                 # To compile module-info.java, all classes it references must either be given
                 # as Java source files or already exist as class files in the output directory.
                 # As such, the jar file for each constituent distribution must be unpacked

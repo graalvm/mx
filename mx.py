@@ -1126,8 +1126,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         else:
             self.stripConfig = None
         self.buildDependencies = []
-        if self.is_stripped():
-            self.buildDependencies.append("mx:PROGUARD")
         assert self.path.endswith(self.localExtension())
 
     def default_source_filename(self):
@@ -1148,6 +1146,17 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def original_path(self):
         return self._path
+
+    def maxJavaCompliance(self):
+        if not hasattr(self, '.maxJavaCompliance'):
+            javaCompliances = [p.javaCompliance for p in self.archived_deps() if p.isJavaProject()]
+            if self.javaCompliance is not None:
+                javaCompliances.append(self.javaCompliance)
+            if len(javaCompliances) > 0:
+                setattr(self, '.maxJavaCompliance', max(javaCompliances))
+            else:
+                setattr(self, '.maxJavaCompliance', None)
+        return getattr(self, '.maxJavaCompliance')
 
     def paths_to_clean(self):
         paths = [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
@@ -1384,9 +1393,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                             addSrcFromDir(srcDir)
                     elif dep.isJavaProject():
                         p = dep
-                        if self.javaCompliance:
-                            if p.javaCompliance > self.javaCompliance:
-                                abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, self.javaCompliance, p.name, p.javaCompliance), context=self)
+                        javaCompliance = self.maxJavaCompliance()
+                        if javaCompliance:
+                            if p.javaCompliance > javaCompliance:
+                                abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, javaCompliance, p.name, p.javaCompliance), context=self)
 
                         logv('[' + self.original_path() + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
@@ -1462,7 +1472,10 @@ class JARDistribution(Distribution, ClasspathDependency):
     def strip_jar(self):
         assert _opts.strip_jars, "Only works under the flag --strip-jars"
         logv('Stripping {}...'.format(self.name))
-        strip_command = ['-jar', library('PROGUARD').get_path(resolve=True)]
+
+        jdk = get_jdk(self.maxJavaCompliance())
+        jdk9_or_later = jdk.javaCompliance >= '9'
+        strip_command = ['-jar', library('PROGUARD_6_0_3').get_path(resolve=True)]
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
             with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
@@ -1475,13 +1488,28 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 # input and output jars
                 input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
-                libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=get_jdk(), unique=True, ignoreStripped=True).split(os.pathsep)
+
+                if not jdk9_or_later:
+                    libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
+                else:
+                    # Override modules from the JDK with those from dependencies
+                    entries = classpath_entries(self, includeSelf=False)
+                    dep_modules = set()
+                    for e in entries:
+                        if e.isJARDistribution():
+                            info = get_java_module_info(e)
+                            if info:
+                                modulename, _, _ = info  # pylint: disable=unpacking-non-sequence
+                                dep_modules.add(modulename)
+                    libraryjars = classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep) + \
+                        [join(jdk.home, 'jmods', jmd.name + '.jmod') for jmd in jdk.get_modules() if jmd.name not in dep_modules]
+
                 # Ignored versioned class files until multi-release jars are
                 # supported by ProGuard (https://sourceforge.net/p/proguard/bugs/671/)
                 strip_command += [
-                     '-injars', self.original_path() + '(!META-INF/versions/**)',
+                     '-injars', self.original_path() + '(!META-INF/versions/**,!module-info.class)',
                      '-outjars', self.path, # only the jar of this distribution
-                     '-libraryjars', os.pathsep.join([e + '(!META-INF/versions/**)' for e in libraryjars]),
+                     '-libraryjars', os.pathsep.join([e + '(!META-INF/versions/**,!module-info.class)' for e in libraryjars]),
                      '-printmapping', self.strip_mapping_file(),
                 ]
 
@@ -1508,7 +1536,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                 elif not _opts.verbose:
                     strip_command += ['-dontnote', '**']
 
-                run_java(strip_command)
+                run_java(strip_command, jdk=jdk)
                 with open(self.strip_config_dependency_file(), 'w') as f:
                     f.writelines((l + os.linesep for l in self.stripConfig))
 
@@ -3621,14 +3649,6 @@ class JavacCompiler(JavacLikeCompiler):
                 addRootModules(exports, '-J')
 
                 if len(jdkModulesOnClassPath) != 0:
-                    # We want annotation processors to use classes on the class path
-                    # instead of those in modules since the module classes may not
-                    # be in exported packages and/or may have different signatures.
-                    # Unfortunately, there's no VM option for hiding modules, only the
-                    # --limit-modules option for restricting modules observability.
-                    # We limit module observability to those required by javac and
-                    # the module declaring sun.misc.Unsafe which is used by annotation
-                    # processors such as JMH.
                     javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
 
         return javacArgs
@@ -12455,7 +12475,7 @@ def _unstrip(args):
     return 0
 
 def unstrip(args):
-    proguard_cp = library('PROGUARD_RETRACE').get_path(resolve=True) + os.pathsep + library('PROGUARD').get_path(resolve=True)
+    proguard_cp = library('PROGUARD_RETRACE_6_0_3').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_0_3').get_path(resolve=True)
     unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
     mapfiles = []
     inputfiles = []
@@ -13852,9 +13872,6 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         out.close('projects')
         out.open('buildSpec')
         dist.dir = projectDir
-        javaCompliances = [p.javaCompliance for p in relevantResourceDeps if p.isJavaProject()]
-        if len(javaCompliances) > 0:
-            dist.javaCompliance = max(javaCompliances)
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
                                       relevantResources=relevantResources,
                                       logToFile=True, refresh=True, async=False,
@@ -18000,7 +18017,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.167.0")  # GR-9710
+version = VersionSpec("5.168.0")  # GR-9950
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -229,6 +229,25 @@ suite = {
         "version" : "5.3.1",
       }
     },
+
+    # ProGuard introduced support for JDK 9
+    "PROGUARD_6_0_3" : {
+      "sha1" : "7135739d2d3834964c543ed21e2936ce34747aca",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-base",
+        "version" : "6.0.3",
+      }
+    },
+
+    "PROGUARD_RETRACE_6_0_3" : {
+      "sha1" : "4f249d487b06bedd29f0b7d9277a63d12d5d0a7e",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-retrace",
+        "version" : "6.0.3",
+      }
+    },
   },
 
   "licenses" : {
