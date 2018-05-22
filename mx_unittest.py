@@ -34,15 +34,17 @@ import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError
 from os.path import exists, join, basename
 
-def _read_cached_testclasses(cachesDir, jar):
+def _read_cached_testclasses(cachesDir, jar, jdk):
     """
     Reads the cached list of test classes in `jar`.
 
     :param str cachesDir: directory containing files with cached test lists
+    :param JDKConfig jdk: the JDK for which the cached list of classes must be found
     :return: the cached list of test classes in `jar` or None if the cache doesn't
              exist or is out of date
     """
-    cache = join(cachesDir, basename(jar) + '.testclasses')
+    jdkVersion = '.jdk' + str(jdk.javaCompliance)
+    cache = join(cachesDir, basename(jar) + jdkVersion + '.testclasses')
     if exists(cache) and mx.TimeStampFile(cache).isNewerThan(jar):
         # Only use the cached result if the source jar is older than the cache file
         try:
@@ -52,14 +54,16 @@ def _read_cached_testclasses(cachesDir, jar):
             mx.warn('Error reading from ' + cache + ': ' + str(e))
     return None
 
-def _write_cached_testclasses(cachesDir, jar, testclasses):
+def _write_cached_testclasses(cachesDir, jar, jdk, testclasses):
     """
     Writes `testclasses` to a cache file specific to `jar`.
 
     :param str cachesDir: directory containing files with cached test lists
+    :param JDKConfig jdk: the JDK for which the cached list of classes must be written
     :param list testclasses: a list of test class names
     """
-    cache = join(cachesDir, basename(jar) + '.testclasses')
+    jdkVersion = '.jdk' + str(jdk.javaCompliance)
+    cache = join(cachesDir, basename(jar) + jdkVersion + '.testclasses')
     try:
         with open(cache, 'w') as fp:
             for classname in testclasses:
@@ -83,7 +87,7 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
         cachesDir = mx.ensure_dir_exists(join(primarySuite.get_output_root(), 'unittest'))
         for d in dists:
             jar = d.classpath_repr()
-            testclasses = _read_cached_testclasses(cachesDir, jar)
+            testclasses = _read_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk())
             if testclasses is not None:
                 for classname in testclasses:
                     candidates[classname] = jarsToDists[jar]
@@ -103,7 +107,7 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
             jar = parts[0]
             testclasses = parts[1:] if len(parts) > 1 else []
             if cachesDir:
-                _write_cached_testclasses(cachesDir, jar, testclasses)
+                _write_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk(), testclasses)
             for classname in testclasses:
                 candidates[classname] = jarsToDists[jar]
     return candidates
