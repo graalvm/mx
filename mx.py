@@ -5822,7 +5822,7 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 logvv("Requested revision " + rev + " not found in " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*', '+HEAD:refs/remotes/' + hashed_url + '/HEAD'])
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'])
             cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
         else:
             if branch:
@@ -18017,7 +18017,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.168.0")  # GR-9950
+version = VersionSpec("5.168.1")  # GR-9673
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
