@@ -18,7 +18,8 @@ If no options or command is specified, `mx` prints information on the available 
 
 For an example of `mx` usage, see the [README][1] for the Graal project.
 
-Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.
+Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.  
+[mx-honey](https://github.com/mukel/mx-honey) provides richer completions for `zsh` users.
 
 ### Unit testing with Junit <a name="junit"></a>
 
