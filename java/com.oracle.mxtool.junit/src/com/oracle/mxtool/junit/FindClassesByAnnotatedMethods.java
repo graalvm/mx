@@ -78,12 +78,17 @@ public class FindClassesByAnnotatedMethods {
                 }
                 Set<String> methodAnnotationTypes = new HashSet<>();
                 DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je), (int) je.getSize()));
+                boolean isSupported = true;
                 try {
                     readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
+                    isSupported = false;
                     unsupportedClasses++;
                 }
                 String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
+                if (!isSupported) {
+                    System.out.print(" !" + className);
+                }
                 for (String annotationType : methodAnnotationTypes) {
                     if (!qualifiedAnnotations.isEmpty()) {
                         if (qualifiedAnnotations.contains(annotationType)) {
@@ -125,6 +130,7 @@ public class FindClassesByAnnotatedMethods {
      * Small bytecode parser that extract annotations.
      */
     private static final int MAJOR_VERSION_JAVA7 = 51;
+    private static final int MAJOR_VERSION_OFFSET = 44;
     private static final byte CONSTANT_Utf8 = 1;
     private static final byte CONSTANT_Integer = 3;
     private static final byte CONSTANT_Float = 4;
@@ -149,6 +155,18 @@ public class FindClassesByAnnotatedMethods {
         int minor = stream.readUnsignedShort();
         int major = stream.readUnsignedShort();
         if (major < MAJOR_VERSION_JAVA7) {
+            throw new UnsupportedClassVersionError("Unsupported class file version: " + major + "." + minor);
+        }
+        // Starting with JDK8, ignore a classfile that has a newer format than the current JDK.
+        String javaVersion = System.getProperties().get("java.specification.version").toString();
+        int majorJavaVersion;
+        if (javaVersion.startsWith("1.")) {
+            javaVersion = javaVersion.substring(2);
+            majorJavaVersion = Integer.parseInt(javaVersion);
+        } else {
+            majorJavaVersion = Integer.parseInt(javaVersion);
+        }
+        if (major > MAJOR_VERSION_OFFSET + majorJavaVersion) {
             throw new UnsupportedClassVersionError("Unsupported class file version: " + major + "." + minor);
         }
 
