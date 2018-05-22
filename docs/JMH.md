@@ -92,21 +92,21 @@ In the following all steps will be discussed in details.
 The [mx project] is the place where the actual benchmarks live.
 To make a project a [JMH] project simply add a [JMH] *library* to the `dependencies`
 *and* also to the `annotationProcessors`.
-We have multiple version of [JMH] availablue.
-At the time of writing `JMH_1_18` is the most recent one.
+We have multiple version of [JMH] available.
+At the time of writing `JMH_1_21` is the most recent one.
 Here an example, again from [mx]:
 
 ```python
 "projects" : {
   # ...
-  "com.oracle.mxtool.jmh_1_18" : {
+  "com.oracle.mxtool.jmh_1_21" : {
     "subDir" : "java",
     "sourceDirs" : ["src"],
     "dependencies" : [
-      "JMH_1_18",
+      "JMH_1_21",
     ],
     "javaCompliance" : "1.8",
-    "annotationProcessors" : ["JMH_1_18"],
+    "annotationProcessors" : ["JMH_1_21"],
   }
   # ...
 }
@@ -124,7 +124,7 @@ However, different [JMH] versions should not be mixed into one distribution.
   # ...
   "MX_MICRO_BENCHMARKS" : {
     "subDir" : "java",
-    "dependencies" : ["com.oracle.mxtool.jmh_1_18"],
+    "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
   }
   # ...
 }
