@@ -71,6 +71,8 @@ def _write_cached_testclasses(cachesDir, jar, jdk, testclasses, excludedclasses)
             for classname in testclasses:
                 print >> fp, classname
         with open(exclusions, 'w') as fp:
+            if excludedclasses:
+                mx.warn('Unsupported class files listed in ' + exclusions)
             for classname in excludedclasses:
                 print >> fp, classname[1:]
     except IOError as e:
