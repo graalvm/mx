@@ -18017,7 +18017,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.168.1")  # GR-9673
+version = VersionSpec("5.169.0")  # Link to mx-honey (zsh completions).
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
