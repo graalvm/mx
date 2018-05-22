@@ -78,12 +78,17 @@ public class FindClassesByAnnotatedMethods {
                 }
                 Set<String> methodAnnotationTypes = new HashSet<>();
                 DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je), (int) je.getSize()));
+                boolean isSupported = true;
                 try {
                     readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
+                    isSupported = false;
                     unsupportedClasses++;
                 }
                 String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
+                if (!isSupported) {
+                    System.out.print(" !" + className);
+                }
                 for (String annotationType : methodAnnotationTypes) {
                     if (!qualifiedAnnotations.isEmpty()) {
                         if (qualifiedAnnotations.contains(annotationType)) {

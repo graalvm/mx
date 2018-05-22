@@ -54,20 +54,25 @@ def _read_cached_testclasses(cachesDir, jar, jdk):
             mx.warn('Error reading from ' + cache + ': ' + str(e))
     return None
 
-def _write_cached_testclasses(cachesDir, jar, jdk, testclasses):
+def _write_cached_testclasses(cachesDir, jar, jdk, testclasses, excludedclasses):
     """
     Writes `testclasses` to a cache file specific to `jar`.
 
     :param str cachesDir: directory containing files with cached test lists
     :param JDKConfig jdk: the JDK for which the cached list of classes must be written
     :param list testclasses: a list of test class names
+    :param list excludedclasses: a list of excluded class names
     """
     jdkVersion = '.jdk' + str(jdk.javaCompliance)
     cache = join(cachesDir, basename(jar) + jdkVersion + '.testclasses')
+    exclusions = join(cachesDir, basename(jar) + jdkVersion + '.excludedclasses')
     try:
         with open(cache, 'w') as fp:
             for classname in testclasses:
                 print >> fp, classname
+        with open(exclusions, 'w') as fp:
+            for classname in excludedclasses:
+                print >> fp, classname[1:]
     except IOError as e:
         mx.warn('Error writing to ' + cache + ': ' + str(e))
 
@@ -105,9 +110,11 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
         for line in out.lines:
             parts = line.split(' ')
             jar = parts[0]
-            testclasses = parts[1:] if len(parts) > 1 else []
+            reportedclasses = parts[1:] if len(parts) > 1 else []
+            testclasses = [c for c in reportedclasses if not c.startswith("!")]
+            excludedclasses = [c for c in reportedclasses if c.startswith("!")]
             if cachesDir:
-                _write_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk(), testclasses)
+                _write_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk(), testclasses, excludedclasses)
             for classname in testclasses:
                 candidates[classname] = jarsToDists[jar]
     return candidates
