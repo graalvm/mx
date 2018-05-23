@@ -3002,7 +3002,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def getBuildTask(self, args):
         requiredCompliance = self.javaCompliance
-        if not requiredCompliance.isExactBound and hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
+        if not requiredCompliance._is_exact_bound() and hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
             jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
             if jdk.javaCompliance < requiredCompliance:
                 jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
@@ -9638,7 +9638,7 @@ environment variables:
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
-        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='observe Java compliance for projects that set it explicitly', default=False)
+        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='use JDK matching a project\'s Java compliance when compiling (legacy - this is the only supported mode)', default=True)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
         self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
         self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to the given suite', metavar='<name>', default=[])
@@ -9972,13 +9972,13 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     return jdk
 
 def _convert_compliance_to_version_check(requiredCompliance):
-    if requiredCompliance.isExactBound or (_opts.strict_compliance and not requiredCompliance.isLowerBound):
+    if requiredCompliance._is_exact_bound():
         versionDesc = str(requiredCompliance)
-        versionCheck = requiredCompliance.exactMatch
-    else:
+    elif requiredCompliance._upper_bound is None:
         versionDesc = '>=' + str(requiredCompliance)
-        compVersion = VersionSpec(str(requiredCompliance))
-        versionCheck = lambda version: version >= compVersion
+    else:
+        versionDesc = 'between ' + str(requiredCompliance) + ' and ' + str(requiredCompliance._upper_bound)
+    versionCheck = requiredCompliance._exact_match
     return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
@@ -10053,7 +10053,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
     if len(configs) > 1:
         # Don't force user to make a selection unless strict compliance
         # is being requested
-        if not is_interactive() or not _opts.strict_compliance:
+        if not is_interactive():
             msg = "Multiple possible choices for a JDK"
             if purpose:
                 msg += ' for ' + purpose
@@ -10109,10 +10109,6 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         if not is_interactive():
             return None
         if cancel:
-            # Don't prompt user to input a JDK path unless strict compliance
-            # is being requested
-            if not _opts.strict_compliance:
-                return None
             if selection_prompt_prefix: log(selection_prompt_prefix)
             jdkLocation = raw_input('Enter path of JDK or leave empty to cancel (' + cancel + '): ')
             if len(jdkLocation) == 0:
@@ -10141,10 +10137,6 @@ def _ask_persist_env(varName, value, valueSeparator=None):
             assert _primary_suite
             _ask_persist_env(varName, value, valueSeparator)
         _primary_suite_deferrables.append(_deferrable)
-        return varName
-
-    # Don't prompt the user unless they want strict compliance
-    if not _opts.strict_compliance:
         return varName
 
     envPath = join(_primary_suite.mxDir, 'env')
@@ -10789,12 +10781,19 @@ A JavaCompliance simplifies comparing Java compliance values extracted from a JD
 """
 class JavaCompliance:
     def __init__(self, ver):
-        m = re.match(r'(?:1\.)?(\d+).*', ver)
+        pattern = r'(?:1\.)?(\d+)(.*)'
+        m = re.match(pattern, ver)
         assert m is not None, 'not a recognized version string: ' + ver
         self.value = int(m.group(1))
-        self.isLowerBound = ver.endswith('+')
-        self.isExactBound = ver.endswith('=')
-        assert not self.isLowerBound or not self.isExactBound
+        self._upper_bound = self.value
+        if ver.endswith('+'):
+            self._upper_bound = None
+        else:
+            rest = m.group(2)
+            if rest.startswith('..'):
+                m = re.match(pattern, rest[2:])
+                assert m is not None, 'not a recognized version range string: ' + ver
+                self._upper_bound = int(m.group(1))
 
     def __str__(self):
         if self.value >= 9:
@@ -10802,23 +10801,34 @@ class JavaCompliance:
         return '1.' + str(self.value)
 
     def __repr__(self):
-        return str(self)
+        if self._upper_bound is None:
+            return str(self) + '+'
+        if self._upper_bound == self.value:
+            return str(self)
+        return str(self) + '..' + str(self._upper_bound)
 
     def __cmp__(self, other):
         if isinstance(other, types.StringType):
             other = JavaCompliance(other)
-        return cmp(self.value, other.value)
+        r = cmp(self.value, other.value)
+        if r == 0:
+            # None is less than all values but equal to itself
+            r = cmp(self._upper_bound, other._upper_bound)
+        return r
 
     def __hash__(self):
-        return self.value.__hash__()
+        return self.value ** (self._upper_bound or 1)
 
     def to_str(self, compliance):
-        if compliance < "9":
+        if compliance < '9':
             return str(self)
         else:
             return str(self.value)
 
-    def exactMatch(self, version):
+    def _is_exact_bound(self):
+        return self.value == self._upper_bound
+
+    def _exact_match(self, version):
         assert isinstance(version, VersionSpec)
         if len(version.parts) > 0:
             if len(version.parts) > 1 and version.parts[0] == 1:
@@ -10828,10 +10838,10 @@ class JavaCompliance:
                 # No preceding '1', e.g. '9-ea'. Used for Java 9 early access releases.
                 value = version.parts[0]
 
-            if not self.isLowerBound:
-                return value == self.value
-            else:
-                return value >= self.value
+            if value >= self.value:
+                if self._upper_bound is not None:
+                    return value <= self._upper_bound
+                return True
         return False
 
 """
@@ -17294,7 +17304,7 @@ def _remove_unsatisfied_deps():
                     removedDeps[dep] = reason
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
-            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + str(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
                 reason = 'project {0} was removed as Java compliance {1} cannot be satisfied by configured JDKs'.format(dep, dep.javaCompliance)
                 logv('[' + reason + ']')
