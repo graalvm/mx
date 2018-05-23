@@ -30,19 +30,46 @@ from argparse import ArgumentParser
 from os.path import realpath, dirname
 
 parser = ArgumentParser(usage='%(prog)s [options]\n\n' + """
-Finds the mx version update denoted in the diff for <commit>
-and tags <commit> with the new version. Exits with non-zero
-if the commit does not contain an mx version update.
+Finds the mx version update denoted in the diff of mx.py between the <descendant>
+and <ancestor> commits and tags <descendant> with the new version. Exits with non-zero
+if diff does not contain an mx version update.
 """)
 parser.add_argument('--check-only', action='store_true', help='do not apply tag')
-parser.add_argument('commit', action='store', help='commit to process', metavar='<commit>')
+parser.add_argument('descendant', action='store', help='descendant commit for diff', metavar='<descendant>')
+parser.add_argument('ancestor', action='store', nargs='?', default=None, help='ancestor commit for diff', metavar='<ancestor>')
 args = parser.parse_args()
 
 mx_home = realpath(dirname(__file__))
 old_version_re = re.compile(r'.*\-version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 
-diff = subprocess.check_output(['git', 'show', '-p', '-m', args.commit], cwd=mx_home).strip()
+def get_parents(commit):
+    return subprocess.check_output(['git', 'show', '--summary', '--format=%P', commit]).strip().split()
+
+def with_hash(commit):
+    h = subprocess.check_output(['git', 'show', '--no-patch', '--format=%H', commit]).strip()
+    if h == commit:
+        return h
+    return '{} ({})'.format(commit, h)
+
+parents = get_parents(args.descendant)
+if args.ancestor:
+    # https://stackoverflow.com/a/18345268/6691595
+    if subprocess.call(['git', 'merge-base', '--is-ancestor', args.ancestor, args.descendant], cwd=mx_home) != 0:
+        raise SystemExit('{} is not an ancestor of {}'.format(with_hash(args.ancestor), with_hash(args.descendant)))
+    if len(parents) > 1:
+        raise SystemExit('{} cannot be a merge commit'.format(with_hash(args.descendant)))
+else:
+    # Find sole merge parent that is a merge itself
+    for candidate in parents:
+        if len(get_parents(candidate)) > 1:
+            if args.ancestor:
+                raise SystemExit('both parents of {} are merges: {} {}'.format(with_hash(args.descendant), candidate, with_hash(args.ancestor)))
+            args.ancestor = candidate
+    if not args.ancestor:
+        raise SystemExit('{} is not a merge or has no parent that is a merge'.format(with_hash(args.descendant)))
+
+diff = subprocess.check_output(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 
@@ -61,7 +88,7 @@ if new_version and old_version:
     if old >= new:
         raise SystemExit('Version update does not go forward')
     if not args.check_only:
-        subprocess.check_call(['git', 'tag', tag, args.commit])
+        subprocess.check_call(['git', 'tag', tag, args.descendant])
         subprocess.check_call(['git', 'push', 'origin', tag])
 else:
-    raise SystemExit('Could not find mx version update in this commit:\n{}'.format(diff))
+    raise SystemExit('Could not find mx version update in the diff between {} and {}:\n{}'.format(with_hash(args.ancestor), with_hash(args.descendant), diff))
