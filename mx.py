@@ -3000,7 +3000,7 @@ class JavaProject(Project, ClasspathDependency):
         return flatten_map
 
     def getBuildTask(self, args):
-        jdk = get_jdk(self.javaCompliance, tag=DEFAULT_JDK_TAG)
+        jdk = get_jdk(self.javaCompliance, tag=DEFAULT_JDK_TAG, purpose='building ' + self.name)
         return JavaBuildTask(args, self, jdk)
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
@@ -9856,16 +9856,22 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if cancel and (versionDescription, purpose) in _canceled_java_requests:
         return None
 
+    available = []
     def abort_not_found():
-        msg = "Could not find JDK"
+        msg = 'Could not find a JDK'
         if versionDescription:
-            msg += " (" + versionDescription + ")"
-        msg += "\nTry using the --java-home argument or the JAVA_HOME or EXTRA_JAVA_HOMES environment variables"
+            msg += ' ' + versionDescription
+        if purpose:
+            msg += ' for ' + purpose
+        if available:
+            msg += '\nThe following JDKs are available:\n  ' + '\n  '.join((jdk.home for jdk in available))
+        msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
+        msg += '\nEnvironment variables can be defined as per the current shell, in ~/.mx/env or in ' + join(primary_suite().mxDir, 'env') + '.'
         abort(msg)
 
     if defaultJdk:
         if not _default_java_home:
-            _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, purpose=purpose, cancel=cancel, isDefaultJdk=True)
+            _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, available=available)
             if not _default_java_home:
                 if not cancel:
                     abort_not_found()
@@ -9876,11 +9882,11 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     existing_java_homes = _extra_java_homes
     if _default_java_home:
         existing_java_homes.append(_default_java_home)
-    for java in existing_java_homes:
-        if not versionCheck or versionCheck(java.version):
-            return java
+    for jdk in existing_java_homes:
+        if not versionCheck or versionCheck(jdk.version):
+            return jdk
 
-    jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, purpose=purpose, cancel=cancel, isDefaultJdk=False)
+    jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, available=available)
     if jdk:
         assert jdk not in _extra_java_homes
         _extra_java_homes = _sorted_unique_jdk_configs(_extra_java_homes + [jdk])
@@ -9901,37 +9907,22 @@ def _convert_compliance_to_version_check(requiredCompliance):
     versionCheck = requiredCompliance._exact_match
     return (versionCheck, versionDesc)
 
-def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=None, isDefaultJdk=False):
+def _find_jdk(versionCheck=None, versionDescription=None, available=None):
     """
     Selects a JDK and returns a JDKConfig object representing it.
 
-    First a selection is attempted from the --java-home option, the JAVA_HOME
+    The selection is attempted from the --java-home option, the JAVA_HOME
     environment variable, the --extra-java-homes option and the EXTRA_JAVA_HOMES
     enviroment variable in that order.
 
-    If that produces no valid JDK, then a set of candidate JDKs is built by searching
-    the OS-specific locations in which JDKs are normally installed. These candidates
-    are filtered by the `versionCheck` predicate function. The predicate is described
-    by the string in `versionDescription` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40").
-    If `versionCheck` is None, no filtering is performed.
-
-    If running interactively, the user is prompted to select from one of the candidates
-    or "<other>". The selection prompt message includes the value of `purpose` if it is not None.
-    If `cancel` is not None, the user is also given a choice to make no selection,
-    the consequences of which are described by `cancel`. If a JDK is selected, it is returned.
-    If the user cancels, then None is returned. If "<other>" is chosen, the user is repeatedly
-    prompted for a path to a JDK until a valid path is provided at which point a corresponding
-    JDKConfig object is returned. Before returning the user is given the option to persist
-    the selected JDK in file "env" in the primary suite's mx directory. The choice will be
-    saved as the value for JAVA_HOME if `isDefaultJdk` is true, otherwise it is set or
-    appended to the value for EXTRA_JAVA_HOMES.
-
-    If not running interactively, the first candidate is returned or None if there are no
-    candidates.
+    :param versionCheck: a predicate to be applied when making the selection
+    :param versionDescription: a description of `versionPredicate` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40")
+    :param available: a list that is extended with candidate JDKs found on the system
+    :return: the JDK selected or None
     """
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
     if not versionCheck:
-        versionCheck = lambda v: True
+        versionCheck = lambda _: True
 
     candidateJdks = []
     source = ''
@@ -9949,7 +9940,6 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
         return result
 
     candidateJdks = []
-
     if _opts.extra_java_homes:
         candidateJdks += _opts.extra_java_homes.split(os.pathsep)
         source = '--extra-java-homes'
@@ -9959,151 +9949,8 @@ def _find_jdk(versionCheck=None, versionDescription=None, purpose=None, cancel=N
 
     result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
     if not result:
-        configs = _find_available_jdks(versionCheck)
-    elif isDefaultJdk:  # we found something in EXTRA_JAVA_HOMES but we want to set JAVA_HOME, look for further options
-        configs = [result] + _find_available_jdks(versionCheck)
-    else:
-        if not isDefaultJdk:
-            return result
-        configs = [result]
-
-    configs = _sorted_unique_jdk_configs(configs)
-
-    selection_prompt_prefix = None
-    if len(configs) > 1:
-        # Don't force user to make a selection unless strict compliance
-        # is being requested
-        if not is_interactive():
-            msg = "Multiple possible choices for a JDK"
-            if purpose:
-                msg += ' for ' + purpose
-            msg += ': '
-            if versionDescription:
-                msg += '(version ' + str(versionDescription) + ')'
-            selected = configs[0]
-            msg += ". Selecting " + str(selected)
-            logv(msg)
-        else:
-            msg = 'Please select a '
-            if isDefaultJdk:
-                msg += 'default '
-            msg += 'JDK'
-            if purpose:
-                msg += ' for ' + purpose
-            msg += ': '
-            if versionDescription:
-                msg += '(version ' + str(versionDescription) + ')'
-            log(msg)
-            choices = configs + ['<other>']
-            if cancel:
-                choices.append('Cancel (' + cancel + ')')
-
-            selected = select_items(choices, allowMultiple=False)
-            if isinstance(selected, types.StringTypes):
-                if selected == '<other>':
-                    selected = None
-                if cancel and selected == 'Cancel (' + cancel + ')':
-                    return None
-    elif len(configs) == 1:
-        selected = configs[0]
-        msg = 'Selected ' + str(selected) + ' as '
-        if isDefaultJdk:
-            msg += 'default '
-        msg += 'JDK'
-        if versionDescription:
-            msg = msg + ' ' + str(versionDescription)
-        if purpose:
-            msg += ' for ' + purpose
-        logv(msg)
-    else:
-        msg = 'Could not find any JDK'
-        if purpose:
-            msg += ' for ' + purpose
-        msg += ' '
-        if versionDescription:
-            msg = msg + '(version ' + str(versionDescription) + ')'
-        selection_prompt_prefix = msg
-        selected = None
-
-    while not selected:
-        if not is_interactive():
-            return None
-        if cancel:
-            if selection_prompt_prefix: log(selection_prompt_prefix)
-            jdkLocation = raw_input('Enter path of JDK or leave empty to cancel (' + cancel + '): ')
-            if len(jdkLocation) == 0:
-                return None
-        else:
-            if selection_prompt_prefix: log(selection_prompt_prefix)
-            jdkLocation = raw_input('Enter path of JDK: ')
-        selected = _find_jdk_in_candidates([jdkLocation], versionCheck, warn=True)
-        if not selected:
-            assert versionDescription
-            log_error("Error: No JDK found at '" + jdkLocation + "' compatible with version " + str(versionDescription))
-        selection_prompt_prefix = None
-
-    varName = 'JAVA_HOME' if isDefaultJdk else 'EXTRA_JAVA_HOMES'
-    allowMultiple = not isDefaultJdk
-    valueSeparator = os.pathsep if allowMultiple else None
-    varName = _ask_persist_env(varName, selected.home, valueSeparator)
-
-    os.environ[varName] = selected.home
-
-    return selected
-
-def _ask_persist_env(varName, value, valueSeparator=None):
-    if not _primary_suite:
-        def _deferrable():
-            assert _primary_suite
-            _ask_persist_env(varName, value, valueSeparator)
-        _primary_suite_deferrables.append(_deferrable)
-        return varName
-
-    envPath = join(_primary_suite.mxDir, 'env')
-    if is_interactive():
-        persist = False
-        if varName == 'EXTRA_JAVA_HOMES' and not os.environ.has_key('JAVA_HOME'):
-            persist = ask_question('Persist this setting by saving it in {0} as JAVA_HOME, EXTRA_JAVA_HOMES or not'.format(envPath), '[jen]', 'j')
-            if persist == 'n':
-                persist = False
-            elif persist == 'j':
-                varName = 'JAVA_HOME'
-        else:
-            persist = ask_yes_no('Persist this setting by adding "{0}={1}" to {2}'.format(varName, value, envPath), 'y')
-
-        if persist:
-            envLines = []
-            if exists(envPath):
-                with open(envPath) as fp:
-                    append = True
-                    for line in fp:
-                        if line.rstrip().startswith(varName):
-                            _, currentValue = line.split('=', 1)
-                            currentValue = currentValue.strip()
-                            if not valueSeparator and currentValue:
-                                if not ask_yes_no('{0} is already set to {1}, overwrite with {2}?'.format(varName, currentValue, value), 'n'):
-                                    return varName
-                                else:
-                                    line = varName + '=' + value + os.linesep
-                            else:
-                                line = line.rstrip()
-                                if currentValue:
-                                    line += valueSeparator
-                                line += value + os.linesep
-                            append = False
-                        if not line.endswith(os.linesep):
-                            line += os.linesep
-                        envLines.append(line)
-            else:
-                append = True
-
-            if append:
-                envLines.append(varName + '=' + value + os.linesep)
-
-            with open(envPath, 'w') as fp:
-                for line in envLines:
-                    fp.write(line)
-    return varName
+        available.extend(_sorted_unique_jdk_configs(_find_available_jdks(versionCheck)))
+    return result
 
 _os_jdk_locations = {
     'darwin': {
@@ -10135,8 +9982,12 @@ def _find_available_jdks(versionCheck):
         for base in jdkLocations['bases']:
             if exists(base):
                 if 'suffixes' in jdkLocations:
-                    for suffix in jdkLocations['suffixes']:
-                        candidateJdks += [join(base, n, suffix) for n in os.listdir(base)]
+                    for n in os.listdir(base):
+                        for suffix in jdkLocations['suffixes']:
+                            candidate = join(base, n, suffix)
+                            if exists(candidate):
+                                candidateJdks.append(candidate)
+                                break
                 else:
                     candidateJdks += [join(base, n) for n in os.listdir(base)]
 
@@ -10168,23 +10019,33 @@ def is_interactive():
         return False
     return not sys.stdin.closed and sys.stdin.isatty()
 
+_probed_JDKs = {}
+
+def _probe_JDK(home):
+    res = _probed_JDKs.get(home)
+    if not res:
+        try:
+            res = JDKConfig(home)
+        except JDKConfigException as e:
+            res = e
+        _probed_JDKs[home] = res
+    return res
+
 def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source=None):
     filtered = []
     for candidate in candidates:
-        try:
-            config = JDKConfig(candidate)
-            if versionCheck(config.version):
-                filtered.append(config)
-        except JDKConfigException as e:
+        jdk = _probe_JDK(candidate)
+        if isinstance(jdk, JDKConfigException):
             if warnInvalidJDK and source:
-                message = 'Path in ' + source + ' is not pointing to a JDK (' + e.message + '): ' + candidate
-                try:
+                message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
+                if get_os() == 'darwin':
                     candidate = join(candidate, 'Contents', 'Home')
-                    JDKConfig(candidate)
-                    message += '. Set ' + source + ' to ' + candidate + ' instead.'
-                except JDKConfigException:
-                    pass
+                    if not isinstance(_probe_JDK(candidate), JDKConfigException):
+                        message += '. Set ' + source + ' to ' + candidate + ' instead.'
                 warn(message)
+        else:
+            if versionCheck(jdk.version):
+                filtered.append(jdk)
     return filtered
 
 def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
@@ -17089,7 +16950,7 @@ def _remove_unsatisfied_deps():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
-                reason = 'project {0} was removed as Java compliance {1} cannot be satisfied by configured JDKs'.format(dep, dep.javaCompliance)
+                reason = 'project {0} was removed as JDK {1} is not available'.format(dep, dep.javaCompliance)
                 logv('[' + reason + ']')
                 removedDeps[dep] = reason
             else:
@@ -17142,7 +17003,6 @@ def _remove_unsatisfied_deps():
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
     return res
-
 
 def _get_command_property(command, propertyName):
     c = _commands.get(command)
