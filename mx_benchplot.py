@@ -58,14 +58,17 @@ relative to the first set of results.  All files must come from the same
 benchmark suite.
 """,
         formatter_class=RawTextHelpFormatter)
+    parser.add_argument('-b', '--benchmarks', help="""Restrict output to comma separated list of benchmarks.
+This also controls the output order of the results.""", type=lambda s: s.split(','))
     parser.add_argument('--format', action='store', choices=['text', 'csv', 'jira', 'markdown'], default='text', help='Set the output format. (Default: text)')
     diff_choices = ['percent', 'absolute', 'none']
-    parser.add_argument('--diff', default='relative', choices=diff_choices, type=lambda s: unique_prefix(s, diff_choices),
+    parser.add_argument('--diff', default='percent', choices=diff_choices, type=lambda s: unique_prefix(s, diff_choices),
                         help='Add a column reporting the difference relative the first score. (Default: percent)')
     parser.add_argument('-f', '--file', default=None, help='Generate the table into a file.')
-    parser.add_argument('--last-n', action='store', default=1, type=int,
-                        help="""Only report last n scores.  By default only report the last score.
-Negative numbers can be used to select the first scores instead""")
+    parser.add_argument('-S', '--samples', help="""\
+Controls sampling of the data for the graphs.  A positive number selects
+the last n data points and a negative number selects the first n data points.
+By default only report the last data point""", type=int, default=None)
     parser.add_argument('--variance', action='store_true', help='Report the percentage variance of the scores.')
     parser.add_argument('-n', '--names', help='A list of comma separate names for each file.  \n' +
                         'It must have the same number of entries as the files.', type=lambda s: s.split(','))
@@ -76,11 +79,11 @@ Negative numbers can be used to select the first scores instead""")
     if args.diff == 'none':
         args.diff = None
 
-    benchmarks, results, _ = extract_results(args.files, args.names, args.last_n)
+    benchmarks, results, names = extract_results(args.files, args.names, args.samples, args.benchmarks)
 
     score_key = 'score'
     variance_key = 'variance'
-    if args.last_n:
+    if args.samples:
         score_key = 'trimmed_score'
         variance_key = 'trimmed_variance'
 
@@ -92,34 +95,51 @@ Negative numbers can be used to select the first scores instead""")
     specifiers = []
     headers = []
     for benchmark in benchmarks:
+        first_score = None
         row = [benchmark]
         specifiers = ['s']
         headers = ['Benchmark']
         first = True
-        for result in results:
-            score = 0.0001
-            variance = 0.0001
-            scale = 1
+        for resultname, result in zip(names, results):
+            score = None
+            variance = None
+            scale = None
             if result.get(benchmark):
                 score = result[benchmark][score_key]
                 variance = result[benchmark][variance_key]
                 if not result[benchmark]['higher']:
                     scale = -1
-            row.append(score)
-            specifiers.append('.2f')
-            headers.append(result[benchmark]['name'])
+                else:
+                    scale = 1
+            if score:
+                if first:
+                    first_score = score
+                row.append('%.2f' % score)
+                specifiers.append('s')
+            else:
+                row.append('N/A')
+                specifiers.append('s')
+            headers.append(resultname)
             if args.variance:
-                row.append('%.2f%%' % variance)
+                if score:
+                    row.append('%.2f%%' % variance)
+                else:
+                    row.append('')
                 specifiers.append('s')
                 headers.append('Variance')
             if not first and args.diff:
+                if score and first_score:
+                    # if the first score is missing then don't report any change
+                    if args.diff == 'percent':
+                        row.append('%.2f%%' % ((score - first_score) * 100.0 * scale / first_score))
+                    else:
+                        row.append('%.2f' % ((score - first_score) * scale))
+                else:
+                    row.append('')
+                specifiers.append('s')
                 if args.diff == 'percent':
-                    row.append('%.2f%%' % ((score - row[1]) * 100.0 * scale / row[1]))
-                    specifiers.append('s')
                     headers.append('Change')
-                elif args.diff == 'absolute':
-                    row.append('%.2f' % ((score - row[1]) * scale))
-                    specifiers.append('s')
+                else:
                     headers.append('Delta')
             first = False
 
@@ -187,54 +207,83 @@ sequence.  All files must come from the same benchmark suite.
 """,
         formatter_class=RawTextHelpFormatter)
     parser.add_argument('-w', '--warmup', action='store_true', help='Plot a warmup graph')
+    parser.add_argument('-b', '--benchmarks', help="""Restrict output to comma separated list of benchmarks.
+This also controls the output order of the results.""", type=lambda s: s.split(','))
     parser.add_argument('-f', '--file', default=None,
-                        help='Generate the graph into a file.  The extension will determine the format, which must be .png, .svg or .pdf.')
-    parser.add_argument('--last-n', action='store', type=int,
-                        help="""Only report last n scores.  By default only plot the last score in the bar graph.
-Negative numbers can be used to select the first scores instead""")
-    parser.add_argument('-n', '--names', help='Provide a list of names for the plot files', type=lambda s: s.split(','))
+                        help="""\
+Generate the graph into a file.  The extension will determine the format,
+which must be .png, .svg or .pdf.""")
+    parser.add_argument('-S', '--samples', help="""\
+Controls sampling of the data for the graphs.  A positive number selects
+the last n data points and a negative number selects the first n data points.
+A warmup graph reports all data points by default and the bar chart reports
+on the last point""", type=int, default=None)
+    parser.add_argument('-n', '--names', help="""Provide a list of names for the plot files.
+Otherwise the names are derived from the filenames.""", type=lambda s: s.split(','))
     parser.add_argument('-c', '--colors', help='Provide alternate colors for the results', type=lambda s: s.split(','))
-    parser.add_argument('files', help='List of files', nargs=REMAINDER)
+    parser.add_argument('-C', '--columns', help='The number of columns in a warmup graph.  Defaults to 2.', type=int, default=None)
+    parser.add_argument('-P', '--page-size', help='The width and height of the page.  Default to 11,8.5.', type=lambda s: [float(x) for x in s.split(',')], default=[11, 8.5])
+    parser.add_argument('files', help='List of JSON benchmark result files', nargs=REMAINDER)
     args = parser.parse_args(args)
 
-    if not args.warmup and not args.last_n:
-        # only report the final score in bar graph.
-        args.last_n = 1
+    if not args.warmup:
+        if args.columns:
+            mx.abort('Option -C/--columns is only applicable to warmup graphs')
+
+    last_n = None
+    if not args.warmup:
+        if not args.samples:
+            # only report the final score in bar graph.
+            last_n = 1
+        else:
+            last_n = args.samples
 
     try:
         import matplotlib.pyplot as plt
+        from matplotlib.ticker import MaxNLocator
         color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-        benchmarks, results, names = extract_results(args.files, args.names, args.last_n)
+        benchmarks, results, names = extract_results(args.files, args.names, last_n, args.benchmarks)
         score_key = 'score'
         scores_key = 'scores'
-        if args.last_n:
+        if last_n:
             score_key = 'trimmed_score'
             scores_key = 'trimmed_scores'
 
         if not args.colors:
             args.colors = color_cycle[0:len(names)]
+        if not args.columns:
+            args.columns = 2
 
         if args.warmup:
             index = 1
             rows = 1
             cols = 1
             if len(benchmarks) > 1:
-                cols = 2
+                cols = args.columns
                 rows = (len(benchmarks) + cols - 1) / cols
-            plt.figure(figsize=(8.5, 11), dpi=100)
+            plt.figure(figsize=args.page_size, dpi=100)
             for b in benchmarks:
                 ax = plt.subplot(rows, cols, index)
                 plt.title(b)
-                for r in results:
-                    scores = r[b][scores_key]
-                    plt.plot(scores, label=r[b]['name'])
+                for resultname, result in zip(names, results):
+                    scores = []
+                    xs = []
+                    # missing results won't be plotted
+                    if result.get(b):
+                        scores = result[b][scores_key]
+                        xs = range(1, len(scores) + 1)
+                        if args.samples:
+                            scores = scores[0:args.samples]
+                            xs = xs[0:args.samples]
+                    plt.plot(xs, scores, label=resultname)
                 handles, labels = ax.get_legend_handles_labels()
                 ax.legend(handles, labels, loc='upper right', fontsize='small', ncol=2)
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
                 ax.set_ylim(ymin=0)
                 index = index + 1
         else:
-            _, ax = plt.subplots(figsize=(11, 8.5), dpi=100)
+            _, ax = plt.subplots(figsize=args.page_size, dpi=100)
             x = 0
             bar_width = 0.25
             spacing = 0.5
@@ -249,11 +298,11 @@ Negative numbers can be used to select the first scores instead""")
                 xs = []
                 column = 0
                 xticks = []
-                for b in benchmarks:
-                    for r in results:
-                        if r[b]['name'] == name:
-                            if r[b].get(score_key):
-                                scores.append(r[b][score_key])
+                for benchmark in benchmarks:
+                    for resultname, result in zip(names, results):
+                        if name == resultname:
+                            if result.get(benchmark):
+                                scores.append(result[benchmark][score_key])
                                 xs.append(x + column * column_width + group * bar_width)
                             xticks.append(column * column_width + column_center)
                             column = column + 1
@@ -274,7 +323,7 @@ Negative numbers can be used to select the first scores instead""")
         mx.abort('matplotlib must be available to use benchplot.  Install it using pip')
 
 
-def extract_results(files, names, last_n=None):
+def extract_results(files, names, last_n=None, selected_benchmarks=None):
     if names:
         if len(names) != len(files):
             mx.abort('Wrong number of names specified: {} files but {} names.'.format(len(files), len(names)))
@@ -332,4 +381,9 @@ def extract_results(files, names, last_n=None):
                     variance = variance + (score - entry['trimmed_score']) * (score - entry['trimmed_score'])
                 entry['trimmed_variance'] = ((variance / entry['trimmed_count']) / entry['trimmed_score'])
 
+    if selected_benchmarks:
+        unknown_benchmarks = set(selected_benchmarks) - set(benchmarks)
+        if len(unknown_benchmarks) != 0:
+            mx.abort('Unknown benchmarks selected: {}\nAvailable benchmarks are: {}'.format(','.join(unknown_benchmarks), ','.join(benchmarks)))
+        benchmarks = selected_benchmarks
     return benchmarks, results, names
