@@ -307,7 +307,7 @@ suite = {
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.7+", # jdk7 or later
+      "javaCompliance" : "1.7..1.8", # jdk7 or jdk8
       "checkstyleVersion" : "8.8",
     },
 

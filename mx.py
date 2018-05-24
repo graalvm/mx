@@ -25,7 +25,6 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-
 r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
@@ -3001,18 +3000,8 @@ class JavaProject(Project, ClasspathDependency):
         return flatten_map
 
     def getBuildTask(self, args):
-        requiredCompliance = self.javaCompliance
-        if not requiredCompliance._is_exact_bound() and hasattr(args, 'javac_crosscompile') and args.javac_crosscompile:
-            jdk = get_jdk(tag=DEFAULT_JDK_TAG)  # build using default JDK
-            if jdk.javaCompliance < requiredCompliance:
-                jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
-            if hasattr(args, 'parallelize') and args.parallelize:
-                # Best to initialize class paths on main process
-                get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG).bootclasspath()
-        else:
-            jdk = get_jdk(requiredCompliance, tag=DEFAULT_JDK_TAG)
-
-        return JavaBuildTask(args, self, jdk, requiredCompliance)
+        jdk = get_jdk(self.javaCompliance, tag=DEFAULT_JDK_TAG)
+        return JavaBuildTask(args, self, jdk)
 
     def get_concealed_imported_packages(self, jdk=None, modulepath=None):
         """
@@ -3065,10 +3054,9 @@ class JavaProject(Project, ClasspathDependency):
         return getattr(self, cache)
 
 class JavaBuildTask(ProjectBuildTask):
-    def __init__(self, args, project, jdk, requiredCompliance):
+    def __init__(self, args, project, jdk):
         ProjectBuildTask.__init__(self, args, 1, project)
         self.jdk = jdk
-        self.requiredCompliance = requiredCompliance
         self.javafilelist = None
         self.nonjavafiletuples = None
         self.nonjavafilecount = None
@@ -3243,9 +3231,8 @@ class JavaBuildTask(ProjectBuildTask):
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
                 jdk=self.jdk,
-                compliance=self.requiredCompliance,
                 outputDir=_cygpathU2W(outputDir),
-                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.compiler._get_compliance_jdk(self.requiredCompliance), ignoreStripped=True)),
+                classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
                 jnigenDir=self.subject.jni_gen_dir(),
                 processorPath=_separatedCygpathU2W(self.subject.annotation_processors_path(self.jdk)),
@@ -3365,17 +3352,10 @@ class JavacLikeCompiler(JavaCompiler):
     def __init__(self, extraJavacArgs):
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
-    def _get_compliance_jdk(self, compliance):
-        """
-        Gets the JDK selected based on `compliance`. The returned
-        JDK will have compliance at least equal to `compliance` but may be higher
-        if ``--strict-compliance`` is not in effect.
-        """
-        return get_jdk(compliance)
-
-    def prepare(self, sourceFiles, project, jdk, compliance, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
+    def prepare(self, sourceFiles, project, jdk, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
+        compliance = project.javaCompliance
         if compliance >= '1.8':
             javacArgs.append('-parameters')
         if processorPath:
@@ -3383,27 +3363,8 @@ class JavacLikeCompiler(JavaCompiler):
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
         else:
             javacArgs += ['-proc:none']
-        if jdk.javaCompliance < "9":
-            javacArgs += ['-source', str(compliance), '-target', str(compliance)]
-        else:
-            # Only use --release when targeting 8 otherwise JDK internal
-            # modules (such as jdk.internal.vm.ci) cannot be accessed.
-            # https://docs.oracle.com/javase/9/tools/javac.htm
-            if compliance < '9':
-                javacArgs += ['--release', compliance.to_str(jdk.javaCompliance)]
-            else:
-                c = compliance.to_str(jdk.javaCompliance)
-                javacArgs += ['-target', c, '-source', c]
-        hybridCrossCompilation = False
-        if jdk.javaCompliance != compliance:
-            # cross-compilation
-            assert jdk.javaCompliance > compliance
-            complianceJdk = self._get_compliance_jdk(compliance)
-            if jdk.javaCompliance != complianceJdk.javaCompliance:
-                if complianceJdk.javaCompliance < "9" and jdk.javaCompliance < "9":
-                    javacArgs = complianceJdk.javacLibOptions(javacArgs)
-            else:
-                hybridCrossCompilation = True
+        c = str(compliance)
+        javacArgs += ['-target', c, '-source', c]
         if _opts.very_verbose:
             javacArgs.append('-verbose')
 
@@ -3423,13 +3384,9 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
-        return self.prepareJavacLike(jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir)
+        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir)
 
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
-        """
-        `hybridCrossCompilation` is true if the -source compilation option denotes a different JDK version than
-        the JDK libraries that will be compiled against.
-        """
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         nyi('buildJavacLike', self)
 
 class JavacCompiler(JavacLikeCompiler):
@@ -3440,7 +3397,8 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac'
 
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
+        compliance = project.javaCompliance
         if jnigenDir is not None:
             javacArgs += ['-h', jnigenDir]
 
@@ -3451,11 +3409,6 @@ class JavacCompiler(JavacLikeCompiler):
                 lint = ['none']
             else:
                 lint += overrides
-        if hybridCrossCompilation:
-            if lint != ['none'] and warningsAsErrors:
-                # disable the "bootstrap class path not set in conjunction with -source N" warning
-                # since we are not in strict compliance mode
-                lint += ['-options']
 
         if forceDeprecationAsWarning:
             lint += ['-deprecation']
@@ -3466,21 +3419,6 @@ class JavacCompiler(JavacLikeCompiler):
         if lint:
             javacArgs.append('-Xlint:' + ','.join(lint))
 
-        def _classpath_append(elements):
-            if not elements:
-                return
-            if isinstance(elements, basestring):
-                elements = [elements]
-            idx = javacArgs.index('-classpath')
-            if idx >= 0:
-                elements = [e for e in elements if e not in javacArgs[idx + 1]]
-                javacArgs[idx + 1] += os.pathsep + os.pathsep.join(elements)
-            else:
-                javacArgs.extend(['-classpath', os.pathsep.join(elements)])
-
-        if jdk.javaCompliance >= '9' and compliance < '9':
-            _, unsupported_jar = _compile_mx_class(['Unsafe', 'Signal', 'SignalHandler'], jdk=jdk, extraJavacArgs=['--release', str(compliance.value)], as_jar=True)
-            _classpath_append(unsupported_jar)
         if disableApiRestrictions:
             if jdk.javaCompliance < '9':
                 javacArgs.append('-XDignore.symbol.file')
@@ -3495,7 +3433,7 @@ class JavacCompiler(JavacLikeCompiler):
         javacArgs.append('UTF-8')
 
         if jdk.javaCompliance >= '9':
-            jdkModulesOnClassPath = set()
+            jdk_modules_overridden_on_classpath = set()  # pylint: disable=C0103
             declaringJdkModule = None
 
             def getDeclaringJDKModule(dep):
@@ -3535,7 +3473,7 @@ class JavacCompiler(JavacLikeCompiler):
 
             declaringJdkModule = getDeclaringJDKModule(project)
             if declaringJdkModule is not None:
-                jdkModulesOnClassPath.add(declaringJdkModule)
+                jdk_modules_overridden_on_classpath.add(declaringJdkModule)
                 # If compiling sources for a JDK module, javac needs to know this via -Xmodule
                 if jdk._javacXModuleOptionExists:
                     javacArgs.append('-Xmodule:' + declaringJdkModule)
@@ -3555,7 +3493,7 @@ class JavacCompiler(JavacLikeCompiler):
                 for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
                     if observable_modules is not None and module not in observable_modules:
                         continue
-                    if module in jdkModulesOnClassPath:
+                    if module in jdk_modules_overridden_on_classpath:
                         # If the classes in a JDK module declaring the dependency are also
                         # resolvable on the class path, then do not export the module
                         # as the class path classes are more recent than the module classes
@@ -3584,24 +3522,9 @@ class JavacCompiler(JavacLikeCompiler):
                 for e in entries:
                     m = getDeclaringJDKModule(e)
                     if m:
-                        jdkModulesOnClassPath.add(m)
+                        jdk_modules_overridden_on_classpath.add(m)
                 addExportArgs(project, exports)
                 addRootModules(exports, '')
-            else:
-                # We use --release n with n < 9 so we need to create JARs for JdkLibraries
-                # that are in modules and did not exist in JDK n
-                assert '--release' in javacArgs
-                jdk_module_jars = set()
-                entries = classpath_entries(project.name, includeSelf=False)
-                for e in entries:
-                    if e.isJdkLibrary() and e.module and compliance < e.jdkStandardizedSince:
-                        jdkModulesOnClassPath.add(e.module)
-                        jdk_module_jars.add(_get_jdk_module_jar(e.module, primary_suite(), jdk))
-                    else:
-                        m = getDeclaringJDKModule(e)
-                        if m:
-                            jdkModulesOnClassPath.add(m)
-                _classpath_append(jdk_module_jars)
             aps = project.annotation_processors()
             if aps:
                 # We want annotation processors to use classes on the class path
@@ -3619,7 +3542,7 @@ class JavacCompiler(JavacLikeCompiler):
                 for dep in entries:
                     m = getDeclaringJDKModule(dep)
                     if m:
-                        jdkModulesOnClassPath.add(m)
+                        jdk_modules_overridden_on_classpath.add(m)
                     elif dep.isJavaProject():
                         addExportArgs(dep, exports, '-J', jdk, observable_modules)
 
@@ -3631,13 +3554,13 @@ class JavacCompiler(JavacLikeCompiler):
                         for apDep in dep.deps:
                             m = getDeclaringJDKModule(apDep)
                             if m:
-                                jdkModulesOnClassPath.add(m)
+                                jdk_modules_overridden_on_classpath.add(m)
                             elif apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk, observable_modules)
 
                 addRootModules(exports, '-J')
 
-                if len(jdkModulesOnClassPath) != 0:
+                if len(jdk_modules_overridden_on_classpath) != 0:
                     javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
 
         return javacArgs
@@ -3784,10 +3707,7 @@ class ECJCompiler(JavacLikeCompiler):
     def name(self):
         return 'JDT'
 
-    def _get_compliance_jdk(self, compliance):
-        return get_jdk(compliance)
-
-    def prepareJavacLike(self, jdk, project, compliance, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, hybridCrossCompilation, tempFiles, jnigenDir):
+    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -10812,18 +10732,15 @@ class JavaCompliance:
             other = JavaCompliance(other)
         r = cmp(self.value, other.value)
         if r == 0:
-            # None is less than all values but equal to itself
+            if self._upper_bound is None:
+                return 0 if other._upper_bound is None else 1
+            if other._upper_bound is None:
+                return -1
             r = cmp(self._upper_bound, other._upper_bound)
         return r
 
     def __hash__(self):
         return self.value ** (self._upper_bound or 1)
-
-    def to_str(self, compliance):
-        if compliance < '9':
-            return str(self)
-        else:
-            return str(self.value)
 
     def _is_exact_bound(self):
         return self.value == self._upper_bound
@@ -11721,7 +11638,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('--only', action='store', help='comma separated dependencies to build, without checking their dependencies (omit to build all dependencies)')
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not build Java projects')
     parser.add_argument('--no-native', action='store_false', dest='native', help='do not build native projects')
-    parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="Use javac from each project's compliance levels rather than perform a cross compilation using the default JDK")
+    parser.add_argument('--no-javac-crosscompile', action='store_false', dest='javac_crosscompile', help="does nothing as cross compilation is no longer supported (preserved for compatibility)")
     parser.add_argument('--warning-as-error', '--jdt-warning-as-error', action='store_true', help='convert all Java compiler warnings to errors')
     parser.add_argument('--force-deprecation-as-warning', action='store_true', help='never treat deprecation warnings as errors irrespective of --warning-as-error')
     parser.add_argument('--force-deprecation-as-warning-for-dependencies', action='store_true', help='never treat deprecation warnings as errors irrespective of --warning-as-error for projects outside of the primary suite')
@@ -13361,133 +13278,6 @@ def _get_eclipse_output_path(p, linkedResources=None):
     else:
         return outputDirRel
 
-def _get_jdk_module_jar(module, suite, jdk):
-    """
-    Gets the path to a jar containing the class files in a specified JDK module, creating it first
-    if it doesn't exist by extracting the class files from the given jdk using the
-    JRT FileSystem provider (introduced by `JEP 220 <http://openjdk.java.net/jeps/220>`_).
-
-    :param str module: the name of a module for which a jar is being requested
-    :param :class:`Suite` suite: suite whose output root is used for the created jar
-    :param :class:`JDKConfig` jdk: the JDK containing the module
-
-    """
-    assert jdk.javaCompliance >= '9', module
-    suffix = os.path.splitdrive(os.path.abspath(jdk.home))[1][1:]
-    jdkOutputDir = ensure_dir_exists(join(suite.get_output_root(), suffix))
-    jarName = module + '.jar'
-    jarPath = join(jdkOutputDir, jarName)
-    jdkExplodedModule = join(jdk.home, 'modules', module)
-    jdkModules = join(jdk.home, 'lib', 'modules')
-    if not exists(jarPath) or TimeStampFile(jdkModules if exists(jdkModules) else jdkExplodedModule).isNewerThan(jarPath):
-        def _classes_dir(start):
-            """
-            Searches for the directory containing the sources of `module` by traversing the
-            ancestors of `start` and looking for ``*/src/<module>/share/classes``.
-            """
-            d = start
-            while len(d) != 0 and os.path.splitdrive(d)[1] != os.sep:
-                for subdir in os.listdir(d):
-                    classes = join(d, subdir, 'src', module, 'share', 'classes')
-                    if exists(classes):
-                        return classes
-                d = dirname(d)
-            return None
-
-        # Try find the sources for `module` based on the assumption `jdk.home` is in the
-        # build/ directory of a JDK9 repo.
-        classes = _classes_dir(jdk.home)
-        sourcesDirs = []
-        if classes:
-            if module == 'jdk.internal.vm.ci':
-                for subdir in os.listdir(classes):
-                    src = join(classes, subdir, 'src')
-                    if exists(src):
-                        sourcesDirs.append(src)
-            else:
-                sourcesDirs.append(classes)
-
-        className = module.replace('.', '_') + '_ExtractJar'
-        javaSource = join(jdkOutputDir, className + '.java')
-        with open(javaSource, 'w') as fp:
-            print >> fp, """
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.stream.Stream;
-
-public class %(className)s {
-    public static void main(String[] args) throws Exception {
-        FileSystem fs = FileSystems.getFileSystem(URI.create("jrt:/"));
-        String jarPath = args[0];
-        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath))) {
-            Path dir = fs.getPath("/modules/%(module)s");
-            assert Files.isDirectory(dir) : dir;
-            try (Stream<Path> stream = Files.walk(dir)) {
-                stream.forEach(p -> {
-                    String path = p.toString();
-                    if (path.endsWith(".class") && !path.endsWith("module-info.class")) {
-                        String prefix = "/modules/%(module)s/";
-                        String name = path.substring(prefix.length(), path.length());
-                        JarEntry je = new JarEntry(name);
-                        try {
-                            jos.putNextEntry(je);
-                            jos.write(Files.readAllBytes(p));
-                            jos.closeEntry();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                });
-            }
-        }
-        if (args.length > 1) {
-            String srcZipPath = args[1];
-            try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(srcZipPath))) {
-                for (int i = 2; i < args.length; i++) {
-                    Path sourceDir = Paths.get(args[i]);
-                    int sourceDirLength = sourceDir.toString().length();
-                    try (Stream<Path> stream = Files.walk(sourceDir)) {
-                        stream.forEach(p -> {
-                            if (!p.toFile().isDirectory()) {
-                                String path = p.toString().substring(sourceDirLength + 1);
-                                ZipEntry ze = new ZipEntry(path.replace(File.separatorChar, '/'));
-                                try {
-                                    zos.putNextEntry(ze);
-                                    zos.write(Files.readAllBytes(p));
-                                    zos.closeEntry();
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        }
-    }
-}
-""" % {"module" : module, "className" : className}
-        run([jdk.javac, '-d', jdkOutputDir, javaSource])
-        if len(sourcesDirs) != 0:
-            # Sources need to go into a separate archive otherwise javac can
-            # pick them up from the classpath and compile them.
-            # http://mail.openjdk.java.net/pipermail/jigsaw-dev/2017-March/011577.html
-            srcZipPath = join(jdkOutputDir, module + '.src.zip')
-            sourcesDirs = [srcZipPath] + sourcesDirs
-        run([jdk.java, '-ea', '-cp', jdkOutputDir, className, jarPath] + sourcesDirs)
-    return jarPath
-
 def _to_EclipseJavaExecutionEnvironment(compliance):
     """
     Converts a Java compliance value to the max supported
@@ -13594,15 +13384,8 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             libFiles.append(path)
 
     jdk = get_jdk(p.javaCompliance)
-    jdk_module_jars = set()
     for dep in sorted(jdkLibraryDeps):
-        if jdk.javaCompliance >= '9' and dep.module and p.javaCompliance < dep.jdkStandardizedSince:
-            path = _get_jdk_module_jar(dep.module, primary_suite(), jdk)
-            if path in jdk_module_jars:
-                continue
-            jdk_module_jars.add(path)
-        else:
-            path = dep.classpath_repr(jdk, resolve=True)
+        path = dep.classpath_repr(jdk, resolve=True)
         if path:
             attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
             sourcePath = dep.get_source_path(jdk)
@@ -13626,7 +13409,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if jdk.javaCompliance >= '9' and ejee >= '9':
         out.open('attributes')
         out.element('attribute', {'name' : 'module', 'value' : 'true'})
-        moduleDeps = p.get_concealed_imported_packages()
+        moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
         if len(moduleDeps) != 0:
             # Ignore modules (such as jdk.internal.vm.compiler) that define packages
             # that are also defined by project deps as the latter will have the most
@@ -13753,7 +13536,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             concealedAPDeps = {}
             for dep in classpath_entries(names=processors, preferProjects=True):
                 if dep.isJavaProject():
-                    concealed = dep.get_concealed_imported_packages()
+                    concealed = dep.get_concealed_imported_packages(jdk)
                     if concealed:
                         for module, pkgs in concealed.iteritems():
                             concealedAPDeps.setdefault(module, []).extend(pkgs)
