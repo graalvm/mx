@@ -289,7 +289,7 @@ suite = {
       "dependencies" : [
         "JMH_1_21",
       ],
-      "javaCompliance" : "1.8",
+      "javaCompliance" : "1.8+",
       "annotationProcessors" : ["JMH_1_21"],
       "findbugsIgnoresGenerated" : True,
     },
@@ -300,27 +300,27 @@ suite = {
       "dependencies" : [
         "JUNIT",
       ],
-      "javaCompliance" : "1.8",
+      "javaCompliance" : "1.8+",
       "checkstyleVersion" : "8.8",
     },
 
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.7..1.8", # jdk7 or jdk8
+      "javaCompliance" : "1.7+", # jdk7 or later
       "checkstyleVersion" : "8.8",
     },
 
     "com.oracle.mxtool.checkcopy" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.8",
+      "javaCompliance" : "1.8+",
     },
 
     "com.oracle.mxtool.jacoco" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.8",
+      "javaCompliance" : "1.8+",
       "dependencies" : [
         "JACOCOREPORT",
         "JOPTSIMPLE_4_6",
