@@ -5822,14 +5822,14 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 logvv("Requested revision " + rev + " not found in " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'])
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
         else:
             if branch:
                 cmd += ['--branch', branch]
             if self.object_cache_mode:
                 cache = self._local_cache_repo()
-                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*')
+                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*', prune=True)
                 cmd += ['--reference', cache]
                 if self.object_cache_mode == 'dissociated':
                     cmd += ['--dissociate']
@@ -5885,9 +5885,11 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False):
         try:
             cmd = ['git', 'fetch']
+            if prune:
+                cmd.append('--prune')
             if repository:
                 cmd.append(repository)
             if refspec:
@@ -18017,7 +18019,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.170.0")  # GR-10010
+version = VersionSpec("5.170.1")  # GR-10057
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
