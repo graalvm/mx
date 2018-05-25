@@ -3413,7 +3413,7 @@ class JavacCompiler(JavacLikeCompiler):
             # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
             # Disable the "bootstrap class path not set in conjunction with -source N" warning
             # as we're relying on the Java compliance of project to correctly specify a JDK range
-            # providing the API required by the project.  
+            # providing the API required by the project.
             lint += ['-options']
 
         if forceDeprecationAsWarning:
@@ -9826,7 +9826,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     cache_key = (versionCheck, tag)
     if cache_key in _jdks_cache:
         return _jdks_cache.get(cache_key)
-    
+
     # Precedence for JDK to use:
     # 1. --jdk option value
     # 2. JDK specified by set_java_command_default_jdk_tag
@@ -13462,7 +13462,7 @@ def _get_ide_envvars():
     Gets a dict of environment variables that must be captured in generated IDE configurations.
     """
     result = {
-        'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home, 
+        'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home,
         'EXTRA_JAVA_HOMES' : get_env('EXTRA_JAVA_HOMES'),
     }
     for name, value in _ide_envvars.iteritems():
