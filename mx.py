@@ -3409,6 +3409,12 @@ class JavacCompiler(JavacLikeCompiler):
                 lint = ['none']
             else:
                 lint += overrides
+        if lint != ['none']:
+            # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
+            # Disable the "bootstrap class path not set in conjunction with -source N" warning
+            # as we're relying on the Java compliance of project to correctly specify a JDK range
+            # providing the API required by the project.  
+            lint += ['-options']
 
         if forceDeprecationAsWarning:
             lint += ['-deprecation']
