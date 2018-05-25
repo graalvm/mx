@@ -8477,16 +8477,17 @@ class SourceSuite(Suite):
                     apsJar = dist.path
                     config = 'META-INF/services/javax.annotation.processing.Processor'
                     with zipfile.ZipFile(apsJar, 'r') as zf:
-                        currentAps = zf.read(config).split()
-                    if currentAps != dist.definedAnnotationProcessors:
-                        logv('[updating ' + config + ' in ' + apsJar + ']')
-                        with Archiver(apsJar) as arc:
-                            with zipfile.ZipFile(apsJar, 'r') as lp:
-                                for arcname in lp.namelist():
-                                    if arcname == config:
-                                        arc.zf.writestr(arcname, '\n'.join(dist.definedAnnotationProcessors) + '\n')
-                                    else:
-                                        arc.zf.writestr(arcname, lp.read(arcname))
+                        if config in zf.namelist():
+                            currentAps = zf.read(config).split()
+                            if currentAps != dist.definedAnnotationProcessors:
+                                logv('[updating ' + config + ' in ' + apsJar + ']')
+                                with Archiver(apsJar) as arc:
+                                    with zipfile.ZipFile(apsJar, 'r') as lp:
+                                        for arcname in lp.namelist():
+                                            if arcname == config:
+                                                arc.zf.writestr(arcname, '\n'.join(dist.definedAnnotationProcessors) + '\n')
+                                            else:
+                                                arc.zf.writestr(arcname, lp.read(arcname))
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
@@ -9795,8 +9796,6 @@ def get_jdk_option():
         _jdk_option = TagCompliance(jdktag, jdkCompliance)
     return _jdk_option
 
-_canceled_java_requests = set()
-
 DEFAULT_JDK_TAG = 'default'
 
 def _is_supported_by_jdt(jdk):
@@ -9813,7 +9812,10 @@ def _is_supported_by_jdt(jdk):
         assert isinstance(jdk, JDKConfig)
     return jdk.javaCompliance < '9'
 
-def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, versionPreference=None, **kwargs):
+_jdks_cache = {}
+_canceled_jdk_requests = set()
+
+def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
 
@@ -9821,6 +9823,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     the JAVA_HOME environment variable, the --extra-java-homes option and the
     EXTRA_JAVA_HOMES enviroment variable in that order.
     """
+    cache_key = (versionCheck, tag)
+    if cache_key in _jdks_cache:
+        return _jdks_cache.get(cache_key)
+    
     # Precedence for JDK to use:
     # 1. --jdk option value
     # 2. JDK specified by set_java_command_default_jdk_tag
@@ -9852,6 +9858,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                 jdk.tag = tag
         else:
             jdk = None
+        _jdks_cache[cache_key] = jdk
         return jdk
 
     # interpret string and compliance as compliance check
@@ -9862,7 +9869,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
 
     global _default_java_home, _extra_java_homes
-    if cancel and (versionDescription, purpose) in _canceled_java_requests:
+    if cancel and (versionDescription, purpose) in _canceled_jdk_requests:
         return None
 
     available = []
@@ -9885,7 +9892,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                 if not cancel:
                     abort_not_found()
                 assert versionDescription or purpose
-                _canceled_java_requests.add((versionDescription, purpose))
+                _canceled_jdk_requests.add((versionDescription, purpose))
+        _jdks_cache[cache_key] = _default_java_home
         return _default_java_home
 
     existing_java_homes = _extra_java_homes
@@ -9893,6 +9901,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         existing_java_homes.append(_default_java_home)
     for jdk in existing_java_homes:
         if not versionCheck or versionCheck(jdk.version):
+            _jdks_cache[cache_key] = jdk
             return jdk
 
     jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, available=available)
@@ -9903,7 +9912,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         abort_not_found()
     else:
         assert versionDescription or purpose
-        _canceled_java_requests.add((versionDescription, purpose))
+        _canceled_jdk_requests.add((versionDescription, purpose))
+    _jdks_cache[cache_key] = jdk
     return jdk
 
 def _convert_compliance_to_version_check(requiredCompliance):
