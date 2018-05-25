@@ -11583,6 +11583,11 @@ def build(cmd_args, parser=None):
     taskMap = {}
     depsMap = {}
 
+    # Be vocal about things that *will not* be built
+    if _removedDeps:
+        for _, reason in _removedDeps.iteritems():
+            log(reason)
+
     def _createTask(dep, edge):
         if dep.name in deps_w_deprecation_errors:
             task = dep.getBuildTask(deprecation_as_error_args)
@@ -16937,7 +16942,7 @@ def _remove_unsatisfied_deps():
     Returns a map from the name of a removed dependency to the reason it was removed.
     A reason may be the name of another removed dependency.
     """
-    removedDeps = {}
+    removedDeps = OrderedDict()
     def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
@@ -17000,10 +17005,15 @@ def _remove_unsatisfied_deps():
                         removedDeps[dep] = reason
                 else:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
+        if hasattr(dep, 'buildDependencies'):
+            for buildDep in list(dep.buildDependencies):
+                if buildDep in removedDeps:
+                    logv('[removed {} because {} was removed]'.format(dep, buildDep))
+                    removedDeps[dep] = buildDep.name
 
     walk_deps(visit=visit)
 
-    res = {}
+    res = OrderedDict()
     for dep, reason in removedDeps.iteritems():
         res[dep.name] = reason
         dep.getSuiteRegistry().remove(dep)
