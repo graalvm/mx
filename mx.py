@@ -9512,6 +9512,7 @@ class ArgParser(ArgumentParser):
         return ArgumentParser.format_help(self) + """
 environment variables:
   JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
+  EXTRA_JAVA_HOMES      Secondary JDK directories. Can be overridden with --extra-java-homes option.
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
@@ -9646,6 +9647,8 @@ environment variables:
 
             if opts.java_home:
                 os.environ['JAVA_HOME'] = opts.java_home
+            if opts.extra_java_homes:
+                os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
             os.environ['HOME'] = opts.user_home
 
             global _primary_suite_path
@@ -13448,7 +13451,10 @@ def _get_ide_envvars():
     """
     Gets a dict of environment variables that must be captured in generated IDE configurations.
     """
-    result = {'JAVA_HOME' : get_jdk().home}
+    result = {
+        'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home, 
+        'EXTRA_JAVA_HOMES' : get_env('EXTRA_JAVA_HOMES'),
+    }
     for name, value in _ide_envvars.iteritems():
         if value is None:
             value = get_env(name)
