@@ -407,28 +407,25 @@ def make_java_module(dist, jdk):
                             with open(manifest, 'w') as fp:
                                 fp.write(''.join(newContent))
 
-                serviceRE = re.compile(r'META-INF/services/(.+)')
-                for arcname in names:
-                    m = serviceRE.match(arcname)
-                    if m:
-                        service = m.group(1)
-
+                servicesDir = join(moduleDir, 'META-INF', 'services')
+                if exists(servicesDir):
+                    for servicePathName in os.listdir(servicesDir):
                         # While a META-INF provider configuration file must use a fully qualified binary
                         # name[1] of the service, a provides directive in a module descriptor must use
                         # the fully qualified non-binary name[2] of the service.
                         #
                         # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
                         # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
-                        service = service.replace('$', '.')
+                        service = servicePathName.replace('$', '.')
 
                         assert '/' not in service
-                        provides.setdefault(service, set()).update(zf.read(arcname).splitlines())
+                        with open(join(servicesDir, servicePathName)) as fp:
+                            serviceContent = fp.read()
+                        provides.setdefault(service, set()).update(serviceContent.splitlines())
                         # Service types defined in the module are assumed to be used by the module
-                        serviceClass = service.replace('.', '/') + '.class'
-                        if serviceClass in names:
+                        serviceClassfile = service.replace('.', '/') + '.class'
+                        if exists(join(moduleDir, serviceClassfile)):
                             uses.add(service)
-                servicesDir = join(moduleDir, 'META-INF', 'services')
-                if exists(servicesDir):
                     shutil.rmtree(servicesDir)
 
     jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
