@@ -8115,7 +8115,8 @@ class Suite(object):
         self._init_metadata()
         self.visit_imports(Suite._resolve_dependencies_visitor)
         self._resolve_dependencies()
-        self._verify_multirelease_projects()
+        if _opts.verbose:
+            self._verify_multirelease_projects()
         self.visit_imports(Suite._post_init_visitor)
         self._post_init()
 
