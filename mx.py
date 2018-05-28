@@ -3426,8 +3426,7 @@ class JavacCompiler(JavacLikeCompiler):
             javacArgs.append('-Xlint:' + ','.join(lint))
 
         if disableApiRestrictions:
-            if jdk.javaCompliance < '9':
-                javacArgs.append('-XDignore.symbol.file')
+            javacArgs.append('-XDignore.symbol.file')
         else:
             if jdk.javaCompliance >= '9':
                 warn("Can not check all API restrictions on 9 (in particular sun.misc.Unsafe)")
