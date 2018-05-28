@@ -2,9 +2,13 @@
 
 `mx` is a command line based tool for managing the development of (primarily) Java code. It includes a mechanism for specifying the dependencies as well as making it simple to build, test, run, update, etc the code and built artifacts. `mx` contains support for developing code spread across multiple source repositories. `mx` is written in Python (version 2.7) and is extensible.
 
-The organizing principle of `mx` is a _suite_. A _suite_ is a directory containing one or more _projects_ and also under the control of a version control system. A suite may import one or more dependent suites. One suite is designated as the primary suite. This is normally the suite in whose directory `mx` is executed. The set of suites that are reachable from the primary suite by transitive closure of the imports relation form the set that `mx` operates on. The set of suites implicitly defines the set of projects. The action of building a suite is to compile the code in the projects and generate one or more distributions which are 'jar' files containing the compiled classes and related metadata.
+The organizing principle of `mx` is a _suite_. A _suite_ is both a directory and the container for the components of the suite.
+A suite component is either a _project_, _library_ or _distribution_. There are various flavors of each of these.
+A suite may import and depend on other suites. For an execution of mx, exactly one suite is the primary suite.
+This is either the suite in whose directory `mx` is executed or the value of the global `-p` mx option.
+The set of suites reachable from the primary suite by transitive closure of the imports relation form the set that `mx` operates on.
 
-### Running mx ###
+### Running mx
 
 `mx` can be run directly (i.e., `python2.7 mx/mx.py ...`), but is more commonly invoked via the `mx/mx` bash script (which includes a Python version check). Adding the `mx/` directory to your PATH simplifies executing `mx`. The `mx/mx.cmd` script should be used on Windows.
 
@@ -20,6 +24,55 @@ For an example of `mx` usage, see the [README][1] for the Graal project.
 
 Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.  
 [mx-honey](https://github.com/mukel/mx-honey) provides richer completions for `zsh` users.
+
+### Suites
+
+The definition of a suite and its components is in a file named `suite.py` in the _mx metadata directory_ of the
+primary suite. This is the directory named `mx.<suite name>` in the suite's top level directory. For example,
+for the `compiler` suite, it is `mx.compiler`. The format of `suite.py` is JSON with the following extensions:
+* Python multi-line and single-quoted strings are supported
+* Python hash comments are supported
+
+### Java projects
+
+Java source code is contained in a `project`. Here's an example of two [Graal compiler projects](https://github.com/oracle/graal/blob/b95d8827609d8b28993bb4468f5daa128a614e52/compiler/mx.compiler/suite.py#L129-L147):
+```python
+"org.graalvm.compiler.serviceprovider" : {
+  "subDir" : "src",
+  "sourceDirs" : ["src"],
+  "dependencies" : ["JVMCI_SERVICES"],
+  "checkstyle" : "org.graalvm.compiler.graph",
+  "javaCompliance" : "8",
+  "workingSets" : "API,Graal",
+},
+
+"org.graalvm.compiler.serviceprovider.jdk9" : {
+  "subDir" : "src",
+  "sourceDirs" : ["src"],
+  "dependencies" : ["org.graalvm.compiler.serviceprovider"],
+  "uses" : ["org.graalvm.compiler.serviceprovider.GraalServices.JMXService"],
+  "checkstyle" : "org.graalvm.compiler.graph",
+  "javaCompliance" : "9+",
+  "multiReleaseJarVersion" : "9",
+  "workingSets" : "API,Graal",
+},
+```
+
+The `javaCompliance` attribute can be a single number (e.g. `8`), the lower bound of a range (e.g. `8+`) or a fixed range (e.g. `9..11`).
+This attribute specifies the following information:
+* The maximum Java language level used by the project. This is the lower bound in a range. It is also used at the value for the `-source`
+and `-target` javac options when compiling the project.
+* The JDKs providing any internal JDK API used by the project. A project that does not use any internal JDK API should specify an
+open range (e.g. `8+`). Otherwise, a JDK matching the exact version or range is required to compile the project.
+
+Specifying JDKs to mx is done via the `--java-home` and `--extra-java-homes` options or
+via the `JAVA_HOME` and `EXTRA_JAVA_HOMES` environment variables.
+An option has precedence over the corresponding environment variable.
+Mx comes with a `select_jdk` helper function for various shells that simplifies
+switching between different values for `JAVA_HOME` and `EXTRA_JAVA_HOMES`. The
+function definition is in a shell specific file next to `mx.py` (e.g. `select_jdk.bash`[select_jdk.bash]).
+
+The `multiReleaseJarVersion` attribute is explained in the "Versioning sources for different JDK releases" section below.
 
 ### Unit testing with Junit <a name="junit"></a>
 
@@ -60,7 +113,7 @@ public @interface AddExports {
 }
 ```
 
-### Versioning sources for different JDK releases ###
+### Versioning sources for different JDK releases
 
 Mx includes support for multiple versions of a Java source file that is heavily inspired
 by [multi-release jars](https://docs.oracle.com/javase/10/docs/specs/jar/jar.html#multi-release-jar-files).
@@ -99,7 +152,7 @@ files that would be resolved at runtime:
   6933 Tue May 22 22:19:12 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices.class
 ```
 
-### URL rewriting ###
+### URL rewriting
 
 Mx includes support for the primary suite to be able to override the source URLs of imported suites.
 The suite level `urlrewrites` attribute allows regular expression URL rewriting. For example:
@@ -124,7 +177,7 @@ Rewrite rules can also be specified by the `MX_URLREWRITES` environment variable
 The value of this variable must either be a JSON object describing a single rewrite rule, a JSON array describing a list of rewrite rules or a file containing one of these JSON values.
 Rewrites rules specified by `MX_URLREWRITES` are applied after rules specified by the primary suite.
 
-### Environment variable processing ###
+### Environment variable processing
 
 Suites might require various environment variables to be defined for
 the suite to work and mx provides `env` files to cache this
@@ -145,7 +198,7 @@ and override any value provided by the shell environment.
 
 The `-v` option to `mx` will show the loading of `env` files during suite parsing.
 
-### Multiple suites per repository ###
+### Multiple suites per repository
 
 Sometimes it might be convenient to group multiple suites inside a single repository.
 In particular, this helps ensure that all these suites are synchronized and tested together.
