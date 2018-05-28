@@ -3206,14 +3206,14 @@ class JavaBuildTask(ProjectBuildTask):
 
             if useJDT:
                 if self.args.no_daemon:
-                    self._compiler = ECJCompiler(self.args.jdt, self.args.extra_javac_args)
+                    self._compiler = ECJCompiler(self.jdk, self.args.jdt, self.args.extra_javac_args)
                 else:
-                    self._compiler = ECJDaemonCompiler(self.args.jdt, self.args.extra_javac_args)
+                    self._compiler = ECJDaemonCompiler(self.jdk, self.args.jdt, self.args.extra_javac_args)
             else:
                 if self.args.no_daemon or self.args.alt_javac:
-                    self._compiler = JavacCompiler(self.args.alt_javac, self.args.extra_javac_args)
+                    self._compiler = JavacCompiler(self.jdk, self.args.alt_javac, self.args.extra_javac_args)
                 else:
-                    self._compiler = JavacDaemonCompiler(self.args.extra_javac_args)
+                    self._compiler = JavacDaemonCompiler(self.jdk, self.args.extra_javac_args)
         return self._compiler
 
     def prepare(self, daemons):
@@ -3230,7 +3230,6 @@ class JavaBuildTask(ProjectBuildTask):
             self.compileArgs = self.compiler.prepare(
                 sourceFiles=[_cygpathU2W(f) for f in self._javaFileList()],
                 project=self.subject,
-                jdk=self.jdk,
                 outputDir=_cygpathU2W(outputDir),
                 classPath=_separatedCygpathU2W(classpath(self.subject.name, includeSelf=False, jdk=self.jdk, ignoreStripped=True)),
                 sourceGenDir=self.subject.source_gen_dir(),
@@ -3241,7 +3240,7 @@ class JavaBuildTask(ProjectBuildTask):
                 showTasks=self.args.jdt_show_task_tags,
                 postCompileActions=self.postCompileActions,
                 forceDeprecationAsWarning=self.args.force_deprecation_as_warning)
-            self.compiler.prepare_daemon(self.jdk, daemons, self.compileArgs)
+            self.compiler.prepare_daemon(daemons, self.compileArgs)
         else:
             self.compileArgs = None
 
@@ -3263,7 +3262,7 @@ class JavaBuildTask(ProjectBuildTask):
         # Java build
         if self.compileArgs:
             try:
-                self.compiler.compile(self.jdk, self.compileArgs)
+                self.compiler.compile(self.compileArgs)
             finally:
                 for action in self.postCompileActions:
                     action()
@@ -3329,11 +3328,10 @@ class JavaCompiler:
         """
         nyi('prepare', self)
 
-    def prepare_daemon(self, jdk, daemons, compileArgs):
+    def prepare_daemon(self, daemons, compileArgs):
         """
         Initializes any daemons used when `compile` is called with `compileArgs`.
 
-        :param JDKConfig jdk: the JDK used to execute this compiler
         :param dict daemons: map from name to `CompilerDaemon` into which new daemons should be registered
         :param list compileArgs: the value bound to the `args` parameter when calling `compile`
         """
@@ -3349,10 +3347,11 @@ class JavaCompiler:
         nyi('compile', self)
 
 class JavacLikeCompiler(JavaCompiler):
-    def __init__(self, extraJavacArgs):
+    def __init__(self, jdk, extraJavacArgs):
+        self.jdk = jdk
         self.extraJavacArgs = extraJavacArgs if extraJavacArgs else []
 
-    def prepare(self, sourceFiles, project, jdk, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
+    def prepare(self, sourceFiles, project, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
         compliance = project.javaCompliance
@@ -3384,20 +3383,21 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
-        return self.prepareJavacLike(jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir)
+        return self.prepareJavacLike(project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir)
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
+    def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         nyi('buildJavacLike', self)
 
 class JavacCompiler(JavacLikeCompiler):
-    def __init__(self, altJavac=None, extraJavacArgs=None):
-        JavacLikeCompiler.__init__(self, extraJavacArgs)
+    def __init__(self, jdk, altJavac=None, extraJavacArgs=None):
+        JavacLikeCompiler.__init__(self, jdk, extraJavacArgs)
         self.altJavac = altJavac
 
     def name(self):
-        return 'javac'
+        return 'javac(JDK {})'.format(self.jdk.javaCompliance)
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
+    def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
+        jdk = self.jdk
         compliance = project.javaCompliance
         if jnigenDir is not None:
             javacArgs += ['-h', jnigenDir]
@@ -3570,28 +3570,28 @@ class JavacCompiler(JavacLikeCompiler):
 
         return javacArgs
 
-    def compile(self, jdk, args):
-        javac = self.altJavac if self.altJavac else jdk.javac
-        cmd = [javac] + ['-J' + arg for arg in jdk.java_args] + args
+    def compile(self, args):
+        javac = self.altJavac if self.altJavac else self.jdk.javac
+        cmd = [javac] + ['-J' + arg for arg in self.jdk.java_args] + args
         run(cmd)
 
 class JavacDaemonCompiler(JavacCompiler):
-    def __init__(self, extraJavacArgs=None):
-        JavacCompiler.__init__(self, None, extraJavacArgs)
+    def __init__(self, jdk, extraJavacArgs=None):
+        JavacCompiler.__init__(self, jdk, None, extraJavacArgs)
 
     def name(self):
-        return 'javac-daemon'
+        return 'javac-daemon(JDK {})'.format(self.jdk.javaCompliance)
 
-    def compile(self, jdk, args):
+    def compile(self, args):
         nonJvmArgs = [a for a in args if not a.startswith('-J')]
-        return self.daemon.compile(jdk, nonJvmArgs)
+        return self.daemon.compile(nonJvmArgs)
 
-    def prepare_daemon(self, jdk, daemons, compileArgs):
-        jvmArgs = jdk.java_args + [a[2:] for a in compileArgs if a.startswith('-J')]
-        key = 'javac-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+    def prepare_daemon(self, daemons, compileArgs):
+        jvmArgs = self.jdk.java_args + [a[2:] for a in compileArgs if a.startswith('-J')]
+        key = 'javac-daemon:' + self.jdk.java + ' ' + ' '.join(jvmArgs)
         self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = JavacDaemon(jdk, jvmArgs)
+            self.daemon = JavacDaemon(self.jdk, jvmArgs)
             daemons[key] = self.daemon
 
 class Daemon:
@@ -3661,10 +3661,10 @@ class CompilerDaemon(Daemon):
             if m:
                 self.port = int(m.group(1))
 
-    def compile(self, jdk, compilerArgs):
+    def compile(self, compilerArgs):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(('127.0.0.1', self.port))
-        logv(jdk.javac + ' ' + ' '.join(compilerArgs))
+        logv(self.jdk.javac + ' ' + ' '.join(compilerArgs))
         commandLine = u'\x00'.join(compilerArgs)
         s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
@@ -3679,7 +3679,7 @@ class CompilerDaemon(Daemon):
         if retcode:
             if _opts.verbose:
                 if _opts.very_verbose:
-                    raise subprocess.CalledProcessError(retcode, jdk.java + ' '.join(compilerArgs))
+                    raise subprocess.CalledProcessError(retcode, self.jdk.java + ' '.join(compilerArgs))
                 else:
                     log('[exit code: ' + str(retcode) + ']')
             abort(retcode)
@@ -3705,14 +3705,14 @@ class JavacDaemon(CompilerDaemon):
         return 'javac-daemon'
 
 class ECJCompiler(JavacLikeCompiler):
-    def __init__(self, jdtJar, extraJavacArgs=None):
-        JavacLikeCompiler.__init__(self, extraJavacArgs)
+    def __init__(self, jdk, jdtJar, extraJavacArgs=None):
+        JavacLikeCompiler.__init__(self, jdk, extraJavacArgs)
         self.jdtJar = jdtJar
 
     def name(self):
-        return 'JDT'
+        return 'ecj(JDK {})'.format(self.jdk.javaCompliance)
 
-    def prepareJavacLike(self, jdk, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
+    def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         jdtArgs = javacArgs
 
         jdtProperties = join(project.dir, '.settings', 'org.eclipse.jdt.core.prefs')
@@ -3757,39 +3757,39 @@ class ECJCompiler(JavacLikeCompiler):
             nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
             if len(nativeClasses) == 0:
                 abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=jdk)] + nativeClasses
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + nativeClasses
 
         return (jdtArgs, javahArgs)
 
-    def compile(self, jdk, compileArgs):
+    def compile(self, compileArgs):
         (jdtArgs, javahArgs) = compileArgs
-        run_java(['-jar', self.jdtJar] + jdtArgs, jdk=jdk)
-        self.post_compile(jdk, javahArgs)
+        run_java(['-jar', self.jdtJar] + jdtArgs, jdk=self.jdk)
+        self.post_compile(javahArgs)
 
-    def post_compile(self, jdk, javahArgs):
+    def post_compile(self, javahArgs):
         if javahArgs is not None:
-            if jdk.javah is None:
+            if self.jdk.javah is None:
                 abort('Cannot use ECJ on JDK without javah command.')
-            run([jdk.javah] + javahArgs)
+            run([self.jdk.javah] + javahArgs)
 
 class ECJDaemonCompiler(ECJCompiler):
-    def __init__(self, jdtJar, extraJavacArgs=None):
-        ECJCompiler.__init__(self, jdtJar, extraJavacArgs)
+    def __init__(self, jdk, jdtJar, extraJavacArgs=None):
+        ECJCompiler.__init__(self, jdk, jdtJar, extraJavacArgs)
 
     def name(self):
-        return 'ecj-daemon'
+        return 'ecj-daemon(JDK {})'.format(self.jdk.javaCompliance)
 
-    def compile(self, jdk, compileArgs):
+    def compile(self, compileArgs):
         (jdtArgs, javahArgs) = compileArgs
-        self.daemon.compile(jdk, jdtArgs)
-        self.post_compile(jdk, javahArgs)
+        self.daemon.compile(jdtArgs)
+        self.post_compile(javahArgs)
 
-    def prepare_daemon(self, jdk, daemons, compileArgs):
-        jvmArgs = jdk.java_args
-        key = 'ecj-daemon:' + jdk.java + ' ' + ' '.join(jvmArgs)
+    def prepare_daemon(self, daemons, compileArgs):
+        jvmArgs = self.jdk.java_args
+        key = 'ecj-daemon:' + self.jdk.java + ' ' + ' '.join(jvmArgs)
         self.daemon = daemons.get(key)
         if not self.daemon:
-            self.daemon = ECJDaemon(jdk, jvmArgs, self.jdtJar)
+            self.daemon = ECJDaemon(self.jdk, jvmArgs, self.jdtJar)
             daemons[key] = self.daemon
 
 class ECJDaemon(CompilerDaemon):
@@ -3797,7 +3797,7 @@ class ECJDaemon(CompilerDaemon):
         CompilerDaemon.__init__(self, jdk, jvmArgs, 'com.oracle.mxtool.compilerserver.ECJDaemon', jdtJar)
 
     def name(self):
-        return 'ecj-daemon'
+        return 'ecj-daemon-server(JDK {})'.format(self.jdk.javaCompliance)
 
 def is_debug_lib_file(fn):
     return fn.endswith(add_debug_lib_suffix(""))
