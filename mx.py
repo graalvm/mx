@@ -7594,15 +7594,26 @@ class Suite(object):
                 if stack == 0:
                     break
             part = part[:endIdx]
+            
+            # convert python boolean constants to json boolean constants
             part = re.sub("True", "true", part)
             part = re.sub("False", "false", part)
+            
+            # remove python comments
             part = re.sub("(.*?)#.*", "\\1", part)
             def python_to_json_string(m):
                 return "\"" + m.group(1).replace("\n", "\\n") + "\""
+
+            # remove all spaces between a comma and ']' or '{'
             part = re.sub(",\\s*(\\]|\\})", "\\1", part)
+
+            # convert python multiline strings to json strings with embedded newlines
             part = re.sub("\"\"\"(.*?)\"\"\"", python_to_json_string, part, flags=re.DOTALL)
             part = re.sub("'''(.*?)'''", python_to_json_string, part, flags=re.DOTALL)
+
+            # convert python single-quoted strings to json double-quoted strings
             part = re.sub("'(.*?)'", python_to_json_string, part, flags=re.DOTALL)
+
             json.loads(part)
             return (True, None)
         except:
