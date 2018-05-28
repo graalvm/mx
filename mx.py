@@ -11586,6 +11586,16 @@ def build(cmd_args, parser=None):
         names = args.dependencies.split(',')
         roots = [dependency(name) for name in names]
     else:
+        # This is the normal case for build (e.g. `mx build`) so be
+        # clear about JDKs being used ...
+        log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
+        log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
+
+        # ... and the dependencies that *will not* be built
+        if _removedDeps:
+            for _, reason in _removedDeps.iteritems():
+                log(reason)
+
         # Omit Libraries so that only the ones required to build other
         # dependencies are downloaded
         roots = [d for d in dependencies() if not d.isLibrary()]
@@ -11597,15 +11607,6 @@ def build(cmd_args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
-
-    # Be vocal about JDKs being used
-    log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
-    log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
-
-    # Be vocal about things that *will not* be built
-    if _removedDeps:
-        for _, reason in _removedDeps.iteritems():
-            log(reason)
 
     def _createTask(dep, edge):
         if dep.name in deps_w_deprecation_errors:
