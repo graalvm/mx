@@ -9646,9 +9646,9 @@ environment variables:
             if opts.primary and _primary_suite:
                 opts.specific_suites.append(_primary_suite.name)
 
-            if opts.java_home:
+            if opts.java_home is not None:
                 os.environ['JAVA_HOME'] = opts.java_home
-            if opts.extra_java_homes:
+            if opts.extra_java_homes is not None:
                 os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
             os.environ['HOME'] = opts.user_home
 
@@ -9881,8 +9881,10 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
             msg += ' for ' + purpose
         if available:
             msg += '\nThe following JDKs are available:\n  ' + '\n  '.join((jdk.home for jdk in available))
+        primary_suite_env_path = join(primary_suite().mxDir, 'env') if primary_suite() else 'the primary suite\'s env file'
         msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
-        msg += '\nEnvironment variables can be defined as per the current shell, in ~/.mx/env or in ' + join(primary_suite().mxDir, 'env') + '.'
+        msg += '\nEnvironment variables can be defined as per the current shell, in ~/.mx/env or in ' + primary_suite_env_path + '.'
+        msg += '\nThere is also a select_jdk function defined in {}/select_jdk.* for various shells that make setting these variables easier.'.format(dirname(__file__))
         abort(msg)
 
     if defaultJdk:
@@ -11595,6 +11597,10 @@ def build(cmd_args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
+
+    # Be vocal about JDKs being used
+    log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
+    log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
 
     # Be vocal about things that *will not* be built
     if _removedDeps:
