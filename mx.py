@@ -1030,9 +1030,11 @@ class Distribution(Dependency):
     def platformName(cls):
         return '{os}_{arch}'.format(os=get_os(), arch=get_arch())
 
-    def remoteName(self):
+    def remoteName(self, platform=None):
         if self.platformDependent:
-            return '{name}_{platform}'.format(name=self.name, platform=self.platformName())
+            if not platform:
+                platform = self.platformName()
+            return '{name}_{platform}'.format(name=self.name, platform=platform)
         return self.name
 
     def postPull(self, f):
@@ -1049,12 +1051,12 @@ class Distribution(Dependency):
         """
         nyi('needsUpdate', self)
 
-    def maven_artifact_id(self):
+    def maven_artifact_id(self, platform=None):
         if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
             artifact_id = self.maven.get('artifactId', None)
             if artifact_id:
                 return artifact_id
-        return _map_to_maven_dist_name(self.remoteName())
+        return _map_to_maven_dist_name(self.remoteName(platform=platform))
 
     def maven_group_id(self):
         if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
@@ -1550,8 +1552,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                 with open(self.strip_config_dependency_file(), 'w') as f:
                     f.writelines((l + os.linesep for l in self.stripConfig))
 
-    def remoteName(self):
-        base_name = super(JARDistribution, self).remoteName()
+    def remoteName(self, platform=None):
+        base_name = super(JARDistribution, self).remoteName(platform=platform)
         if self.is_stripped():
             return base_name + "_stripped"
         else:
@@ -6674,7 +6676,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 dist.warn("Distribution depends on non-maven distribution {}".format(dep))
             pom.open('dependency')
             pom.element('groupId', data=dep.maven_group_id())
-            pom.element('artifactId', data=dep.maven_artifact_id())
+            pom.element('artifactId', data=dep.maven_artifact_id(platform='${mx.platform}'))
             dep_version = versionGetter(dep.suite)
             if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
                 if validateMetadata == 'full':
