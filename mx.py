@@ -1030,6 +1030,12 @@ class Distribution(Dependency):
     def platformName(cls):
         return '{os}_{arch}'.format(os=get_os(), arch=get_arch())
 
+    """
+    Provide remoteName of distribution.
+
+    :param str platform: If the distribution is platform dependent and platform is provided
+           it will be used instead of the usual platform suffix (provided by platformName()).
+    """
     def remoteName(self, platform=None):
         if self.platformDependent:
             if not platform:
@@ -1051,6 +1057,12 @@ class Distribution(Dependency):
         """
         nyi('needsUpdate', self)
 
+    """
+    Provide maven artifactId string for distribution.
+
+    :param str platform: If the distribution is platform dependent and platform is provided
+           it will be used instead of the usual platform suffix (provided by platformName()).
+    """
     def maven_artifact_id(self, platform=None):
         if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
             artifact_id = self.maven.get('artifactId', None)
@@ -1058,6 +1070,9 @@ class Distribution(Dependency):
                 return artifact_id
         return _map_to_maven_dist_name(self.remoteName(platform=platform))
 
+    """
+    Provide maven groupId string for distribution.
+    """
     def maven_group_id(self):
         if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
             group_id = self.maven.get('groupId', None)
