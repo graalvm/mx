@@ -44,32 +44,32 @@ jdk_cache=$HOME/.mx/jdk_cache
 function select_jdk {
   if [ "$#" -ne 0 ]; then
     __select_jdk_helper__ "$@"
-  elif [ -e $jdk_cache ]; then
+  elif [ -e ${jdk_cache} ]; then
     index=1
     declare -a candidates
     tmp_cache=$HOME/.mx/jdk_cache.$$
-    for jdk in $(cat $jdk_cache | sort | uniq); do
-      if test -d $jdk; then
+    for jdk in $(cat ${jdk_cache} | sort | uniq); do
+      if [ -d ${jdk} ]; then
         if [ ! -x ${jdk}/bin/java ]; then
-          echo "Removing invalid JDK from cache: $jdk/bin/java not found or not executable"
+          echo "Removing invalid JDK from cache: ${jdk}/bin/java not found or not executable"
         else
           echo "[$index] $jdk"
           candidates[$index]="$jdk"
           index=$(expr $index + 1)
-          echo $jdk >>$tmp_cache
+          echo ${jdk} >>${tmp_cache}
         fi
       else
-       echo "Removing invalid JDK from cache: $jdk not found or not a directory"
+       echo "Removing invalid JDK from cache: ${jdk} not found or not a directory"
       fi
     done
     if [ $index != 1 ]; then
-	  mv $tmp_cache $jdk_cache
+	  mv ${tmp_cache} ${jdk_cache}
       read -p 'Select JDK(s) (separate multiple choices by whitespace)> ' -a indexes
       declare -a jdks
       for index in "${indexes[@]}"; do
         if [ ${index} -ge 1 -a ${index} -le ${#candidates[@]} ]; then
           jdk=${candidates[${index}]}
-          jdks+=($jdk)
+          jdks+=(${jdk})
         else
           echo "Ignoring invalid selection: $index"
         fi
@@ -78,7 +78,7 @@ function select_jdk {
         __select_jdk_helper__ "${jdks[@]}"
       fi
     else
-      echo "No valid JDKs in $jdk_cache. Provide one or more JDKs as arguments."
+      echo "No valid JDKs in ${jdk_cache}. Provide one or more JDKs as arguments."
     fi
   fi
 }
@@ -92,7 +92,7 @@ function __select_jdk_helper__ {
 
   OLD_JH=$JAVA_HOME
   export JAVA_HOME=$1
-  echo $JAVA_HOME >> $jdk_cache
+  echo $JAVA_HOME >> ${jdk_cache}
   echo "JAVA_HOME=$JAVA_HOME"
 
   NEW_PATH=$JAVA_HOME/bin
@@ -107,7 +107,7 @@ function __select_jdk_helper__ {
     extra_jdks=("${@}")
     extra_jdks=(${extra_jdks[@]:1})
     for jdk in "${extra_jdks[@]}"; do
-      echo $jdk >>$jdk_cache
+      echo ${jdk} >>${jdk_cache}
     done
     export EXTRA_JAVA_HOMES=${extra_jdks[@]}
     export EXTRA_JAVA_HOMES=${EXTRA_JAVA_HOMES// /:}
