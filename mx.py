@@ -274,7 +274,10 @@ def no_suite_discovery(func):
 DEP_STANDARD = "standard dependency"
 DEP_BUILD = "a build dependency"
 DEP_ANNOTATION_PROCESSOR = "annotation processor dependency"
-DEP_EXCLUDED = "excluded library"
+DEP_EXCLUDED = "library excluded from a distribution"
+
+#: Set of known dependency edge kinds
+DEP_KINDS = frozenset([DEP_STANDARD, DEP_BUILD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED])
 
 def _is_edge_ignored(edge, ignoredEdges):
     return ignoredEdges and edge in ignoredEdges
@@ -297,12 +300,11 @@ Represents an edge traversed while visiting a spanning tree of the dependency gr
 class DepEdge:
     def __init__(self, src, kind, prev):
         """
-        src - the source of this dependency edge
-        kind - one of the constants DEP_STANDARD, DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED describing the type
-               of graph edge from 'src' to the dependency targeted by this edge
-        prev - the dependency edge traversed to reach 'src' or None if 'src' is a root of a dependency
-               graph traversal
+        :param src: the source of this dependency edge
+        :param kind: one of the values in `DEP_KINDS`
+        :param prev: the dependency edge traversed to reach `src` or None if `src` is a root
         """
+        assert kind in DEP_KINDS
         self.src = src
         self.kind = kind
         self.prev = prev
@@ -541,6 +543,16 @@ class Dependency(SuiteConstituent):
 
     def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         nyi('_walk_deps_visit_edges', self)
+
+    def _walk_deps_visit_edges_helper(self, deps, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        for dep_type, dep_list in deps:
+            if not _is_edge_ignored(dep_type, ignoredEdges):
+                for dst in dep_list:
+                    out_edge = DepEdge(self, dep_type, in_edge)
+                    if visitEdge:
+                        visitEdge(self, dst, out_edge)
+                    if dst not in visited:
+                        dst._walk_deps_helper(visited, out_edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         """
@@ -954,19 +966,9 @@ class Distribution(Dependency):
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps:
-                if visitEdge:
-                    visitEdge(self, DEP_STANDARD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
-        if not _is_edge_ignored(DEP_EXCLUDED, ignoredEdges):
-            for d in self.excludedLibs:
-                if visitEdge:
-                    visitEdge(self, DEP_EXCLUDED, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_EXCLUDED, edge), preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        deps = [(DEP_STANDARD, self.deps), (DEP_EXCLUDED, self.excludedLibs)]
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
     def make_archive(self):
         nyi('make_archive', self)
@@ -1608,14 +1610,10 @@ class JARDistribution(Distribution, ClasspathDependency):
         super(JARDistribution, self).resolveDeps()
         self._resolveDepsHelper(self.buildDependencies)
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        super(JARDistribution, self)._walk_deps_visit_edges(visited, edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
-        if not _is_edge_ignored(DEP_BUILD, ignoredEdges):
-            for d in self.buildDependencies:
-                if visitEdge:
-                    visitEdge(self, DEP_BUILD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_BUILD, edge), preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        super(JARDistribution, self)._walk_deps_visit_edges(visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
+        deps = [(DEP_BUILD, self.buildDependencies)]
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
@@ -2406,20 +2404,11 @@ class Project(Dependency):
             return os.sep.join([self.get_output_base(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
         return join(self.get_output_base(), self.subDir, self.name)
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps:
-                if visitEdge:
-                    visitEdge(self, DEP_STANDARD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        deps = [(DEP_STANDARD, self.deps)]
         if hasattr(self, 'buildDependencies'):
-            if not _is_edge_ignored(DEP_BUILD, ignoredEdges):
-                for d in self.buildDependencies:
-                    if visitEdge:
-                        visitEdge(self, DEP_BUILD, d)
-                    if d not in visited:
-                        d._walk_deps_helper(visited, DepEdge(self, DEP_BUILD, edge), preVisit, visit, ignoredEdges, visitEdge)
+            deps.append((DEP_BUILD, self.buildDependencies))
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
     def _compute_max_dep_distances(self, dep, distances, dist):
         currentDist = distances.get(dep)
@@ -2646,14 +2635,10 @@ class JavaProject(Project, ClasspathDependency):
                 if isinstance(dep, Project) and dep.is_test_project():
                     abort('Non-test project {} can not depend on the test project {}'.format(self.name, dep.name))
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_ANNOTATION_PROCESSOR, ignoredEdges):
-            for d in self.declaredAnnotationProcessors:
-                if visitEdge:
-                    visitEdge(self, DEP_ANNOTATION_PROCESSOR, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_ANNOTATION_PROCESSOR, edge), preVisit, visit, ignoredEdges, visitEdge)
-        Project._walk_deps_visit_edges(self, visited, edge, preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        deps = [(DEP_ANNOTATION_PROCESSOR, self.declaredAnnotationProcessors)]
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
+        Project._walk_deps_visit_edges(self, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def source_gen_dir_name(self):
         """
@@ -4531,13 +4516,9 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps:
-                if visitEdge:
-                    visitEdge(self, DEP_STANDARD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        deps = [(DEP_STANDARD, self.deps)]
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
 
 class Library(BaseLibrary, ClasspathDependency):
     """
@@ -4588,13 +4569,9 @@ class Library(BaseLibrary, ClasspathDependency):
         BaseLibrary.resolveDeps(self)
         self._resolveDepsHelper(self.deps)
 
-    def _walk_deps_visit_edges(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        if not _is_edge_ignored(DEP_STANDARD, ignoredEdges):
-            for d in self.deps:
-                if visitEdge:
-                    visitEdge(self, DEP_STANDARD, d)
-                if d not in visited:
-                    d._walk_deps_helper(visited, DepEdge(self, DEP_STANDARD, edge), preVisit, visit, ignoredEdges, visitEdge)
+    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
+        deps = [(DEP_STANDARD, self.deps)]
+        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
 
     def _comparison_key(self):
         return (self.sha1, self.name)
@@ -9523,14 +9500,24 @@ def dependencies(opt_limit_to_suite=False):
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     """
-    Walks a spanning tree of the dependency graph. The first time a dependency graph node is seen, if the
-    `preVisit` function is not None, it is called with two arguments. The first is a :class:`Dependency`
-    object representing the node being visited. The second is a :class:`DepEdge` object representing the
-    last element in the path of dependencies walked to arrive at `dep` or None if `dep` is a leaf.
-    If `preVisit` is None or returns a true condition, then the unvisited dependencies of `dep` are
-    walked. Once all the dependencies of `dep` have been visited, if `visit` is not None,
-    it is applied with the same arguments as for `preVisit` and the return value is ignored. Note that
-    `visit` is not called if `preVisit` returns a false condition.
+    Walks a spanning tree of the dependency graph. The first time a dependency `dep` is seen, if the
+    `preVisit` function is None or returns a true condition, then the unvisited dependencies of `dep` are
+    walked. Once all the dependencies of `dep` have been visited and `visit` is not None,
+    it is applied with the same arguments as for `preVisit` and the return value is ignored.
+    Note that `visit` is not called if `preVisit` returns a false condition.
+
+    :param roots: from which to start traversing. If None, then `dependencies()` is used
+    :param preVisit: None or a function called the first time a `Dependency` in the graph is seen.
+           The arguments passed to this function are the `Dependency` being pre-visited and
+           a `DepEdge` object representing the last edge in the path of dependencies walked
+           to arrive the `Dependency`.
+    :param visit: None or a function with same signature as `preVisit`.
+    :param ignoredEdges: an iterable of values from `DEP_KINDS` specifying edge types to be ignored in the traversal.
+           If None, then `[DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD]` will be used.
+    :param visitEdge: None or a function called for every out edge of a node in the traversed graph.
+           The arguments passed to this function are the source `Dependency` of the edge, the destination
+           `Dependency` and a `DepEdge` value for the edge that can also be used to trace the path from
+           a traversal root to the edge.
     """
     visited = set()
     for dep in dependencies() if not roots else roots:
@@ -11814,7 +11801,7 @@ def build(cmd_args, parser=None):
         for d in lst:
             task.deps.append(taskMap[d])
 
-    def _registerDep(src, edgeType, dst):
+    def _registerDep(src, dst, edge):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
 
@@ -17265,7 +17252,7 @@ def _check_dependency_cycles():
     Checks for cycles in the dependency graph.
     """
     path = []
-    def _visitEdge(src, edgeType, dst):
+    def _visitEdge(src, dst, edge):
         if dst in path:
             abort('dependency cycle detected: ' + ' -> '.join([d.name for d in path] + [dst.name]), context=dst)
     def _preVisit(dep, edge):
@@ -18021,7 +18008,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.170.3")  # GR-10109
+version = VersionSpec("5.170.4")  # GR-10114
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
