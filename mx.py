@@ -1129,6 +1129,11 @@ class JARDistribution(Distribution, ClasspathDependency):
         else:
             self.stripConfig = None
         self.buildDependencies = []
+        if self.is_stripped():
+            # Make this a build dependency to avoid concurrency issues that can arise
+            # when the library is lazily resolved by build tasks (which can be running
+            # concurrently).
+            self.buildDependencies.append("mx:PROGUARD_6_0_3")
         assert self.path.endswith(self.localExtension())
 
     def default_source_filename(self):
