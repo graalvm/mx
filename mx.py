@@ -1267,12 +1267,12 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if guard: <add entry to archive
                     ```
                     """
-                    def __init__(self, path, zf, arcname, source, lp=None):
+                    def __init__(self, path, zf, arcname, source, source_zf=None):
                         self.path = path
                         self.zf = zf
+                        self.source_zf = source_zf
                         self.arcname = arcname
                         self.source = source
-                        self.lp = lp
                         self._can_write = False
                     def __enter__(self):
                         arcname = self.arcname
@@ -1280,15 +1280,17 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if os.path.basename(arcname).startswith('.'):
                             logv('Excluding dotfile: ' + source)
                             return None
-                        elif arcname == "META-INF/MANIFEST.MF": # Do not inherit the manifest from other jars
-                            logv('Excluding META-INF/MANIFEST.MF from ' + source)
-                            return None
+                        elif arcname == "META-INF/MANIFEST.MF":
+                            if self.source_zf:
+                                # Do not inherit the manifest from other jars
+                                logv('Excluding META-INF/MANIFEST.MF from ' + source)
+                                return None
                         if not hasattr(self.zf, '_provenance'):
                             self.zf._provenance = {}
                         existingSource = self.zf._provenance.get(arcname, None)
                         if existingSource and existingSource != source:
                             if arcname[-1] != os.path.sep:
-                                if self.lp and self.lp.read(arcname) == self.zf.read(arcname):
+                                if self.source_zf and self.source_zf.read(arcname) == self.zf.read(arcname):
                                     logv(self.path + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
                                 else:
                                     warn(self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
@@ -1302,17 +1304,17 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 self.zf._provenance[self.arcname] = self.source
 
                 def addFromJAR(jarPath):
-                    with zipfile.ZipFile(jarPath, 'r') as lp:
-                        entries = lp.namelist()
+                    with zipfile.ZipFile(jarPath, 'r') as source_zf:
+                        entries = source_zf.namelist()
                         for arcname in entries:
                             if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                 service = arcname[len('META-INF/services/'):]
                                 assert '/' not in service
-                                services.setdefault(service, []).extend(lp.read(arcname).splitlines())
+                                services.setdefault(service, []).extend(source_zf.read(arcname).splitlines())
                             else:
-                                with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, jarPath + '!' + arcname, lp=lp) as guard:
+                                with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, jarPath + '!' + arcname, source_zf=source_zf) as guard:
                                     if guard:
-                                        contents = lp.read(arcname)
+                                        contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
                                             arc.zf.writestr(arcname, contents)
 
@@ -1379,11 +1381,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if dep.isJARDistribution() or not dep.optional or exists(jarPath):
                                 addFromJAR(jarPath)
                         if srcArc.zf and jarSourcePath:
-                            with zipfile.ZipFile(jarSourcePath, 'r') as lp:
-                                for arcname in lp.namelist():
-                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, jarPath + '!' + arcname, lp=lp) as guard:
+                            with zipfile.ZipFile(jarSourcePath, 'r') as source_zf:
+                                for arcname in source_zf.namelist():
+                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, jarPath + '!' + arcname, source_zf=source_zf) as guard:
                                         if guard:
-                                            contents = lp.read(arcname)
+                                            contents = source_zf.read(arcname)
                                             if not participants__add__(arcname, contents, addsrc=True):
                                                 srcArc.zf.writestr(arcname, contents)
                     elif dep.isMavenProject():
@@ -18019,7 +18021,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.170.2")  # GR-9998
+version = VersionSpec("5.170.3")  # GR-10109
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
