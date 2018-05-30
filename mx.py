@@ -70,6 +70,56 @@ import copy
 import operator
 import calendar
 
+# Define this machinery early in case other modules want to use them
+
+# Names of commands that don't need a primary suite.
+# This cannot be used outside of mx because of implementation restrictions
+_suite_context_free = ['init', 'version', 'urlrewrite']
+
+
+def suite_context_free(func):
+    """
+    Decorator for commands that don't need a primary suite.
+    """
+    _suite_context_free.append(func.__name__)
+    return func
+
+# Names of commands that don't need a primary suite but will use one if it can be found.
+# This cannot be used outside of mx because of implementation restrictions
+_optional_suite_context = ['help']
+
+
+def optional_suite_context(func):
+    """
+    Decorator for commands that don't need a primary suite but will use one if it can be found.
+    """
+    _optional_suite_context.append(func.__name__)
+    return func
+
+# Names of commands that need a primary suite but don't need suites to be loaded.
+# This cannot be used outside of mx because of implementation restrictions
+_no_suite_loading = []
+
+
+def no_suite_loading(func):
+    """
+    Decorator for commands that need a primary suite but don't need suites to be loaded.
+    """
+    _no_suite_loading.append(func.__name__)
+    return func
+
+# Names of commands that need a primary suite but don't need suites to be discovered.
+# This cannot be used outside of mx because of implementation restrictions
+_no_suite_discovery = []
+
+
+def no_suite_discovery(func):
+    """
+    Decorator for commands that need a primary suite but don't need suites to be discovered.
+    """
+    _no_suite_discovery.append(func.__name__)
+    return func
+
 import mx_unittest
 import mx_findbugs
 import mx_sigtest
@@ -78,6 +128,7 @@ import mx_jackpot
 import mx_compat
 import mx_urlrewrites
 import mx_benchmark
+import mx_benchplot
 import mx_downstream
 import mx_subst
 
@@ -221,55 +272,6 @@ _opts_parsed_deferrables = []
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
     raise NotImplementedError()
-
-
-# Names of commands that don't need a primary suite.
-# This cannot be used outside of mx because of implementation restrictions
-_suite_context_free = ['init', 'version', 'urlrewrite']
-
-
-def suite_context_free(func):
-    """
-    Decorator for commands that don't need a primary suite.
-    """
-    _suite_context_free.append(func.__name__)
-    return func
-
-# Names of commands that don't need a primary suite but will use one if it can be found.
-# This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help']
-
-
-def optional_suite_context(func):
-    """
-    Decorator for commands that don't need a primary suite but will use one if it can be found.
-    """
-    _optional_suite_context.append(func.__name__)
-    return func
-
-# Names of commands that need a primary suite but don't need suites to be loaded.
-# This cannot be used outside of mx because of implementation restrictions
-_no_suite_loading = []
-
-
-def no_suite_loading(func):
-    """
-    Decorator for commands that need a primary suite but don't need suites to be loaded.
-    """
-    _no_suite_loading.append(func.__name__)
-    return func
-
-# Names of commands that need a primary suite but don't need suites to be discovered.
-# This cannot be used outside of mx because of implementation restrictions
-_no_suite_discovery = []
-
-
-def no_suite_discovery(func):
-    """
-    Decorator for commands that need a primary suite but don't need suites to be discovered.
-    """
-    _no_suite_discovery.append(func.__name__)
-    return func
 
 DEP_STANDARD = "standard dependency"
 DEP_BUILD = "a build dependency"
@@ -17120,6 +17122,8 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 _commands = {
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
+    'benchtable': [mx_benchplot.benchtable, '[options]'],
+    'benchplot': [mx_benchplot.benchplot, '[options]'],
     'binary-url': [binary_url, '<distribution name>'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
@@ -18008,7 +18012,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.170.4")  # GR-10114
+version = VersionSpec("5.171.0")  # benchplot
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
