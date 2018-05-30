@@ -95,8 +95,5 @@ function __select_jdk_helper__
     end
     set -x EXTRA_JAVA_HOMES (echo $argv[2..(count $argv)] | tr ' ' ':')
     echo "EXTRA_JAVA_HOMES=$EXTRA_JAVA_HOMES"
-  else
-    set -e EXTRA_JAVA_HOMES
-    echo "Unset EXTRA_JAVA_HOMES"
   end
 end
