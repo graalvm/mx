@@ -9909,10 +9909,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                     for jdk in sorted(jdk_cache_content):
                         print >> fp, jdk
 
-        primary_suite_env_path = join(primary_suite().mxDir, 'env') if primary_suite() else 'the primary suite\'s env file'
         msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
-        msg += '\nEnvironment variables can be defined as per the current shell, in ~/.mx/env or in ' + primary_suite_env_path + '.'
-        msg += '\nThere is a select_jdk function defined in {}/select_jdk.* for various shells to simplify setting these variables.'.format(dirname(__file__))
+        msg += '\n{}/select_jdk.py can also be used to set these variables.'.format(dirname(__file__))
         abort(msg)
 
     if defaultJdk:
