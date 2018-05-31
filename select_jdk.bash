@@ -48,6 +48,9 @@ function select_jdk {
     index=1
     declare -a candidates
     tmp_cache=$HOME/.mx/jdk_cache.$$
+    echo "Current JDK Settings:"
+    echo "JAVA_HOME=$JAVA_HOME"
+    echo "EXTRA_JAVA_HOMES=$EXTRA_JAVA_HOMES"
     for jdk in $(cat ${jdk_cache} | sort | uniq); do
       if [ -d ${jdk} ]; then
         if [ ! -x ${jdk}/bin/java ]; then

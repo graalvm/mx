@@ -49,6 +49,9 @@ function select_jdk
     set candidates
     set pid %self
     set tmp_cache (echo $jdk_cache.$pid)
+    echo "Current JDK Settings:"
+    echo "JAVA_HOME=$JAVA_HOME"
+    echo "EXTRA_JAVA_HOMES=$EXTRA_JAVA_HOMES"
     for jdk in (cat $jdk_cache | sort | uniq)
       if test -d $jdk
         echo "[$index] $jdk"
