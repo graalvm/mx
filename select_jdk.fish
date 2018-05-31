@@ -81,7 +81,9 @@ end
 function __select_jdk_helper__
   set OLD_JH $JAVA_HOME
   set -x JAVA_HOME $argv[1]
+  echo $JAVA_HOME >>$jdk_cache
   echo "JAVA_HOME=$JAVA_HOME"
+
   set NEW_PATH $JAVA_HOME/bin
   for i in $PATH
     if test -z "$OLD_JH" -o $i != $OLD_JH/bin
@@ -89,6 +91,7 @@ function __select_jdk_helper__
     end
   end
   set -x PATH $NEW_PATH
+
   if test (count $argv) -gt 1
     for jdk in $argv[2..(count $argv)]
       echo $jdk >>$jdk_cache
