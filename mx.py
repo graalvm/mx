@@ -9888,26 +9888,16 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if cancel and (versionDescription, purpose) in _canceled_jdk_requests:
         return None
 
-    available = []
     def abort_not_found():
         msg = 'Could not find a JDK'
         if versionDescription:
             msg += ' ' + versionDescription
         if purpose:
             msg += ' for ' + purpose
+        import select_jdk
+        available = _filtered_jdk_configs(select_jdk.find_system_jdks(), versionCheck)
         if available:
-            msg += '\nThe following JDKs are available:\n  ' + '\n  '.join((jdk.home for jdk in available))
-
-            # Add the available JDKs to ~/.mx/jdk_cache
-            jdk_cache_content = set([a.home for a in available])
-            jdk_cache = join(dot_mx_dir(), 'jdk_cache')
-            if exists(jdk_cache):
-                with open(jdk_cache) as fp:
-                    jdk_cache_content.update((line.strip() for line in fp.readlines()))
-            with SafeFileCreation(jdk_cache) as sfc:
-                with open(sfc.tmpPath, 'w') as fp:
-                    for jdk in sorted(jdk_cache_content):
-                        print >> fp, jdk
+            msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
 
         msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
         msg += '\n{}/select_jdk.py can also be used to set these variables.'.format(dirname(__file__))
@@ -9915,7 +9905,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
 
     if defaultJdk:
         if not _default_java_home:
-            _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, available=available)
+            _default_java_home = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription)
             if not _default_java_home:
                 if not cancel:
                     abort_not_found()
@@ -9932,7 +9922,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
             _jdks_cache[cache_key] = jdk
             return jdk
 
-    jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription, available=available)
+    jdk = _find_jdk(versionCheck=versionCheck, versionDescription=versionDescription)
     if jdk:
         assert jdk not in _extra_java_homes
         _extra_java_homes = _sorted_unique_jdk_configs(_extra_java_homes + [jdk])
@@ -9954,7 +9944,7 @@ def _convert_compliance_to_version_check(requiredCompliance):
     versionCheck = requiredCompliance._exact_match
     return (versionCheck, versionDesc)
 
-def _find_jdk(versionCheck=None, versionDescription=None, available=None):
+def _find_jdk(versionCheck=None, versionDescription=None):
     """
     Selects a JDK and returns a JDKConfig object representing it.
 
@@ -9964,7 +9954,6 @@ def _find_jdk(versionCheck=None, versionDescription=None, available=None):
 
     :param versionCheck: a predicate to be applied when making the selection
     :param versionDescription: a description of `versionPredicate` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40")
-    :param available: a list that is extended with candidate JDKs found on the system
     :return: the JDK selected or None
     """
     assert (versionDescription and versionCheck) or (not versionDescription and not versionCheck)
@@ -9994,54 +9983,7 @@ def _find_jdk(versionCheck=None, versionDescription=None, available=None):
         candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
         source = 'EXTRA_JAVA_HOMES'
 
-    result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
-    if not result:
-        available.extend(_sorted_unique_jdk_configs(_find_available_jdks(versionCheck)))
-    return result
-
-_os_jdk_locations = {
-    'darwin': {
-        'bases': ['/Library/Java/JavaVirtualMachines'],
-        'suffixes': ['Contents/Home', '']
-    },
-    'linux': {
-        'bases': [
-            '/usr/lib/jvm',
-            '/usr/java'
-        ]
-    },
-    'openbsd': {
-        'bases': ['/usr/local/']
-    },
-    'solaris': {
-        'bases': ['/usr/jdk/instances']
-    },
-    'windows': {
-        'bases': [r'C:\Program Files\Java']
-    },
-}
-
-def _find_available_jdks(versionCheck):
-    candidateJdks = []
-    os_name = get_os()
-    if os_name in _os_jdk_locations:
-        jdkLocations = _os_jdk_locations[os_name]
-        for base in jdkLocations['bases']:
-            if exists(base):
-                if 'suffixes' in jdkLocations:
-                    for n in os.listdir(base):
-                        for suffix in jdkLocations['suffixes']:
-                            candidate = join(base, n, suffix)
-                            if exists(candidate):
-                                candidateJdks.append(candidate)
-                                break
-                else:
-                    candidateJdks += [join(base, n) for n in os.listdir(base)]
-
-    # Eliminate redundant candidates
-    candidateJdks = sorted(frozenset((realpath(jdk) for jdk in candidateJdks)))
-
-    return _filtered_jdk_configs(candidateJdks, versionCheck)
+    return _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
 
 def _sorted_unique_jdk_configs(configs):
     path_seen = set()
@@ -10091,7 +10033,7 @@ def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source
                         message += '. Set ' + source + ' to ' + candidate + ' instead.'
                 warn(message)
         else:
-            if versionCheck(jdk.version):
+            if not versionCheck or versionCheck(jdk.version):
                 filtered.append(jdk)
     return filtered
 
