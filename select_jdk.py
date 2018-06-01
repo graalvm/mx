@@ -26,7 +26,7 @@
 
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
-from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname
+from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
 import StringIO
 
 def is_valid_jdk(jdk):
@@ -63,12 +63,12 @@ def find_system_jdks():
                     jdks.add(realpath(jdk))
     return jdks
 
-def get_suite_env_file():
-    for n in os.listdir('.'):
+def get_suite_env_file(suite_dir=None):
+    for n in os.listdir(suite_dir or '.'):
         if n.startswith('mx.'):
             suite_py = join('.', n, 'suite.py')
             if exists(suite_py):
-                return join('.', n, 'env')
+                return abspath(join(suite_dir or '.', n, 'env'))
     return None
 
 def get_shell_commands(args, jdk, extra_jdks):
@@ -97,7 +97,7 @@ def apply_selection(args, jdk, extra_jdks):
         with open(args.shell_file, 'w') as fp:
             print >> fp, get_shell_commands(args, jdk, extra_jdks)
     else:
-        env = get_suite_env_file()
+        env = get_suite_env_file(args.suite_path)
         if env:
             with open(env, 'a') as fp:
                 print >> fp, 'JAVA_HOME=' + jdk
@@ -143,7 +143,9 @@ if __name__ == '__main__':
         shell_setvar_format_default = 'set -x %s %s'
         shell_PATH_sep_default = ' '
 
-    parser.add_argument('-s', '--shell-file', action='store', help='write shell commands for setting env vars to <path>', metavar='<path>')
+    shell_or_env = parser.add_mutually_exclusive_group()
+    shell_or_env.add_argument('-s', '--shell-file', action='store', help='write shell commands for setting env vars to <path>', metavar='<path>')
+    shell_or_env.add_argument('-p', '--suite-path', help='directory of suite whose env file is to be updated', metavar='<path>')
     parser.add_argument('--shell-setvar-format', action='store', help='format string for shell syntax to set a variable', metavar='<format>', default=shell_setvar_format_default)
     parser.add_argument('--shell-PATH-sep', action='store', help='separator between elements when setting PATH value', metavar='<sep>', default=shell_PATH_sep_default)
     parser.add_argument('jdks', nargs=REMAINDER, metavar='<primary jdk> [<secondary jdk>...]')

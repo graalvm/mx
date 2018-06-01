@@ -9900,7 +9900,11 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
             msg += '\nThe following JDKs are available:\n  ' + '\n  '.join(sorted([jdk.home for jdk in available]))
 
         msg += '\nSpecify one with the --java-home or --extra-java-homes option or with the JAVA_HOME or EXTRA_JAVA_HOMES environment variable.'
-        msg += '\n{}/select_jdk.py can also be used to set these variables.'.format(dirname(__file__))
+        p = _findPrimarySuiteMxDir()
+        if p:
+            msg += '\nOr run `{}/select_jdk.py -p {}` to set and persist these variables in {}.'.format(dirname(__file__), dirname(p), join(p, 'env'))
+        else:
+            msg += '\nOr run `{}/select_jdk.py` to set these variables.'.format(dirname(__file__))
         abort(msg)
 
     if defaultJdk:
