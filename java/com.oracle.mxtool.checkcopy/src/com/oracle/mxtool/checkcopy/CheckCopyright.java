@@ -974,7 +974,7 @@ public class CheckCopyright {
 
         @SuppressWarnings("unchecked")
         void setValue(boolean value) {
-            this.value = (T) new Boolean(value);
+            this.value = (T) Boolean.valueOf(value);
         }
 
         @SuppressWarnings("unchecked")

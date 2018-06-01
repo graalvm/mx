@@ -28,7 +28,7 @@ public class JavacDaemon extends CompilerDaemon {
 
     private final class JavacCompiler implements Compiler {
         public int compile(String[] args) throws Exception {
-            final Object receiver = javacMainClass.newInstance();
+            final Object receiver = javacMainClass.getDeclaredConstructor().newInstance();
             return (Integer) compileMethod.invoke(receiver, new Object[]{args});
         }
     }
