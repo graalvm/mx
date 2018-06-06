@@ -68,6 +68,7 @@ import fnmatch
 import copy
 import operator
 import calendar
+import multiprocessing
 
 # Define this machinery early in case other modules want to use them
 
@@ -188,20 +189,8 @@ def check_output(*popenargs, **kwargs):
         raise error
     return output
 
-# Support for jython
-def is_jython():
-    return sys.platform.startswith('java')
-
-if not is_jython():
-    import multiprocessing
-
 def cpu_count():
-    if is_jython():
-        from java.lang import Runtime
-        runtime = Runtime.getRuntime()
-        cpus = runtime.availableProcessors()
-    else:
-        cpus = multiprocessing.cpu_count()
+    cpus = multiprocessing.cpu_count()
     if _opts.cpu_count:
         return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
     else:
@@ -8870,31 +8859,11 @@ class Timer():
         print '{} took {} seconds'.format(self.name, elapsed)
         return None
 
-def get_jython_os():
-    from java.lang import System as System
-    os_name = System.getProperty('os.name').lower()
-    if System.getProperty('isCygwin'):
-        return 'cygwin'
-    elif os_name.startswith('mac'):
-        return 'darwin'
-    elif os_name.startswith('linux'):
-        return 'linux'
-    elif os_name.startswith('openbsd'):
-        return 'openbsd'
-    elif os_name.startswith('sunos'):
-        return 'solaris'
-    elif os_name.startswith('win'):
-        return 'windows'
-    else:
-        abort('Unknown operating system ' + os_name)
-
 def get_os():
     """
     Get a canonical form of sys.platform.
     """
-    if is_jython():
-        return get_jython_os()
-    elif sys.platform.startswith('darwin'):
+    if sys.platform.startswith('darwin'):
         return 'darwin'
     elif sys.platform.startswith('linux'):
         return 'linux'
@@ -10334,11 +10303,10 @@ def _get_new_progress_group_args():
     """
     preexec_fn = None
     creationflags = 0
-    if not is_jython():
-        if get_os() == 'windows':
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
-            preexec_fn = os.setsid
+    if get_os() == 'windows':
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        preexec_fn = os.setsid
     return preexec_fn, creationflags
 
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
@@ -11202,7 +11170,7 @@ def expandvars_in_property(value):
 def _is_process_alive(p):
     if isinstance(p, subprocess.Popen):
         return p.poll() is None
-    assert is_jython() or isinstance(p, multiprocessing.Process), p
+    assert isinstance(p, multiprocessing.Process), p
     return p.is_alive()
 
 def _send_sigquit():
@@ -11547,11 +11515,6 @@ def build(cmd_args, parser=None):
         if args.parallelize is None:
             # Enable parallel compilation by default
             args.parallelize = True
-
-    if is_jython():
-        if args.parallelize:
-            warn('multiprocessing not available in jython: can not use -p')
-            args.parallelize = False
 
     if not args.force_javac and args.jdt is not None:
         if not args.jdt.endswith('.jar'):
@@ -17673,12 +17636,11 @@ def main():
 
     def term_handler(signum, frame):
         abort(1, killsig=signal.SIGTERM)
-    if not is_jython():
-        signal.signal(signal.SIGTERM, term_handler)
+    signal.signal(signal.SIGTERM, term_handler)
 
     def quit_handler(signum, frame):
         _send_sigquit()
-    if not is_jython() and get_os() != 'windows':
+    if get_os() != 'windows':
         signal.signal(signal.SIGQUIT, quit_handler)
 
     try:
