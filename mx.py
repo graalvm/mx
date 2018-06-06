@@ -16382,7 +16382,7 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
     if not args.quiet:
         log("CI setup is fine.")
 
-
+__compile_mx_class_lock = multiprocessing.Lock()
 def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
     if not isinstance(javaClassNames, list):
         javaClassNames = [javaClassNames]
@@ -16396,32 +16396,33 @@ def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extr
         assert len(javaClassNames) == 1, 'can only compile multiple sources when producing a jar'
         output = javaClasses[0]
     if not exists(output) or TimeStampFile(output).isOlderThan(javaSources):
-        ensure_dir_exists(binDir)
-        javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
-        cmd = [javac, '-d', _cygpathU2W(binDir)]
-        if classpath:
-            cmd.extend(['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)])
-        if extraJavacArgs:
-            cmd.extend(extraJavacArgs)
-        cmd += [_cygpathU2W(s) for s in javaSources]
-        try:
-            subprocess.check_call(cmd)
-            if as_jar:
-                classfiles = []
-                for root, _, filenames in os.walk(binDir):
-                    for n in filenames:
-                        if n.endswith('.class'):
-                            # Get top level class name
-                            if '$' in n:
-                                className = n[0:n.find('$')]
-                            else:
-                                className = n[:-len('.class')]
-                            if className in javaClassNames:
-                                classfiles.append(os.path.relpath(join(root, n), binDir))
-                subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output)] + classfiles, cwd=_cygpathU2W(binDir))
-            logv('[created/updated ' + output + ']')
-        except subprocess.CalledProcessError as e:
-            abort('failed to compile ' + str(javaSources) + ' or create ' + output + ': ' + str(e))
+        with __compile_mx_class_lock:
+            ensure_dir_exists(binDir)
+            javac = jdk.javac if jdk else get_jdk(tag=DEFAULT_JDK_TAG).javac
+            cmd = [javac, '-d', _cygpathU2W(binDir)]
+            if classpath:
+                cmd.extend(['-cp', _separatedCygpathU2W(binDir + os.pathsep + classpath)])
+            if extraJavacArgs:
+                cmd.extend(extraJavacArgs)
+            cmd += [_cygpathU2W(s) for s in javaSources]
+            try:
+                subprocess.check_call(cmd)
+                if as_jar:
+                    classfiles = []
+                    for root, _, filenames in os.walk(binDir):
+                        for n in filenames:
+                            if n.endswith('.class'):
+                                # Get top level class name
+                                if '$' in n:
+                                    className = n[0:n.find('$')]
+                                else:
+                                    className = n[:-len('.class')]
+                                if className in javaClassNames:
+                                    classfiles.append(os.path.relpath(join(root, n), binDir))
+                    subprocess.check_call([jdk.jar, 'cfM', _cygpathU2W(output)] + classfiles, cwd=_cygpathU2W(binDir))
+                logv('[created/updated ' + output + ']')
+            except subprocess.CalledProcessError as e:
+                abort('failed to compile ' + str(javaSources) + ' or create ' + output + ': ' + str(e))
     return myDir, output if as_jar else binDir
 
 def _add_command_primary_option(parser):
@@ -17657,7 +17658,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.173.0")  # GR-10076
+version = VersionSpec("5.174.0")  # GR-10250, GR-10190
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
