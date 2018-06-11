@@ -174,6 +174,12 @@ class DynamicVarScope(object):
 
 currently_loading_suite = DynamicVar(None)
 
+def safe_relpath(path, start):
+    """Return a relative version of a path if possible. Otherwise just return path"""
+    try:
+        return os.path.relpath(path, start)
+    except ValueError:
+        return path
 
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
@@ -6929,7 +6935,7 @@ def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, d
                         for filename in filenames:
                             emptyJavadoc = False
                             src = join(dirpath, filename)
-                            dst = os.path.relpath(src, javadocDir)
+                            dst = safe_relpath(src, javadocDir)
                             arc.write(src, dst)
                 shutil.rmtree(tmpDir)
                 if emptyJavadoc:
@@ -14691,16 +14697,16 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         for library in libraries:
             sourcePath = None
             if library.isLibrary():
-                path = os.path.relpath(library.get_path(True), s.dir)
+                path = safe_relpath(library.get_path(True), s.dir)
                 if library.sourcePath:
-                    sourcePath = os.path.relpath(library.get_source_path(True), s.dir)
+                    sourcePath = safe_relpath(library.get_source_path(True), s.dir)
             elif library.isMavenProject():
-                path = os.path.relpath(library.get_path(True), s.dir)
-                sourcePath = os.path.relpath(library.get_source_path(True), s.dir)
+                path = safe_relpath(library.get_path(True), s.dir)
+                sourcePath = safe_relpath(library.get_source_path(True), s.dir)
             elif library.isJARDistribution():
-                path = os.path.relpath(library.path, s.dir)
+                path = safe_relpath(library.path, s.dir)
                 if library.sourcesPath:
-                    sourcePath = os.path.relpath(library.sourcesPath, s.dir)
+                    sourcePath = safe_relpath(library.sourcesPath, s.dir)
             else:
                 abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
             make_library(library.name, path, sourcePath)
@@ -14740,9 +14746,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 for apDep in processors:
                     def processApDep(dep, edge):
                         if dep.isLibrary() or dep.isJARDistribution():
-                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.path, s.dir)})
+                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + safe_relpath(dep.path, s.dir)})
                         elif dep.isProject():
-                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.output_dir(), s.dir)})
+                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + safe_relpath(dep.output_dir(), s.dir)})
                     apDep.walk_deps(visit=processApDep)
                 compilerXml.close('processorPath')
                 for module in modules:
