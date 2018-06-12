@@ -314,11 +314,11 @@ class DepEdge:
 class SuiteConstituent(object):
     __metaclass__ = ABCMeta
 
-    """
-    :type name: str
-    :type suite: Suite
-    """
     def __init__(self, suite, name):
+        """
+        :type name: str
+        :type suite: Suite
+        """
         self.name = name
         self.suite = suite
 
@@ -603,7 +603,7 @@ class Dependency(SuiteConstituent):
                         current_suite_dep = self.suite.dependency(dep.name, fatalIfMissing=False)
                         if dep != current_suite_dep:
                             raise abort('inter-suite reference must use qualified form ' + dep.suite.name + ':' + dep.name, context=self)
-                        dep = current_suite_dep # prefer our version
+                        dep = current_suite_dep  # prefer our version
                     if self.suite is not dep.suite and dep.internal:
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
                     selfJC = getattr(self, 'javaCompliance', None)
@@ -2290,13 +2290,15 @@ class LayoutDistribution(AbstractDistribution):
         logv("'{}'!='{}'".format(saved_layout, current_layout))
         return False
 
-    def find_single_source_location(self, source, missing_if_fatal=True, abort_on_multiple=False):
-        locations = self.find_source_location(source, missing_if_fatal=missing_if_fatal)
+    def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
+        locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
         if len(locations) > 1:
             abort_or_warn("Found multiple locations for '{}' in '{}': {}".format(source, self.name, locations), abort_on_multiple)
-        return locations[0]
+        if len(locations) > 0:
+            return locations[0]
+        return None
 
-    def find_source_location(self, source, missing_if_fatal=True):
+    def find_source_location(self, source, fatal_if_missing=True):
         if source not in self._source_location_cache:
             source_dict = LayoutDistribution._as_source_dict(source, self.name, "??", self.path_substitutions, self.string_substitutions, self, self)
             source_type = source_dict['source_type']
@@ -2315,7 +2317,7 @@ class LayoutDistribution(AbstractDistribution):
                                 dest = join(dest, basename(arcname))
                             found_dest.append(dest)
                     self._source_location_cache[source] = found_dest
-                    if missing_if_fatal and not found_dest:
+                    if fatal_if_missing and not found_dest:
                         abort("Could not find '{}' in '{}'".format(source, self.name))
                 else:
                     abort("find_source_location: path is not supported: " + source)
@@ -4250,6 +4252,7 @@ class BaseLibrary(Dependency):
         """
         return text.format(**vars(self))
 
+
 class ResourceLibrary(BaseLibrary):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
@@ -4601,6 +4604,7 @@ class LibraryDownloadTask(BuildTask):
 
     def cleanForbidden(self):
         return True
+
 
 """
 Abstracts the operations of the version control systems
