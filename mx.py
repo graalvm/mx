@@ -6824,7 +6824,7 @@ def _deploy_binary(args, suite):
     dists = suite.dists
     if args.only:
         only = args.only.split(',')
-        dists = [d for d in dists if d.name in only]
+        dists = [d for d in dists if d.name in only or d.qualifiedName() in only]
     if args.platform_dependent:
         dists = [d for d in dists if d.platformDependent]
 
@@ -17684,7 +17684,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.2")  # fatal, missing
+version = VersionSpec("5.174.3")  # GR-10369
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
