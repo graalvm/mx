@@ -14510,11 +14510,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
                 if not module_files_only:
                     declared_modules.add(project_name)
-                    if getattr(host, "suite", None):
-                        suite = host.suite
-                    else:
-                        suite = host
-                    moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, suite.dir)
+                    moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_external_projects:
