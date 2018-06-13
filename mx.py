@@ -6824,7 +6824,7 @@ def _deploy_binary(args, suite):
     dists = suite.dists
     if args.only:
         only = args.only.split(',')
-        dists = [d for d in dists if d.name in only]
+        dists = [d for d in dists if d.name in only or d.qualifiedName() in only]
     if args.platform_dependent:
         dists = [d for d in dists if d.platformDependent]
 
