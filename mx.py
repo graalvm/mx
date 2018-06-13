@@ -9122,25 +9122,42 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
     d.resolveDeps()
     return d
 
-def _get_reasons_dep_was_removed(name):
+def _get_reasons_dep_was_removed(name, indent):
     """
     Gets the causality chain for the dependency named `name` being removed.
     Returns None if no dependency named `name` was removed.
     """
     reason = _removedDeps.get(name)
     if reason:
-        r = _get_reasons_dep_was_removed(reason)
+        if isinstance(reason, tuple):
+            primary, secondary = reason
+        else:
+            primary = reason
+            secondary = []
+        causes = []
+
+        r = _get_reasons_dep_was_removed(primary, indent + 1)
         if r:
-            return ['{} was removed because {} was removed'.format(name, reason)] + r
-        return [reason]
+            causes.append('{}{} was removed because {} was removed:'.format('  ' * indent, name, primary))
+            causes.extend(r)
+        else:
+            causes.append(('  ' * indent) + primary + (':' if secondary else ''))
+
+        for s in secondary:
+            r = _get_reasons_dep_was_removed(s, indent + 1)
+            if r:
+                causes.extend(r)
+            else:
+                causes.append(('  ' * indent) + s)
+
+        return causes
     return None
 
 def _missing_dep_message(depName, depType):
-    msg = '{} named {} was not found'.format(depType, depName)
-    reasons = _get_reasons_dep_was_removed(depName)
+    reasons = _get_reasons_dep_was_removed(depName, 1)
     if reasons:
-        msg += ':\n  ' + '\n  '.join(reasons)
-    return msg
+        return '{} named {} was removed:\n{}'.format(depType, depName, '\n'.join(reasons))
+    return '{} named {} was not found'.format(depType, depName)
 
 def distribution(name, fatalIfMissing=True, context=None):
     """
@@ -16960,14 +16977,16 @@ def _remove_unsatisfied_deps():
         elif dep.isDistribution():
             dist = dep
             if dist.deps:
+                distRemovedDeps = []
                 for distDep in list(dist.deps):
                     if distDep in removedDeps:
                         logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
                         dist.deps.remove(distDep)
+                        distRemovedDeps.append(distDep)
                 if not dist.deps:
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
-                    removedDeps[dep] = reason
+                    removedDeps[dep] = (reason, [e.name for e in distRemovedDeps])
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
             if isinstance(reasonAttr, bool):
@@ -16993,6 +17012,8 @@ def _remove_unsatisfied_deps():
 
     res = OrderedDict()
     for dep, reason in removedDeps.iteritems():
+        if not isinstance(reason, str):
+            assert isinstance(reason, tuple)
         res[dep.name] = reason
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
@@ -17658,7 +17679,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.0")  # GR-10250, GR-10190
+version = VersionSpec("5.174.1")  # GR-10358
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
