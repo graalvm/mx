@@ -51,6 +51,7 @@ import hashlib
 import itertools
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
+from xml.dom.minidom import parseString as minidomParseString
 import shutil, re
 import pipes
 import difflib
@@ -6598,6 +6599,38 @@ class Repository(SuiteConstituent):
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
 
+_maven_local_repository = None
+def MavenLocalRepository():
+    global _maven_local_repository
+
+    if not _maven_local_repository:
+        class _MavenLocalRepository(Repository):
+            """This singleton class represents mavens local repository (usually under ~/.m2/repository)"""
+            def __init__(self):
+                Repository.__init__(self, suite('mx'), 'maven local repository', None, [])
+                try:
+                    res = { 'lines': '', 'xml': False }
+                    def xml_settings_grabber(line):
+                        if not res['xml'] and not res['lines'] and line.startswith('<settings '):
+                            res['xml'] = True
+                        if res['xml']:
+                            res['lines'] += line
+                            if line.startswith('</settings>'):
+                                res['xml'] = False
+                    run_maven(['help:effective-settings'], out=xml_settings_grabber)
+                    dom = minidomParseString(res['lines'])
+                    local_repo = dom.getElementsByTagName('localRepository')[0].firstChild.data
+                    self.url = 'file://' + local_repo
+                except:
+                    abort('Unable to determine maven local repository URL')
+
+            def resolveLicenses(self):
+                return True
+
+        _maven_local_repository = _MavenLocalRepository()
+
+    return _maven_local_repository;
+
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
         name = suite.name
@@ -6741,10 +6774,13 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
     if settingsXml:
         cmd += ['-s', settingsXml]
 
-    if gpg:
-        cmd += ['gpg:sign-and-deploy-file']
+    if repositoryUrl != MavenLocalRepository().url:
+        if gpg:
+            cmd += ['gpg:sign-and-deploy-file']
+        else:
+            cmd += ['deploy:deploy-file']
     else:
-        cmd += ['deploy:deploy-file']
+        cmd += ['install:install-file']
 
     if keyid:
         cmd += ['-Dgpg.keyname=' + keyid]
@@ -6775,7 +6811,8 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
         cmd.append('-Dclassifiers=proguard')
         cmd.append('-Dtypes=map')
 
-    log('Deploying {0}:{1}...'.format(groupId, artifactId))
+    action = 'Installing' if repositoryUrl == MavenLocalRepository().url else 'Deploying'
+    log('{2} {0}:{1}...'.format(groupId, artifactId, action))
     if dryRun:
         logv(' '.join((pipes.quote(t) for t in cmd)))
     else:
@@ -6793,8 +6830,8 @@ def deploy_binary(args):
     parser.add_argument('--platform-dependent', action='store_true', help='Limit deployment to platform dependent distributions only')
     parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
-    parser.add_argument('repository_id', metavar='repository-id', action='store', help='Repository ID used for binary deploy')
-    parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for binary deploy, if no url is given, the repository-id is looked up in suite.py')
+    parser.add_argument('repository_id', metavar='repository-id', nargs='?', action='store', help='Repository ID used for binary deploy. If none is given, mavens local repository is used instead.')
+    parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for binary deploy. If no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
 
     if args.all_suites:
@@ -6841,18 +6878,22 @@ def _deploy_binary(args, suite):
 
     if args.url:
         repo = Repository(None, args.repository_id, args.url, repository(args.repository_id).licenses)
-    else:
+    elif args.repository_id:
         if not suite.getMxCompatibility().supportsRepositories():
             abort("Repositories are not supported in {}'s suite version".format(suite.name))
         repo = repository(args.repository_id)
+    else:
+        repo = MavenLocalRepository()
 
     version = _versionGetter(suite)
-    log('Deploying suite {0} version {1}'.format(suite.name, version))
+    if not args.only:
+        log('Deploying suite {0} version {1}'.format(suite.name, version))
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
+            metadata_append = '-local' if repo == MavenLocalRepository() else ''
             url = mx_urlrewrites.rewriteurl(repo.url)
-            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version)
+            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
             if download_file_exists([metadata_url]):
                 log('In suite {0} version {1} skip existing distribution {2}'.format(suite.name, version, dist.name))
             else:
@@ -6862,7 +6903,7 @@ def _deploy_binary(args, suite):
             return
 
     _maven_deploy_dists(dists, _versionGetter, repo.name, repo.url, args.settings, dryRun=args.dry_run, licenses=repo.licenses, deployMapFiles=True)
-    if not args.platform_dependent:
+    if not args.platform_dependent and not args.only:
         _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo.name, repo.url, settingsXml=args.settings, dryRun=args.dry_run)
 
     if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
@@ -6895,14 +6936,16 @@ def _deploy_binary(args, suite):
                 try_remote_branch_update(deploy_branch_name)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
-    if licenses is None:
-        licenses = []
-    for dist in dists:
-        if not dist.theLicense:
-            abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repository_id, dist.name))
-        for distLicense in dist.theLicense:
-            if distLicense not in licenses:
-                abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repository_id, dist.name))
+    if url != MavenLocalRepository().url:
+        # Non-local deployment requires license checking
+        if licenses is None:
+            licenses = []
+        for dist in dists:
+            if not dist.theLicense:
+                abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repository_id, dist.name))
+            for distLicense in dist.theLicense:
+                if distLicense not in licenses:
+                    abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repository_id, dist.name))
     for dist in dists:
         if dist.isJARDistribution():
             pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
