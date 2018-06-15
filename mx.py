@@ -6600,7 +6600,7 @@ class Repository(SuiteConstituent):
         self.licenses = get_license(self.licenses)
 
 _maven_local_repository = None
-def MavenLocalRepository():
+def maven_local_repository():  # pylint: disable=invalid-name
     global _maven_local_repository
 
     if not _maven_local_repository:
@@ -6609,7 +6609,7 @@ def MavenLocalRepository():
             def __init__(self):
                 Repository.__init__(self, suite('mx'), 'maven local repository', None, [])
                 try:
-                    res = { 'lines': '', 'xml': False }
+                    res = {'lines': '', 'xml': False}
                     def xml_settings_grabber(line):
                         if not res['xml'] and not res['lines'] and line.startswith('<settings '):
                             res['xml'] = True
@@ -6629,7 +6629,7 @@ def MavenLocalRepository():
 
         _maven_local_repository = _MavenLocalRepository()
 
-    return _maven_local_repository;
+    return _maven_local_repository
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -6774,7 +6774,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
     if settingsXml:
         cmd += ['-s', settingsXml]
 
-    if repositoryUrl != MavenLocalRepository().url:
+    if repositoryUrl != maven_local_repository().url:
         if gpg:
             cmd += ['gpg:sign-and-deploy-file']
         else:
@@ -6811,7 +6811,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repositor
         cmd.append('-Dclassifiers=proguard')
         cmd.append('-Dtypes=map')
 
-    action = 'Installing' if repositoryUrl == MavenLocalRepository().url else 'Deploying'
+    action = 'Installing' if repositoryUrl == maven_local_repository().url else 'Deploying'
     log('{2} {0}:{1}...'.format(groupId, artifactId, action))
     if dryRun:
         logv(' '.join((pipes.quote(t) for t in cmd)))
@@ -6883,7 +6883,7 @@ def _deploy_binary(args, suite):
             abort("Repositories are not supported in {}'s suite version".format(suite.name))
         repo = repository(args.repository_id)
     else:
-        repo = MavenLocalRepository()
+        repo = maven_local_repository()
 
     version = _versionGetter(suite)
     if not args.only:
@@ -6891,7 +6891,7 @@ def _deploy_binary(args, suite):
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
-            metadata_append = '-local' if repo == MavenLocalRepository() else ''
+            metadata_append = '-local' if repo == maven_local_repository() else ''
             url = mx_urlrewrites.rewriteurl(repo.url)
             metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
             if download_file_exists([metadata_url]):
@@ -6936,7 +6936,7 @@ def _deploy_binary(args, suite):
                 try_remote_branch_update(deploy_branch_name)
 
 def _maven_deploy_dists(dists, versionGetter, repository_id, url, settingsXml, dryRun=False, validateMetadata='none', licenses=None, gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
-    if url != MavenLocalRepository().url:
+    if url != maven_local_repository().url:
         # Non-local deployment requires license checking
         if licenses is None:
             licenses = []
