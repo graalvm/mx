@@ -16542,10 +16542,7 @@ def mvn_local_install(group_id, artifact_id, path, version, repo=None):
                version, '-Dpackaging=jar', '-Dfile=' + path, '-DcreateChecksum=true'] + repoArgs)
 
 def maven_install(args):
-    """install the primary suite in a local maven repository for testing
-
-    This is mainly for testing as it only actually does the install if --local is set.
-    """
+    """install the primary suite in a local maven repository for testing"""
     parser = ArgumentParser(prog='mx maven-install')
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
