@@ -14510,11 +14510,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
                 if not module_files_only:
                     declared_modules.add(project_name)
-                    if getattr(host, "suite", None):
-                        suite = host.suite
-                    else:
-                        suite = host
-                    moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, suite.dir)
+                    moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_external_projects:
@@ -17684,7 +17680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.4")  # GR-10417
+version = VersionSpec("5.174.5")  # external projects suite
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
