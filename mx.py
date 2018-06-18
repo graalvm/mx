@@ -11094,7 +11094,7 @@ def log(msg=None):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        print msg + "\n",
+        print str(msg) + "\n",
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
@@ -17684,7 +17684,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.3")  # GR-10369
+version = VersionSpec("5.174.4")  # GR-10417
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
