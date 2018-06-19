@@ -17680,7 +17680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.5")  # external projects suite
+version = VersionSpec("5.174.6")  # enable benchmark
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
