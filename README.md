@@ -65,14 +65,15 @@ and `-target` javac options when compiling the project.
 * The JDKs providing any internal JDK API used by the project. A project that does not use any internal JDK API should specify an
 open range (e.g. `8+`). Otherwise, a JDK matching the exact version or range is required to compile the project.
 
+The `multiReleaseJarVersion` attribute is explained in the "Versioning sources for different JDK releases" section below.
+
+### Selecting JDKs
+
 Specifying JDKs to mx is done via the `--java-home` and `--extra-java-homes` options or
 via the `JAVA_HOME` and `EXTRA_JAVA_HOMES` environment variables.
 An option has precedence over the corresponding environment variable.
-Mx comes with a `select_jdk` helper function for various shells that simplifies
-switching between different values for `JAVA_HOME` and `EXTRA_JAVA_HOMES`. The
-function definition is in a shell specific file next to `mx.py` (e.g. `select_jdk.bash`[select_jdk.bash]).
-
-The `multiReleaseJarVersion` attribute is explained in the "Versioning sources for different JDK releases" section below.
+Mx comes with a [`select_jdk.py`](select_jdk.py) helper that simplifies
+switching between different values for `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
 
 ### Unit testing with Junit <a name="junit"></a>
 
