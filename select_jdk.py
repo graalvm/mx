@@ -86,7 +86,7 @@ def get_PATH_sep(shell):
 def get_shell_commands(args, jdk, extra_jdks):
     setvar_format = get_setvar_format(args.shell)
     shell_commands = StringIO.StringIO()
-    print >> shell_commands,  setvar_format % ('JAVA_HOME', jdk)
+    print >> shell_commands, setvar_format % ('JAVA_HOME', jdk)
     if extra_jdks:
         print >> shell_commands, setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks))
     path = os.environ.get('PATH').split(os.pathsep)
