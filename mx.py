@@ -2162,7 +2162,7 @@ class LayoutDistribution(AbstractDistribution):
             def _rel_arcname(_source_file):
                 return os.path.relpath(_source_file, files_root)
             _arcname_f = _rel_arcname
-            if not file_path.startswith(self.suite.vc_dir):
+            if not file_path.startswith(self.suite.vc_dir + os.path.sep):
                 # TODO should always abort, tolerate absolute paths for now
                 abolute_source = isabs(source_path)
                 if abolute_source:
@@ -17678,7 +17678,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.7")  # respect abortOnError
+version = VersionSpec("5.174.8")  # GR-10465
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
