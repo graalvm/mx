@@ -6164,19 +6164,17 @@ class GitConfig(VC):
             return False
 
     def root(self, directory, abortOnError=True):
-        if not self.check_for_git(abortOnError=abortOnError):
-            metadata = VC._find_metadata_dir(directory, '.git')
-            if metadata:
-                abort('Git repository found in {} but Git is not installed'.format(dirname(metadata)))
-            return None
-        try:
-            out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
-            return out.strip()
-        except subprocess.CalledProcessError:
-            if abortOnError:
-                abort('`git rev-parse --show-toplevel` (root) failed')
-            else:
-                return None
+        if VC._find_metadata_dir(directory, '.git'):
+            if self.check_for_git(abortOnError=abortOnError):
+                try:
+                    out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
+                    return out.strip()
+                except subprocess.CalledProcessError:
+                    if abortOnError:
+                        abort('`git rev-parse --show-toplevel` (root) failed')
+        elif abortOnError:
+            abort('No .git directory')
+        return None
 
 
 
@@ -17680,7 +17678,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.6")  # enable benchmark
+version = VersionSpec("5.174.7")  # respect abortOnError
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
