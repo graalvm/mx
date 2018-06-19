@@ -11575,8 +11575,11 @@ def build(cmd_args, parser=None):
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
+            log('Dependencies removed from build:')
             for _, reason in _removedDeps.iteritems():
-                log(reason)
+                if isinstance(reason, tuple):
+                    reason, _ = reason
+                log(' {}'.format(reason))
 
         # Omit Libraries so that only the ones required to build other
         # dependencies are downloaded
