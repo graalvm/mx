@@ -6820,7 +6820,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repo, src
     else:
         run_maven(cmd)
 
-def _deploy_skip_existing(args , dists, version, repo):
+def _deploy_skip_existing(args, dists, version, repo):
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
@@ -6828,7 +6828,7 @@ def _deploy_skip_existing(args , dists, version, repo):
             url = mx_urlrewrites.rewriteurl(repo.url)
             metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
             if download_file_exists([metadata_url]):
-                log('Skip existing distribution {}'.format(dist.qualifiedName()))
+                log('Skip existing {}:{}'.format(dist.maven_group_id(), dist.maven_artifact_id()))
             else:
                 non_existing_dists.append(dist)
         return non_existing_dists
