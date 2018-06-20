@@ -71,11 +71,24 @@ def get_suite_env_file(suite_dir=None):
                 return abspath(join(suite_dir or '.', n, 'env'))
     return None
 
+def get_setvar_format(shell):
+    if shell == 'csh':
+        return 'setenv %s %s'
+    if shell == 'fish':
+        return 'set -x %s %s'
+    return 'export %s=%s'
+
+def get_PATH_sep(shell):
+    if shell == 'fish':
+        return ' '
+    return os.pathsep
+
 def get_shell_commands(args, jdk, extra_jdks):
+    setvar_format = get_setvar_format(args.shell)
     shell_commands = StringIO.StringIO()
-    print >> shell_commands, args.shell_setvar_format % ('JAVA_HOME', jdk)
+    print >> shell_commands, setvar_format % ('JAVA_HOME', jdk)
     if extra_jdks:
-        print >> shell_commands, args.shell_setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks))
+        print >> shell_commands, setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks))
     path = os.environ.get('PATH').split(os.pathsep)
     if path:
         jdk_bin = join(jdk, 'bin')
@@ -85,7 +98,7 @@ def get_shell_commands(args, jdk, extra_jdks):
             path = [e if e != replace else jdk_bin for e in path]
         else:
             path.append(jdk_bin)
-        print >> shell_commands, args.shell_setvar_format % ('PATH', args.shell_PATH_sep.join(path))
+        print >> shell_commands, setvar_format % ('PATH', get_PATH_sep(args.shell).join(path))
     return shell_commands.getvalue().strip()
 
 def apply_selection(args, jdk, extra_jdks):
@@ -116,8 +129,7 @@ if __name__ == '__main__':
         the explicitly supplied JDKs or on system JDKs plus previously selected JDKs (cached in ~/.mx/jdk_cache).
 
         If the -s/--shell-source option is given, settings appropriate for the current shell are written to
-        the given file such that it can be eval'ed in the shell to apply the settings. For example, in
-        ~/.config/fish/config.fish:
+        the given file such that it can be eval'ed in the shell to apply the settings. For example, in ~/.config/fish/config.fish:
 
             if test -x (dirname (which mx))/select_jdk.py
                 function select_jdk
@@ -128,29 +140,39 @@ if __name__ == '__main__':
                 end
             end
 
+        or in ~/.bashrc:
+
+            if [ -x $(dirname $(which mx))/select_jdk.py ]; then
+                function select_jdk {
+                    TMP_FILE=select_jdk.$$
+                    eval $(dirname $(which mx))/select_jdk.py -s $TMP_FILE "$@"
+                    source $TMP_FILE
+                    rm $TMP_FILE
+                }
+            fi
+
         In the absence of -s, if the current directory looks like a suite, the mx.<suite>/env file is
         created/updated with the selected values for JAVA_HOME and EXTRA_JAVA_HOMES.
 
         Otherwise, the settings are printed such that they can applied manually.
     """)
 
-    shell_setvar_format_default = 'export %s=%s'
-    shell_PATH_sep_default = os.pathsep
-    shell = os.environ.get('SHELL')
-    if shell.endswith('csh'):
-        shell_setvar_format_default = 'setenv %s %s'
-    elif shell.endswith('fish'):
-        shell_setvar_format_default = 'set -x %s %s'
-        shell_PATH_sep_default = ' '
-
     shell_or_env = parser.add_mutually_exclusive_group()
     shell_or_env.add_argument('-s', '--shell-file', action='store', help='write shell commands for setting env vars to <path>', metavar='<path>')
     shell_or_env.add_argument('-p', '--suite-path', help='directory of suite whose env file is to be updated', metavar='<path>')
-    parser.add_argument('--shell-setvar-format', action='store', help='format string for shell syntax to set a variable', metavar='<format>', default=shell_setvar_format_default)
-    parser.add_argument('--shell-PATH-sep', action='store', help='separator between elements when setting PATH value', metavar='<sep>', default=shell_PATH_sep_default)
+    parser.add_argument('--shell', action='store', help='shell syntax to use for commands', metavar='<format>', choices=['sh', 'fish', 'csh'])
     parser.add_argument('jdks', nargs=REMAINDER, metavar='<primary jdk> [<secondary jdk>...]')
 
     args = parser.parse_args()
+
+    if args.shell is None:
+        shell = os.environ.get('SHELL')
+        if shell.endswith('fish'):
+            args.shell = 'fish'
+        elif shell.endswith('csh'):
+            args.shell = 'csh'
+        else:
+            args.shell = 'sh'
 
     jdk_cache_path = join(expanduser('~'), '.mx', 'jdk_cache')
     if len(args.jdks) != 0:

@@ -11575,8 +11575,11 @@ def build(cmd_args, parser=None):
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
+            log('Dependencies removed from build:')
             for _, reason in _removedDeps.iteritems():
-                log(reason)
+                if isinstance(reason, tuple):
+                    reason, _ = reason
+                log(' {}'.format(reason))
 
         # Omit Libraries so that only the ones required to build other
         # dependencies are downloaded
@@ -17689,7 +17692,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.0")  # GR-10474
+version = VersionSpec("5.175.1")  # GR-10448
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
