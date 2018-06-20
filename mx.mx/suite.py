@@ -53,7 +53,6 @@ suite = {
     "FINDBUGS_DIST" : {
       "urls" : [
         "https://github.com/graalvm/mx/releases/download/findbugs-3.0.0/findbugs-3.0.0.zip",
-        "http://sourceforge.net/projects/findbugs/files/findbugs/3.0.0/findbugs-3.0.0.zip/download",
       ],
       "sha1" : "6e56d67f238dbcd60acb88a81655749aa6419c5b",
     },
