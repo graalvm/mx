@@ -6752,6 +6752,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         pom.open('dependencies')
         for dep in directDistDeps:
             if dep.suite.internal:
+                warn("_genPom({}): ignoring internal dependency {}".format(dist, dep))
                 continue
             if validateMetadata != 'none' and not (dep.isJARDistribution() and dep.maven):
                 if validateMetadata == 'full':
@@ -7072,7 +7073,7 @@ def maven_deploy(args):
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
-    parser.add_argument('--all-distributions', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
+    parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
@@ -7097,9 +7098,9 @@ def maven_deploy(args):
         _suites = primary_or_specific_suites()
 
     def distMatcher(dist):
-        if args.all_distributions:
-            return True
-        return dist.isJARDistribution() and dist.maven and not dist.is_test_distribution()
+        if not dist.isJARDistribution() and not args.all_distribution_types:
+            return False
+        return getattr(d, 'maven', False) and not dist.is_test_distribution()
 
     for s in _suites:
         dists = [d for d in s.dists if distMatcher(d)]
@@ -7120,6 +7121,7 @@ def maven_deploy(args):
         dists = _deploy_skip_existing(args, dists, versionGetter(s), repo)
         if not dists and not args.all_suites:
             warn("No distribution to deploy in " + s.name)
+            continue
 
         for dist in dists:
             if not dist.exists():
@@ -7127,9 +7129,8 @@ def maven_deploy(args):
 
         generateJavadoc = None if args.suppress_javadoc else s.getMxCompatibility().mavenDeployJavadoc()
 
-        if dists:
-            action = 'Installing' if repo == maven_local_repository() else 'Deploying'
-            log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
+        action = 'Installing' if repo == maven_local_repository() else 'Deploying'
+        log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
         _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
 
 
