@@ -11,7 +11,7 @@ install:
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz
-      wget https://lafo.ssw.uni-linz.ac.at/pub/eclipse/eclipse-jdk8-linux-x86_64.tar.gz -O $ECLIPSE_TAR
+      wget http://archive.eclipse.org/eclipse/downloads/drops4/R-4.5.2-201602121500/eclipse-SDK-4.5.2-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
       tar -C $TRAVIS_BUILD_DIR/.. -xf $ECLIPSE_TAR
       export ECLIPSE_EXE=$TRAVIS_BUILD_DIR/../eclipse/eclipse
       export JDT=$TRAVIS_BUILD_DIR/ecj.jar
