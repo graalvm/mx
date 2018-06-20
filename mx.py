@@ -9402,6 +9402,9 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         if invalid:
             abort('class path roots must be classpath dependencies: ' + str(invalid))
 
+    if not roots:
+        return []
+
     if excludes is None:
         excludes = []
     else:
@@ -11179,8 +11182,10 @@ def check_get_env(key):
 def get_env(key, default=None):
     """
     Gets an environment variable.
+    :param default: default values if the environment variable is not set.
+    :type default: str | None
     """
-    value = os.environ.get(key, default)
+    value = os.getenv(key, default)
     return value
 
 def logv(msg=None):
@@ -14708,6 +14713,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
             proj = p
+
             def processDep(dep, edge):
                 if dep is proj:
                     return
@@ -15444,6 +15450,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
+    """ :type: list[JavaProject]"""
     snippetsPatterns = set()
     verifySincePresent = []
     for p in candidates:
@@ -15453,7 +15460,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 if p.suite.primary:
                     verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
             if includeDeps:
-                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
+                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isJavaProject() else None)
             added, reason = assess_candidate(p, projects)
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
@@ -15490,8 +15497,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            if not p.isJavaProject():
-                continue
+            assert p.isJavaProject()
             pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
@@ -15565,17 +15571,31 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         pkgs = set()
         sproots = []
         names = []
+        classpath_deps = set()
+
         for p in projects:
             pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
+            for dep in p.deps:
+                if dep.isJavaProject():
+                    if dep not in projects:
+                        classpath_deps.add(dep)
+                elif dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isJdkLibrary():
+                    classpath_deps.add(dep)
+                elif dep.isJreLibrary():
+                    pass
+                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
+                    logv("Ignoring dependency from {} to {}".format(p.name, dep.name))
+                else:
+                    abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
         links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
         overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
-        cp = classpath(jdk=jdk)
+        cp = classpath(classpath_deps, jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
