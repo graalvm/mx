@@ -1744,6 +1744,14 @@ class AbstractDistribution(Distribution):
 class AbstractTARDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
 
+    def needsUpdate(self, newestInput):
+        sup = super(AbstractTARDistribution, self).needsUpdate(newestInput)
+        if sup:
+            return sup
+        if self.output:
+            return _needsUpdate(newestInput, join(self.suite.dir, self.output))
+        return None
+
     def remoteExtension(self):
         return 'tar.gz'
 
@@ -1802,6 +1810,11 @@ class NativeTARDistribution(AbstractTARDistribution):
     def make_archive(self):
         directory = dirname(self.path)
         ensure_dir_exists(directory)
+
+        if self.output:
+            output_path = join(self.suite.dir, self.output)
+            if exists(output_path):
+                os.utime(output_path, None)
 
         with Archiver(self.path, kind='tar') as arc:
             files = set()
