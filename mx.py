@@ -11286,11 +11286,20 @@ def _suggest_http_proxy_error(e):
     proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
     proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.iterkeys()}
     if not proxyDefs:
-        log('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
+        warn('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
             '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
     else:
         defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
-        log('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
+        warn('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
+
+def _suggest_tlsv1_error(e):
+    """
+    Displays a message related to TLS errors that can occur when connecting to certain websites
+    (e.g., github) on a version of Python that uses an older implementaiton of OpenSSL.
+    """
+    if 'tlsv1 alert protocol version' in str(e):
+        warn('It seems that you have a version of python ({}) that uses an older version of OpenSSL. '.format(sys.executable) +
+            'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
 
 def _attempt_download(url, path, jarEntryName=None):
     """
@@ -11355,6 +11364,7 @@ def _attempt_download(url, path, jarEntryName=None):
         except (IOError, socket.timeout, urllib2.HTTPError) as e:
             log_error("Error reading from " + url + ": " + str(e))
             _suggest_http_proxy_error(e)
+            _suggest_tlsv1_error(e)
             if exists(tmp):
                 os.remove(tmp)
             if isinstance(e, urllib2.HTTPError) and e.code == 500:
@@ -11392,6 +11402,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 conn.close()
                 return True
             except (IOError, socket.timeout) as e:
+                _suggest_tlsv1_error(e)
                 verify_errors[url] = e
             continue
 
@@ -16326,7 +16337,7 @@ def verify_library_urls(args):
         _suites.append(_mx_suite)
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('/dev/null', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -17678,7 +17689,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.174.8")  # GR-10465
+version = VersionSpec("5.175.0")  # GR-10474
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
