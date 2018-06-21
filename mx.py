@@ -8628,18 +8628,21 @@ class SourceSuite(Suite):
                 def _refineAnnotationProcessorServiceConfig(dist):
                     apsJar = dist.path
                     config = 'META-INF/services/javax.annotation.processing.Processor'
+                    currentAps = None
                     with zipfile.ZipFile(apsJar, 'r') as zf:
                         if config in zf.namelist():
                             currentAps = zf.read(config).split()
-                            if currentAps != dist.definedAnnotationProcessors:
-                                logv('[updating ' + config + ' in ' + apsJar + ']')
-                                with Archiver(apsJar) as arc:
-                                    with zipfile.ZipFile(apsJar, 'r') as lp:
-                                        for arcname in lp.namelist():
-                                            if arcname == config:
-                                                arc.zf.writestr(arcname, '\n'.join(dist.definedAnnotationProcessors) + '\n')
-                                            else:
-                                                arc.zf.writestr(arcname, lp.read(arcname))
+                    # Overwriting of open files doesn't work on Windows, so now that
+                    # `apsJar` is closed we can safely overwrite it if necessary
+                    if currentAps is not None and currentAps != dist.definedAnnotationProcessors:
+                        logv('[updating ' + config + ' in ' + apsJar + ']')
+                        with Archiver(apsJar) as arc:
+                            with zipfile.ZipFile(apsJar, 'r') as lp:
+                                for arcname in lp.namelist():
+                                    if arcname == config:
+                                        arc.zf.writestr(arcname, '\n'.join(dist.definedAnnotationProcessors) + '\n')
+                                    else:
+                                        arc.zf.writestr(arcname, lp.read(arcname))
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
