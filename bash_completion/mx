@@ -84,6 +84,6 @@ _mx_completion() {
     fi
     cat $tmp_file
 }
-complete -F _mx mx
+complete -F _mx -o default mx
 
 # vi: syntax=bash
