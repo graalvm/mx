@@ -355,6 +355,7 @@ def make_java_module(dist, jdk):
         # If an "exports" attribute is not present, all packages are exported
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
             if ' to ' in package:
+                splitpackage = package.split(' to ')
                 package = splitpackage[0].strip()
                 if not package:
                     mx.abort('exports attribute cannot have empty package value', context=dist)
