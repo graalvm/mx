@@ -354,7 +354,11 @@ def make_java_module(dist, jdk):
 
         # If an "exports" attribute is not present, all packages are exported
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
-            exports.setdefault(package, [])
+            if ' to ' in package:
+                splitpackage = package.split(' to ');
+                exports.setdefault(splitpackage[0], splitpackage[1].split(','))
+            else:
+                exports.setdefault(package, [])
 
     provides = {}
     if exists(moduleDir):
