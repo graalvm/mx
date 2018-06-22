@@ -64,7 +64,7 @@ from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
 from os.path import join, basename, dirname, exists, isabs, expandvars, isdir, islink, normpath, realpath
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
 import fnmatch
 import copy
 import operator
@@ -1790,6 +1790,56 @@ class AbstractTARDistribution(AbstractDistribution):
         return tgz
 
 
+class AbstractJARDistribution(AbstractDistribution):
+    __metaclass__ = ABCMeta
+
+    def remoteExtension(self):
+        return 'jar'
+
+    def localExtension(self):
+        return 'jar'
+
+    @abstractmethod
+    def compress_locally(self):
+        pass
+
+    @abstractmethod
+    def compress_remotely(self):
+        pass
+
+    def postPull(self, f):
+        if self.compress_locally() or not self.compress_remotely():
+            return None
+        logv('Uncompressing {}...'.format(f))
+        tmp_dir = mkdtemp(".jar", self.name)
+        with zipfile.ZipFile(f) as zf:
+            zf.extractall(tmp_dir)
+        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_STORED) as zf:
+            for root, dirs, files in os.walk(tmp_dir):
+                arc_dir = os.path.relpath(root, tmp_dir)
+                for f_ in files:
+                    zf.write(join(root, f_), join(arc_dir, f_))
+        rmtree(tmp_dir)
+        return tmp_file
+
+    def prePush(self, f):
+        if not self.compress_remotely() or self.compress_locally():
+            return f
+        logv('Compressing {}...'.format(f))
+        tmpdir = mkdtemp(".jar", self.name)
+        with zipfile.ZipFile(f) as zf:
+            zf.extractall(tmpdir)
+        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(tmpdir):
+                arc_dir = os.path.relpath(root, tmpdir)
+                for f_ in files:
+                    zf.write(join(root, f_), join(arc_dir, f_))
+        rmtree(tmpdir)
+        return tmp_file
+
+
 class NativeTARDistribution(AbstractTARDistribution):
     """
     A distribution dependencies are only `NativeProject`s. It packages all the resources specified by
@@ -1899,7 +1949,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -1913,6 +1963,7 @@ class LayoutDistribution(AbstractDistribution):
         self.string_substitutions = string_substitutions or mx_subst.string_substitutions
         self._source_location_cache = {}
         self.archive_factory = archive_factory or Archiver
+        self.compress = compress
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
@@ -2123,52 +2174,52 @@ class LayoutDistribution(AbstractDistribution):
                 return name, _root_match
 
             if ext.endswith('zip') or ext.endswith('jar'):
-                zf = zipfile.ZipFile(source_archive_file)
-                for zipinfo in zf.infolist():
-                    zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
-                    if not zipinfo.filename:
-                        continue
-                    extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                    archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
+                with zipfile.ZipFile(source_archive_file) as zf:
+                    for zipinfo in zf.infolist():
+                        zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
+                        if not zipinfo.filename:
+                            continue
+                        extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                        archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
-                tf = tarfile.TarFile.open(source_archive_file)
-                # from tarfile.TarFile.extractall:
-                directories = []
-                for tarinfo in tf:
-                    tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
-                    if not tarinfo.name:
-                        continue
-                    if tarinfo.isdir():
-                        # Extract directories with a safe mode.
-                        directories.append(tarinfo)
-                        tarinfo = copy.copy(tarinfo)
-                        tarinfo.mode = 0700
-                    extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
-                    arcname = os.path.relpath(extracted_file, output)
-                    if tarinfo.issym():
-                        if root_match:
-                            tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
-                            archiver.add(extracted_file, arcname, provenance)
+                with tarfile.TarFile.open(source_archive_file) as tf:
+                    # from tarfile.TarFile.extractall:
+                    directories = []
+                    for tarinfo in tf:
+                        tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
+                        if not tarinfo.name:
+                            continue
+                        if tarinfo.isdir():
+                            # Extract directories with a safe mode.
+                            directories.append(tarinfo)
+                            tarinfo = copy.copy(tarinfo)
+                            tarinfo.mode = 0700
+                        extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
+                        arcname = os.path.relpath(extracted_file, output)
+                        if tarinfo.issym():
+                            if root_match:
+                                tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
+                                archiver.add(extracted_file, arcname, provenance)
+                            else:
+                                tf.extract(tarinfo, unarchiver_dest_directory)
+                                archiver.add_link(tarinfo.linkname, arcname, provenance)
                         else:
                             tf.extract(tarinfo, unarchiver_dest_directory)
-                            archiver.add_link(tarinfo.linkname, arcname, provenance)
-                    else:
-                        tf.extract(tarinfo, unarchiver_dest_directory)
-                        archiver.add(extracted_file, arcname, provenance)
+                            archiver.add(extracted_file, arcname, provenance)
 
-                # Reverse sort directories.
-                directories.sort(key=operator.attrgetter('name'))
-                directories.reverse()
+                    # Reverse sort directories.
+                    directories.sort(key=operator.attrgetter('name'))
+                    directories.reverse()
 
-                # Set correct owner, mtime and filemode on directories.
-                for tarinfo in directories:
-                    dirpath = join(absolute_destination, tarinfo.name)
-                    try:
-                        tf.chown(tarinfo, dirpath)
-                        tf.utime(tarinfo, dirpath)
-                        tf.chmod(tarinfo, dirpath)
-                    except tarfile.ExtractError as e:
-                        abort("tarfile: " + str(e))
+                    # Set correct owner, mtime and filemode on directories.
+                    for tarinfo in directories:
+                        dirpath = join(absolute_destination, tarinfo.name)
+                        try:
+                            tf.chown(tarinfo, dirpath)
+                            tf.utime(tarinfo, dirpath)
+                            tf.chmod(tarinfo, dirpath)
+                        except tarfile.ExtractError as e:
+                            abort("tarfile: " + str(e))
             else:
                 abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
             if first_file_box[0] and path is not None and not source['optional']:
@@ -2245,7 +2296,12 @@ class LayoutDistribution(AbstractDistribution):
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.get_output())
-        with self.archive_factory(self.path, kind=self.localExtension(), duplicates_action='warn', context=self, reset_user_group=getattr(self, 'reset_user_group', False)) as arc:
+        with self.archive_factory(self.path,
+                                  kind=self.localExtension(),
+                                  duplicates_action='warn',
+                                  context=self,
+                                  reset_user_group=getattr(self, 'reset_user_group', False),
+                                  compress=self.compress) as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
@@ -2350,12 +2406,22 @@ class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
 
 
-class LayoutJARDistribution(LayoutDistribution):
-    def remoteExtension(self):
-        return 'jar'
+class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution):
+    def __init__(self, *args, **kw_args):
+        # we have *args here because some subclasses in suites have been written passing positional args to
+        # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
+        # than breaking compatibility with the mis-behaving suites
+        self._local_compress = kw_args.pop('localCompress', False)
+        self._remote_compress = kw_args.pop('remoteCompress', True)
+        if self._local_compress and not self._remote_compress:
+            abort("Incompatible local/remote compression settings: local compression requires remote compression")
+        super(LayoutJARDistribution, self).__init__(*args, compress=self._local_compress, **kw_args)
 
-    def localExtension(self):
-        return 'jar'
+    def compress_locally(self):
+        return self._local_compress
+
+    def compress_remotely(self):
+        return self._remote_compress
 
 
 def glob_match_any(patterns, path):
@@ -7065,8 +7131,14 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                     if deployMapFiles and dist.is_stripped():
                         mapFile = dist.strip_mapping_file()
 
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
-                        dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
+                    pushed_file = dist.prePush(dist.path)
+                    pushed_src_file = dist.prePush(dist.sourcesPath)
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo, srcPath=pushed_src_file, settingsXml=settingsXml, extension=dist.remoteExtension(),
+                                         dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
+                    if pushed_file != dist.path:
+                        os.unlink(pushed_file)
+                    if pushed_src_file != dist.sourcesPath:
+                        os.unlink(pushed_src_file)
                     os.unlink(pomFile)
                     if javadocPath:
                         os.unlink(javadocPath)
@@ -12330,7 +12402,7 @@ class Archiver(SafeFileCreation):
     """
     Utility for creating and updating a zip or tar file atomically.
     """
-    def __init__(self, path, kind='zip', reset_user_group=False, duplicates_action=None, context=None):
+    def __init__(self, path, kind='zip', reset_user_group=False, duplicates_action=None, context=None, compress=False):
         SafeFileCreation.__init__(self, path)
         self.kind = kind
         self.zf = None
@@ -12338,6 +12410,7 @@ class Archiver(SafeFileCreation):
         self._add_str = None
         self._add_link = None
         self.reset_user_group = reset_user_group
+        self.compress = compress
         assert duplicates_action in [None, 'warn', 'abort']
         self.duplicates_action = duplicates_action
         self._provenance_map = {} if duplicates_action else None
@@ -12398,16 +12471,20 @@ class Archiver(SafeFileCreation):
         if self.path:
             SafeFileCreation.__enter__(self)
             if self.kind == 'zip' or self.kind == 'jar':
-                self.zf = zipfile.ZipFile(self.tmpPath, 'w')
+                self.zf = zipfile.ZipFile(self.tmpPath, 'w', compression=zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
                 self._add_f = self._add_zip
                 self._add_str = self._add_str_zip
                 self._add_link = self._add_link_zip
             elif self.kind == 'tar':
+                if self.compress:
+                    warn("Archiver created with compress=True and kind=tar, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
                 self._add_link = self._add_link_tar
             elif self.kind == 'tgz':
+                if self.compress:
+                    warn("Archiver created with compress=False and kind=tgz, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w:gz')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
