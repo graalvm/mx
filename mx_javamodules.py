@@ -356,7 +356,7 @@ def make_java_module(dist, jdk):
         for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
             if ' to ' in package:
                 splitpackage = package.split(' to ');
-                exports.setdefault(splitpackage[0], splitpackage[1].split(','))
+                exports.setdefault(splitpackage[0].strip(), [n.strip() for n in splitpackage[1].split(',')])
             else:
                 exports.setdefault(package, [])
 
