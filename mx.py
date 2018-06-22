@@ -7118,6 +7118,7 @@ def maven_deploy(args):
             return False
         return getattr(d, 'maven', False) and not dist.is_test_distribution()
 
+    has_deployed_dist = False
     for s in _suites:
         dists = [d for d in s.dists if distMatcher(d)]
         if args.only:
@@ -7148,6 +7149,9 @@ def maven_deploy(args):
         action = 'Installing' if repo == maven_local_repository() else 'Deploying'
         log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
         _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
+        has_deployed_dist = True
+    if not has_deployed_dist:
+        abort("No distribution was deployed!")
 
 
 def binary_url(args):
