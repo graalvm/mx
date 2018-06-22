@@ -8548,7 +8548,7 @@ class SourceSuite(Suite):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
-        self._releaseVersion = None
+        self._releaseVersion = {}
 
     def dependency(self, name, fatalIfMissing=True, context=None):
         for p in self.projects:
@@ -8598,7 +8598,7 @@ class SourceSuite(Suite):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
-        if not self._releaseVersion:
+        if snapshotSuffix not in self._releaseVersion:
             _version = self._get_early_suite_dict_property('version')
             if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
                 if not self.is_release():
@@ -8607,8 +8607,8 @@ class SourceSuite(Suite):
                 _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not _version:
                 _version = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
-            self._releaseVersion = _version
-        return self._releaseVersion
+            self._releaseVersion[snapshotSuffix] = _version
+        return self._releaseVersion[snapshotSuffix]
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
