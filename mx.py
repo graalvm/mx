@@ -7819,6 +7819,7 @@ class Suite(object):
             'version',
             'externalProjects',
             'groupId',
+            'release',
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -7982,6 +7983,9 @@ class Suite(object):
 
         licenseDefs = self._check_suiteDict(self.getMxCompatibility().licensesAttribute())
         repositoryDefs = self._check_suiteDict('repositories')
+
+        if suiteDict.get('release') not in [None, True, False]:
+            abort("Invalid 'release' attribute: it should be a boolean", context=self)
 
         self._load_libraries(libsMap)
         self._load_distributions(distsMap)
@@ -8509,6 +8513,9 @@ class SourceSuite(Suite):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
+        _release = self._get_early_suite_dict_property('release')
+        if _release is not None:
+            return _release
         _version = self._get_early_suite_dict_property('version')
         if _version:
             return '{}-{}'.format(self.name, _version) in self.vc.parent_tags(self.vc_dir)
@@ -8521,6 +8528,9 @@ class SourceSuite(Suite):
         """
         if not self._releaseVersion:
             _version = self._get_early_suite_dict_property('version')
+            if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
+                if not self.is_release():
+                    _version = _version + '-' + snapshotSuffix
             if not _version:
                 _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not _version:
