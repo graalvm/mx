@@ -6220,7 +6220,6 @@ class GitConfig(VC):
         return None
 
 
-
 class BinaryVC(VC):
     """
     Emulates a VC system for binary suites, as far as possible, but particularly pull/tip
@@ -6432,6 +6431,7 @@ class BinaryVC(VC):
             abort("A binary VC has no branch")
         return None
 
+
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = urllib2.urlopen(url)
@@ -6444,14 +6444,17 @@ def _hashFromUrl(url):
         if hashFile:
             hashFile.close()
 
+
 def _map_to_maven_dist_name(name):
     return name.lower().replace('_', '-')
+
 
 class MavenArtifactVersions:
     def __init__(self, latestVersion, releaseVersion, versions):
         self.latestVersion = latestVersion
         self.releaseVersion = releaseVersion
         self.versions = versions
+
 
 class MavenSnapshotBuilds:
     def __init__(self, currentTime, currentBuildNumber, snapshots):
@@ -6461,6 +6464,7 @@ class MavenSnapshotBuilds:
 
     def getCurrentSnapshotBuild(self):
         return self.snapshots[(self.currentTime, self.currentBuildNumber)]
+
 
 class MavenSnapshotArtifact:
     def __init__(self, groupId, artifactId, version, snapshotBuildVersion, repo):
@@ -6525,6 +6529,7 @@ class MavenSnapshotArtifact:
 
     def __str__(self):
         return "{0}:{1}:{2}-SNAPSHOT".format(self.groupId, self.artifactId, self.snapshotBuildVersion)
+
 
 class MavenRepo:
     def __init__(self, repourl):
@@ -6628,6 +6633,7 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
+
 class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
     def __init__(self, suite, name, url, licenses):
@@ -6640,6 +6646,7 @@ class Repository(SuiteConstituent):
 
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
+
 
 _maven_local_repository = None
 def maven_local_repository():  # pylint: disable=invalid-name
@@ -6673,6 +6680,7 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
     return _maven_local_repository
 
+
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
         if suite.groupId:
@@ -6682,6 +6690,7 @@ def _mavenGroupId(suite):
         assert isinstance(suite, types.StringTypes)
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
+
 
 def _genPom(dist, versionGetter, validateMetadata='none'):
     groupId = dist.maven_group_id()
@@ -6794,11 +6803,13 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     pom.close('project')
     return pom.xml(indent='  ', newl='\n')
 
+
 def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
     tmp.write(_genPom(dist, versionGetter, validateMetadata))
     tmp.close()
     return tmp.name
+
 
 def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
     assert exists(filePath)
@@ -6866,6 +6877,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, sr
     else:
         run_maven(cmd)
 
+
 def _deploy_skip_existing(args, dists, version, repo):
     if args.skip_existing:
         non_existing_dists = []
@@ -6880,6 +6892,7 @@ def _deploy_skip_existing(args, dists, version, repo):
         return non_existing_dists
     else:
         return dists
+
 
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository
@@ -6905,6 +6918,7 @@ def deploy_binary(args):
     for s in _suites:
         if s.isSourceSuite():
             _deploy_binary(args, s)
+
 
 def _deploy_binary(args, suite):
     if not suite.getMxCompatibility().supportsLicenses():
@@ -6989,6 +7003,7 @@ def _deploy_binary(args, suite):
             else:
                 try_remote_branch_update(deploy_branch_name)
 
+
 def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, validateMetadata='none', gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
     if repo != maven_local_repository():
         # Non-local deployment requires license checking
@@ -7059,6 +7074,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                     _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
                 else:
                     warn('Unsupported distribution: ' + dist.name)
+
 
 def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository
@@ -15700,7 +15716,7 @@ def site(args):
     args = parser.parse_args(args)
 
     args.base = os.path.abspath(args.base)
-    tmpbase = args.tmp if args.tmp else  mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
+    tmpbase = args.tmp if args.tmp else mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
     unified = join(tmpbase, 'all')
 
     exclude_packages_arg = []
