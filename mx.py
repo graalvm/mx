@@ -8182,13 +8182,12 @@ class Suite(object):
                 }
                 return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(base=base, **args) for base in baseURLs]
 
+            if not urls and maven is not None:
+                _check_maven(maven)
+                urls = _maven_download_urls(**maven)
             if path is None:
                 if not urls:
-                    if maven is not None:
-                        _check_maven(maven)
-                        urls = _maven_download_urls(**maven)
-                    else:
-                        abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
+                    abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
                 path = _get_path_in_cache(name, sha1, urls, ext, sources=False)
