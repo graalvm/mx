@@ -1760,6 +1760,7 @@ class AbstractDistribution(Distribution):
 
 class AbstractTARDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
+    __has_gzip = None
 
     def remoteExtension(self):
         return 'tar.gz'
@@ -1770,13 +1771,17 @@ class AbstractTARDistribution(AbstractDistribution):
     def postPull(self, f):
         assert f.endswith('.gz')
         logv('Uncompressing {}...'.format(f))
-        with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
-            shutil.copyfileobj(gz, tar)
-            tarfilename = tar.name
+        tarfilename = f[:-len('.gz')]
+        if AbstractTARDistribution._has_gzip():
+            with open(tarfilename, 'wb') as tar:
+                # force, quiet, decompress, cat to stdout
+                run(['gzip', '-f', '-q', '-d', '-c', f], out=tar)
+        else:
+            with gzip.open(f, 'rb') as gz, open(tarfilename, 'wb') as tar:
+                shutil.copyfileobj(gz, tar)
         os.remove(f)
         if self.output:
             output = self.get_output()
-            assert tarfilename
             with tarfile.open(tarfilename, 'r:') as tar:
                 logv('Extracting {} to {}'.format(tarfilename, output))
                 tar.extractall(output)
@@ -1785,9 +1790,25 @@ class AbstractTARDistribution(AbstractDistribution):
     def prePush(self, f):
         tgz = f + '.gz'
         logv('Compressing {}...'.format(f))
-        with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
-            shutil.copyfileobj(tar, gz)
+        if AbstractTARDistribution._has_gzip():
+            with open(tgz, 'wb') as tar:
+                # force, quiet, cat to stdout
+                run(['gzip', '-f', '-q', '-c', f], out=tar)
+        else:
+            with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
+                shutil.copyfileobj(tar, gz)
         return tgz
+
+    @staticmethod
+    def _has_gzip():
+        if AbstractTARDistribution.__has_gzip is None:
+            gzip_ret_code = None
+            try:
+                gzip_ret_code = run(['gzip', '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
+            except OSError as e:
+                gzip_ret_code = e
+            AbstractTARDistribution.__has_gzip = gzip_ret_code == 0
+        return AbstractTARDistribution.__has_gzip
 
 
 class AbstractJARDistribution(AbstractDistribution):
@@ -10677,10 +10698,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 abort('Use of timeout not (yet) supported on Windows')
             retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
     except OSError as e:
-        log('Error executing \'' + ' '.join(args) + '\': ' + str(e))
-        if _opts.verbose:
+        if not nonZeroIsFatal:
             raise e
-        abort(e.errno)
+        abort('Error executing \'' + ' '.join(args) + '\': ' + str(e))
     except KeyboardInterrupt:
         abort(1, killsig=signal.SIGINT)
     finally:
