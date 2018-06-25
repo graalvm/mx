@@ -11121,10 +11121,7 @@ class JDKConfig:
         if m:
             name = name[0:m.start()]
 
-        # Finally clean up the module name (see java.lang.module.ModulePath.cleanModuleName())
-        if self.get_transitive_requires_keyword() == 'transitive':
-            # http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l23.90
-            name = re.sub(r'(\.|\d)*$', '', name) # drop trailing version from name
+        # Finally clean up the module name (see jdk.internal.module.ModulePath.cleanModuleName())
         name = re.sub(r'[^A-Za-z0-9]', '.', name) # replace non-alphanumeric
         name = re.sub(r'(\.)(\1)+', '.', name) # collapse repeating dots
         name = re.sub(r'^\.', '', name) # drop leading dots
