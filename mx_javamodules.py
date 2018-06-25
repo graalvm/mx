@@ -282,6 +282,93 @@ def _expand_package_info(dep, packages):
         result = set(packages)
     return result
 
+def get_library_as_module(dep, jdk):
+    """
+    Converts a (modular or non-modular) jar library to a module descriptor.
+
+    :param Library dep: a library dependency
+    :param JDKConfig jdk: a JDK with a version >= 9 that can be used to describe the module
+    :return: a module descriptor
+    """
+    assert dep.isLibrary()
+
+    def is_valid_module_name(name):
+        identRE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+        return all(identRE.match(ident) for ident in name.split('.'))
+
+    if hasattr(dep, 'moduleName'):
+        moduleName = dep.moduleName
+    else:
+        moduleName = jdk.get_automatic_module_name(dep.path)
+        if not is_valid_module_name(moduleName):
+            mx.abort("Invalid identifier in automatic module name derived for library {}: {} (path: {})".format(dep.name, moduleName, dep.path))
+        dep.moduleName = moduleName
+
+    modulesDir = mx.ensure_dir_exists(join(mx.primary_suite().get_output_root(), 'modules'))
+    cache = join(modulesDir, moduleName + '.desc')
+    fullpath = dep.get_path(resolve=True)
+    save = False
+    if not exists(cache) or mx.TimeStampFile(fullpath).isNewerThan(cache) or mx.TimeStampFile(__file__).isNewerThan(cache):
+        out = mx.LinesOutputCapture()
+        rc = mx.run([jdk.java, '--module-path', fullpath, '--describe-module', moduleName], out=out, err=out, nonZeroIsFatal=False)
+        lines = out.lines
+        if rc != 0:
+            mx.abort("java --describe-module {} failed. Please verify the moduleName attribute of {}.\n{}".format(moduleName, dep.name, "\n".join(lines)))
+        save = True
+    else:
+        with open(cache) as fp:
+            lines = fp.read().splitlines()
+
+    assert lines and lines[0].startswith(moduleName), (dep.name, moduleName, lines)
+
+    accepted_modifiers = set(['transitive'])
+    requires = {}
+    exports = {}
+    provides = {}
+    uses = set()
+    packages = set()
+
+    for line in lines[1:]:
+        parts = line.strip().split()
+        assert len(parts) >= 2, '>>>'+line+'<<<'
+        if parts[0:2] == ['qualified', 'exports']:
+            parts = parts[1:]
+        a = parts[0]
+        if a == 'requires':
+            module = parts[1]
+            modifiers = parts[2:]
+            requires[module] = set(m for m in modifiers if m in accepted_modifiers)
+        elif a == 'exports':
+            source = parts[1]
+            if len(parts) > 2:
+                assert parts[2] == 'to'
+                targets = parts[3:]
+            else:
+                targets = []
+            exports[source] = targets
+        elif a == 'uses':
+            uses.update(parts[1:])
+        elif a == 'contains':
+            packages.update(parts[1:])
+        elif a == 'provides':
+            assert len(parts) >= 4 and parts[2] == 'with'
+            service = parts[1]
+            providers = parts[3:]
+            provides.setdefault(service, []).extend(providers)
+        else:
+            mx.abort('Cannot parse module descriptor line: ' + str(parts))
+    packages.update(exports.viewkeys())
+
+    if save:
+        try:
+            with open(cache, 'w') as fp:
+                fp.write('\n'.join(lines) + '\n')
+        except IOError as e:
+            mx.warn('Error writing to ' + cache + ': ' + str(e))
+            os.remove(cache)
+
+    return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath)
+
 def make_java_module(dist, jdk):
     """
     Creates a Java module from a distribution.
@@ -313,6 +400,10 @@ def make_java_module(dist, jdk):
                 requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
             elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
                 pass
+            elif dep.isLibrary():
+                jmd = get_library_as_module(dep, jdk)
+                modulepath.append(jmd)
+                requires[jmd.name] = set()
             else:
                 mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
     else:
