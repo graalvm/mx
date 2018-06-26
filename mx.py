@@ -6898,7 +6898,20 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     return tmp.name
 
 
-def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
+def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
+                         srcPath=None,
+                         description=None,
+                         settingsXml=None,
+                         extension='jar',
+                         dryRun=False,
+                         pomFile=None,
+                         gpg=False,
+                         keyid=None,
+                         javadocPath=None,
+                         extraFiles=None):
+    """
+    :type extraFiles: list[(str, str, str)]
+    """
     assert exists(filePath)
     assert not srcPath or exists(srcPath)
 
@@ -6952,10 +6965,10 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, sr
     if description:
         cmd.append('-Ddescription=' + description)
 
-    if mapFile:
-        cmd.append('-Dfiles=' + mapFile)
-        cmd.append('-Dclassifiers=proguard')
-        cmd.append('-Dtypes=map')
+    if extraFiles:
+        cmd.append('-Dfiles=' + ','.join(ef[0] for ef in extraFiles))
+        cmd.append('-Dclassifiers=' + ','.join(ef[1] for ef in extraFiles))
+        cmd.append('-Dtypes=' + ','.join(ef[2] for ef in extraFiles))
 
     action = 'Installing' if repo == maven_local_repository() else 'Deploying'
     log('{} {}:{}...'.format(action, groupId, artifactId))
@@ -7091,7 +7104,14 @@ def _deploy_binary(args, suite):
                 try_remote_branch_update(deploy_branch_name)
 
 
-def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, validateMetadata='none', gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
+def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
+                        dryRun=False,
+                        validateMetadata='none',
+                        gpg=False,
+                        keyid=None,
+                        generateJavadoc=False,
+                        deployMapFiles=False,
+                        deployRepoMetadata=False):
     if repo != maven_local_repository():
         # Non-local deployment requires license checking
         for dist in dists:
@@ -7100,6 +7120,25 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
             for distLicense in dist.theLicense:
                 if distLicense not in repo.licenses:
                     abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.repository_id, dist.name))
+    if deployRepoMetadata:
+        repo_metadata_xml = XMLDoc()
+        repo_metadata_xml.open('suite-revisions')
+        for s_ in suites():
+            if s_.vc:
+                repo_metadata_xml.element('suite', attributes={
+                    "name": s_.name,
+                    "revision": s_.vc.parent(s_.vc_dir),
+                    "kind": s_.vc.kind
+                })
+        repo_metadata_xml.close('suite-revisions')
+        repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
+        repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
+        if _opts.very_verbose or (dryRun and _opts.verbose):
+            log(repo_metadata)
+        with os.fdopen(repo_metadata_fd, 'w') as f:
+            f.write(repo_metadata)
+    else:
+        repo_metadata_name = None
     for dist in dists:
         for platform in dist.platforms:
             if dist.maven_artifact_id() != dist.maven_artifact_id(platform):
@@ -7148,14 +7187,23 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                             javadocPath = None
                             warn('Javadoc for {0} was empty'.format(dist.name))
 
-                    mapFile = None
+                    extraFiles = []
                     if deployMapFiles and dist.is_stripped():
-                        mapFile = dist.strip_mapping_file()
+                        extraFiles.append((dist.strip_mapping_file(), 'proguard', 'map'))
+                    if repo_metadata_name:
+                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
 
                     pushed_file = dist.prePush(dist.path)
                     pushed_src_file = dist.prePush(dist.sourcesPath)
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo, srcPath=pushed_src_file, settingsXml=settingsXml, extension=dist.remoteExtension(),
-                                         dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
+                                         srcPath=pushed_src_file,
+                                         settingsXml=settingsXml,
+                                         extension=dist.remoteExtension(),
+                                         dryRun=dryRun,
+                                         pomFile=pomFile,
+                                         gpg=gpg, keyid=keyid,
+                                         javadocPath=javadocPath,
+                                         extraFiles=extraFiles)
                     if pushed_file != dist.path:
                         os.unlink(pushed_file)
                     if pushed_src_file != dist.sourcesPath:
@@ -7164,9 +7212,19 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                     if javadocPath:
                         os.unlink(javadocPath)
                 elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
+                    extraFiles = []
+                    if repo_metadata_name:
+                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo,
+                                         settingsXml=settingsXml,
+                                         extension=dist.remoteExtension(),
+                                         dryRun=dryRun,
+                                         gpg=gpg, keyid=keyid,
+                                         extraFiles=extraFiles)
                 else:
                     warn('Unsupported distribution: ' + dist.name)
+    if repo_metadata_name:
+        os.unlink(repo_metadata_name)
 
 
 def maven_deploy(args):
@@ -7187,6 +7245,7 @@ def maven_deploy(args):
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
     parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
+    parser.add_argument('--with-suite-revisions-metadata', help='Deploy suite revisions metadata file', action='store_true')
     parser.add_argument('repository_id', metavar='repository-id', nargs='?', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
@@ -7241,7 +7300,13 @@ def maven_deploy(args):
 
         action = 'Installing' if repo == maven_local_repository() else 'Deploying'
         log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
-        _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
+        _maven_deploy_dists(dists, versionGetter, repo, args.settings,
+                            dryRun=args.dry_run,
+                            validateMetadata=args.validate,
+                            gpg=args.gpg,
+                            keyid=args.gpg_keyid,
+                            generateJavadoc=generateJavadoc,
+                            deployRepoMetadata=args.with_suite_revisions_metadata)
         has_deployed_dist = True
     if not has_deployed_dist:
         abort("No distribution was deployed!")
