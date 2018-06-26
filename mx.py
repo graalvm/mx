@@ -17071,7 +17071,7 @@ def _remove_unsatisfied_deps():
                             else:
 
                                 abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
-        elif dep.isJARDistribution():
+        elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
             dist = dep
             if dist.deps:
                 distRemovedDeps = []
