@@ -7014,7 +7014,7 @@ def maven_deploy(args):
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
-    parser.add_argument('--with-native', action='store_true', help='Also deploy native (platform_dependent) artifacts')
+    parser.add_argument('--all-distributions', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
@@ -7039,13 +7039,9 @@ def maven_deploy(args):
         _suites = primary_or_specific_suites()
 
     def distMatcher(dist):
-        if dist.is_test_distribution():
-            return False
-        if dist.isJARDistribution() and dist.maven:
+        if args.all_distributions:
             return True
-        if args.with_native:
-            return dist.isTARDistribution() or dist.isLayoutJARDistribution()
-        return False
+        return dist.isJARDistribution() and dist.maven and not dist.is_test_distribution()
 
     for s in _suites:
         dists = [d for d in s.dists if distMatcher(d)]
