@@ -17080,7 +17080,7 @@ def _remove_unsatisfied_deps():
                         logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
                         dist.deps.remove(distDep)
                         distRemovedDeps.append(distDep)
-                if not any((d.isProject() for d in dist.deps)):
+                if not any((d.isProject() or (d.isBaseLibrary() and not d.isJdkLibrary() and not d.isJreLibrary() and d not in dep.excludedLibs) for d in dist.deps)):
                     reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = (reason, [e.name for e in distRemovedDeps])
