@@ -486,11 +486,11 @@ class Dependency(SuiteConstituent):
     def get_output_base(self):
         return self.suite.get_output_root(platformDependent=self.isPlatformDependent())
 
-
-    """
-    Return a BuildTask that can be used to build this dependency.
-    """
     def getBuildTask(self, args):
+        """
+        Return a BuildTask that can be used to build this dependency.
+        :rtype : BuildTask
+        """
         nyi('getBuildTask', self)
 
     def abort(self, msg):
@@ -1724,9 +1724,15 @@ class JARArchiveTask(AbstractArchiveTask):
 class AbstractDistribution(Distribution):
     __metaclass__ = ABCMeta
 
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, **kwArgs):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
+        self.output = output
+
+    def get_output(self):
+        if self.output:
+            return join(self.suite.dir, self.output)
+        return None
 
     def exists(self):
         return exists(self.path)
@@ -1735,7 +1741,14 @@ class AbstractDistribution(Distribution):
         yield self.path, self.default_filename()
 
     def needsUpdate(self, newestInput):
-        return _needsUpdate(newestInput, self.path)
+        path_up = _needsUpdate(newestInput, self.path)
+        if path_up:
+            return path_up
+        if self.output:
+            output_up = _needsUpdate(newestInput, self.get_output())
+            if output_up:
+                return output_up
+        return None
 
     def getBuildTask(self, args):
         return DefaultArchiveTask(args, self)
@@ -1753,13 +1766,12 @@ class AbstractTARDistribution(AbstractDistribution):
     def postPull(self, f):
         assert f.endswith('.gz')
         logv('Uncompressing {}...'.format(f))
-        tarfilename = None
         with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
             shutil.copyfileobj(gz, tar)
             tarfilename = tar.name
         os.remove(f)
         if self.output:
-            output = join(self.suite.dir, self.output)
+            output = self.get_output()
             assert tarfilename
             with tarfile.open(tarfilename, 'r:') as tar:
                 logv('Extracting {} to {}'.format(tarfilename, output))
@@ -1792,19 +1804,23 @@ class NativeTARDistribution(AbstractTARDistribution):
         path: suite-local path to where the tar file will be placed
     """
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output, **kwArgs):
-        super(NativeTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, **kwArgs)
+        super(NativeTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs)
         self.relpath = relpath
-        if output is None:
-            self.output = None
-        else:
-            self.output = mx_subst.results_substitutions.substitute(output, dependency=self)
+        if self.output is not None:
+            self.output = mx_subst.results_substitutions.substitute(self.output, dependency=self)
 
     def make_archive(self):
         directory = dirname(self.path)
         ensure_dir_exists(directory)
 
+        if self.output:
+            output_path = self.get_output()
+            if exists(output_path):
+                os.utime(output_path, None)
+
         with Archiver(self.path, kind='tar') as arc:
             files = set()
+
             def archive_and_copy(name, arcname):
                 assert arcname not in files, arcname
                 files.add(arcname)
@@ -1812,7 +1828,7 @@ class NativeTARDistribution(AbstractTARDistribution):
                 arc.zf.add(name, arcname=arcname)
 
                 if self.output:
-                    dest = join(self.suite.dir, self.output, arcname)
+                    dest = join(self.get_output(), arcname)
                     # Make path separators consistent for string compare
                     dest = os.path.normpath(dest)
                     name = os.path.normpath(name)
@@ -1848,7 +1864,7 @@ class DefaultArchiveTask(AbstractArchiveTask):
         if exists(self.subject.path):
             os.remove(self.subject.path)
         if self.subject.output and (self.clean_output_for_build() or not forBuild) and self.subject.output != '.':
-            output_dir = join(self.subject.suite.dir, self.subject.output)
+            output_dir = self.subject.get_output()
             if exists(output_dir):
                 rmtree(output_dir)
 
@@ -1886,8 +1902,8 @@ class LayoutDistribution(AbstractDistribution):
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
         """
-        super(LayoutDistribution, self).__init__(suite, name, deps + LayoutDistribution._extract_deps(layout, suite, name), path, excludedLibs or [], platformDependent, theLicense, **kw_args)
-        self.output = join(self.get_output_base(), name)
+        super(LayoutDistribution, self).__init__(suite, name, deps + LayoutDistribution._extract_deps(layout, suite, name), path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
+        self.output = join(self.get_output_base(), name)  # initialized here rather than passed above since `get_output_base` is not ready before the super constructor
         self.layout = layout
         self.path_substitutions = path_substitutions or mx_subst.path_substitutions
         self.string_substitutions = string_substitutions or mx_subst.string_substitutions
@@ -2198,8 +2214,7 @@ class LayoutDistribution(AbstractDistribution):
             abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=self)
 
     def _verify_layout(self):
-        assert isabs(self.output)
-        output = realpath(self.output)
+        output = realpath(self.get_output())
         for destination, sources in self.layout.items():
             if not isinstance(destination, basestring):
                 abort("Destination (layout keys) should be a string", context=self)
@@ -2225,7 +2240,7 @@ class LayoutDistribution(AbstractDistribution):
 
     def make_archive(self):
         self._verify_layout()
-        output = realpath(self.output)
+        output = realpath(self.get_output())
         with self.archive_factory(self.path, kind=self.localExtension(), duplicates_action='warn', context=self, reset_user_group=getattr(self, 'reset_user_group', False)) as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
@@ -17762,7 +17777,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.3")  # GR-10395
+version = VersionSpec("5.175.4")  # incremental tar output
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
