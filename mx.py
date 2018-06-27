@@ -8858,12 +8858,12 @@ class SourceSuite(Suite):
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
-    def _load_env_in_mxDir(mxDir, env=None, file_name='env'):
+    def _load_env_in_mxDir(mxDir, env=None, file_name='env', abort_if_missing=False):
         e = join(mxDir, file_name)
-        SourceSuite._load_env_file(e, env)
+        SourceSuite._load_env_file(e, env, abort_if_missing=abort_if_missing)
 
     @staticmethod
-    def _load_env_file(e, env=None):
+    def _load_env_file(e, env=None, abort_if_missing=False):
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -8882,6 +8882,8 @@ class SourceSuite(Suite):
                         else:
                             env[key] = value
                             logv('Read variable %s=%s from %s' % (key, value, e))
+        elif abort_if_missing:
+            abort("Could not find env file: {}".format(e))
 
     def _parse_env(self):
         SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
@@ -17953,7 +17955,7 @@ def main():
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
             if _opts.additional_env:
-                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env)
+                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env, abort_if_missing=True)
 
             _setup_binary_suites()
             if should_discover_suites:
