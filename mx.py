@@ -17071,7 +17071,7 @@ def _remove_unsatisfied_deps():
                             else:
 
                                 abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
-        elif dep.isDistribution():
+        elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
             dist = dep
             if dist.deps:
                 distRemovedDeps = []
@@ -17080,8 +17080,8 @@ def _remove_unsatisfied_deps():
                         logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
                         dist.deps.remove(distDep)
                         distRemovedDeps.append(distDep)
-                if not dist.deps:
-                    reason = 'distribution {} was removed as all its dependencies were removed'.format(dep)
+                if not any((d.isProject() or (d.isBaseLibrary() and not d.isJdkLibrary() and not d.isJreLibrary() and d not in dep.excludedLibs) for d in dist.deps)):
+                    reason = 'distribution {} was removed as all its project and non-JDK library dependencies were removed'.format(dep)
                     logv('[' + reason + ']')
                     removedDeps[dep] = (reason, [e.name for e in distRemovedDeps])
         if hasattr(dep, 'ignore'):
@@ -17777,7 +17777,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.4")  # incremental tar output
+version = VersionSpec("5.175.5")  # GR-10573
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
