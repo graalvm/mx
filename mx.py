@@ -6723,19 +6723,29 @@ class MavenRepo:
 
 class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
-    def __init__(self, suite, name, url, licenses):
+    def __init__(self, suite, name, snapshots_url, releases_url, licenses):
         SuiteConstituent.__init__(self, suite, name)
-        self.url = url
+        self.snapshots_url = snapshots_url
+        self.releases_url = releases_url
         self.licenses = licenses
+        self.url = snapshots_url  # for compatibility
+
+    def get_url(self, version, rewrite=True):
+        url = self.snapshots_url if version.endswith('-SNAPSHOT') else self.releases_url
+        if rewrite:
+            url = mx_urlrewrites.rewriteurl(url)
+        return url
 
     def _comparison_key(self):
-        return self.name, self.url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
+        return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
 
 
 _maven_local_repository = None
+
+
 def maven_local_repository():  # pylint: disable=invalid-name
     global _maven_local_repository
 
@@ -6743,7 +6753,6 @@ def maven_local_repository():  # pylint: disable=invalid-name
         class _MavenLocalRepository(Repository):
             """This singleton class represents mavens local repository (usually under ~/.m2/repository)"""
             def __init__(self):
-                Repository.__init__(self, suite('mx'), 'maven local repository', None, [])
                 try:
                     res = {'lines': '', 'xml': False}
                     def xml_settings_grabber(line):
@@ -6756,9 +6765,10 @@ def maven_local_repository():  # pylint: disable=invalid-name
                     run_maven(['help:effective-settings'], out=xml_settings_grabber)
                     dom = minidomParseString(res['lines'])
                     local_repo = dom.getElementsByTagName('localRepository')[0].firstChild.data
-                    self.url = 'file://' + local_repo
+                    url = 'file://' + local_repo
                 except:
-                    abort('Unable to determine maven local repository URL')
+                    raise abort('Unable to determine maven local repository URL')
+                Repository.__init__(self, suite('mx'), 'maven local repository', url, url, [])
 
             def resolveLicenses(self):
                 return True
@@ -6932,7 +6942,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
     if repo != maven_local_repository():
         cmd += [
             '-DrepositoryId=' + repo.name,
-            '-Durl=' + mx_urlrewrites.rewriteurl(repo.url)
+            '-Durl=' + repo.get_url(version)
         ]
         if gpg:
             cmd += ['gpg:sign-and-deploy-file']
@@ -6982,9 +6992,11 @@ def _deploy_skip_existing(args, dists, version, repo):
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
-            metadata_append = '-local' if repo == maven_local_repository() else ''
-            url = mx_urlrewrites.rewriteurl(repo.url)
-            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
+            if version.endswith('-SNAPSHOT'):
+                metadata_append = '-local' if repo == maven_local_repository() else ''
+                metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(repo.get_url(version), dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
+            else:
+                metadata_url = '{0}/{1}/{2}/{3}/'.format(repo.get_url(version), dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version)
             if download_file_exists([metadata_url]):
                 log('Skip existing {}:{}'.format(dist.maven_group_id(), dist.maven_artifact_id()))
             else:
@@ -7326,7 +7338,7 @@ def binary_url(args):
     snapshot_version = '{0}-SNAPSHOT'.format(dist.suite.vc.parent(dist.suite.vc_dir))
     extension = dist.remoteExtension()
 
-    maven_repo = MavenRepo(repo.url)
+    maven_repo = MavenRepo(repo.get_url(snapshot_version))
     snapshot = maven_repo.getSnapshot(group_id, artifact_id, snapshot_version)
     if not snapshot:
         url = maven_repo.getSnapshotUrl(group_id, artifact_id, snapshot_version)
@@ -8439,11 +8451,18 @@ class Suite(object):
     def _load_repositories(self, repositoryDefs):
         for name, attrs in sorted(repositoryDefs.items()):
             context = 'repository ' + name
-            url = attrs.pop('url')
-            if not _validate_abolute_url(url):
-                abort('Invalid url in repository {}'.format(self.suite_py()), context=context)
+            if 'url' in attrs:
+                snapshots_url = attrs.pop('url')
+                releases_url = snapshots_url
+            else:
+                snapshots_url = attrs.pop('snapshotsUrl')
+                releases_url = attrs.pop('releasesUrl')
+            if not _validate_abolute_url(snapshots_url):
+                abort('Invalid url in repository {}: {}'.format(self.suite_py(), snapshots_url), context=context)
+            if releases_url != snapshots_url and not _validate_abolute_url(releases_url):
+                abort('Invalid url in repository {}: {}'.format(self.suite_py(), releases_url), context=context)
             licenses = Suite._pop_list(attrs, self.getMxCompatibility().licensesAttribute(), context=context)
-            r = Repository(self, name, url, licenses)
+            r = Repository(self, name, snapshots_url, releases_url, licenses)
             r.__dict__.update(attrs)
             self.repositoryDefs.append(r)
 
@@ -18034,7 +18053,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.0")  # maven-deploy --all-distributions / groupId
+version = VersionSpec("5.178.0")  # maven-deploy (with-suite-revisions-metadata, suite.py/release, releases repos, compress layout jar)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
