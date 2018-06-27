@@ -1803,9 +1803,10 @@ class NativeTARDistribution(AbstractTARDistribution):
     Attributes:
         path: suite-local path to where the tar file will be placed
     """
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output, **kwArgs):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, platforms, theLicense, relpath, output, **kwArgs):
         super(NativeTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs)
         self.relpath = relpath
+        self.platforms = platforms
         if self.output is not None:
             self.output = mx_subst.results_substitutions.substitute(self.output, dependency=self)
 
@@ -2343,7 +2344,7 @@ class LayoutDistribution(AbstractDistribution):
 
 
 class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
-    pass
+    platforms = None
 
 
 class LayoutJARDistribution(LayoutDistribution):
@@ -6728,18 +6729,23 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 if validateMetadata == 'full':
                     dist.abort("Distribution depends on non-maven distribution {}".format(dep))
                 dist.warn("Distribution depends on non-maven distribution {}".format(dep))
-            pom.open('dependency')
-            pom.element('groupId', data=dep.maven_group_id())
-            pom.element('artifactId', data=dep.maven_artifact_id(platform='${mx.platform}'))
-            dep_version = versionGetter(dep.suite)
-            if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
-                if validateMetadata == 'full':
-                    dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
-                dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
-            pom.element('version', data=dep_version)
-            if dep.remoteExtension() != 'jar':
-                pom.element('type', data=dep.remoteExtension())
-            pom.close('dependency')
+
+            platforms = [None]
+            if dep.isTARDistribution() and dep.platforms:
+                platforms = dep.platforms
+            for platform in platforms:
+                pom.open('dependency')
+                pom.element('groupId', data=dep.maven_group_id())
+                pom.element('artifactId', data=dep.maven_artifact_id(platform=platform))
+                dep_version = versionGetter(dep.suite)
+                if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
+                    if validateMetadata == 'full':
+                        dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+                    dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+                pom.element('version', data=dep_version)
+                if dep.remoteExtension() != 'jar':
+                    pom.element('type', data=dep.remoteExtension())
+                pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
                 mavenMetaData = l.maven
@@ -6769,8 +6775,8 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
-    assert exists(jarPath)
+def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
+    assert exists(filePath)
     assert not srcPath or exists(srcPath)
 
     cmd = ['--batch-mode']
@@ -6807,7 +6813,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repo, src
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
         '-Dversion=' + version,
-        '-Dfile=' + jarPath,
+        '-Dfile=' + filePath,
         '-Dpackaging=' + extension
     ]
     if pomFile:
@@ -7011,7 +7017,20 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
             os.unlink(pomFile)
             if javadocPath:
                 os.unlink(javadocPath)
-        elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
+        elif dist.isTARDistribution():
+            platforms = dist.platforms if dist.platforms else [None]
+            for platform in platforms:
+                if dist.maven_artifact_id() == dist.maven_artifact_id(platform):
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
+                elif repo == maven_local_repository():
+                    full_maven_name = "{}:{}".format(dist.maven_group_id(), dist.maven_artifact_id(platform))
+                    log("Installing dummy {}".format(full_maven_name))
+                    # Allow installing local dummy platform dependend artifacts for other platforms
+                    with tempfile.NamedTemporaryFile('w', suffix='.tar.gz') as foreign_platform_dummy_tarball:
+                        with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
+                            arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
+                        _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+        elif dist.isLayoutJARDistribution():
             _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
         else:
             warn('Unsupported distribution: ' + dist.name)
@@ -8060,7 +8079,8 @@ class Suite(object):
             else:
                 relpath = attrs.pop('relpath', False)
                 output = attrs.pop('output', None)
-                d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
+                platforms = Suite._pop_list(attrs, 'platforms', context)
+                d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, platforms, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         else:
             path = attrs.pop('path', None)
             subDir = attrs.pop('subDir', None)
