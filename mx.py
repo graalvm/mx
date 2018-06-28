@@ -915,12 +915,13 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
+        self.platforms = platforms or [None]
         if testDistribution is None:
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
@@ -8062,8 +8063,6 @@ class Suite(object):
         pd = attrs.pop('platformDependent', False)
         platformDependent = bool(os_arch) or pd
         testDistribution = attrs.pop('testDistribution', None)
-        if 'platforms' not in attrs:
-            attrs['platforms'] = [None]
         if className:
             if not self.extensions or not hasattr(self.extensions, className):
                 abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
