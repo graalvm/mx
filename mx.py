@@ -17792,7 +17792,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.6")  # GR-10395 - maven compatible handling of platform-dependent artifacts
+version = VersionSpec("5.175.7")  # GR-10395 - Ensure default platforms field in all Distribution subclasses.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
