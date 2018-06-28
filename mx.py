@@ -1489,9 +1489,12 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def strip_jar(self):
         assert _opts.strip_jars, "Only works under the flag --strip-jars"
-        logv('Stripping {}...'.format(self.name))
 
         jdk = get_jdk(self.maxJavaCompliance())
+        if jdk.javaCompliance >= '11':
+            abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
+
+        logv('Stripping {}...'.format(self.name))
         jdk9_or_later = jdk.javaCompliance >= '9'
         strip_command = ['-jar', library('PROGUARD_6_0_3').get_path(resolve=True)]
 
@@ -17792,7 +17795,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.7")  # GR-10395 - Ensure default platforms field in all Distribution subclasses.
+version = VersionSpec("5.175.8")  # GR-10664
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
