@@ -6728,18 +6728,19 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 if validateMetadata == 'full':
                     dist.abort("Distribution depends on non-maven distribution {}".format(dep))
                 dist.warn("Distribution depends on non-maven distribution {}".format(dep))
-            pom.open('dependency')
-            pom.element('groupId', data=dep.maven_group_id())
-            pom.element('artifactId', data=dep.maven_artifact_id(platform='${mx.platform}'))
-            dep_version = versionGetter(dep.suite)
-            if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
-                if validateMetadata == 'full':
-                    dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
-                dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
-            pom.element('version', data=dep_version)
-            if dep.remoteExtension() != 'jar':
-                pom.element('type', data=dep.remoteExtension())
-            pom.close('dependency')
+            for platform in dep.platforms:
+                pom.open('dependency')
+                pom.element('groupId', data=dep.maven_group_id())
+                pom.element('artifactId', data=dep.maven_artifact_id(platform=platform))
+                dep_version = versionGetter(dep.suite)
+                if validateMetadata != 'none' and 'SNAPSHOT' in dep_version and 'SNAPSHOT' not in version:
+                    if validateMetadata == 'full':
+                        dist.abort("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+                    dist.warn("non-snapshot distribution depends on snapshot distribution {}".format(dep))
+                pom.element('version', data=dep_version)
+                if dep.remoteExtension() != 'jar':
+                    pom.element('type', data=dep.remoteExtension())
+                pom.close('dependency')
         for l in directLibDeps:
             if hasattr(l, 'maven'):
                 mavenMetaData = l.maven
@@ -6769,8 +6770,8 @@ def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
-    assert exists(jarPath)
+def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
+    assert exists(filePath)
     assert not srcPath or exists(srcPath)
 
     cmd = ['--batch-mode']
@@ -6807,7 +6808,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, jarPath, version, repo, src
         '-DgroupId=' + groupId,
         '-DartifactId=' + artifactId,
         '-Dversion=' + version,
-        '-Dfile=' + jarPath,
+        '-Dfile=' + filePath,
         '-Dpackaging=' + extension
     ]
     if pomFile:
@@ -6968,53 +6969,66 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                 if distLicense not in repo.licenses:
                     abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.repository_id, dist.name))
     for dist in dists:
-        if dist.isJARDistribution():
-            pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
-            if _opts.very_verbose or (dryRun and _opts.verbose):
-                with open(pomFile) as f:
-                    log(f.read())
-            javadocPath = None
-            if generateJavadoc:
-                projects = [p for p in dist.archived_deps() if p.isJavaProject()]
-                tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
-                javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
-                if dist.javadocType == 'implementation':
-                    javadocArgs += ['--implementation']
+        for platform in dist.platforms:
+            if dist.maven_artifact_id() != dist.maven_artifact_id(platform):
+                full_maven_name = "{}:{}".format(dist.maven_group_id(), dist.maven_artifact_id(platform))
+                if repo == maven_local_repository():
+                    log("Installing dummy {}".format(full_maven_name))
+                    # Allow installing local dummy platform dependend artifacts for other platforms
+                    with tempfile.NamedTemporaryFile('w', suffix='.tar.gz') as foreign_platform_dummy_tarball:
+                        with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
+                            arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
+                        _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
                 else:
-                    assert dist.javadocType == 'api'
-                if dist.allowsJavadocWarnings:
-                    javadocArgs += ['--allow-warnings']
-                javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
-                tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
-                tmpJavadocJar.close()
-                javadocPath = tmpJavadocJar.name
-                emptyJavadoc = True
-                with zipfile.ZipFile(javadocPath, 'w') as arc:
-                    javadocDir = join(tmpDir, 'javadoc')
-                    for (dirpath, _, filenames) in os.walk(javadocDir):
-                        for filename in filenames:
-                            emptyJavadoc = False
-                            src = join(dirpath, filename)
-                            dst = os.path.relpath(src, javadocDir)
-                            arc.write(src, dst)
-                shutil.rmtree(tmpDir)
-                if emptyJavadoc:
+                    log("Skip deploying {}".format(full_maven_name))
+            else:
+                if dist.isJARDistribution():
+                    pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
+                    if _opts.very_verbose or (dryRun and _opts.verbose):
+                        with open(pomFile) as f:
+                            log(f.read())
                     javadocPath = None
-                    warn('Javadoc for {0} was empty'.format(dist.name))
+                    if generateJavadoc:
+                        projects = [p for p in dist.archived_deps() if p.isJavaProject()]
+                        tmpDir = tempfile.mkdtemp(prefix='mx-javadoc')
+                        javadocArgs = ['--base', tmpDir, '--unified', '--projects', ','.join((p.name for p in projects))]
+                        if dist.javadocType == 'implementation':
+                            javadocArgs += ['--implementation']
+                        else:
+                            assert dist.javadocType == 'api'
+                        if dist.allowsJavadocWarnings:
+                            javadocArgs += ['--allow-warnings']
+                        javadoc(javadocArgs, includeDeps=False, mayBuild=False, quietForNoPackages=True)
+                        tmpJavadocJar = tempfile.NamedTemporaryFile('w', suffix='.jar', delete=False)
+                        tmpJavadocJar.close()
+                        javadocPath = tmpJavadocJar.name
+                        emptyJavadoc = True
+                        with zipfile.ZipFile(javadocPath, 'w') as arc:
+                            javadocDir = join(tmpDir, 'javadoc')
+                            for (dirpath, _, filenames) in os.walk(javadocDir):
+                                for filename in filenames:
+                                    emptyJavadoc = False
+                                    src = join(dirpath, filename)
+                                    dst = os.path.relpath(src, javadocDir)
+                                    arc.write(src, dst)
+                        shutil.rmtree(tmpDir)
+                        if emptyJavadoc:
+                            javadocPath = None
+                            warn('Javadoc for {0} was empty'.format(dist.name))
 
-            mapFile = None
-            if deployMapFiles and dist.is_stripped():
-                mapFile = dist.strip_mapping_file()
+                    mapFile = None
+                    if deployMapFiles and dist.is_stripped():
+                        mapFile = dist.strip_mapping_file()
 
-            _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
-                dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
-            os.unlink(pomFile)
-            if javadocPath:
-                os.unlink(javadocPath)
-        elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
-            _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
-        else:
-            warn('Unsupported distribution: ' + dist.name)
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
+                        dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
+                    os.unlink(pomFile)
+                    if javadocPath:
+                        os.unlink(javadocPath)
+                elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
+                else:
+                    warn('Unsupported distribution: ' + dist.name)
 
 def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository
@@ -8048,6 +8062,8 @@ class Suite(object):
         pd = attrs.pop('platformDependent', False)
         platformDependent = bool(os_arch) or pd
         testDistribution = attrs.pop('testDistribution', None)
+        if 'platforms' not in attrs:
+            attrs['platforms'] = [None]
         if className:
             if not self.extensions or not hasattr(self.extensions, className):
                 abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
@@ -17777,7 +17793,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.5")  # GR-10573
+version = VersionSpec("5.175.6")  # GR-10395 - maven compatible handling of platform-dependent artifacts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
