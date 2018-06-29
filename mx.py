@@ -4192,13 +4192,10 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
         if not exists(cachePath):
             oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
-            if exists(oldCachePath) and not islink(oldCachePath):
-                log('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
-                ensure_dirname_exists(cachePath)
-                os.rename(oldCachePath, cachePath)
-                os.rename(oldCachePath + '.sha1', sha1path)
-                _copy_or_symlink(cachePath, oldCachePath)
-                _copy_or_symlink(sha1path, oldCachePath + '.sha1')
+            if exists(oldCachePath):
+                logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
+                _copy_or_symlink(oldCachePath, cachePath)
+                _copy_or_symlink(oldCachePath + '.sha1', cachePath + '.sha1')
 
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
