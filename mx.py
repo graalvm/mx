@@ -4061,7 +4061,7 @@ def _cache_dir():
     return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
 
 
-def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
+def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
     """
     Gets the path an artifact has (or would have) in the download cache.
     """
@@ -4082,7 +4082,10 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)
+    if oldPath:
+        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext) # mx < 5.176.0
+    filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
+    return join(_cache_dir(), name + '_' + sha1, filename)
 
 
 def _urlopen(*args, **kwargs):
@@ -4186,6 +4189,16 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                 with SafeFileCreation(link_name) as sfc:
                     logvv('Copying {} to {}'.format(source, link_name))
                     shutil.copy(source, sfc.tmpPath)
+
+        if not exists(cachePath):
+            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
+            if exists(oldCachePath) and not islink(oldCachePath):
+                log('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
+                ensure_dirname_exists(cachePath)
+                os.rename(oldCachePath, cachePath)
+                os.rename(oldCachePath + '.sha1', sha1path)
+                _copy_or_symlink(cachePath, oldCachePath)
+                _copy_or_symlink(sha1path, oldCachePath + '.sha1')
 
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
