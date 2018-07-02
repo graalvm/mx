@@ -4083,9 +4083,9 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
     if oldPath:
-        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext) # mx < 5.176.0
+        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)  # mx < 5.176.0
     filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
-    return join(_cache_dir(), name + '_' + sha1, filename)
+    return join(_cache_dir(), name + '_' + sha1 + ('.dir' if not ext else ''), filename)
 
 
 def _urlopen(*args, **kwargs):
@@ -4189,6 +4189,18 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                 with SafeFileCreation(link_name) as sfc:
                     logvv('Copying {} to {}'.format(source, link_name))
                     shutil.copy(source, sfc.tmpPath)
+
+        cache_path_parent = dirname(cachePath)
+        if is_cache_path(cache_path_parent):
+            if exists(cache_path_parent) and not isdir(cache_path_parent):
+                logv('Wiping bad cache file: {}'.format(cache_path_parent))
+                # Some old version created bad files at this location, wipe it!
+                try:
+                    os.unlink(cache_path_parent)
+                except OSError as e:
+                    # we don't care about races, only about getting rid of this file
+                    if exists(cache_path_parent) and not isdir(cache_path_parent):
+                        raise e
 
         if not exists(cachePath):
             oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
@@ -4593,8 +4605,9 @@ class Library(BaseLibrary, ClasspathDependency):
         path = realpath(self.get_path(False))
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
         if not single:
-            src_path = realpath(self.get_source_path(False))
+            src_path = self.get_source_path(False)
             if src_path:
+                src_path = realpath(src_path)
                 ext = get_file_extension(src_path)
                 if 'src' not in ext and 'source' not in ext:
                     ext = "src." + ext
