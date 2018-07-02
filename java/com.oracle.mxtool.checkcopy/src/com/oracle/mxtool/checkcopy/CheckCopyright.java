@@ -97,7 +97,7 @@ public class CheckCopyright {
         }
 
         private static Map<String, CopyrightHandler> copyrightMap;
-        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.h|.*\\.py|.*\\.g|.*\\.r";
+        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.cpp|.*\\.h|.*\\.hpp|.*\\.py|.*\\.g|.*\\.r";
         private static Pattern copyrightFilePattern;
 
         protected final String suffix;
@@ -205,7 +205,9 @@ public class CheckCopyright {
             if (commentType == CopyrightHandler.CommentType.STAR) {
                 updateMap("java");
                 updateMap("c");
+                updateMap("cpp");
                 updateMap("h");
+                updateMap("hpp");
                 updateMap("g");
             } else {
                 updateMap("r");
