@@ -4061,7 +4061,7 @@ def _cache_dir():
     return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
 
 
-def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
+def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
     """
     Gets the path an artifact has (or would have) in the download cache.
     """
@@ -4082,7 +4082,10 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False):
             abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
     assert os.sep not in name, name + ' cannot contain ' + os.sep
     assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)
+    if oldPath:
+        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext) # mx < 5.176.0
+    filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
+    return join(_cache_dir(), name + '_' + sha1, filename)
 
 
 def _urlopen(*args, **kwargs):
@@ -4186,6 +4189,13 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                 with SafeFileCreation(link_name) as sfc:
                     logvv('Copying {} to {}'.format(source, link_name))
                     shutil.copy(source, sfc.tmpPath)
+
+        if not exists(cachePath):
+            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
+            if exists(oldCachePath):
+                logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
+                _copy_or_symlink(oldCachePath, cachePath)
+                _copy_or_symlink(oldCachePath + '.sha1', cachePath + '.sha1')
 
         if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
             if exists(cachePath):
@@ -8182,13 +8192,12 @@ class Suite(object):
                 }
                 return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(base=base, **args) for base in baseURLs]
 
+            if not urls and maven is not None:
+                _check_maven(maven)
+                urls = _maven_download_urls(**maven)
             if path is None:
                 if not urls:
-                    if maven is not None:
-                        _check_maven(maven)
-                        urls = _maven_download_urls(**maven)
-                    else:
-                        abort('Library without "path" attribute must have a non-empty "urls" list attribute', context)
+                    abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
                 path = _get_path_in_cache(name, sha1, urls, ext, sources=False)
@@ -11122,10 +11131,7 @@ class JDKConfig:
         if m:
             name = name[0:m.start()]
 
-        # Finally clean up the module name (see java.lang.module.ModulePath.cleanModuleName())
-        if self.get_transitive_requires_keyword() == 'transitive':
-            # http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l23.90
-            name = re.sub(r'(\.|\d)*$', '', name) # drop trailing version from name
+        # Finally clean up the module name (see jdk.internal.module.ModulePath.cleanModuleName())
         name = re.sub(r'[^A-Za-z0-9]', '.', name) # replace non-alphanumeric
         name = re.sub(r'(\.)(\1)+', '.', name) # collapse repeating dots
         name = re.sub(r'^\.', '', name) # drop leading dots
@@ -17795,7 +17801,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.175.8")  # GR-10664
+version = VersionSpec("5.176.0")  # GR-10588
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
