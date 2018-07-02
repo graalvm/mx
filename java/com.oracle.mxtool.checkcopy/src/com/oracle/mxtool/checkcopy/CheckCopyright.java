@@ -277,6 +277,13 @@ public class CheckCopyright {
             int yearInCopyright;
             int yearInCopyrightIndex;
             int groupCount = matcher.groupCount();
+            if (groupCount == 0) {
+                /*
+                 * No group in copyright regex means there should be no year.
+                 */
+                return true;
+            }
+
             String yearInCopyrightString = matcher.group(groupCount);
             yearInCopyright = Integer.parseInt(yearInCopyrightString);
             yearInCopyrightIndex = matcher.start(groupCount);
