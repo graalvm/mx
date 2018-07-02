@@ -4295,7 +4295,7 @@ class ResourceLibrary(BaseLibrary):
         self.sha1 = sha1
 
     def getArchivableResults(self, use_relpath=True, single=False):
-        path = self.get_path(False)
+        path = realpath(self.get_path(False))
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
 
     def getBuildTask(self, args):
@@ -4590,10 +4590,10 @@ class Library(BaseLibrary, ClasspathDependency):
         return LibraryDownloadTask(args, self)
 
     def getArchivableResults(self, use_relpath=True, single=False):
-        path = self.get_path(False)
+        path = realpath(self.get_path(False))
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
         if not single:
-            src_path = self.get_source_path(False)
+            src_path = realpath(self.get_source_path(False))
             if src_path:
                 ext = get_file_extension(src_path)
                 if 'src' not in ext and 'source' not in ext:
@@ -17801,7 +17801,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.176.0")  # GR-10588
+version = VersionSpec("5.176.1")  # library archivable results links
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
