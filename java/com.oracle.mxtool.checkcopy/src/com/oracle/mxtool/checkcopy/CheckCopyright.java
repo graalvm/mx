@@ -97,7 +97,7 @@ public class CheckCopyright {
         }
 
         private static Map<String, CopyrightHandler> copyrightMap;
-        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.h|.*\\.py|.*\\.g|.*\\.r";
+        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.cpp|.*\\.h|.*\\.hpp|.*\\.py|.*\\.g|.*\\.r";
         private static Pattern copyrightFilePattern;
 
         protected final String suffix;
@@ -205,7 +205,9 @@ public class CheckCopyright {
             if (commentType == CopyrightHandler.CommentType.STAR) {
                 updateMap("java");
                 updateMap("c");
+                updateMap("cpp");
                 updateMap("h");
+                updateMap("hpp");
                 updateMap("g");
             } else {
                 updateMap("r");
@@ -275,6 +277,13 @@ public class CheckCopyright {
             int yearInCopyright;
             int yearInCopyrightIndex;
             int groupCount = matcher.groupCount();
+            if (groupCount == 0) {
+                /*
+                 * No group in copyright regex means there should be no year.
+                 */
+                return true;
+            }
+
             String yearInCopyrightString = matcher.group(groupCount);
             yearInCopyright = Integer.parseInt(yearInCopyrightString);
             yearInCopyrightIndex = matcher.start(groupCount);
