@@ -42,6 +42,7 @@ def sigtest(args, suite=None, projects=None):
     parser = ArgumentParser(prog='mx sigtest')
     parser.add_argument('--generate', action='store_true', help='Generates signature files for projects with API')
     parser.add_argument('--check', action='store', help='Check <binary|all> against existing signature files', default='binary')
+    parser.add_argument('-H', '--human', action='store_true', help='Produce human readable output')
 
     args = parser.parse_args(args)
 
@@ -68,6 +69,8 @@ def _sigtest_generate(args, suite=None, projects=None):
             '-Static', '-FileName', sigtestResults,
             '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
+        if args.human:
+            cmd.append('-H')
         for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
@@ -101,6 +104,8 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
             '-Static', '-Mode', 'bin', '-FileName', sigtestResults,
             '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
         ]
+        if args.human:
+            cmd.append('-H')
         if checktype != 'all':
             cmd.append('-b')
         for pkg in mx._find_packages(p):
