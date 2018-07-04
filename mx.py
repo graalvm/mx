@@ -7137,9 +7137,11 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         repo_metadata_xml.open('suite-revisions')
         for s_ in suites():
             if s_.vc:
+                commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
                 repo_metadata_xml.element('suite', attributes={
                     "name": s_.name,
                     "revision": s_.vc.parent(s_.vc_dir),
+                    "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
                     "kind": s_.vc.kind
                 })
         repo_metadata_xml.close('suite-revisions')
