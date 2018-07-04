@@ -4221,6 +4221,7 @@ def _urlopen(*args, **kwargs):
             raise
         abort("should not reach here")
 
+
 def download_file_exists(urls):
     """
     Returns true if one of the given urls denotes an existing resource.
@@ -4311,11 +4312,12 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
     return path
 
-"""
-Checks if a file exists and is up to date according to the sha1.
-Returns False if the file is not there or does not have the right checksum.
-"""
+
 def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+    """
+    Checks if a file exists and is up to date according to the sha1.
+    Returns False if the file is not there or does not have the right checksum.
+    """
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
     def _sha1CachedValid():
