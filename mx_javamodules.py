@@ -527,7 +527,6 @@ def make_java_module(dist, jdk):
                         serviceClassfile = service.replace('.', '/') + '.class'
                         if exists(join(moduleDir, serviceClassfile)):
                             uses.add(service)
-                    shutil.rmtree(servicesDir)
 
     jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
                                jarpath=moduleJar, dist=dist, modulepath=modulepath)
