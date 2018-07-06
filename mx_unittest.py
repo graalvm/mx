@@ -31,7 +31,7 @@ import os
 import re
 import tempfile
 import fnmatch
-from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
 from os.path import exists, join, basename
 
 def _read_cached_testclasses(cachesDir, jar, jdk):
@@ -259,7 +259,7 @@ def set_vm_launcher(name, launcher, jdk=None):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, verbose=False, very_verbose=False, fail_fast=False, enable_timing=False, regex=None, color=False, eager_stacktrace=False, gc_after_test=False, suite=None, repeat=None, record_results=False):
+def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None, record_results=False):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -270,31 +270,9 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
         mx.build(['--only', 'com.oracle.mxtool.junit'])
     coreCp = mx.classpath(['com.oracle.mxtool.junit'])
 
-    coreArgs = []
-    if very_verbose:
-        coreArgs.append('-JUnitVeryVerbose')
-    elif verbose:
-        coreArgs.append('-JUnitVerbose')
-    if fail_fast:
-        coreArgs.append('-JUnitFailFast')
-    if enable_timing:
-        coreArgs.append('-JUnitEnableTiming')
-    if color:
-        coreArgs.append('-JUnitColor')
-    if eager_stacktrace:
-        coreArgs.append('-JUnitEagerStackTrace')
-    if record_results:
-        coreArgs.append('-JUnitRecordResults')
-    if gc_after_test:
-        coreArgs.append('-JUnitGCAfterTest')
-    if repeat:
-        coreArgs.append('-JUnitRepeat')
-        coreArgs.append(repeat)
-
-
     def harness(unittestDeps, vmLauncher, vmArgs):
         prefixArgs = ['-esa', '-ea']
-        if gc_after_test:
+        if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
         with open(testfile) as fp:
             testclasses = [l.rstrip() for l in fp.readlines()]
@@ -312,7 +290,7 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
 
         # Execute Junit directly when one test is being run. This simplifies
         # replaying the VM execution in a native debugger (e.g., gdb).
-        mainClassArgs = coreArgs + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
+        mainClassArgs = junit_args + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
 
         config = (vmArgs, mainClass, mainClassArgs)
         for p in _config_participants:
@@ -333,27 +311,13 @@ def _unittest(args, annotations, prefixCp="", blacklist=None, whitelist=None, ve
             os.remove(testfile)
 
 unittestHelpSuffix = """
-    Unittest options:
-
-      --blacklist <file>     run all testcases not specified in <file>
-      --whitelist <file>     run only testcases specified in <file>
-      --record-results       record test class results to passed.txt and failed.txt
-      --very-verbose         enable very verbose JUnit output
-      --verbose              enable verbose JUnit output
-      --fail-fast            stop after first JUnit test class that has a failure
-      --enable-timing        enable JUnit test timing (requires --verbose or --very-verbose)
-      --regex <regex>        run only testcases matching a regular expression
-      --color                enable colors output
-      --eager-stacktrace     print stacktrace eagerly (default)
-      --no-eager-stacktrace  do not print stacktrace eagerly
-      --gc-after-test        force a GC after each test
 
     To avoid conflicts with VM options '--' can be used as delimiter.
 
-    If filters are supplied, only tests whose fully qualified name
+    If test filters are supplied, only tests whose fully qualified name
     includes a filter as a substring are run.
 
-    For example, this command line:
+    For example:
 
        mx unittest -Dgraal.Dump= -Dgraal.MethodFilter=BC_aload -Dgraal.PrintCFG=true BC_aload
 
@@ -386,26 +350,53 @@ def is_strictly_positive(value):
 def unittest(args):
     """run the JUnit tests"""
 
+    junit_arg_actions = []
+    junit_args = []
+    class MxJUnitWrapperArg(Action):
+        def __init__(self, **kwargs):
+            kwargs['required'] = False
+            Action.__init__(self, **kwargs)
+            junit_arg_actions.append(self)
+        def __call__(self, parser, namespace, values, option_string=None):
+            junit_args.append('-' + self.dest)
+            junit_args.append(values)
+
+    class MxJUnitWrapperBoolArg(Action):
+        def __init__(self, **kwargs):
+            kwargs['required'] = False
+            kwargs['nargs'] = 0
+            Action.__init__(self, **kwargs)
+            junit_arg_actions.append(self)
+        def __call__(self, parser, namespace, values, option_string=None):
+            junit_args.append('-' + self.dest)
+
     parser = ArgumentParser(prog='mx unittest',
           description='run the JUnit tests',
           formatter_class=RawDescriptionHelpFormatter,
           epilog=unittestHelpSuffix,
         )
+
     parser.add_argument('--blacklist', help='run all testcases not specified in <file>', metavar='<file>')
     parser.add_argument('--whitelist', help='run testcases specified in <file> only', metavar='<file>')
-    parser.add_argument('--verbose', help='enable verbose JUnit output', action='store_true')
-    parser.add_argument('--very-verbose', help='enable very verbose JUnit output', action='store_true')
-    parser.add_argument('--fail-fast', help='stop after first JUnit test class that has a failure', action='store_true')
-    parser.add_argument('--enable-timing', help='enable JUnit test timing (requires --verbose/--very-verbose)', action='store_true')
+    parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--fail-fast', help='stop after first JUnit test class that has a failure', dest='JUnitFailFast', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--enable-timing', help='enable JUnit test timing (requires --verbose/--very-verbose)', dest='JUnitEnableTiming', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
-    parser.add_argument('--color', help='enable color output', action='store_true')
-    parser.add_argument('--gc-after-test', help='force a GC after each test', action='store_true')
+    parser.add_argument('--color', help='enable color output', dest='JUnitColor', action=MxJUnitWrapperBoolArg)
+    parser.add_argument('--gc-after-test', help='force a GC after each test', dest='JUnitGCAfterTest', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--record-results', help='record test class results to passed.txt and failed.txt', action='store_true')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
-    parser.add_argument('--repeat', help='run only the unit tests in <suite>', type=is_strictly_positive)
+    parser.add_argument('--repeat', help='run each test <n> times', dest='JUnitRepeat', action=MxJUnitWrapperArg, type=is_strictly_positive, metavar='<n>')
     eagerStacktrace = parser.add_mutually_exclusive_group()
     eagerStacktrace.add_argument('--eager-stacktrace', action='store_const', const=True, dest='eager_stacktrace', help='print test errors as they occur (default)')
     eagerStacktrace.add_argument('--no-eager-stacktrace', action='store_const', const=False, dest='eager_stacktrace', help='print test errors after all tests have run')
+
+    # Augment usage text to mention test filters and options passed to the VM
+    usage = parser.format_usage().strip()
+    if usage.startswith('usage: '):
+        usage = usage[len('usage: '):]
+    parser.usage = usage + ' [test filters...] [VM options...]'
 
     ut_args = []
     delimiter = False
@@ -421,8 +412,12 @@ def unittest(args):
         # all arguments before '--' must be recognized
         parsed_args = parser.parse_args(ut_args)
     else:
-        # parse all know arguments
+        # parse all known arguments
         parsed_args, args = parser.parse_known_args(ut_args)
+
+    # Remove junit_args values from parsed_args
+    for a in junit_arg_actions:
+        parsed_args.__dict__.pop(a.dest)
 
     if parsed_args.whitelist:
         try:
@@ -436,7 +431,9 @@ def unittest(args):
                 parsed_args.blacklist = [re.compile(fnmatch.translate(l.rstrip())) for l in fp.readlines() if not l.startswith('#')]
         except IOError:
             mx.log('warning: could not read blacklist: ' + parsed_args.blacklist)
-    if parsed_args.eager_stacktrace is None:
-        parsed_args.eager_stacktrace = True
 
-    _unittest(args, ['@Test', '@Parameters'], **parsed_args.__dict__)
+    if parsed_args.eager_stacktrace is None:
+        junit_args.append('-JUnitEagerStackTrace')
+    parsed_args.__dict__.pop('eager_stacktrace')
+
+    _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
