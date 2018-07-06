@@ -60,6 +60,7 @@ def testdownstream_cli(args):
     branch = args.downstream_branch or mx.get_env('DOWNSTREAM_BRANCH', None)
     return testdownstream(mx.primary_suite(), args.repos, args.suitedir, mxCommands, branch)
 
+@mx.no_suite_discovery
 def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     """
     Tests a downstream repo against the current working directory state of `suite`.
