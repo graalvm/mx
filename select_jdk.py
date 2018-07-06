@@ -184,21 +184,27 @@ if __name__ == '__main__':
                 print >> fp, jdk
         apply_selection(args, args.jdks[0], args.jdks[1:])
     else:
-        print "Current JDK Settings:"
-        print "JAVA_HOME=%s" % os.environ.get('JAVA_HOME', '')
-        print "EXTRA_JAVA_HOMES=%s" %  os.environ.get('EXTRA_JAVA_HOMES', '')
         jdks = find_system_jdks()
         if exists(jdk_cache_path):
             with open(jdk_cache_path) as fp:
                 jdks.update((line.strip() for line in fp.readlines() if is_valid_jdk(line.strip())))
 
-        choices = list(enumerate(sorted(jdks)))
+        sorted_jdks = sorted(jdks)
+        print "Current JDK Settings:"
+        for name in ['JAVA_HOME', 'EXTRA_JAVA_HOMES']:
+            jdk = os.environ.get(name, None)
+            if jdk:
+                if jdk in sorted_jdks:
+                    jdk = '{} [{}]'.format(jdk, sorted_jdks.index(jdk))
+                print '{}={}'.format(name, jdk)
+        choices = list(enumerate(sorted_jdks))
         if choices:
             _, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
             with open(tmp_cache_path, 'w') as fp:
                 for index, jdk in choices:
                     print '[{}] {}'.format(index, jdk)
                     print >> fp, jdk
+
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}
             jdks = [choices[n] for n in raw_input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
