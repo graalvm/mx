@@ -18059,7 +18059,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.1")  # [GR-10829] Fix MX path separator problem for Windows build
+version = VersionSpec("5.178.2")  # fix repos
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
