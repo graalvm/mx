@@ -7258,6 +7258,7 @@ def maven_deploy(args):
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
     parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
+    parser.add_argument('--all-distributions', help='Include all distributions, regardless of the maven flags.', action='store_true')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
@@ -7283,6 +7284,8 @@ def maven_deploy(args):
         _suites = primary_or_specific_suites()
 
     def distMatcher(dist):
+        if args.all_distributions:
+            return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
             return False
         return getattr(d, 'maven', False) and not dist.is_test_distribution()
@@ -18059,7 +18062,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.2")  # fix repos
+version = VersionSpec("5.178.3")  # all dists
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
