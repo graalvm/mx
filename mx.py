@@ -2453,12 +2453,12 @@ def glob_match(pattern, path):
     """
     Matches a path against a pattern using glob's special rules. In particular, the pattern is checked for each part
     of the path and files starting with `.` are not matched unless the pattern also starts with a `.`.
-    :param str pattern: The pattern to match with glob syntax. (Must be normalized to `/` separator).
-    :param str path: The path to be checked against the pattern (Must be normalized to `/` separator).
+    :param str pattern: The pattern to match with glob syntax
+    :param str path: The path to be checked against the pattern
     :return: The part of the path that matches or None if the path does not match
     """
-    pattern_parts = pattern.split('/')
-    path_parts = path.split('/')
+    pattern_parts = pattern.replace(os.path.sep, '/').split('/')
+    path_parts = path.replace(os.path.sep, '/').split('/')
     if len(path_parts) < len(pattern_parts):
         return None
     for pattern_part, path_part in zip(pattern_parts, path_parts):
@@ -18059,7 +18059,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.0")  # maven-deploy (with-suite-revisions-metadata, suite.py/release, releases repos, compress layout jar)
+version = VersionSpec("5.178.1")  # [GR-10829] Fix MX path separator problem for Windows build
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
