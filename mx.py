@@ -6782,8 +6782,9 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
-        if suite.groupId:
-            return suite.groupId
+        group_id = suite._get_early_suite_dict_property('groupId')
+        if group_id:
+            return group_id
         name = suite.name
     else:
         assert isinstance(suite, types.StringTypes)
@@ -8116,7 +8117,6 @@ class Suite(object):
         self.defaultLicense = suiteDict.get(self.getMxCompatibility().defaultLicenseAttribute())
         if isinstance(self.defaultLicense, str):
             self.defaultLicense = [self.defaultLicense]
-        self.groupId = suiteDict.get('groupId')
 
         if scmDict:
             try:
