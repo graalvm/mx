@@ -7069,7 +7069,7 @@ def _deploy_binary(args, suite):
     platform_dependence = any(d.platformDependent for d in dists)
 
     if args.url:
-        repo = Repository(None, args.repository_id, args.url, repository(args.repository_id).licenses)
+        repo = Repository(None, args.repository_id, args.url, args.url, repository(args.repository_id).licenses)
     elif args.repository_id:
         if not suite.getMxCompatibility().supportsRepositories():
             abort("Repositories are not supported in {}'s suite version".format(suite.name))
@@ -7296,7 +7296,7 @@ def maven_deploy(args):
 
         if args.url:
             licenses = get_license(args.licenses.split(','))
-            repo = Repository(None, args.repository_id, args.url, licenses)
+            repo = Repository(None, args.repository_id, args.url, args.url, licenses)
         elif args.repository_id:
             if not s.getMxCompatibility().supportsRepositories():
                 abort("Repositories are not supported in {}'s suite version".format(s.name))
@@ -18059,7 +18059,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.1")  # [GR-10829] Fix MX path separator problem for Windows build
+version = VersionSpec("5.178.2")  # fix repos
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
