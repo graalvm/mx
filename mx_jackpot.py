@@ -73,8 +73,12 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
             javacClasspath.append(dep.classpath_repr(resolve=True))
 
         javaCompliance = p.javaCompliance
+        if javaCompliance.value < 10:
+            sourceLevel = javaCompliance.value
+        else:
+            sourceLevel = 9
 
-        groups = groups + ['--group', "--classpath " + mx._separatedCygpathU2W(_escape_string(os.pathsep.join(javacClasspath))) + " --source " + str(p.javaCompliance) + " " + " ".join([_escape_string(d) for d in p.source_dirs()])]
+        groups = groups + ['--group', "--classpath " + mx._separatedCygpathU2W(_escape_string(os.pathsep.join(javacClasspath))) + " --source " + str(sourceLevel) + " " + " ".join([_escape_string(d) for d in p.source_dirs()])]
 
     cmd = ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
     cmd = cmd + ['--fail-on-warnings', '--progress'] + args + groups
