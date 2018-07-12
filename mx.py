@@ -1837,7 +1837,7 @@ class AbstractJARDistribution(AbstractDistribution):
             zf.extractall(tmp_dir)
         tmp_fd, tmp_file = mkstemp(".jar", self.name)
         with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_STORED) as zf:
-            for root, dirs, files in os.walk(tmp_dir):
+            for root, _, files in os.walk(tmp_dir):
                 arc_dir = os.path.relpath(root, tmp_dir)
                 for f_ in files:
                     zf.write(join(root, f_), join(arc_dir, f_))
@@ -1853,7 +1853,7 @@ class AbstractJARDistribution(AbstractDistribution):
             zf.extractall(tmpdir)
         tmp_fd, tmp_file = mkstemp(".jar", self.name)
         with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(tmpdir):
+            for root, _, files in os.walk(tmpdir):
                 arc_dir = os.path.relpath(root, tmpdir)
                 for f_ in files:
                     zf.write(join(root, f_), join(arc_dir, f_))
