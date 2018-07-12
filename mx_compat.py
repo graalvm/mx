@@ -143,6 +143,9 @@ class MxCompatibility500(object):
         """
         return False
 
+    def addVersionSuffixToExplicitVersion(self):
+        return False
+
     def __str__(self):
         return str("MxCompatibility({})".format(self.version()))
 
@@ -325,6 +328,14 @@ class MxCompatibility51492(MxCompatibility51400):#pylint: disable=too-many-ances
         return mx.VersionSpec("5.149.2")
 
     def filterFindbugsProjectsByJavaCompliance(self):
+        return True
+
+class MxCompatibility51760(MxCompatibility51492):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.176.0")
+
+    def addVersionSuffixToExplicitVersion(self):
         return True
 
 def minVersion():

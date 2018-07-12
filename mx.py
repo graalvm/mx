@@ -64,7 +64,7 @@ from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
 from os.path import join, basename, dirname, exists, isabs, expandvars, isdir, islink, normpath, realpath
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
 import fnmatch
 import copy
 import operator
@@ -1760,6 +1760,7 @@ class AbstractDistribution(Distribution):
 
 class AbstractTARDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
+    __has_gzip = None
 
     def remoteExtension(self):
         return 'tar.gz'
@@ -1770,13 +1771,17 @@ class AbstractTARDistribution(AbstractDistribution):
     def postPull(self, f):
         assert f.endswith('.gz')
         logv('Uncompressing {}...'.format(f))
-        with gzip.open(f, 'rb') as gz, open(f[:-len('.gz')], 'wb') as tar:
-            shutil.copyfileobj(gz, tar)
-            tarfilename = tar.name
+        tarfilename = f[:-len('.gz')]
+        if AbstractTARDistribution._has_gzip():
+            with open(tarfilename, 'wb') as tar:
+                # force, quiet, decompress, cat to stdout
+                run(['gzip', '-f', '-q', '-d', '-c', f], out=tar)
+        else:
+            with gzip.open(f, 'rb') as gz, open(tarfilename, 'wb') as tar:
+                shutil.copyfileobj(gz, tar)
         os.remove(f)
         if self.output:
             output = self.get_output()
-            assert tarfilename
             with tarfile.open(tarfilename, 'r:') as tar:
                 logv('Extracting {} to {}'.format(tarfilename, output))
                 tar.extractall(output)
@@ -1785,9 +1790,75 @@ class AbstractTARDistribution(AbstractDistribution):
     def prePush(self, f):
         tgz = f + '.gz'
         logv('Compressing {}...'.format(f))
-        with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
-            shutil.copyfileobj(tar, gz)
+        if AbstractTARDistribution._has_gzip():
+            with open(tgz, 'wb') as tar:
+                # force, quiet, cat to stdout
+                run(['gzip', '-f', '-q', '-c', f], out=tar)
+        else:
+            with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
+                shutil.copyfileobj(tar, gz)
         return tgz
+
+    @staticmethod
+    def _has_gzip():
+        if AbstractTARDistribution.__has_gzip is None:
+            gzip_ret_code = None
+            try:
+                gzip_ret_code = run(['gzip', '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
+            except OSError as e:
+                gzip_ret_code = e
+            AbstractTARDistribution.__has_gzip = gzip_ret_code == 0
+        return AbstractTARDistribution.__has_gzip
+
+
+class AbstractJARDistribution(AbstractDistribution):
+    __metaclass__ = ABCMeta
+
+    def remoteExtension(self):
+        return 'jar'
+
+    def localExtension(self):
+        return 'jar'
+
+    @abstractmethod
+    def compress_locally(self):
+        pass
+
+    @abstractmethod
+    def compress_remotely(self):
+        pass
+
+    def postPull(self, f):
+        if self.compress_locally() or not self.compress_remotely():
+            return None
+        logv('Uncompressing {}...'.format(f))
+        tmp_dir = mkdtemp(".jar", self.name)
+        with zipfile.ZipFile(f) as zf:
+            zf.extractall(tmp_dir)
+        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_STORED) as zf:
+            for root, _, files in os.walk(tmp_dir):
+                arc_dir = os.path.relpath(root, tmp_dir)
+                for f_ in files:
+                    zf.write(join(root, f_), join(arc_dir, f_))
+        rmtree(tmp_dir)
+        return tmp_file
+
+    def prePush(self, f):
+        if not self.compress_remotely() or self.compress_locally():
+            return f
+        logv('Compressing {}...'.format(f))
+        tmpdir = mkdtemp(".jar", self.name)
+        with zipfile.ZipFile(f) as zf:
+            zf.extractall(tmpdir)
+        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for root, _, files in os.walk(tmpdir):
+                arc_dir = os.path.relpath(root, tmpdir)
+                for f_ in files:
+                    zf.write(join(root, f_), join(arc_dir, f_))
+        rmtree(tmpdir)
+        return tmp_file
 
 
 class NativeTARDistribution(AbstractTARDistribution):
@@ -1899,7 +1970,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -1913,6 +1984,7 @@ class LayoutDistribution(AbstractDistribution):
         self.string_substitutions = string_substitutions or mx_subst.string_substitutions
         self._source_location_cache = {}
         self.archive_factory = archive_factory or Archiver
+        self.compress = compress
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
@@ -2123,52 +2195,52 @@ class LayoutDistribution(AbstractDistribution):
                 return name, _root_match
 
             if ext.endswith('zip') or ext.endswith('jar'):
-                zf = zipfile.ZipFile(source_archive_file)
-                for zipinfo in zf.infolist():
-                    zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
-                    if not zipinfo.filename:
-                        continue
-                    extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                    archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
+                with zipfile.ZipFile(source_archive_file) as zf:
+                    for zipinfo in zf.infolist():
+                        zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
+                        if not zipinfo.filename:
+                            continue
+                        extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                        archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
-                tf = tarfile.TarFile.open(source_archive_file)
-                # from tarfile.TarFile.extractall:
-                directories = []
-                for tarinfo in tf:
-                    tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
-                    if not tarinfo.name:
-                        continue
-                    if tarinfo.isdir():
-                        # Extract directories with a safe mode.
-                        directories.append(tarinfo)
-                        tarinfo = copy.copy(tarinfo)
-                        tarinfo.mode = 0700
-                    extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
-                    arcname = os.path.relpath(extracted_file, output)
-                    if tarinfo.issym():
-                        if root_match:
-                            tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
-                            archiver.add(extracted_file, arcname, provenance)
+                with tarfile.TarFile.open(source_archive_file) as tf:
+                    # from tarfile.TarFile.extractall:
+                    directories = []
+                    for tarinfo in tf:
+                        tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
+                        if not tarinfo.name:
+                            continue
+                        if tarinfo.isdir():
+                            # Extract directories with a safe mode.
+                            directories.append(tarinfo)
+                            tarinfo = copy.copy(tarinfo)
+                            tarinfo.mode = 0700
+                        extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
+                        arcname = os.path.relpath(extracted_file, output)
+                        if tarinfo.issym():
+                            if root_match:
+                                tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
+                                archiver.add(extracted_file, arcname, provenance)
+                            else:
+                                tf.extract(tarinfo, unarchiver_dest_directory)
+                                archiver.add_link(tarinfo.linkname, arcname, provenance)
                         else:
                             tf.extract(tarinfo, unarchiver_dest_directory)
-                            archiver.add_link(tarinfo.linkname, arcname, provenance)
-                    else:
-                        tf.extract(tarinfo, unarchiver_dest_directory)
-                        archiver.add(extracted_file, arcname, provenance)
+                            archiver.add(extracted_file, arcname, provenance)
 
-                # Reverse sort directories.
-                directories.sort(key=operator.attrgetter('name'))
-                directories.reverse()
+                    # Reverse sort directories.
+                    directories.sort(key=operator.attrgetter('name'))
+                    directories.reverse()
 
-                # Set correct owner, mtime and filemode on directories.
-                for tarinfo in directories:
-                    dirpath = join(absolute_destination, tarinfo.name)
-                    try:
-                        tf.chown(tarinfo, dirpath)
-                        tf.utime(tarinfo, dirpath)
-                        tf.chmod(tarinfo, dirpath)
-                    except tarfile.ExtractError as e:
-                        abort("tarfile: " + str(e))
+                    # Set correct owner, mtime and filemode on directories.
+                    for tarinfo in directories:
+                        dirpath = join(absolute_destination, tarinfo.name)
+                        try:
+                            tf.chown(tarinfo, dirpath)
+                            tf.utime(tarinfo, dirpath)
+                            tf.chmod(tarinfo, dirpath)
+                        except tarfile.ExtractError as e:
+                            abort("tarfile: " + str(e))
             else:
                 abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
             if first_file_box[0] and path is not None and not source['optional']:
@@ -2245,7 +2317,12 @@ class LayoutDistribution(AbstractDistribution):
     def make_archive(self):
         self._verify_layout()
         output = realpath(self.get_output())
-        with self.archive_factory(self.path, kind=self.localExtension(), duplicates_action='warn', context=self, reset_user_group=getattr(self, 'reset_user_group', False)) as arc:
+        with self.archive_factory(self.path,
+                                  kind=self.localExtension(),
+                                  duplicates_action='warn',
+                                  context=self,
+                                  reset_user_group=getattr(self, 'reset_user_group', False),
+                                  compress=self.compress) as arc:
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
@@ -2350,12 +2427,22 @@ class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
 
 
-class LayoutJARDistribution(LayoutDistribution):
-    def remoteExtension(self):
-        return 'jar'
+class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution):
+    def __init__(self, *args, **kw_args):
+        # we have *args here because some subclasses in suites have been written passing positional args to
+        # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
+        # than breaking compatibility with the mis-behaving suites
+        self._local_compress = kw_args.pop('localCompress', False)
+        self._remote_compress = kw_args.pop('remoteCompress', True)
+        if self._local_compress and not self._remote_compress:
+            abort("Incompatible local/remote compression settings: local compression requires remote compression")
+        super(LayoutJARDistribution, self).__init__(*args, compress=self._local_compress, **kw_args)
 
-    def localExtension(self):
-        return 'jar'
+    def compress_locally(self):
+        return self._local_compress
+
+    def compress_remotely(self):
+        return self._remote_compress
 
 
 def glob_match_any(patterns, path):
@@ -4134,6 +4221,7 @@ def _urlopen(*args, **kwargs):
             raise
         abort("should not reach here")
 
+
 def download_file_exists(urls):
     """
     Returns true if one of the given urls denotes an existing resource.
@@ -4224,11 +4312,12 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
     return path
 
-"""
-Checks if a file exists and is up to date according to the sha1.
-Returns False if the file is not there or does not have the right checksum.
-"""
+
 def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+    """
+    Checks if a file exists and is up to date according to the sha1.
+    Returns False if the file is not there or does not have the right checksum.
+    """
     sha1Check = sha1 and sha1 != 'NOCHECK'
 
     def _sha1CachedValid():
@@ -6220,7 +6309,6 @@ class GitConfig(VC):
         return None
 
 
-
 class BinaryVC(VC):
     """
     Emulates a VC system for binary suites, as far as possible, but particularly pull/tip
@@ -6432,6 +6520,7 @@ class BinaryVC(VC):
             abort("A binary VC has no branch")
         return None
 
+
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = urllib2.urlopen(url)
@@ -6444,14 +6533,17 @@ def _hashFromUrl(url):
         if hashFile:
             hashFile.close()
 
+
 def _map_to_maven_dist_name(name):
     return name.lower().replace('_', '-')
+
 
 class MavenArtifactVersions:
     def __init__(self, latestVersion, releaseVersion, versions):
         self.latestVersion = latestVersion
         self.releaseVersion = releaseVersion
         self.versions = versions
+
 
 class MavenSnapshotBuilds:
     def __init__(self, currentTime, currentBuildNumber, snapshots):
@@ -6461,6 +6553,7 @@ class MavenSnapshotBuilds:
 
     def getCurrentSnapshotBuild(self):
         return self.snapshots[(self.currentTime, self.currentBuildNumber)]
+
 
 class MavenSnapshotArtifact:
     def __init__(self, groupId, artifactId, version, snapshotBuildVersion, repo):
@@ -6525,6 +6618,7 @@ class MavenSnapshotArtifact:
 
     def __str__(self):
         return "{0}:{1}:{2}-SNAPSHOT".format(self.groupId, self.artifactId, self.snapshotBuildVersion)
+
 
 class MavenRepo:
     def __init__(self, repourl):
@@ -6628,20 +6722,32 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
+
 class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
-    def __init__(self, suite, name, url, licenses):
+    def __init__(self, suite, name, snapshots_url, releases_url, licenses):
         SuiteConstituent.__init__(self, suite, name)
-        self.url = url
+        self.snapshots_url = snapshots_url
+        self.releases_url = releases_url
         self.licenses = licenses
+        self.url = snapshots_url  # for compatibility
+
+    def get_url(self, version, rewrite=True):
+        url = self.snapshots_url if version.endswith('-SNAPSHOT') else self.releases_url
+        if rewrite:
+            url = mx_urlrewrites.rewriteurl(url)
+        return url
 
     def _comparison_key(self):
-        return self.name, self.url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
+        return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
     def resolveLicenses(self):
         self.licenses = get_license(self.licenses)
 
+
 _maven_local_repository = None
+
+
 def maven_local_repository():  # pylint: disable=invalid-name
     global _maven_local_repository
 
@@ -6649,7 +6755,6 @@ def maven_local_repository():  # pylint: disable=invalid-name
         class _MavenLocalRepository(Repository):
             """This singleton class represents mavens local repository (usually under ~/.m2/repository)"""
             def __init__(self):
-                Repository.__init__(self, suite('mx'), 'maven local repository', None, [])
                 try:
                     res = {'lines': '', 'xml': False}
                     def xml_settings_grabber(line):
@@ -6662,9 +6767,10 @@ def maven_local_repository():  # pylint: disable=invalid-name
                     run_maven(['help:effective-settings'], out=xml_settings_grabber)
                     dom = minidomParseString(res['lines'])
                     local_repo = dom.getElementsByTagName('localRepository')[0].firstChild.data
-                    self.url = 'file://' + local_repo
+                    url = 'file://' + local_repo
                 except:
-                    abort('Unable to determine maven local repository URL')
+                    raise abort('Unable to determine maven local repository URL')
+                Repository.__init__(self, suite('mx'), 'maven local repository', url, url, [])
 
             def resolveLicenses(self):
                 return True
@@ -6673,13 +6779,18 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
     return _maven_local_repository
 
+
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
+        group_id = suite._get_early_suite_dict_property('groupId')
+        if group_id:
+            return group_id
         name = suite.name
     else:
         assert isinstance(suite, types.StringTypes)
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
+
 
 def _genPom(dist, versionGetter, validateMetadata='none'):
     groupId = dist.maven_group_id()
@@ -6750,6 +6861,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
         pom.open('dependencies')
         for dep in directDistDeps:
             if dep.suite.internal:
+                warn("_genPom({}): ignoring internal dependency {}".format(dist, dep))
                 continue
             if validateMetadata != 'none' and not (dep.isJARDistribution() and dep.maven):
                 if validateMetadata == 'full':
@@ -6791,13 +6903,28 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     pom.close('project')
     return pom.xml(indent='  ', newl='\n')
 
+
 def _tmpPomFile(dist, versionGetter, validateMetadata='none'):
     tmp = tempfile.NamedTemporaryFile('w', suffix='.pom', delete=False)
     tmp.write(_genPom(dist, versionGetter, validateMetadata))
     tmp.close()
     return tmp.name
 
-def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, srcPath=None, description=None, settingsXml=None, extension='jar', dryRun=False, pomFile=None, gpg=False, keyid=None, javadocPath=None, mapFile=None):
+
+def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
+                         srcPath=None,
+                         description=None,
+                         settingsXml=None,
+                         extension='jar',
+                         dryRun=False,
+                         pomFile=None,
+                         gpg=False,
+                         keyid=None,
+                         javadocPath=None,
+                         extraFiles=None):
+    """
+    :type extraFiles: list[(str, str, str)]
+    """
     assert exists(filePath)
     assert not srcPath or exists(srcPath)
 
@@ -6818,7 +6945,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, sr
     if repo != maven_local_repository():
         cmd += [
             '-DrepositoryId=' + repo.name,
-            '-Durl=' + mx_urlrewrites.rewriteurl(repo.url)
+            '-Durl=' + repo.get_url(version)
         ]
         if gpg:
             cmd += ['gpg:sign-and-deploy-file']
@@ -6851,10 +6978,10 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, sr
     if description:
         cmd.append('-Ddescription=' + description)
 
-    if mapFile:
-        cmd.append('-Dfiles=' + mapFile)
-        cmd.append('-Dclassifiers=proguard')
-        cmd.append('-Dtypes=map')
+    if extraFiles:
+        cmd.append('-Dfiles=' + ','.join(ef[0] for ef in extraFiles))
+        cmd.append('-Dclassifiers=' + ','.join(ef[1] for ef in extraFiles))
+        cmd.append('-Dtypes=' + ','.join(ef[2] for ef in extraFiles))
 
     action = 'Installing' if repo == maven_local_repository() else 'Deploying'
     log('{} {}:{}...'.format(action, groupId, artifactId))
@@ -6863,13 +6990,16 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo, sr
     else:
         run_maven(cmd)
 
+
 def _deploy_skip_existing(args, dists, version, repo):
     if args.skip_existing:
         non_existing_dists = []
         for dist in dists:
-            metadata_append = '-local' if repo == maven_local_repository() else ''
-            url = mx_urlrewrites.rewriteurl(repo.url)
-            metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(url, dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
+            if version.endswith('-SNAPSHOT'):
+                metadata_append = '-local' if repo == maven_local_repository() else ''
+                metadata_url = '{0}/{1}/{2}/{3}/maven-metadata{4}.xml'.format(repo.get_url(version), dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version, metadata_append)
+            else:
+                metadata_url = '{0}/{1}/{2}/{3}/'.format(repo.get_url(version), dist.maven_group_id().replace('.', '/'), dist.maven_artifact_id(), version)
             if download_file_exists([metadata_url]):
                 log('Skip existing {}:{}'.format(dist.maven_group_id(), dist.maven_artifact_id()))
             else:
@@ -6877,6 +7007,7 @@ def _deploy_skip_existing(args, dists, version, repo):
         return non_existing_dists
     else:
         return dists
+
 
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository
@@ -6902,6 +7033,7 @@ def deploy_binary(args):
     for s in _suites:
         if s.isSourceSuite():
             _deploy_binary(args, s)
+
 
 def _deploy_binary(args, suite):
     if not suite.getMxCompatibility().supportsLicenses():
@@ -6986,7 +7118,15 @@ def _deploy_binary(args, suite):
             else:
                 try_remote_branch_update(deploy_branch_name)
 
-def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, validateMetadata='none', gpg=False, keyid=None, generateJavadoc=False, deployMapFiles=False):
+
+def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
+                        dryRun=False,
+                        validateMetadata='none',
+                        gpg=False,
+                        keyid=None,
+                        generateJavadoc=False,
+                        deployMapFiles=False,
+                        deployRepoMetadata=False):
     if repo != maven_local_repository():
         # Non-local deployment requires license checking
         for dist in dists:
@@ -6995,6 +7135,27 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
             for distLicense in dist.theLicense:
                 if distLicense not in repo.licenses:
                     abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.repository_id, dist.name))
+    if deployRepoMetadata:
+        repo_metadata_xml = XMLDoc()
+        repo_metadata_xml.open('suite-revisions')
+        for s_ in suites():
+            if s_.vc:
+                commit_timestamp = s_.vc.parent_info(s_.vc_dir)['committer-ts']
+                repo_metadata_xml.element('suite', attributes={
+                    "name": s_.name,
+                    "revision": s_.vc.parent(s_.vc_dir),
+                    "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
+                    "kind": s_.vc.kind
+                })
+        repo_metadata_xml.close('suite-revisions')
+        repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
+        repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
+        if _opts.very_verbose or (dryRun and _opts.verbose):
+            log(repo_metadata)
+        with os.fdopen(repo_metadata_fd, 'w') as f:
+            f.write(repo_metadata)
+    else:
+        repo_metadata_name = None
     for dist in dists:
         for platform in dist.platforms:
             if dist.maven_artifact_id() != dist.maven_artifact_id(platform):
@@ -7043,19 +7204,45 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml, dryRun=False, v
                             javadocPath = None
                             warn('Javadoc for {0} was empty'.format(dist.name))
 
-                    mapFile = None
+                    extraFiles = []
                     if deployMapFiles and dist.is_stripped():
-                        mapFile = dist.strip_mapping_file()
+                        extraFiles.append((dist.strip_mapping_file(), 'proguard', 'map'))
+                    if repo_metadata_name:
+                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
 
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, srcPath=dist.prePush(dist.sourcesPath), settingsXml=settingsXml, extension=dist.remoteExtension(),
-                        dryRun=dryRun, pomFile=pomFile, gpg=gpg, keyid=keyid, javadocPath=javadocPath, mapFile=mapFile)
+                    pushed_file = dist.prePush(dist.path)
+                    pushed_src_file = dist.prePush(dist.sourcesPath)
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
+                                         srcPath=pushed_src_file,
+                                         settingsXml=settingsXml,
+                                         extension=dist.remoteExtension(),
+                                         dryRun=dryRun,
+                                         pomFile=pomFile,
+                                         gpg=gpg, keyid=keyid,
+                                         javadocPath=javadocPath,
+                                         extraFiles=extraFiles)
+                    if pushed_file != dist.path:
+                        os.unlink(pushed_file)
+                    if pushed_src_file != dist.sourcesPath:
+                        os.unlink(pushed_src_file)
                     os.unlink(pomFile)
                     if javadocPath:
                         os.unlink(javadocPath)
                 elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
-                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun, gpg=gpg, keyid=keyid)
+                    extraFiles = []
+                    if repo_metadata_name:
+                        extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), dist.prePush(dist.path), versionGetter(dist.suite), repo,
+                                         settingsXml=settingsXml,
+                                         extension=dist.remoteExtension(),
+                                         dryRun=dryRun,
+                                         gpg=gpg, keyid=keyid,
+                                         extraFiles=extraFiles)
                 else:
                     warn('Unsupported distribution: ' + dist.name)
+    if repo_metadata_name:
+        os.unlink(repo_metadata_name)
+
 
 def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository
@@ -7070,11 +7257,12 @@ def maven_deploy(args):
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
-    parser.add_argument('--all-distributions', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
+    parser.add_argument('--all-distribution-types', help='Include all distribution types. By default, only JAR distributions are included', action='store_true')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
     parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
+    parser.add_argument('--with-suite-revisions-metadata', help='Deploy suite revisions metadata file', action='store_true')
     parser.add_argument('repository_id', metavar='repository-id', nargs='?', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
     args = parser.parse_args(args)
@@ -7095,10 +7283,11 @@ def maven_deploy(args):
         _suites = primary_or_specific_suites()
 
     def distMatcher(dist):
-        if args.all_distributions:
-            return True
-        return dist.isJARDistribution() and dist.maven and not dist.is_test_distribution()
+        if not dist.isJARDistribution() and not args.all_distribution_types:
+            return False
+        return getattr(d, 'maven', False) and not dist.is_test_distribution()
 
+    has_deployed_dist = False
     for s in _suites:
         dists = [d for d in s.dists if distMatcher(d)]
         if args.only:
@@ -7118,6 +7307,7 @@ def maven_deploy(args):
         dists = _deploy_skip_existing(args, dists, versionGetter(s), repo)
         if not dists and not args.all_suites:
             warn("No distribution to deploy in " + s.name)
+            continue
 
         for dist in dists:
             if not dist.exists():
@@ -7125,10 +7315,18 @@ def maven_deploy(args):
 
         generateJavadoc = None if args.suppress_javadoc else s.getMxCompatibility().mavenDeployJavadoc()
 
-        if dists:
-            action = 'Installing' if repo == maven_local_repository() else 'Deploying'
-            log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
-        _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, validateMetadata=args.validate, gpg=args.gpg, keyid=args.gpg_keyid, generateJavadoc=generateJavadoc)
+        action = 'Installing' if repo == maven_local_repository() else 'Deploying'
+        log('{} {} distributions for version {}'.format(action, s.name, versionGetter(s)))
+        _maven_deploy_dists(dists, versionGetter, repo, args.settings,
+                            dryRun=args.dry_run,
+                            validateMetadata=args.validate,
+                            gpg=args.gpg,
+                            keyid=args.gpg_keyid,
+                            generateJavadoc=generateJavadoc,
+                            deployRepoMetadata=args.with_suite_revisions_metadata)
+        has_deployed_dist = True
+    if not has_deployed_dist:
+        abort("No distribution was deployed!")
 
 
 def binary_url(args):
@@ -7145,7 +7343,7 @@ def binary_url(args):
     snapshot_version = '{0}-SNAPSHOT'.format(dist.suite.vc.parent(dist.suite.vc_dir))
     extension = dist.remoteExtension()
 
-    maven_repo = MavenRepo(repo.url)
+    maven_repo = MavenRepo(repo.get_url(snapshot_version))
     snapshot = maven_repo.getSnapshot(group_id, artifact_id, snapshot_version)
     if not snapshot:
         url = maven_repo.getSnapshotUrl(group_id, artifact_id, snapshot_version)
@@ -7794,7 +7992,9 @@ class Suite(object):
             'urlrewrites',
             'scm',
             'version',
-            'externalProjects'
+            'externalProjects',
+            'groupId',
+            'release',
         ]
         if self._preloaded_suite_dict is None:
             self._preload_suite_dict()
@@ -7957,6 +8157,9 @@ class Suite(object):
 
         licenseDefs = self._check_suiteDict(self.getMxCompatibility().licensesAttribute())
         repositoryDefs = self._check_suiteDict('repositories')
+
+        if suiteDict.get('release') not in [None, True, False]:
+            abort("Invalid 'release' attribute: it should be a boolean", context=self)
 
         self._load_libraries(libsMap)
         self._load_distributions(distsMap)
@@ -8252,11 +8455,18 @@ class Suite(object):
     def _load_repositories(self, repositoryDefs):
         for name, attrs in sorted(repositoryDefs.items()):
             context = 'repository ' + name
-            url = attrs.pop('url')
-            if not _validate_abolute_url(url):
-                abort('Invalid url in repository {}'.format(self.suite_py()), context=context)
+            if 'url' in attrs:
+                snapshots_url = attrs.pop('url')
+                releases_url = snapshots_url
+            else:
+                snapshots_url = attrs.pop('snapshotsUrl')
+                releases_url = attrs.pop('releasesUrl')
+            if not _validate_abolute_url(snapshots_url):
+                abort('Invalid url in repository {}: {}'.format(self.suite_py(), snapshots_url), context=context)
+            if releases_url != snapshots_url and not _validate_abolute_url(releases_url):
+                abort('Invalid url in repository {}: {}'.format(self.suite_py(), releases_url), context=context)
             licenses = Suite._pop_list(attrs, self.getMxCompatibility().licensesAttribute(), context=context)
-            r = Repository(self, name, url, licenses)
+            r = Repository(self, name, snapshots_url, releases_url, licenses)
             r.__dict__.update(attrs)
             self.repositoryDefs.append(r)
 
@@ -8447,7 +8657,7 @@ class SourceSuite(Suite):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
-        self._releaseVersion = None
+        self._releaseVersion = {}
 
     def dependency(self, name, fatalIfMissing=True, context=None):
         for p in self.projects:
@@ -8484,6 +8694,9 @@ class SourceSuite(Suite):
         """
         Returns True if the release tag from VC is known and is not a snapshot
         """
+        _release = self._get_early_suite_dict_property('release')
+        if _release is not None:
+            return _release
         _version = self._get_early_suite_dict_property('version')
         if _version:
             return '{}-{}'.format(self.name, _version) in self.vc.parent_tags(self.vc_dir)
@@ -8494,14 +8707,17 @@ class SourceSuite(Suite):
         """
         Gets the release tag from VC or create a time based once if VC is unavailable
         """
-        if not self._releaseVersion:
+        if snapshotSuffix not in self._releaseVersion:
             _version = self._get_early_suite_dict_property('version')
+            if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
+                if not self.is_release():
+                    _version = _version + '-' + snapshotSuffix
             if not _version:
                 _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not _version:
                 _version = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
-            self._releaseVersion = _version
-        return self._releaseVersion
+            self._releaseVersion[snapshotSuffix] = _version
+        return self._releaseVersion[snapshotSuffix]
 
     def scm_metadata(self, abortOnError=False):
         scm = self.scm
@@ -8646,12 +8862,12 @@ class SourceSuite(Suite):
                 dist.add_update_listener(_refineAnnotationProcessorServiceConfig)
 
     @staticmethod
-    def _load_env_in_mxDir(mxDir, env=None, file_name='env'):
+    def _load_env_in_mxDir(mxDir, env=None, file_name='env', abort_if_missing=False):
         e = join(mxDir, file_name)
-        SourceSuite._load_env_file(e, env)
+        SourceSuite._load_env_file(e, env, abort_if_missing=abort_if_missing)
 
     @staticmethod
-    def _load_env_file(e, env=None):
+    def _load_env_file(e, env=None, abort_if_missing=False):
         if exists(e):
             with open(e) as f:
                 lineNum = 0
@@ -8670,6 +8886,8 @@ class SourceSuite(Suite):
                         else:
                             env[key] = value
                             logv('Read variable %s=%s from %s' % (key, value, e))
+        elif abort_if_missing:
+            abort("Could not find env file: {}".format(e))
 
     def _parse_env(self):
         SourceSuite._load_env_in_mxDir(self.mxDir, _loadedEnv)
@@ -9396,6 +9614,9 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
         invalid = [d for d in roots if not isinstance(d, ClasspathDependency)]
         if invalid:
             abort('class path roots must be classpath dependencies: ' + str(invalid))
+
+    if not roots:
+        return []
 
     if excludes is None:
         excludes = []
@@ -10567,10 +10788,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 abort('Use of timeout not (yet) supported on Windows')
             retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
     except OSError as e:
-        log('Error executing \'' + ' '.join(args) + '\': ' + str(e))
-        if _opts.verbose:
+        if not nonZeroIsFatal:
             raise e
-        abort(e.errno)
+        abort('Error executing \'' + ' '.join(args) + '\': ' + str(e))
     except KeyboardInterrupt:
         abort(1, killsig=signal.SIGINT)
     finally:
@@ -11174,8 +11394,10 @@ def check_get_env(key):
 def get_env(key, default=None):
     """
     Gets an environment variable.
+    :param default: default values if the environment variable is not set.
+    :type default: str | None
     """
-    value = os.environ.get(key, default)
+    value = os.getenv(key, default)
     return value
 
 def logv(msg=None):
@@ -12290,7 +12512,7 @@ class Archiver(SafeFileCreation):
     """
     Utility for creating and updating a zip or tar file atomically.
     """
-    def __init__(self, path, kind='zip', reset_user_group=False, duplicates_action=None, context=None):
+    def __init__(self, path, kind='zip', reset_user_group=False, duplicates_action=None, context=None, compress=False):
         SafeFileCreation.__init__(self, path)
         self.kind = kind
         self.zf = None
@@ -12298,6 +12520,7 @@ class Archiver(SafeFileCreation):
         self._add_str = None
         self._add_link = None
         self.reset_user_group = reset_user_group
+        self.compress = compress
         assert duplicates_action in [None, 'warn', 'abort']
         self.duplicates_action = duplicates_action
         self._provenance_map = {} if duplicates_action else None
@@ -12358,16 +12581,20 @@ class Archiver(SafeFileCreation):
         if self.path:
             SafeFileCreation.__enter__(self)
             if self.kind == 'zip' or self.kind == 'jar':
-                self.zf = zipfile.ZipFile(self.tmpPath, 'w')
+                self.zf = zipfile.ZipFile(self.tmpPath, 'w', compression=zipfile.ZIP_DEFLATED if self.compress else zipfile.ZIP_STORED)
                 self._add_f = self._add_zip
                 self._add_str = self._add_str_zip
                 self._add_link = self._add_link_zip
             elif self.kind == 'tar':
+                if self.compress:
+                    warn("Archiver created with compress=True and kind=tar, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
                 self._add_link = self._add_link_tar
             elif self.kind == 'tgz':
+                if self.compress:
+                    warn("Archiver created with compress=False and kind=tgz, ignoring compression setting")
                 self.zf = tarfile.open(self.tmpPath, 'w:gz')
                 self._add_f = self._add_tar
                 self._add_str = self._add_str_tar
@@ -14703,6 +14930,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
 
             proj = p
+
             def processDep(dep, edge):
                 if dep is proj:
                     return
@@ -15439,6 +15667,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         return (False, 'package-list file exists')
 
     projects = []
+    """ :type: list[JavaProject]"""
     snippetsPatterns = set()
     verifySincePresent = []
     for p in candidates:
@@ -15448,7 +15677,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 if p.suite.primary:
                     verifySincePresent = p.suite.getMxCompatibility().verifySincePresent()
             if includeDeps:
-                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isProject() else None)
+                p.walk_deps(visit=lambda dep, edge: assess_candidate(dep, projects)[0] if dep.isJavaProject() else None)
             added, reason = assess_candidate(p, projects)
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
@@ -15485,8 +15714,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         build(['--no-native', '--dependencies', ','.join((p.name for p in projects))])
     if not args.unified:
         for p in projects:
-            if not p.isJavaProject():
-                continue
+            assert p.isJavaProject()
             pkgs = _find_packages(p, False, include_packages, exclude_packages)
             jdk = get_jdk(p.javaCompliance)
             links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
@@ -15560,17 +15788,31 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         pkgs = set()
         sproots = []
         names = []
+        classpath_deps = set()
+
         for p in projects:
             pkgs.update(_find_packages(p, not args.implementation, include_packages, exclude_packages))
             sproots += p.source_dirs()
             names.append(p.name)
+            for dep in p.deps:
+                if dep.isJavaProject():
+                    if dep not in projects:
+                        classpath_deps.add(dep)
+                elif dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject() or dep.isJdkLibrary():
+                    classpath_deps.add(dep)
+                elif dep.isJreLibrary():
+                    pass
+                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
+                    logv("Ignoring dependency from {} to {}".format(p.name, dep.name))
+                else:
+                    abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
         links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
         overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
         out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
-        cp = classpath(jdk=jdk)
+        cp = classpath(classpath_deps, jdk=jdk)
         sp = os.pathsep.join(sproots)
         nowarnAPI = []
         if not args.warnAPI:
@@ -15675,7 +15917,7 @@ def site(args):
     args = parser.parse_args(args)
 
     args.base = os.path.abspath(args.base)
-    tmpbase = args.tmp if args.tmp else  mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
+    tmpbase = args.tmp if args.tmp else mkdtemp(prefix=basename(args.base) + '.', dir=dirname(args.base))
     unified = join(tmpbase, 'all')
 
     exclude_packages_arg = []
@@ -17717,7 +17959,7 @@ def main():
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
             if _opts.additional_env:
-                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env)
+                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env, abort_if_missing=True)
 
             _setup_binary_suites()
             if should_discover_suites:
@@ -17817,7 +18059,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.177.4")  # GR-7893
+version = VersionSpec("5.178.0")  # maven-deploy (with-suite-revisions-metadata, suite.py/release, releases repos, compress layout jar)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
