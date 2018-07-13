@@ -1336,9 +1336,9 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 def addFile(outputDir, relpath, archivePrefix):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
-                    if relpath.startswith('META-INF/services'):
-                        service = relpath[len('META-INF/services/'):]
-                        assert '/' not in service
+                    if relpath.startswith(join('META-INF', 'services')):
+                        service = basename(relpath)
+                        assert dirname(relpath) == join('META-INF', 'services')
                         with open(join(outputDir, relpath), 'r') as fp:
                             services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
@@ -18062,7 +18062,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.3")  # all dists
+version = VersionSpec("5.178.4")  # GR-7928
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
