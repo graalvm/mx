@@ -285,10 +285,11 @@ def _debug_walk_deps_helper(dep, edge, ignoredEdges):
             print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
         DEBUG_WALK_DEPS_LINE += 1
 
-"""
-Represents an edge traversed while visiting a spanning tree of the dependency graph.
-"""
+
 class DepEdge:
+    """
+    Represents an edge traversed while visiting a spanning tree of the dependency graph.
+    """
     def __init__(self, src, kind, prev):
         """
         :param src: the source of this dependency edge
@@ -1080,6 +1081,9 @@ class Distribution(Dependency):
     def overlapped_distributions(self):
         return self.resolved_overlaps
 
+    def post_init(self):
+        pass
+
 
 class JARDistribution(Distribution, ClasspathDependency):
     """
@@ -1114,20 +1118,11 @@ class JARDistribution(Distribution, ClasspathDependency):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
-        if path:
-            path = mx_subst.path_substitutions.substitute(path)
-            self._path = _make_absolute(path.replace('/', os.sep), suite.dir)
-        else:
-            self._path = _make_absolute(self._default_path(), suite.dir)
-        if sourcesPath == '<none>':
-            # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
-            self.sourcesPath = None
-        elif sourcesPath:
-            sourcesPath = mx_subst.path_substitutions.substitute(sourcesPath)
-            self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir)
-        else:
-            # sourcesPath=None denotes that no sourcesPath was specified in `suite.py` and we should generate one.
-            self.sourcesPath = _make_absolute(self._default_source_path(), suite.dir)
+        self._user_path = path
+        self._path = None
+        self._user_source_path = sourcesPath
+        self._sources_path = '<uninitialized>'
+
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
@@ -1145,6 +1140,25 @@ class JARDistribution(Distribution, ClasspathDependency):
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
             self.buildDependencies.append("mx:PROGUARD_6_0_3")
+
+    def post_init(self):
+        # paths are initialized late to be able to figure out the max jdk
+        if self._user_path:
+            path = mx_subst.path_substitutions.substitute(self._user_path)
+            self._path = _make_absolute(path.replace('/', os.sep), self.suite.dir)
+        else:
+            self._path = _make_absolute(self._default_path(), self.suite.dir)
+
+        if self._user_source_path == '<none>':
+            # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
+            self._sources_path = None
+        elif self._user_source_path:
+            sources_path = mx_subst.path_substitutions.substitute(self._user_source_path)
+            self._sources_path = _make_absolute(sources_path.replace('/', os.sep), self.suite.dir)
+        else:
+            # self._user_source_path==None denotes that no sourcesPath was specified in `suite.py` and we should generate one.
+            self._sources_path = _make_absolute(self._default_source_path(), self.suite.dir)
+
         assert self.path.endswith(self.localExtension())
 
     def default_source_filename(self):
@@ -1153,8 +1167,19 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _default_source_path(self):
         return join(dirname(self._default_path()), self.default_source_filename())
 
+    def _default_path(self):
+        result = super(JARDistribution, self)._default_path()
+        result_dir, result_file = os.path.split(result)
+        # This JAR will contain class files up to maxJavaCompliance
+        compliance = self.maxJavaCompliance()
+        if get_java_module_info(self):
+            # and a module-info from the 'default' JDK
+            compliance = max(compliance, get_jdk(tag='default').javaCompliance)
+        return join(result_dir, "jdk{}".format(compliance), result_file)
+
     @property
     def path(self):
+        assert self._path is not None
         if self.is_stripped():
             return self._stripped_path()
         else:
@@ -1166,7 +1191,13 @@ class JARDistribution(Distribution, ClasspathDependency):
     def original_path(self):
         return self._path
 
+    @property
+    def sourcesPath(self):
+        assert self._sources_path != '<uninitialized>'
+        return self._sources_path
+
     def maxJavaCompliance(self):
+        """:rtype : JavaCompliance"""
         if not hasattr(self, '.maxJavaCompliance'):
             javaCompliances = [p.javaCompliance for p in self.archived_deps() if p.isJavaProject()]
             if self.javaCompliance is not None:
@@ -11242,14 +11273,16 @@ def _filter_non_existant_paths(paths):
         return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
     return None
 
+
 class JDKConfigException(Exception):
     def __init__(self, value):
         Exception.__init__(self, value)
 
-"""
-A JDKConfig object encapsulates info about an installed or deployed JDK.
-"""
+
 class JDKConfig:
+    """
+    A JDKConfig object encapsulates info about an installed or deployed JDK.
+    """
     def __init__(self, home, tag=None):
         home = os.path.abspath(home)
         self.home = home
@@ -18469,6 +18502,10 @@ def main():
         if not _get_command_property(command, "keepUnsatisfiedDependencies"):
             global _removedDeps
             _removedDeps = _remove_unsatisfied_deps()
+
+    # Finally post_init remaining distributions
+    for dist in _dists.values():
+        dist.post_init()
 
     def term_handler(signum, frame):
         abort(1, killsig=signal.SIGTERM)
