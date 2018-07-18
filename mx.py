@@ -6367,14 +6367,14 @@ class BinaryVC(VC):
         try:
             (jar_url, jar_sha_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-            abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
+            raise abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
         download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
         if sourcePath:
             try:
                 (source_url, source_sha_url) = build.getSubArtifactByClassifier('sources')
             except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-                abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
-            download_file_with_sha1(artifactId + ' sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
+                raise abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
+            download_file_with_sha1(artifactId + '_sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
         return True
 
     class Metadata:
@@ -18062,7 +18062,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.4")  # GR-7928
+version = VersionSpec("5.178.5")  # cache spaces
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
