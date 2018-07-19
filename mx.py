@@ -14945,7 +14945,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
                 elif dep.isJdkLibrary():
                     jdk_libraries.add(dep)
-                    moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+                    if not jdk.javaCompliance >= dep.jdkStandardizedSince:
+                        moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+                    else:
+                        logv("{} skipping {} for {}".format(p, dep, jdk))
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
@@ -18062,7 +18065,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.6")  # GR-10901
+version = VersionSpec("5.178.7")  # GR-10953
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
