@@ -133,7 +133,7 @@ import mx_benchplot
 import mx_downstream
 import mx_subst
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure
+from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure, get_module_name
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -1170,12 +1170,15 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _default_path(self):
         result = super(JARDistribution, self)._default_path()
         result_dir, result_file = os.path.split(result)
+        return join(result_dir, "jdk{}".format(self._compliance_for_build()), result_file)
+
+    def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
-        if get_java_module_info(self):
-            # and a module-info from the 'default' JDK
-            compliance = max(compliance, get_jdk(tag='default').javaCompliance)
-        return join(result_dir, "jdk{}".format(compliance), result_file)
+        if compliance < '9' and get_module_name(self):
+            # if it is modular, bump compliance to 9+ to get a module-info file
+            compliance = max(compliance, get_jdk('9+').javaCompliance)
+        return compliance
 
     @property
     def path(self):
@@ -1214,8 +1217,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         if jdk.javaCompliance >= '9':
             info = get_java_module_info(self)
             if info:
-                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                paths.append(moduleJar)
+                _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
+                paths.append(pickle_path)
         return paths
 
     def is_stripped(self):
@@ -1541,9 +1544,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
         self.notify_updated()
-        jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '9':
-            jmd = make_java_module(self, jdk)
+
+        compliance = self._compliance_for_build()
+        if compliance >= '9':
+            jmd = make_java_module(self, get_jdk(compliance))
             if jmd:
                 setattr(self, '.javaModule', jmd)
 
@@ -1657,11 +1661,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         if not single:
             if self.sourcesPath:
                 yield self.sourcesPath, self.default_source_filename()
-            if get_jdk(tag='default').javaCompliance >= '9':
-                info = get_java_module_info(self)
-                if info:
-                    _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                    yield moduleJar, basename(moduleJar)
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
 
@@ -1677,10 +1676,10 @@ class JARDistribution(Distribution, ClasspathDependency):
         if jdk.javaCompliance >= '9':
             info = get_java_module_info(self)
             if info:
-                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                ts = TimeStampFile(moduleJar)
-                if ts.isOlderThan(self.path):
-                    return '{} is older than {}'.format(ts, self.path)
+                _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
+                res = _needsUpdate(newestInput, pickle_path)
+                if res:
+                    return res
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
@@ -11638,11 +11637,11 @@ class JDKConfig:
         return result
 
     def get_transitive_requires_keyword(self):
-        '''
+        """
         Gets the keyword used to denote transitive dependencies. This can also effectively
         be used to determine if this is JDK contains the module changes made by
         https://bugs.openjdk.java.net/browse/JDK-8169069.
-        '''
+        """
         if self.javaCompliance < '9':
             abort('Cannot call get_transitive_requires_keyword() for pre-9 JDK ' + str(self))
         self.get_modules()

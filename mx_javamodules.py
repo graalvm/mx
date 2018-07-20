@@ -31,9 +31,13 @@ import pickle
 import StringIO
 import shutil
 import itertools
-from os.path import join, exists, dirname
+from os.path import join, exists, dirname, normpath, relpath, isfile, basename
+from tempfile import mkdtemp
+
+from zipfile import ZipFile
 
 import mx
+
 
 class JavaModuleDescriptor(object):
     """
@@ -88,8 +92,7 @@ class JavaModuleDescriptor(object):
         :param JDKConfig jdk: used to resolve pickled references to JDK modules
         :param bool fatalIfNotCreated: specifies whether to abort if a descriptor has not been created yet
         """
-        _, moduleDir, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
-        path = moduleDir + '.pickled'
+        _, path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
         if not exists(path):
             if fatalIfNotCreated:
                 mx.abort(path + ' does not exist')
@@ -122,8 +125,7 @@ class JavaModuleDescriptor(object):
         if not dist:
             # Don't pickle a JDK module
             return None
-        _, moduleDir, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
-        path = moduleDir + '.pickled'
+        _, path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
         modulepath = self.modulepath
         jarpath = self.jarpath
         self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
@@ -222,6 +224,7 @@ def get_module_deps(dist):
         setattr(dist, '.module_deps', moduledeps)
     return getattr(dist, '.module_deps')
 
+
 def as_java_module(dist, jdk, fatalIfNotCreated=True):
     """
     Gets the Java module created from a given distribution.
@@ -239,6 +242,21 @@ def as_java_module(dist, jdk, fatalIfNotCreated=True):
         return jmd
     return getattr(dist, '.javaModule')
 
+
+def get_module_name(dist):
+    if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
+        module_name = getattr(dist, 'moduleName', None)
+        if not module_name:
+
+            return None
+        assert len(module_name) > 0, '"moduleName" attribute of distribution ' + dist.name + ' cannot be empty'
+    else:
+        if not get_module_deps(dist):
+            return None
+        module_name = dist.name.replace('_', '.').lower()
+    return module_name
+
+
 def get_java_module_info(dist, fatalIfNotModule=False):
     """
     Gets the metadata for the module derived from `dist`.
@@ -246,28 +264,15 @@ def get_java_module_info(dist, fatalIfNotModule=False):
     :param JARDistribution dist: a distribution possibly defining a module
     :param bool fatalIfNotModule: specifies whether to abort if `dist` does not define a module
     :return: None if `dist` does not define a module otherwise a tuple containing
-             the name of the module, the directory in which the class files
-             (including module-info.class) for the module are staged and finally
-             the path to the jar file containing the built module
+             the name of the module, the descriptor pickle path, and finally the path to the jar file containing the built module
     """
-    if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
-        moduleName = getattr(dist, 'moduleName', None)
-        if not moduleName:
-            if fatalIfNotModule:
-                mx.abort('Distribution ' + dist.name + ' does not define a module')
-            return None
-        assert len(moduleName) > 0, '"moduleName" attribute of distribution ' + dist.name + ' cannot be empty'
-    else:
-        if not get_module_deps(dist):
-            if fatalIfNotModule:
-                mx.abort('Module for distribution ' + dist.name + ' would be empty')
-            return None
-        moduleName = dist.name.replace('_', '.').lower()
+    module_name = get_module_name(dist)
+    if not module_name:
+        if fatalIfNotModule:
+            mx.abort('Distribution ' + dist.name + ' does not define a module')
+        return None
+    return module_name, dist.path + '-module.pickled', dist.path
 
-    modulesDir = mx.ensure_dir_exists(join(dist.suite.get_output_root(), 'modules'))
-    moduleDir = mx.ensure_dir_exists(join(modulesDir, moduleName))
-    moduleJar = join(modulesDir, moduleName + '.jar')
-    return moduleName, moduleDir, moduleJar
 
 def _expand_package_info(dep, packages):
     """
@@ -281,6 +286,7 @@ def _expand_package_info(dep, packages):
     else:
         result = set(packages)
     return result
+
 
 def get_library_as_module(dep, jdk):
     """
@@ -369,6 +375,10 @@ def get_library_as_module(dep, jdk):
 
     return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath)
 
+_versioned_prefix = 'META-INF/versions/'
+_versioned_re = re.compile(_versioned_prefix + r'([1-9][0-9]*)/(.+)')
+
+
 def make_java_module(dist, jdk):
     """
     Creates a Java module from a distribution.
@@ -381,12 +391,12 @@ def make_java_module(dist, jdk):
     if info is None:
         return None
 
-    moduleName, moduleDir, moduleJar = info  # pylint: disable=unpacking-non-sequence
+    moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
     mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
     exports = {}
     requires = {}
     concealedRequires = {}
-    uses = set()
+    base_uses = set()
 
     modulepath = list()
     usedModules = set()
@@ -395,7 +405,7 @@ def make_java_module(dist, jdk):
         moduledeps = dist.archived_deps()
         for dep in mx.classpath_entries(dist, includeSelf=False):
             if dep.isJARDistribution():
-                jmd = as_java_module(dep, jdk, fatalIfNotCreated=False) or make_java_module(dep, jdk)
+                jmd = as_java_module(dep, jdk)
                 modulepath.append(jmd)
                 requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
             elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
@@ -423,9 +433,9 @@ def make_java_module(dist, jdk):
         packages.update(dep.defined_java_packages())
 
     for dep in javaprojects:
-        uses.update(getattr(dep, 'uses', []))
+        base_uses.update(getattr(dep, 'uses', []))
         for pkg in getattr(dep, 'runtimeDeps', []):
-            requires.setdefault(pkg, set(['static']))
+            requires.setdefault(pkg, {'static'})
 
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
             # Only consider packages not defined by the module we're creating. This handles the
@@ -457,108 +467,126 @@ def make_java_module(dist, jdk):
             else:
                 exports.setdefault(package, [])
 
-    provides = {}
-    if exists(moduleDir):
-        shutil.rmtree(moduleDir)
-    for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
-        if d.isJARDistribution():
-            with zipfile.ZipFile(d.original_path(), 'r') as zf:
-                # To compile module-info.java, all classes it references must either be given
-                # as Java source files or already exist as class files in the output directory.
-                # As such, the jar file for each constituent distribution must be unpacked
-                # in the output directory.
-                zf.extractall(path=moduleDir)
-                names = frozenset(zf.namelist())
-
-                # Flatten versioned resources
-                versionsDir = join(moduleDir, 'META-INF', 'versions')
-                if exists(versionsDir):
-                    versionedRE = re.compile(r'META-INF/versions/([1-9][0-9]*)/(.+)')
-                    versions = {}
-                    for arcname in sorted(names):
-                        m = versionedRE.match(arcname)
+    work_directory = mkdtemp()
+    try:
+        # To compile module-info.java, all classes it references must either be given
+        # as Java source files or already exist as class files in the output directory.
+        # As such, the jar file for each constituent distribution must be unpacked
+        # in the output directory.
+        versions = {}
+        for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+            if d.isJARDistribution():
+                with zipfile.ZipFile(d.original_path(), 'r') as zf:
+                    for arcname in sorted(zf.namelist()):
+                        m = _versioned_re.match(arcname)
                         if m:
-                            version = int(m.group(1))
-                            unversionedName = m.group(2)
-                            versions.setdefault(version, {})[unversionedName] = zf.read(arcname)
-
-                    for version, resources in sorted(versions.iteritems()):
-                        for unversionedName, content in resources.iteritems():
-                            dst = join(moduleDir, unversionedName)
+                            version = m.group(1)
                             if version <= jdk.javaCompliance.value:
-                                parent = dirname(dst)
-                                if parent and not exists(parent):
-                                    os.makedirs(parent)
-                                with open(dst, 'wb') as fp:
-                                    fp.write(content)
+                                unversioned_name = m.group(2)
+                                versions.setdefault(version, {})[unversioned_name] = arcname
                             else:
                                 # Ignore resource whose version is too high
                                 pass
+        default_jmd = None
 
-                    shutil.rmtree(versionsDir)
-                    manifest = join(moduleDir, 'META-INF/MANIFEST.MF')
-                    # Remove Multi-Release attribute from manifest as the jar
-                    # is now flattened. This is also a workaround for
-                    # https://bugs.openjdk.java.net/browse/JDK-8193802
-                    if exists(manifest):
-                        with open(manifest) as fp:
-                            content = fp.readlines()
-                            newContent = [l for l in content if not 'Multi-Release:' in l]
-                        if newContent != content:
-                            with open(manifest, 'w') as fp:
-                                fp.write(''.join(newContent))
+        all_versions = set(versions.keys())
+        if '9' not in all_versions:
+            all_versions = all_versions | {'common'}
+        for version in all_versions:
+            uses = base_uses.copy()
+            provides = {}
+            dest_dir = join(work_directory, version)
+            version_prefix = _versioned_prefix + version + '/'
+            for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+                if d.isJARDistribution():
+                    with zipfile.ZipFile(d.original_path(), 'r') as zf:
+                        for name in zf.namelist():
+                            if name.startswith(_versioned_prefix):
+                                if name.startswith(version_prefix):
+                                    unversioned_name = name[len(version_prefix):]
+                                    dst = join(dest_dir, unversioned_name)
+                                    parent = dirname(dst)
+                                    if parent and not exists(parent):
+                                        os.makedirs(parent)
+                                    with open(dst, 'wb') as fp:
+                                        fp.write(zf.read(name))
+                            else:
+                                zf.extract(name, dest_dir)
 
-                servicesDir = join(moduleDir, 'META-INF', 'services')
-                if exists(servicesDir):
-                    for servicePathName in os.listdir(servicesDir):
-                        # While a META-INF provider configuration file must use a fully qualified binary
-                        # name[1] of the service, a provides directive in a module descriptor must use
-                        # the fully qualified non-binary name[2] of the service.
-                        #
-                        # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
-                        # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
-                        service = servicePathName.replace('$', '.')
+                        manifest = join(dest_dir, 'META-INF/MANIFEST.MF')
+                        # Remove Multi-Release attribute from manifest as the jar
+                        # is now flattened. This is also a workaround for
+                        # https://bugs.openjdk.java.net/browse/JDK-8193802
+                        if exists(manifest):
+                            with open(manifest) as fp:
+                                content = fp.readlines()
+                                newContent = [l for l in content if not 'Multi-Release:' in l]
+                            if newContent != content:
+                                with open(manifest, 'w') as fp:
+                                    fp.write(''.join(newContent))
 
-                        assert '/' not in service
-                        with open(join(servicesDir, servicePathName)) as fp:
-                            serviceContent = fp.read()
-                        provides.setdefault(service, set()).update(serviceContent.splitlines())
-                        # Service types defined in the module are assumed to be used by the module
-                        serviceClassfile = service.replace('.', '/') + '.class'
-                        if exists(join(moduleDir, serviceClassfile)):
-                            uses.add(service)
-                    # Removing the services directory here is safe since the services directory directly is ignored on JDK 9+ but
-                    # we preserve it to allow for modular jars to be put on the class path for use cases such as Maven based testing.
+                        servicesDir = join(dest_dir, 'META-INF', 'services')
+                        if exists(servicesDir):
+                            for servicePathName in os.listdir(servicesDir):
+                                # While a META-INF provider configuration file must use a fully qualified binary
+                                # name[1] of the service, a provides directive in a module descriptor must use
+                                # the fully qualified non-binary name[2] of the service.
+                                #
+                                # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
+                                # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
+                                service = servicePathName.replace('$', '.')
 
-    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
-                               jarpath=moduleJar, dist=dist, modulepath=modulepath)
+                                assert '/' not in service
+                                with open(join(servicesDir, servicePathName)) as fp:
+                                    serviceContent = fp.read()
+                                provides.setdefault(service, set()).update(serviceContent.splitlines())
+                                # Service types defined in the module are assumed to be used by the module
+                                serviceClassfile = service.replace('.', '/') + '.class'
+                                if exists(join(dest_dir, serviceClassfile)):
+                                    uses.add(service)
+                            # Removing the services directory here is safe since the services directory directly is ignored on JDK 9+ but
+                            # we preserve it to allow for modular jars to be put on the class path for use cases such as Maven based testing.
 
-    # Compile module-info.class
-    moduleInfo = join(moduleDir, 'module-info.java')
-    with open(moduleInfo, 'w') as fp:
-        print >> fp, jmd.as_module_info()
-    javacCmd = [jdk.javac, '-d', moduleDir]
-    jdkModuleNames = [m.name for m in jdkModules]
-    modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
-    upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
-    if modulepathJars:
-        javacCmd.append('--module-path')
-        javacCmd.append(os.pathsep.join(modulepathJars))
-    if upgrademodulepathJars:
-        javacCmd.append('--upgrade-module-path')
-        javacCmd.append(os.pathsep.join(upgrademodulepathJars))
-    if concealedRequires:
-        for module, packages in concealedRequires.iteritems():
-            for package in packages:
-                javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
-    javacCmd.append(moduleInfo)
-    mx.run(javacCmd)
+            jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
+                                       jarpath=moduleJar, dist=dist, modulepath=modulepath)
 
-    # Create the module jar
-    shutil.make_archive(moduleJar, 'zip', moduleDir)
-    os.rename(moduleJar + '.zip', moduleJar)
-    jmd.save()
-    return jmd
+            # Compile module-info.class
+            module_info_java = join(dest_dir, 'module-info.java')
+            with open(module_info_java, 'w') as fp:
+                print >> fp, jmd.as_module_info()
+            javacCmd = [jdk.javac, '-d', dest_dir]
+            jdkModuleNames = [m.name for m in jdkModules]
+            modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
+            upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
+            if modulepathJars:
+                javacCmd.append('--module-path')
+                javacCmd.append(os.pathsep.join(modulepathJars))
+            if upgrademodulepathJars:
+                javacCmd.append('--upgrade-module-path')
+                javacCmd.append(os.pathsep.join(upgrademodulepathJars))
+            if concealedRequires:
+                for module, packages in concealedRequires.iteritems():
+                    for package in packages:
+                        javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
+            javacCmd.append(module_info_java)
+            mx.run(javacCmd)
+            module_info_class = join(dest_dir, 'module-info.class')
+
+            # Append the module-info.class
+            module_info_arc_dir = ''
+            if version != 'common':
+                module_info_arc_dir = version_prefix
+            else:
+                default_jmd = jmd
+
+            with ZipFile(moduleJar, 'a') as zf:
+                    zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
+                    zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
+
+    finally:
+        shutil.rmtree(work_directory)
+    default_jmd.save()
+    return default_jmd
 
 def get_transitive_closure(roots, observable_modules):
     """
