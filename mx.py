@@ -132,6 +132,8 @@ import mx_benchmark
 import mx_benchplot
 import mx_downstream
 import mx_subst
+import mx_tar_vcs
+
 
 from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure, get_module_name
 
@@ -5047,7 +5049,7 @@ the command should be logged.
 class VC(object):
     __metaclass__ = ABCMeta
     """
-    base class for all supported Distriuted Version Constrol abstractions
+    base class for all supported Distributed Version Control abstractions
 
     :ivar str kind: the VC type identifier
     :ivar str proper_name: the long name descriptor of the VCS
@@ -7978,7 +7980,7 @@ class SuiteImport:
         if version_from and version:
             abort("In import for '{}': 'version' and 'versionFrom' can not be both set".format(name), context=context)
         if version is None and version_from is None:
-            if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite))):
+            if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite) or isinstance(importer.vc, mx_tar_vcs.TarVC))):
                 abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
             if importer.isSourceSuite():
                 suite_dir = join(importer.vc_dir, name)
@@ -18406,7 +18408,7 @@ def main():
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
     _opts.__dict__['warn'] = '--no-warning' not in sys.argv
     global _vc_systems
-    _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
+    _vc_systems = [HgConfig(), GitConfig(), BinaryVC(), mx_tar_vcs.TarVC()]
 
     global _mx_suite
     _mx_suite = MXSuite()
