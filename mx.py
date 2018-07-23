@@ -584,6 +584,9 @@ class Dependency(SuiteConstituent):
     def defined_java_packages(self):
         return []
 
+    def _extra_artifact_discriminant(self):
+        return None
+
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
         """
         Resolves any string entries in 'deps' to the Dependency objects named
@@ -737,13 +740,19 @@ class BuildTask(object):
         Returns True if file already existed and did not reflect the current dependencies.
         """
         typePrefix = type(self.subject).__name__
-        savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix, self.subject.name)
+        p = [self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix]
+        discriminant = self.subject._extra_artifact_discriminant()
+        if discriminant:
+            p.append(discriminant)
+        p.append(self.subject.name)
+        savedDepsFile = join(*p)
         currentDeps = [d.subject.name for d in self.deps]
         outOfDate = False
         if exists(savedDepsFile):
             with open(savedDepsFile) as fp:
                 savedDeps = [l.strip() for l in fp.readlines()]
             if savedDeps != currentDeps:
+                log_error(savedDepsFile)
                 outOfDate = True
             else:
                 return False
@@ -1016,7 +1025,12 @@ class Distribution(Dependency):
         nyi('localExtension', self)
 
     def _default_path(self):
-        return join(self.suite.get_output_root(platformDependent=self.platformDependent), 'dists', self.default_filename())
+        p = [self.suite.get_output_root(platformDependent=self.platformDependent), 'dists']
+        discriminant = self._extra_artifact_discriminant()
+        if discriminant:
+            p.append(discriminant)
+        p.append(self.default_filename())
+        return join(*p)
 
     def default_filename(self):
         return _map_to_maven_dist_name(self.name) + '.' + self.localExtension()
@@ -1167,10 +1181,8 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _default_source_path(self):
         return join(dirname(self._default_path()), self.default_source_filename())
 
-    def _default_path(self):
-        result = super(JARDistribution, self)._default_path()
-        result_dir, result_file = os.path.split(result)
-        return join(result_dir, "jdk{}".format(self._compliance_for_build()), result_file)
+    def _extra_artifact_discriminant(self):
+        return "jdk{}".format(self._compliance_for_build())
 
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
