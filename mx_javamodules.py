@@ -375,8 +375,10 @@ def get_library_as_module(dep, jdk):
 
     return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath)
 
+
 _versioned_prefix = 'META-INF/versions/'
-_versioned_re = re.compile(_versioned_prefix + r'([1-9][0-9]*)/(.+)')
+_special_versioned_prefix = 'META-INF/_versions/'  # used for versioned services
+_versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
 
 
 def make_java_module(dist, jdk):
@@ -481,7 +483,7 @@ def make_java_module(dist, jdk):
                         m = _versioned_re.match(arcname)
                         if m:
                             version = m.group(1)
-                            if version <= jdk.javaCompliance.value:
+                            if version <= jdk.javaCompliance:
                                 unversioned_name = m.group(2)
                                 versions.setdefault(version, {})[unversioned_name] = arcname
                             else:
@@ -492,18 +494,27 @@ def make_java_module(dist, jdk):
         all_versions = set(versions.keys())
         if '9' not in all_versions:
             all_versions = all_versions | {'common'}
+
         for version in all_versions:
             uses = base_uses.copy()
             provides = {}
             dest_dir = join(work_directory, version)
             version_prefix = _versioned_prefix + version + '/'
+            special_version_prefix = _special_versioned_prefix + version + '/'
+
             for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
                 if d.isJARDistribution():
                     with zipfile.ZipFile(d.original_path(), 'r') as zf:
                         for name in zf.namelist():
-                            if name.startswith(_versioned_prefix):
+                            if name.startswith(_versioned_prefix) or name.startswith(_special_versioned_prefix):
+                                unversioned_name = None
                                 if name.startswith(version_prefix):
                                     unversioned_name = name[len(version_prefix):]
+                                elif name.startswith(special_version_prefix):
+                                    unversioned_name = name[len(special_version_prefix):]
+                                    if not unversioned_name.startswith('META-INF/services'):
+                                        raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
+                                if unversioned_name:
                                     dst = join(dest_dir, unversioned_name)
                                     parent = dirname(dst)
                                     if parent and not exists(parent):
@@ -580,8 +591,8 @@ def make_java_module(dist, jdk):
                 default_jmd = jmd
 
             with ZipFile(moduleJar, 'a') as zf:
-                    zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
-                    zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
+                zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
+                zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
 
     finally:
         shutil.rmtree(work_directory)

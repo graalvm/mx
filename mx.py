@@ -1194,7 +1194,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     @property
     def path(self):
-        assert self._path is not None
+        assert self._path is not None, self.name
         if self.is_stripped():
             return self._stripped_path()
         else:
@@ -1400,6 +1400,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
                         source = join(outputDir, relpath)
+                        if relpath.startswith('META-INF') and archivePrefix.startswith('META-INF/versions/'):
+                            warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
                         with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
                             if guard:
                                 with open(source, 'rb') as fp:
@@ -18519,7 +18521,7 @@ def main():
             _removedDeps = _remove_unsatisfied_deps()
 
     # Finally post_init remaining distributions
-    for dist in _dists.values():
+    for dist in sorted_dists():
         dist.post_init()
 
     def term_handler(signum, frame):
