@@ -7087,7 +7087,7 @@ def _deploy_binary(args, suite):
 
     _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, deployMapFiles=True)
     if not args.platform_dependent and not args.only:
-        _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo, settingsXml=args.settings, dryRun=args.dry_run)
+        _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite.name), mxMetaJar, version, repo, settingsXml=args.settings, dryRun=args.dry_run)
 
     if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
         deploy_branch_name = 'binary'
@@ -16903,10 +16903,10 @@ def maven_install(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
+            mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
+        mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
                 mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
