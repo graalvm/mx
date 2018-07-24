@@ -66,7 +66,7 @@ class JavaModuleDescriptor(object):
         self.provides = provides
         exportedPackages = frozenset(exports.viewkeys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
-        assert len(exports) == 0 or exportedPackages.issubset(self.packages)
+        assert len(exports) == 0 or exportedPackages.issubset(self.packages), exportedPackages - self.packages
         self.conceals = self.packages - exportedPackages
         self.jarpath = jarpath
         self.dist = dist
@@ -471,6 +471,8 @@ def make_java_module(dist, jdk):
 
     work_directory = mkdtemp()
     try:
+        files_to_remove = set()
+
         # To compile module-info.java, all classes it references must either be given
         # as Java source files or already exist as class files in the output directory.
         # As such, the jar file for each constituent distribution must be unpacked
@@ -483,17 +485,24 @@ def make_java_module(dist, jdk):
                         m = _versioned_re.match(arcname)
                         if m:
                             version = m.group(1)
+                            unversioned_name = m.group(2)
                             if version <= jdk.javaCompliance:
-                                unversioned_name = m.group(2)
                                 versions.setdefault(version, {})[unversioned_name] = arcname
                             else:
                                 # Ignore resource whose version is too high
                                 pass
+                            if unversioned_name.startswith('META-INF/services/'):
+                                files_to_remove.add(arcname)
+                            elif unversioned_name.startswith('META-INF/'):
+                                mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
         default_jmd = None
 
         all_versions = set(versions.keys())
         if '9' not in all_versions:
             all_versions = all_versions | {'common'}
+            default_version = 'common'
+        else:
+            default_version = str(max((int(v) for v in all_versions)))
 
         for version in all_versions:
             uses = base_uses.copy()
@@ -576,8 +585,8 @@ def make_java_module(dist, jdk):
                 javacCmd.append('--upgrade-module-path')
                 javacCmd.append(os.pathsep.join(upgrademodulepathJars))
             if concealedRequires:
-                for module, packages in concealedRequires.iteritems():
-                    for package in packages:
+                for module, packages_ in concealedRequires.iteritems():
+                    for package in packages_:
                         javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
             javacCmd.append(module_info_java)
             mx.run(javacCmd)
@@ -587,13 +596,19 @@ def make_java_module(dist, jdk):
             module_info_arc_dir = ''
             if version != 'common':
                 module_info_arc_dir = version_prefix
-            else:
+            if version == default_version:
                 default_jmd = jmd
 
             with ZipFile(moduleJar, 'a') as zf:
                 zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
                 zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
 
+        if files_to_remove:
+            with mx.SafeFileCreation(moduleJar) as sfc:
+                with ZipFile(moduleJar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
+                    for info in inzf.infolist():
+                        if info.filename not in files_to_remove:
+                            outzf.writestr(info, inzf.read(info))
     finally:
         shutil.rmtree(work_directory)
     default_jmd.save()

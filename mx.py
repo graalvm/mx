@@ -1294,6 +1294,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         if hasattr(self.suite, 'snippetsPattern'):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
 
+        versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
+
         services = {}
         manifestEntries = [] # list of "<name>: <value>" strings
         with Archiver(self.original_path()) as arc:
@@ -1382,6 +1384,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if guard:
                                         contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
+                                            if versioned_meta_inf_re.match(arcname):
+                                                warn("META-INF resources can not be versioned ({} from {}). The resulting JAR will be invalid.".format(arcname, jarPath))
                                             # The JDK's ZipInputStream will fail to read files with a data descriptor written by python's zipfile
                                             info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
@@ -1400,13 +1404,13 @@ class JARDistribution(Distribution, ClasspathDependency):
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
                         source = join(outputDir, relpath)
-                        if relpath.startswith('META-INF') and archivePrefix.startswith('META-INF/versions/'):
-                            warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
                         with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
                             if guard:
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
+                                    if versioned_meta_inf_re.match(arcname):
+                                        warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
                                     info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
                                     info.compress_type = arc.zf.compression
                                     info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
