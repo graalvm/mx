@@ -752,7 +752,6 @@ class BuildTask(object):
             with open(savedDepsFile) as fp:
                 savedDeps = [l.strip() for l in fp.readlines()]
             if savedDeps != currentDeps:
-                log_error(savedDepsFile)
                 outOfDate = True
             else:
                 return False
@@ -1132,10 +1131,19 @@ class JARDistribution(Distribution, ClasspathDependency):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
-        self._user_path = path
-        self._path = None
-        self._user_source_path = sourcesPath
-        self._sources_path = '<uninitialized>'
+        if path:
+            path = mx_subst.path_substitutions.substitute(path)
+            self._path = _make_absolute(path.replace('/', os.sep), self.suite.dir)
+        else:
+            self._path = None
+        if sourcesPath == '<none>':
+            # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
+            self._sources_path = None
+        elif sourcesPath:
+            sources_path = mx_subst.path_substitutions.substitute(sourcesPath)
+            self._sources_path = _make_absolute(sources_path.replace('/', os.sep), self.suite.dir)
+        else:
+            self._sources_path = '<uninitialized>'
 
         self.archiveparticipants = []
         self.mainClass = mainClass
@@ -1157,20 +1165,11 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
-        if self._user_path:
-            path = mx_subst.path_substitutions.substitute(self._user_path)
-            self._path = _make_absolute(path.replace('/', os.sep), self.suite.dir)
-        else:
+        if self._path is None:
             self._path = _make_absolute(self._default_path(), self.suite.dir)
 
-        if self._user_source_path == '<none>':
-            # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
-            self._sources_path = None
-        elif self._user_source_path:
-            sources_path = mx_subst.path_substitutions.substitute(self._user_source_path)
-            self._sources_path = _make_absolute(sources_path.replace('/', os.sep), self.suite.dir)
-        else:
-            # self._user_source_path==None denotes that no sourcesPath was specified in `suite.py` and we should generate one.
+        if self._sources_path == '<uninitialized>':
+            # self._sources_path== '<uninitialized>' denotes that no sourcesPath was specified in `suite.py` and we should generate one.
             self._sources_path = _make_absolute(self._default_source_path(), self.suite.dir)
 
         assert self.path.endswith(self.localExtension())
@@ -1182,28 +1181,36 @@ class JARDistribution(Distribution, ClasspathDependency):
         return join(dirname(self._default_path()), self.default_source_filename())
 
     def _extra_artifact_discriminant(self):
-        return "jdk{}".format(self._compliance_for_build())
+        if self.suite.isBinarySuite():
+            return None
+        compliance = self._compliance_for_build()
+        if compliance:
+            return "jdk{}".format(compliance)
+        return None
 
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
         if compliance < '9' and get_module_name(self):
             # if it is modular, bump compliance to 9+ to get a module-info file
-            compliance = max(compliance, get_jdk('9+').javaCompliance)
+            jdk9 = get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
+            if jdk9:
+                compliance = max(compliance, jdk9.javaCompliance)
         return compliance
 
     @property
     def path(self):
-        assert self._path is not None, self.name
         if self.is_stripped():
             return self._stripped_path()
         else:
             return self.original_path()
 
     def _stripped_path(self):
+        assert self._path is not None, self.name
         return join(ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
 
     def original_path(self):
+        assert self._path is not None, self.name
         return self._path
 
     @property
@@ -1690,12 +1697,14 @@ class JARDistribution(Distribution, ClasspathDependency):
             res = _needsUpdate(newestInput, self.sourcesPath)
             if res:
                 return res
-        jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '9':
+        if self._compliance_for_build() >= '9':
             info = get_java_module_info(self)
             if info:
                 _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
                 res = _needsUpdate(newestInput, pickle_path)
+                if res:
+                    return res
+                res = _needsUpdate(self.path, pickle_path)
                 if res:
                     return res
         if self.is_stripped():
@@ -8545,6 +8554,7 @@ class Suite(object):
                 self._load_distribution(name, attrs)
 
     def _load_distribution(self, name, attrs):
+        """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
         className = attrs.pop('class', None)
@@ -8818,6 +8828,9 @@ class Suite(object):
             imported_suite._init_metadata()
             imported_suite._resolve_dependencies()
             imported_suite._post_init()
+            if not imported_suite.isBinarySuite():
+                for dist in imported_suite.dists:
+                    dist.post_init()
         return imported_suite
 
     def scm_metadata(self, abortOnError=False):
@@ -9342,6 +9355,7 @@ class BinarySuite(Suite):
 
     def _load_distribution(self, name, attrs):
         ret = super(BinarySuite, self)._load_distribution(name, attrs)
+        ret.post_init()
         self.vc.getDistribution(self.dir, ret)
         return ret
 
@@ -9574,11 +9588,13 @@ def get_opts():
     assert _argParser.parsed is True
     return _opts
 
-def suites(opt_limit_to_suite=False, includeBinary=True):
+def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
     Get the list of all loaded suites.
     """
     res = [s for s in _suites.values() if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
+    if include_mx:
+        res.append(_mx_suite)
     if opt_limit_to_suite and _opts.specific_suites:
         res = [s for s in res if s.name in _opts.specific_suites]
     return res
@@ -9739,6 +9755,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
         abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=t)
     t.suite._register_distribution(d)
     d.resolveDeps()
+    d.post_init()
     return d
 
 def _get_reasons_dep_was_removed(name, indent):
@@ -17916,6 +17933,9 @@ def _use_binary_suite(suite_name):
 
 
 def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False):
+    """
+    :rtype : (Suite | None, bool)
+    """
     search_mode = 'binary' if _use_binary_suite(suite_import.name) else 'source'
     clone_mode = 'binary' if clone_binary_first else search_mode
 
@@ -18500,8 +18520,8 @@ def main():
         dist.walk_deps(preVisit=_visit_and_find_jmh_dep)
         return NonLocal.jmh_found
 
-    for suite in suites(True, includeBinary=False):
-        for d in suite.dists:
+    for s_ in suites(True, includeBinary=False):
+        for d in s_.dists:
             if _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
@@ -18525,8 +18545,9 @@ def main():
             _removedDeps = _remove_unsatisfied_deps()
 
     # Finally post_init remaining distributions
-    for dist in sorted_dists():
-        dist.post_init()
+    for s_ in suites(includeBinary=False, include_mx=True):
+        for d in s_.dists:
+            d.post_init()
 
     def term_handler(signum, frame):
         abort(1, killsig=signal.SIGTERM)

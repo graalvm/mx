@@ -31,7 +31,7 @@ import pickle
 import StringIO
 import shutil
 import itertools
-from os.path import join, exists, dirname, normpath, relpath, isfile, basename
+from os.path import join, exists, dirname, basename
 from tempfile import mkdtemp
 
 from zipfile import ZipFile
@@ -578,6 +578,8 @@ def make_java_module(dist, jdk):
             jdkModuleNames = [m.name for m in jdkModules]
             modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
             upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
+            # TODO we should rather use the right JDK
+            javacCmd += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
             if modulepathJars:
                 javacCmd.append('--module-path')
                 javacCmd.append(os.pathsep.join(modulepathJars))
