@@ -18063,7 +18063,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.8")  # static groupId for mx jar
+version = VersionSpec("5.178.9")  # GR-11000
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
