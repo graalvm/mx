@@ -4183,7 +4183,7 @@ def _urlopen(*args, **kwargs):
         if timeout_attempts[0] <= timeout_retries:
             timeout_attempts[0] += 1
             kwargs['timeout'] = kwargs.get('timeout', 5) * 2
-            warn("urlopen() timed out! Retrying without timeout of {}s.".format(kwargs['timeout']))
+            warn("urlopen() timed out! Retrying with timeout of {}s.".format(kwargs['timeout']))
             return True
         return False
 
@@ -11665,13 +11665,12 @@ def _attempt_download(url, path, jarEntryName=None):
             if retried, False otherwise
     """
 
-    # Use a temp file while downloading to avoid multiple threads
-    # overwriting the same file.
     progress = not _opts.no_download_progress and sys.stdout.isatty()
-    with SafeFileCreation(path) as sfc:
-        tmp = sfc.tmpPath
-        conn = None
-        try:
+    conn = None
+    try:
+        # Use a temp file while downloading to avoid multiple threads overwriting the same file
+        with SafeFileCreation(path) as sfc:
+            tmp = sfc.tmpPath
 
             # 10 second timeout to establish connection
             url = url.replace('\\', '/')
@@ -11714,17 +11713,16 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-        except (IOError, socket.timeout, urllib2.HTTPError) as e:
-            log_error("Error reading from " + url + ": " + str(e))
-            _suggest_http_proxy_error(e)
-            _suggest_tlsv1_error(e)
-            if exists(tmp):
-                os.remove(tmp)
-            if isinstance(e, urllib2.HTTPError) and e.code == 500:
-                return "retry"
-        finally:
-            if conn:
-                conn.close()
+    except (IOError, socket.timeout, urllib2.HTTPError) as e:
+        # In case of an exception the temp file is removed automatically, so no cleanup is necessary
+        log_error("Error reading from " + url + ": " + str(e))
+        _suggest_http_proxy_error(e)
+        _suggest_tlsv1_error(e)
+        if isinstance(e, urllib2.HTTPError) and e.code == 500:
+            return "retry"
+    finally:
+        if conn:
+            conn.close()
     return False
 
 def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
@@ -18065,7 +18063,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.8")  # static groupId for mx jar
+version = VersionSpec("5.178.9")  # GR-11000
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
