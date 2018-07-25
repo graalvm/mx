@@ -7141,10 +7141,10 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         # Non-local deployment requires license checking
         for dist in dists:
             if not dist.theLicense:
-                abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repo.repository_id, dist.name))
+                abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repo.name, dist.name))
             for distLicense in dist.theLicense:
                 if distLicense not in repo.licenses:
-                    abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.repository_id, dist.name))
+                    abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.name, dist.name))
     if deployRepoMetadata:
         repo_metadata_xml = XMLDoc()
         repo_metadata_xml.open('suite-revisions')
@@ -12460,6 +12460,27 @@ def pylint(args):
         run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env)
 
     return 0
+
+
+class TempDir(object):
+    def __enter__(self):
+        self.tmp_dir = mkdtemp()
+        return self.tmp_dir
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        shutil.rmtree(self.tmp_dir)
+
+
+class TempDirCwd(TempDir):
+    def __enter__(self):
+        super(TempDirCwd, self).__enter__()
+        self.prev_dir = os.getcwd()
+        os.chdir(self.tmp_dir)
+        return self.tmp_dir
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        os.chdir(self.prev_dir)
+        super(TempDirCwd, self).__exit__(exc_type, exc_value, traceback)
 
 
 class SafeFileCreation(object):
@@ -18073,7 +18094,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.10")  # GR-11026
+version = VersionSpec("5.179.0")  # GR-9764
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
