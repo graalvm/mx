@@ -1760,7 +1760,7 @@ class AbstractDistribution(Distribution):
 
 class AbstractTARDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
-    __has_gzip = None
+    __gzip_binary = None
 
     def remoteExtension(self):
         return 'tar.gz'
@@ -1775,7 +1775,7 @@ class AbstractTARDistribution(AbstractDistribution):
         if AbstractTARDistribution._has_gzip():
             with open(tarfilename, 'wb') as tar:
                 # force, quiet, decompress, cat to stdout
-                run(['gzip', '-f', '-q', '-d', '-c', f], out=tar)
+                run([AbstractTARDistribution._gzip_binary(), '-f', '-q', '-d', '-c', f], out=tar)
         else:
             with gzip.open(f, 'rb') as gz, open(tarfilename, 'wb') as tar:
                 shutil.copyfileobj(gz, tar)
@@ -1793,22 +1793,32 @@ class AbstractTARDistribution(AbstractDistribution):
         if AbstractTARDistribution._has_gzip():
             with open(tgz, 'wb') as tar:
                 # force, quiet, cat to stdout
-                run(['gzip', '-f', '-q', '-c', f], out=tar)
+                run([AbstractTARDistribution._gzip_binary(), '-f', '-q', '-c', f], out=tar)
         else:
             with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
                 shutil.copyfileobj(tar, gz)
         return tgz
 
     @staticmethod
+    def _gzip_binary():
+        if not AbstractTARDistribution._has_gzip():
+            abort("No gzip binary could be found")
+        return AbstractTARDistribution.__gzip_binary
+
+    @staticmethod
     def _has_gzip():
-        if AbstractTARDistribution.__has_gzip is None:
-            gzip_ret_code = None
-            try:
-                gzip_ret_code = run(['gzip', '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
-            except OSError as e:
-                gzip_ret_code = e
-            AbstractTARDistribution.__has_gzip = gzip_ret_code == 0
-        return AbstractTARDistribution.__has_gzip
+        if AbstractTARDistribution.__gzip_binary is None:
+            # Probe for pigz (parallel gzip) first and then try common gzip
+            for binary_name in ["pigz", "gzip"]:
+                gzip_ret_code = None
+                try:
+                    gzip_ret_code = run([binary_name, '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
+                except OSError as e:
+                    gzip_ret_code = e
+                if gzip_ret_code == 0:
+                    AbstractTARDistribution.__gzip_binary = binary_name
+                    break
+        return AbstractTARDistribution.__gzip_binary is not None
 
 
 class AbstractJARDistribution(AbstractDistribution):
@@ -18063,7 +18073,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.9")  # GR-11000
+version = VersionSpec("5.178.10")  # GR-11026
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
