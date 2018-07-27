@@ -1181,7 +1181,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return join(dirname(self._default_path()), self.default_source_filename())
 
     def _extra_artifact_discriminant(self):
-        if self.suite.isBinarySuite():
+        if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDisciminant():
             return None
         compliance = self._compliance_for_build()
         if compliance:
