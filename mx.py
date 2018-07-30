@@ -2211,6 +2211,7 @@ class LayoutDistribution(AbstractDistribution):
                         if not zipinfo.filename:
                             continue
                         extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                        os.chmod(extracted_file, (zipinfo.external_attr >> 16) & 0xFFFF)
                         archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
                 with tarfile.TarFile.open(source_archive_file) as tf:
@@ -18094,7 +18095,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.0")  # GR-9764
+version = VersionSpec("5.179.1")  # GR-11072
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
