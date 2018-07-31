@@ -12570,7 +12570,7 @@ class Archiver(SafeFileCreation):
 
     def _add_tar(self, filename, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
-        self.zf.add(filename, archive_name, filter=self._tarinfo_filter)
+        self.zf.add(filename, archive_name, filter=self._tarinfo_filter, recursive=False)
 
     def _add_str_tar(self, data, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
