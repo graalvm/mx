@@ -66,7 +66,6 @@ from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatt
 from os.path import join, basename, dirname, exists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
 import fnmatch
-import copy
 import operator
 import calendar
 import multiprocessing
@@ -2221,11 +2220,6 @@ class LayoutDistribution(AbstractDistribution):
                         tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
                         if not tarinfo.name:
                             continue
-                        if tarinfo.isdir():
-                            # Extract directories with a safe mode.
-                            directories.append(tarinfo)
-                            tarinfo = copy.copy(tarinfo)
-                            tarinfo.mode = 0700
                         extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
                         arcname = os.path.relpath(extracted_file, output)
                         if tarinfo.issym():
@@ -2238,6 +2232,10 @@ class LayoutDistribution(AbstractDistribution):
                         else:
                             tf.extract(tarinfo, unarchiver_dest_directory)
                             archiver.add(extracted_file, arcname, provenance)
+                            if tarinfo.isdir():
+                                # use a safe mode while extracting, fix later
+                                os.chmod(extracted_file, 0700)
+                                directories.append(tarinfo)
 
                     # Reverse sort directories.
                     directories.sort(key=operator.attrgetter('name'))
