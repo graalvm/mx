@@ -5955,6 +5955,8 @@ class GitConfig(VC):
                 if flock is not None:
                     lockfile = os.path.join(vcdir, 'lock')
                     cmd = [flock, lockfile] + fetch_cmd
+                else:
+                    cmd = fetch_cmd
             else:
                 cmd = fetch_cmd
             if prune:
