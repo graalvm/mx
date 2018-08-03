@@ -5950,11 +5950,9 @@ class GitConfig(VC):
     def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
         try:
             fetch_cmd = ['git', 'fetch']
-            if lock:
-                flock = flock_cmd()
-                if flock is not None:
-                    lockfile = os.path.join(vcdir, 'lock')
-                    cmd = [flock, lockfile] + fetch_cmd
+            if lock and flock_cmd() is not None:
+                lockfile = join(vcdir, 'lock')
+                cmd = [flock_cmd(), lockfile] + fetch_cmd
             else:
                 cmd = fetch_cmd
             if prune:
@@ -11540,27 +11538,42 @@ def expand_project_in_args(args, insitu=True, jdk=None):
     return args
 
 
+_flock_cmd = '<uninitialized>'
+
+
 def flock_cmd():
-    out = OutputCapture()
-    try:
-        flock_ret_code = run(['flock', '--version'], nonZeroIsFatal=False, err=out, out=out)
-    except OSError as e:
-        flock_ret_code = e
-    if flock_ret_code == 0:
-        return 'flock'
-    else:
-        logvv('Could not find flock command')
-        return None
+    global _flock_cmd
+    if _flock_cmd == '<uninitialized>':
+        out = OutputCapture()
+        try:
+            flock_ret_code = run(['flock', '--version'], nonZeroIsFatal=False, err=out, out=out)
+        except OSError as e:
+            flock_ret_code = e
+        if flock_ret_code == 0:
+            _flock_cmd = 'flock'
+        else:
+            logvv('Could not find flock command')
+            _flock_cmd = None
+    return _flock_cmd
+
+
+_gmake_cmd = '<uninitialized>'
+
 
 def gmake_cmd():
-    for a in ['make', 'gmake', 'gnumake']:
-        try:
-            output = subprocess.check_output([a, '--version'])
-            if 'GNU' in output:
-                return a
-        except:
-            pass
-    abort('Could not find a GNU make executable on the current path.')
+    global _gmake_cmd
+    if _gmake_cmd == '<uninitialized>':
+        for a in ['make', 'gmake', 'gnumake']:
+            try:
+                output = subprocess.check_output([a, '--version'])
+                if 'GNU' in output:
+                    _gmake_cmd = a
+                    break
+            except:
+                pass
+        if _gmake_cmd == '<uninitialized>':
+            abort('Could not find a GNU make executable on the current path.')
+    return _gmake_cmd
 
 def expandvars_in_property(value):
     result = expandvars(value)
@@ -18113,7 +18126,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.4")  # [GR-10390] SafeFileCreation: Do not delete file before renaming on Linux.
+version = VersionSpec("5.179.5")  # flock.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
