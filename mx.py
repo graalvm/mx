@@ -5884,7 +5884,7 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 logvv("Requested revision " + rev + " not found in " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
         else:
             if branch:
@@ -5947,9 +5947,16 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
         try:
-            cmd = ['git', 'fetch']
+            fetch_cmd = ['git', 'fetch']
+            if lock:
+                flock = flock_cmd()
+                if flock is not None:
+                    lockfile = os.path.join(vcdir, 'lock')
+                    cmd = [flock, lockfile] + fetch_cmd
+            else:
+                cmd = fetch_cmd
             if prune:
                 cmd.append('--prune')
             if repository:
@@ -11531,6 +11538,19 @@ def expand_project_in_args(args, insitu=True, jdk=None):
                 args[i + 1] = expand_project_in_class_path_arg(args[i + 1], jdk=jdk)
             break
     return args
+
+
+def flock_cmd():
+    out = OutputCapture()
+    try:
+        flock_ret_code = run(['flock', '--version'], nonZeroIsFatal=False, err=out, out=out)
+    except OSError as e:
+        flock_ret_code = e
+    if flock_ret_code == 0:
+        return 'flock'
+    else:
+        logvv('Could not find flock command')
+        return None
 
 def gmake_cmd():
     for a in ['make', 'gmake', 'gnumake']:
@@ -18093,7 +18113,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.2")  # tar dir mode
+version = VersionSpec("5.179.3")  # [GR-10390] Lock git cache repository during fetch.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
