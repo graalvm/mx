@@ -18126,7 +18126,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.4")  # [GR-10390] SafeFileCreation: Do not delete file before renaming on Linux.
+version = VersionSpec("5.179.5")  # flock.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
