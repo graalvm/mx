@@ -1473,7 +1473,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         services = {}
         manifestEntries = self.manifestEntries.copy()
         with Archiver(self.original_path()) as arc:
-            with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
+            with Archiver(None if unified else self.sourcesPath, compress=True) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
 
                 for a in self.archiveparticipants:
@@ -7935,7 +7935,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         tmpJavadocJar.close()
                         javadocPath = tmpJavadocJar.name
                         emptyJavadoc = True
-                        with zipfile.ZipFile(javadocPath, 'w') as arc:
+                        with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
                             javadocDir = join(tmpDir, 'javadoc')
                             for (dirpath, _, filenames) in os.walk(javadocDir):
                                 for filename in filenames:
