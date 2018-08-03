@@ -5950,13 +5950,9 @@ class GitConfig(VC):
     def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
         try:
             fetch_cmd = ['git', 'fetch']
-            if lock:
-                flock = flock_cmd()
-                if flock is not None:
-                    lockfile = os.path.join(vcdir, 'lock')
-                    cmd = [flock, lockfile] + fetch_cmd
-                else:
-                    cmd = fetch_cmd
+            if lock and flock_cmd() is not None:
+                lockfile = join(vcdir, 'lock')
+                cmd = [flock_cmd(), lockfile] + fetch_cmd
             else:
                 cmd = fetch_cmd
             if prune:
