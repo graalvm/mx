@@ -12550,7 +12550,7 @@ class SafeFileCreation(object):
                     # Correct the permissions on the temporary file which is created with restrictive permissions
                     os.chmod(tmpPath, 0o666 & ~currentUmask)
                     # Atomic if self.path does not already exist.
-                    if exists(path):
+                    if get_os() == 'windows' and exists(path):
                         # Needed on Windows
                         os.remove(path)
                     os.rename(tmpPath, path)
@@ -18113,7 +18113,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.3")  # [GR-10390] Lock git cache repository during fetch.
+version = VersionSpec("5.179.4")  # [GR-10390] SafeFileCreation: Do not delete file before renaming on Linux.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
