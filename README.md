@@ -116,42 +116,17 @@ public @interface AddExports {
 
 ### Versioning sources for different JDK releases
 
-Mx includes support for multiple versions of a Java source file that is heavily inspired
-by [multi-release jars](https://docs.oracle.com/javase/10/docs/specs/jar/jar.html#multi-release-jar-files).
-A versioned Java source has a base copy and one or more versioned copies. The signature of each
+Mx includes support for multiple versions of a Java class. The mechanism is inspired by and
+similar to [multi-release jars](https://docs.oracle.com/javase/10/docs/specs/jar/jar.html#multi-release-jar-files).
+A versioned Java class has a base version and one or more versioned copies. The public signature of each
 copy (i.e., methods and fields accessed from outside the source file) must be identical.
-A versioned copy must be in a project whose Java compliance is greater than the project
-containing the base copy. For example, the base copy of [GraalServices.java](https://github.com/oracle/graal/blob/1bc9e1c762c85303d1388f98149bb9bb402f0cff/compiler/src/org.graalvm.compiler.serviceprovider/src/org/graalvm/compiler/serviceprovider/GraalServices.java)
-is in a [project with Java compliance of 8](https://github.com/oracle/graal/blob/1bc9e1c762c85303d1388f98149bb9bb402f0cff/compiler/mx.compiler/suite.py#L134).
-There is a [GraalServices.java](https://github.com/oracle/graal/blob/1bc9e1c762c85303d1388f98149bb9bb402f0cff/compiler/src/org.graalvm.compiler.serviceprovider.jdk9/src/org/graalvm/compiler/serviceprovider/GraalServices.java)
-source file that _presides over_ the base copy when running on JDK 9 or later.
-The project containing the latter [uses](https://github.com/oracle/graal/blob/1bc9e1c762c85303d1388f98149bb9bb402f0cff/compiler/mx.compiler/suite.py#L144-L145)
-the `multiReleaseJarVersion` attribute to denote that it contains classes to be packaged in
-a versioned jar directory. It also specifies the earliest Java version for which it is valid.   
 
-When these projects are combined into the same mx distribution, mx will put these class files into the distribution
-jar according to the multi-release jar format:
-```
-> jar tvf mxbuild/dists/graal.jar | grep GraalServices
-  1562 Tue May 22 22:19:02 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices$JMXService.class
-  6546 Tue May 22 22:19:02 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices.class
-  1146 Tue May 22 22:19:02 CEST 2018 META-INF/versions/9/org/graalvm/compiler/serviceprovider/GraalServices$1.class
-  1435 Tue May 22 22:19:02 CEST 2018 META-INF/versions/9/org/graalvm/compiler/serviceprovider/GraalServices$1$1.class
-   932 Tue May 22 22:19:02 CEST 2018 META-INF/versions/9/org/graalvm/compiler/serviceprovider/GraalServices$JMXService.class
-  6933 Tue May 22 22:19:02 CEST 2018 META-INF/versions/9/org/graalvm/compiler/serviceprovider/GraalServices.class
-```
-Resolving classes to the right version is done by the VM at runtime as explained in the JAR specification.
+Versioned classes for JDK 9 or later need to be in a project with a `javaCompliance` greater than
+or equal to 9 and a `multiReleaseJarVersion` attribute whose value is also greater or equal to 9.
+The versioned project must have the base project as a dependency.
 
-When a distribution also defines a module (e.g., [GRAAL](https://github.com/oracle/graal/blob/1bc9e1c762c85303d1388f98149bb9bb402f0cff/compiler/mx.compiler/suite.py#L1662)),
-the versions are _flattened_ when creating the modular jar. That is, the modular jar contains only the class
-files that would be resolved at runtime:
-```
-> jar tvf mxbuild/modules/jdk.internal.vm.compiler.jar | grep GraalServices
-  1146 Tue May 22 22:19:12 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices$1.class
-  1435 Tue May 22 22:19:12 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices$1$1.class
-   932 Tue May 22 22:19:12 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices$JMXService.class
-  6933 Tue May 22 22:19:12 CEST 2018 org/graalvm/compiler/serviceprovider/GraalServices.class
-```
+Versioned classes for JDK 8 or earlier need to be in a project with a `javaCompliance` less than or
+equal to 8 and an `overlayTarget` attribute denoting the base project.
 
 ### URL rewriting
 
