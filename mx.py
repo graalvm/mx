@@ -69,6 +69,7 @@ import fnmatch
 import operator
 import calendar
 import multiprocessing
+from stat import S_IMODE
 
 # Define this machinery early in case other modules want to use them
 
@@ -1320,8 +1321,8 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 def addFromJAR(jarPath):
                     with zipfile.ZipFile(jarPath, 'r') as source_zf:
-                        entries = source_zf.namelist()
-                        for arcname in entries:
+                        for info in source_zf.infolist():
+                            arcname = info.filename
                             if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                 service = arcname[len('META-INF/services/'):]
                                 assert '/' not in service
@@ -1331,7 +1332,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if guard:
                                         contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
-                                            arc.zf.writestr(arcname, contents)
+                                            arc.zf.writestr(info, contents)
 
                 def addFile(outputDir, relpath, archivePrefix):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
@@ -1349,7 +1350,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
-                                    arc.zf.writestr(arcname, contents)
+                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(source))[:6])
+                                    info.compress_type = arc.zf.compression
+                                    info.external_attr = S_IMODE(os.stat(source).st_mode) << 16
+                                    arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix=''):
                     for root, _, files in os.walk(srcDir):
@@ -1362,7 +1366,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         with open(join(root, f), 'r') as fp:
                                             contents = fp.read()
                                         if not participants__add__(arcname, contents, addsrc=True):
-                                            srcArc.zf.writestr(arcname, contents)
+                                            info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                            info.compress_type = arc.zf.compression
+                                            info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                            srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
                     manifestEntries.append('Main-Class: ' + self.mainClass)
@@ -2210,7 +2217,9 @@ class LayoutDistribution(AbstractDistribution):
                         if not zipinfo.filename:
                             continue
                         extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                        os.chmod(extracted_file, (zipinfo.external_attr >> 16) & 0xFFFF)
+                        unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
+                        if unix_attributes != 0:
+                            os.chmod(extracted_file, unix_attributes)
                         archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
                 with tarfile.TarFile.open(source_archive_file) as tf:
