@@ -3583,7 +3583,7 @@ class JavacCompiler(JavacLikeCompiler):
         if jnigenDir is not None:
             javacArgs += ['-h', jnigenDir]
 
-        lint = ['all', '-auxiliaryclass', '-processing']
+        lint = ['all', '-auxiliaryclass', '-processing', '-removal']
         overrides = project.get_javac_lint_overrides()
         if overrides:
             if 'none' in overrides:
@@ -3598,7 +3598,7 @@ class JavacCompiler(JavacLikeCompiler):
             lint += ['-options']
 
         if forceDeprecationAsWarning:
-            lint += ['-deprecation', '-removal']
+            lint += ['-deprecation']
 
         knownLints = jdk.getKnownJavacLints()
         if knownLints:
