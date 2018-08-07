@@ -15855,6 +15855,15 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
 
+        ignoreWarnings = set()
+        if jdk.javaCompliance >= JavaCompliance('9'):
+            # JDK9+ reports codesnippetdoclet is using JDK8's Javadoc API
+            ignoreWarnings.add('javadoc: warning - The old Doclet and Taglet APIs in the packages')
+            ignoreWarnings.add('com.sun.javadoc, com.sun.tools.doclets and their implementations')
+            ignoreWarnings.add('are planned to be removed in a future JDK release. These')
+            ignoreWarnings.add('components have been superseded by the new APIs in jdk.javadoc.doclet.')
+            ignoreWarnings.add('Users are strongly recommended to migrate to the new APIs.')
+
         class WarningCapture:
             def __init__(self, prefix, forward, ignoreBrokenRefs):
                 self.prefix = prefix
@@ -15863,6 +15872,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 self.warnings = 0
 
             def __call__(self, msg):
+                if msg.rstrip() in ignoreWarnings:
+                    return
                 shouldPrint = self.forward
                 if ': warning - ' in msg:
                     if not self.ignoreBrokenRefs or not _javadocRefNotFound.search(msg):
