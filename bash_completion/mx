@@ -84,6 +84,8 @@ _mx_completion() {
     fi
     cat $tmp_file
 }
+
+# Use default bash autocomplete behavior if mx autocomplete fails.
 complete -F _mx -o default mx
 
 # vi: syntax=bash
