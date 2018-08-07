@@ -66,10 +66,10 @@ from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatt
 from os.path import join, basename, dirname, exists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
 import fnmatch
-import copy
 import operator
 import calendar
 import multiprocessing
+from stat import S_IMODE
 
 # Define this machinery early in case other modules want to use them
 
@@ -1321,8 +1321,8 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 def addFromJAR(jarPath):
                     with zipfile.ZipFile(jarPath, 'r') as source_zf:
-                        entries = source_zf.namelist()
-                        for arcname in entries:
+                        for info in source_zf.infolist():
+                            arcname = info.filename
                             if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                 service = arcname[len('META-INF/services/'):]
                                 assert '/' not in service
@@ -1332,7 +1332,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if guard:
                                         contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
-                                            arc.zf.writestr(arcname, contents)
+                                            arc.zf.writestr(info, contents)
 
                 def addFile(outputDir, relpath, archivePrefix):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
@@ -1350,7 +1350,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
-                                    arc.zf.writestr(arcname, contents)
+                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(source))[:6])
+                                    info.compress_type = arc.zf.compression
+                                    info.external_attr = S_IMODE(os.stat(source).st_mode) << 16
+                                    arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix=''):
                     for root, _, files in os.walk(srcDir):
@@ -1363,7 +1366,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                         with open(join(root, f), 'r') as fp:
                                             contents = fp.read()
                                         if not participants__add__(arcname, contents, addsrc=True):
-                                            srcArc.zf.writestr(arcname, contents)
+                                            info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                            info.compress_type = arc.zf.compression
+                                            info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                            srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
                     manifestEntries.append('Main-Class: ' + self.mainClass)
@@ -1760,7 +1766,7 @@ class AbstractDistribution(Distribution):
 
 class AbstractTARDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
-    __has_gzip = None
+    __gzip_binary = None
 
     def remoteExtension(self):
         return 'tar.gz'
@@ -1775,7 +1781,7 @@ class AbstractTARDistribution(AbstractDistribution):
         if AbstractTARDistribution._has_gzip():
             with open(tarfilename, 'wb') as tar:
                 # force, quiet, decompress, cat to stdout
-                run(['gzip', '-f', '-q', '-d', '-c', f], out=tar)
+                run([AbstractTARDistribution._gzip_binary(), '-f', '-q', '-d', '-c', f], out=tar)
         else:
             with gzip.open(f, 'rb') as gz, open(tarfilename, 'wb') as tar:
                 shutil.copyfileobj(gz, tar)
@@ -1793,22 +1799,32 @@ class AbstractTARDistribution(AbstractDistribution):
         if AbstractTARDistribution._has_gzip():
             with open(tgz, 'wb') as tar:
                 # force, quiet, cat to stdout
-                run(['gzip', '-f', '-q', '-c', f], out=tar)
+                run([AbstractTARDistribution._gzip_binary(), '-f', '-q', '-c', f], out=tar)
         else:
             with gzip.open(tgz, 'wb') as gz, open(f, 'rb') as tar:
                 shutil.copyfileobj(tar, gz)
         return tgz
 
     @staticmethod
+    def _gzip_binary():
+        if not AbstractTARDistribution._has_gzip():
+            abort("No gzip binary could be found")
+        return AbstractTARDistribution.__gzip_binary
+
+    @staticmethod
     def _has_gzip():
-        if AbstractTARDistribution.__has_gzip is None:
-            gzip_ret_code = None
-            try:
-                gzip_ret_code = run(['gzip', '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
-            except OSError as e:
-                gzip_ret_code = e
-            AbstractTARDistribution.__has_gzip = gzip_ret_code == 0
-        return AbstractTARDistribution.__has_gzip
+        if AbstractTARDistribution.__gzip_binary is None:
+            # Probe for pigz (parallel gzip) first and then try common gzip
+            for binary_name in ["pigz", "gzip"]:
+                gzip_ret_code = None
+                try:
+                    gzip_ret_code = run([binary_name, '-V'], nonZeroIsFatal=False, err=subprocess.STDOUT, out=OutputCapture())
+                except OSError as e:
+                    gzip_ret_code = e
+                if gzip_ret_code == 0:
+                    AbstractTARDistribution.__gzip_binary = binary_name
+                    break
+        return AbstractTARDistribution.__gzip_binary is not None
 
 
 class AbstractJARDistribution(AbstractDistribution):
@@ -2201,6 +2217,9 @@ class LayoutDistribution(AbstractDistribution):
                         if not zipinfo.filename:
                             continue
                         extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                        unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
+                        if unix_attributes != 0:
+                            os.chmod(extracted_file, unix_attributes)
                         archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
             elif 'tar' in ext or ext.endswith('tgz'):
                 with tarfile.TarFile.open(source_archive_file) as tf:
@@ -2210,11 +2229,6 @@ class LayoutDistribution(AbstractDistribution):
                         tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
                         if not tarinfo.name:
                             continue
-                        if tarinfo.isdir():
-                            # Extract directories with a safe mode.
-                            directories.append(tarinfo)
-                            tarinfo = copy.copy(tarinfo)
-                            tarinfo.mode = 0700
                         extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
                         arcname = os.path.relpath(extracted_file, output)
                         if tarinfo.issym():
@@ -2227,6 +2241,10 @@ class LayoutDistribution(AbstractDistribution):
                         else:
                             tf.extract(tarinfo, unarchiver_dest_directory)
                             archiver.add(extracted_file, arcname, provenance)
+                            if tarinfo.isdir():
+                                # use a safe mode while extracting, fix later
+                                os.chmod(extracted_file, 0700)
+                                directories.append(tarinfo)
 
                     # Reverse sort directories.
                     directories.sort(key=operator.attrgetter('name'))
@@ -4183,7 +4201,7 @@ def _urlopen(*args, **kwargs):
         if timeout_attempts[0] <= timeout_retries:
             timeout_attempts[0] += 1
             kwargs['timeout'] = kwargs.get('timeout', 5) * 2
-            warn("urlopen() timed out! Retrying without timeout of {}s.".format(kwargs['timeout']))
+            warn("urlopen() timed out! Retrying with timeout of {}s.".format(kwargs['timeout']))
             return True
         return False
 
@@ -5875,7 +5893,7 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 logvv("Requested revision " + rev + " not found in " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
         else:
             if branch:
@@ -5938,9 +5956,14 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
         try:
-            cmd = ['git', 'fetch']
+            fetch_cmd = ['git', 'fetch']
+            if lock and flock_cmd() is not None:
+                lockfile = join(vcdir, 'lock')
+                cmd = [flock_cmd(), lockfile] + fetch_cmd
+            else:
+                cmd = fetch_cmd
             if prune:
                 cmd.append('--prune')
             if repository:
@@ -6367,14 +6390,14 @@ class BinaryVC(VC):
         try:
             (jar_url, jar_sha_url) = build.getSubArtifact(extension)
         except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-            abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
+            raise abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, name, build.version, repo.repourl))
         download_file_with_sha1(artifactId, path, [jar_url], _hashFromUrl(jar_sha_url), path + '.sha1', resolve=True, mustExist=True, sources=False)
         if sourcePath:
             try:
                 (source_url, source_sha_url) = build.getSubArtifactByClassifier('sources')
             except MavenSnapshotArtifact.NonUniqueSubArtifactException:
-                abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
-            download_file_with_sha1(artifactId + ' sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
+                raise abort('Multiple source artifacts found for {} in snapshot {} in repository {}'.format(name, build.version, repo.repourl))
+            download_file_with_sha1(artifactId + '_sources', sourcePath, [source_url], _hashFromUrl(source_sha_url), sourcePath + '.sha1', resolve=True, mustExist=True, sources=True)
         return True
 
     class Metadata:
@@ -7087,7 +7110,7 @@ def _deploy_binary(args, suite):
 
     _maven_deploy_dists(dists, versionGetter, repo, args.settings, dryRun=args.dry_run, deployMapFiles=True)
     if not args.platform_dependent and not args.only:
-        _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite), mxMetaJar, version, repo, settingsXml=args.settings, dryRun=args.dry_run)
+        _deploy_binary_maven(suite, _map_to_maven_dist_name(mxMetaName), _mavenGroupId(suite.name), mxMetaJar, version, repo, settingsXml=args.settings, dryRun=args.dry_run)
 
     if not args.all_suites and suite == primary_suite() and suite.vc.kind == 'git' and suite.vc.active_branch(suite.vc_dir) == 'master':
         deploy_branch_name = 'binary'
@@ -7131,10 +7154,10 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         # Non-local deployment requires license checking
         for dist in dists:
             if not dist.theLicense:
-                abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repo.repository_id, dist.name))
+                abort('Distributions without license are not cleared for upload to {}: can not upload {}'.format(repo.name, dist.name))
             for distLicense in dist.theLicense:
                 if distLicense not in repo.licenses:
-                    abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.repository_id, dist.name))
+                    abort('Distribution with {} license are not cleared for upload to {}: can not upload {}'.format(distLicense.name, repo.name, dist.name))
     if deployRepoMetadata:
         repo_metadata_xml = XMLDoc()
         repo_metadata_xml.open('suite-revisions')
@@ -11523,15 +11546,43 @@ def expand_project_in_args(args, insitu=True, jdk=None):
             break
     return args
 
-def gmake_cmd():
-    for a in ['make', 'gmake', 'gnumake']:
+
+_flock_cmd = '<uninitialized>'
+
+
+def flock_cmd():
+    global _flock_cmd
+    if _flock_cmd == '<uninitialized>':
+        out = OutputCapture()
         try:
-            output = subprocess.check_output([a, '--version'])
-            if 'GNU' in output:
-                return a
-        except:
-            pass
-    abort('Could not find a GNU make executable on the current path.')
+            flock_ret_code = run(['flock', '--version'], nonZeroIsFatal=False, err=out, out=out)
+        except OSError as e:
+            flock_ret_code = e
+        if flock_ret_code == 0:
+            _flock_cmd = 'flock'
+        else:
+            logvv('Could not find flock command')
+            _flock_cmd = None
+    return _flock_cmd
+
+
+_gmake_cmd = '<uninitialized>'
+
+
+def gmake_cmd():
+    global _gmake_cmd
+    if _gmake_cmd == '<uninitialized>':
+        for a in ['make', 'gmake', 'gnumake']:
+            try:
+                output = subprocess.check_output([a, '--version'])
+                if 'GNU' in output:
+                    _gmake_cmd = a
+                    break
+            except:
+                pass
+        if _gmake_cmd == '<uninitialized>':
+            abort('Could not find a GNU make executable on the current path.')
+    return _gmake_cmd
 
 def expandvars_in_property(value):
     result = expandvars(value)
@@ -11665,13 +11716,12 @@ def _attempt_download(url, path, jarEntryName=None):
             if retried, False otherwise
     """
 
-    # Use a temp file while downloading to avoid multiple threads
-    # overwriting the same file.
     progress = not _opts.no_download_progress and sys.stdout.isatty()
-    with SafeFileCreation(path) as sfc:
-        tmp = sfc.tmpPath
-        conn = None
-        try:
+    conn = None
+    try:
+        # Use a temp file while downloading to avoid multiple threads overwriting the same file
+        with SafeFileCreation(path) as sfc:
+            tmp = sfc.tmpPath
 
             # 10 second timeout to establish connection
             url = url.replace('\\', '/')
@@ -11714,17 +11764,16 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-        except (IOError, socket.timeout, urllib2.HTTPError) as e:
-            log_error("Error reading from " + url + ": " + str(e))
-            _suggest_http_proxy_error(e)
-            _suggest_tlsv1_error(e)
-            if exists(tmp):
-                os.remove(tmp)
-            if isinstance(e, urllib2.HTTPError) and e.code == 500:
-                return "retry"
-        finally:
-            if conn:
-                conn.close()
+    except (IOError, socket.timeout, urllib2.HTTPError) as e:
+        # In case of an exception the temp file is removed automatically, so no cleanup is necessary
+        log_error("Error reading from " + url + ": " + str(e))
+        _suggest_http_proxy_error(e)
+        _suggest_tlsv1_error(e)
+        if isinstance(e, urllib2.HTTPError) and e.code == 500:
+            return "retry"
+    finally:
+        if conn:
+            conn.close()
     return False
 
 def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
@@ -12454,6 +12503,27 @@ def pylint(args):
     return 0
 
 
+class TempDir(object):
+    def __enter__(self):
+        self.tmp_dir = mkdtemp()
+        return self.tmp_dir
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        shutil.rmtree(self.tmp_dir)
+
+
+class TempDirCwd(TempDir):
+    def __enter__(self):
+        super(TempDirCwd, self).__enter__()
+        self.prev_dir = os.getcwd()
+        os.chdir(self.tmp_dir)
+        return self.tmp_dir
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        os.chdir(self.prev_dir)
+        super(TempDirCwd, self).__exit__(exc_type, exc_value, traceback)
+
+
 class SafeFileCreation(object):
     """
     Context manager for creating a file that tries hard to handle races between processes/threads
@@ -12502,7 +12572,7 @@ class SafeFileCreation(object):
                     # Correct the permissions on the temporary file which is created with restrictive permissions
                     os.chmod(tmpPath, 0o666 & ~currentUmask)
                     # Atomic if self.path does not already exist.
-                    if exists(path):
+                    if get_os() == 'windows' and exists(path):
                         # Needed on Windows
                         os.remove(path)
                     os.rename(tmpPath, path)
@@ -12542,7 +12612,7 @@ class Archiver(SafeFileCreation):
 
     def _add_tar(self, filename, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
-        self.zf.add(filename, archive_name, filter=self._tarinfo_filter)
+        self.zf.add(filename, archive_name, filter=self._tarinfo_filter, recursive=False)
 
     def _add_str_tar(self, data, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
@@ -14945,7 +15015,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
                 elif dep.isJdkLibrary():
                     jdk_libraries.add(dep)
-                    moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+                    if not jdk.javaCompliance >= dep.jdkStandardizedSince:
+                        moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
+                    else:
+                        logv("{} skipping {} for {}".format(p, dep, jdk))
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
@@ -16912,10 +16985,10 @@ def maven_install(args):
     mxMetaJar = s.mx_binary_distribution_jar_path()
     if not args.test:
         if nolocalchanges:
-            mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
+            mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
             print 'Local changes found, skipping install of ' + version + ' version'
-        mvn_local_install(_mavenGroupId(s), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
+        mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
                 mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
@@ -18074,7 +18147,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.178.4")  # GR-7928
+version = VersionSpec("5.179.6")  # jar/zip permissions.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
