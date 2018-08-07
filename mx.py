@@ -15900,6 +15900,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-sourcepath', sp] +
              verifySincePresent +
              snippetsPatterns +
+             (['-J--add-opens=jdk.javadoc/com.sun.tools.javadoc.main=ALL-UNNAMED'] if jdk.javaCompliance >= JavaCompliance('9') else []) +
              ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
