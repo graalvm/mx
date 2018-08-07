@@ -66,10 +66,12 @@ suite = {
     },
 
     "CODESNIPPET-DOCLET" : {
-      "urls" : [
-        "http://repo1.maven.org/maven2/org/apidesign/javadoc/codesnippet-doclet/0.22/codesnippet-doclet-0.22.jar",
-      ],
-      "sha1" : "b75ab29274e55d149573250783fa59cb67941bd4",
+      "maven" : {
+        "groupId" : "org.apidesign.javadoc",
+        "artifactId" : "codesnippet-doclet",
+        "version" : "0.30",
+      },
+      "sha1" : "e32b3483fbf362c92088cb79e9f1f161f3f64a21",
     },
 
     "JUNIT" : {
