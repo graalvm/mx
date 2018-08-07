@@ -1290,6 +1290,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         self.arcname = arcname
                         self.source = source
                         self._can_write = False
+
                     def __enter__(self):
                         arcname = self.arcname
                         source = self.source
@@ -1305,7 +1306,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             self.zf._provenance = {}
                         existingSource = self.zf._provenance.get(arcname, None)
                         if existingSource and existingSource != source:
-                            if arcname[-1] != os.path.sep:
+                            if arcname[-1] not in (os.path.sep, '/'):
                                 if self.source_zf and self.source_zf.read(arcname) == self.zf.read(arcname):
                                     logv(self.path + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
                                 else:
@@ -1332,10 +1333,13 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if guard:
                                         contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
+                                            # The JDK's ZipInputStream will fail to read files with a data descriptor written by python's zipfile
+                                            info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
 
                 def addFile(outputDir, relpath, archivePrefix):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
+                    assert arcname[-1] != '/'
                     if relpath.startswith(join('META-INF', 'services')):
                         service = basename(relpath)
                         assert dirname(relpath) == join('META-INF', 'services')
@@ -18147,7 +18151,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.8")  # GR-11170
+version = VersionSpec("5.179.9")  # zip descriptors
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
