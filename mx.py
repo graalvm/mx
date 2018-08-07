@@ -12424,8 +12424,7 @@ def eclipseformat(args):
         batch_num += 1
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
-        # Eclipse does not (yet) run on JDK 9
-        jdk = get_jdk(versionCheck=lambda version: version < VersionSpec('9'), versionDescription='<9')
+        jdk = get_jdk()
 
         for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
             capture = OutputCapture()
