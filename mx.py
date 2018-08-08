@@ -13789,12 +13789,18 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             if libFiles:
                 libFiles.append(path)
 
+    # When targeting JDK 8 or earlier, dependencies need to precede the JDK on the Eclipse build path.
+    # There may be classes in dependencies that are also in the JDK. We want to compile against the
+    # former. This is the same -Xbootclasspath:/p trick done in JavacLikeCompiler.prepare.
+    putJREFirstOnBuildPath = p.javaCompliance.value >= 9
+
     sortedDeps = sorted(projectDeps)
     allProjectPackages = set()
     for dep in sortedDeps:
         if not dep.isNativeProject():
             allProjectPackages.update(dep.defined_java_packages())
-            out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+            if not putJREFirstOnBuildPath:
+                out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
     # Every Java program depends on a JRE
     jreSystemLibrary = _to_EclipseJRESystemLibrary(jdk.javaCompliance)
@@ -13824,6 +13830,11 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                     out.element('attribute', {'name' : 'limit-modules', 'value' : ','.join([m.name for m in module_graph])})
         out.close('attributes')
     out.close('classpathentry')
+
+    if putJREFirstOnBuildPath:
+        for dep in sortedDeps:
+            if not dep.isNativeProject():
+                out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
     out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
 
