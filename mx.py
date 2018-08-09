@@ -133,7 +133,7 @@ import mx_benchplot
 import mx_downstream
 import mx_subst
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package
+from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -609,7 +609,7 @@ class Dependency(SuiteConstituent):
                         abort('cannot reference internal ' + dep.name + ' from ' + self.suite.name + ' suite', context=self)
                     selfJC = getattr(self, 'javaCompliance', None)
                     depJC = getattr(dep, 'javaCompliance', None)
-                    if selfJC and depJC and selfJC < depJC:
+                    if selfJC and depJC and selfJC.value < depJC.value:
                         if self.suite.getMxCompatibility().checkDependencyJavaCompliance():
                             abort('cannot depend on ' + name + ' as it has a higher Java compliance than ' + str(selfJC), context=self)
                     resolvedDeps.append(dep)
@@ -1337,9 +1337,11 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
 
-                def addFile(outputDir, relpath, archivePrefix):
+                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
                     assert arcname[-1] != '/'
+                    if arcnameCheck is not None and not arcnameCheck(arcname):
+                        return
                     if relpath.startswith(join('META-INF', 'services')):
                         service = basename(relpath)
                         assert dirname(relpath) == join('META-INF', 'services')
@@ -1359,26 +1361,36 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     info.external_attr = S_IMODE(os.stat(source).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
-                def addSrcFromDir(srcDir, archivePrefix=''):
+                def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
                     for root, _, files in os.walk(srcDir):
                         relpath = root[len(srcDir) + 1:]
                         for f in files:
                             if f.endswith('.java'):
                                 arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
-                                with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
-                                    if guard:
-                                        with open(join(root, f), 'r') as fp:
-                                            contents = fp.read()
-                                        if not participants__add__(arcname, contents, addsrc=True):
-                                            info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
-                                            info.compress_type = arc.zf.compression
-                                            info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
-                                            srcArc.zf.writestr(info, contents)
+                                if arcnameCheck is None or arcnameCheck(arcname):
+                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
+                                        if guard:
+                                            with open(join(root, f), 'r') as fp:
+                                                contents = fp.read()
+                                            if not participants__add__(arcname, contents, addsrc=True):
+                                                info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                                info.compress_type = arc.zf.compression
+                                                info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                                srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
                     manifestEntries.append('Main-Class: ' + self.mainClass)
 
-                for dep in self.archived_deps():
+                # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
+                # as the overlay classes must be added to the jar instead of the overlayed classes. Overlays for
+                # JDK 9 or later use the multi-release jar layout.
+                head = [d for d in self.archived_deps() if d.isJavaProject() and d.javaCompliance.value < 9 and hasattr(d, 'overlayTarget')]
+                tail = [d for d in self.archived_deps() if d not in head]
+
+                # Map from JDK 8 or earlier overlays to the projects that define them
+                overlays = {}
+
+                for dep in head + tail:
                     if hasattr(dep, "doNotArchive") and dep.doNotArchive:
                         logv('[' + self.original_path() + ': ignoring project ' + dep.name + ']')
                         continue
@@ -1429,13 +1441,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                         logv('[' + self.original_path() + ': adding project ' + p.name + ']')
                         outputDir = p.output_dir()
 
-                        archivePrefix = ''
+                        archivePrefix = p.archive_prefix() if hasattr(p, 'archive_prefix') else ''
                         mrjVersion = getattr(p, 'multiReleaseJarVersion', None)
-                        if hasattr(p, 'archive_prefix'):
-                            if mrjVersion is not None:
-                                abort("Project cannot have both an 'archive_prefix' and a 'multiReleaseJarVersion' attribute", context=p)
-                            archivePrefix = p.archive_prefix()
+                        is_overlay = False
                         if mrjVersion is not None:
+                            if p.javaCompliance.value < 9:
+                                abort('Project with "multiReleaseJarVersion" attribute must have javaCompliance >= 9', context=p)
+                            if archivePrefix:
+                                abort("Project cannot have a 'multiReleaseJarVersion' attribute if it has an 'archivePrefix' attribute", context=p)
                             try:
                                 mrjVersion = _parse_multireleasejar_version(mrjVersion)
                             except ArgumentTypeError as e:
@@ -1443,19 +1456,34 @@ class JARDistribution(Distribution, ClasspathDependency):
                             archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
                             if 'Multi-Release: true' not in manifestEntries:
                                 manifestEntries.append('Multi-Release: true')
+                        elif hasattr(p, 'overlayTarget'):
+                            if p.javaCompliance.value > 8:
+                                abort('Project with "overlayTarget" attribute must have javaCompliance < 9', context=p)
+                            is_overlay = True
+                            if archivePrefix:
+                                abort("Project cannot have a 'overlayTarget' attribute if it has an 'archivePrefix' attribute", context=p)
+
+                        def overlay_check(arcname):
+                            if is_overlay:
+                                if arcname in overlays:
+                                    abort('Overlay for {} is defined by more than one project: {} and {}'.format(arcname, p, overlays[arcname]))
+                                overlays[arcname] = p
+                                return True
+                            else:
+                                return arcname not in overlays
 
                         for root, _, files in os.walk(outputDir):
                             reldir = root[len(outputDir) + 1:]
                             for f in files:
                                 relpath = join(reldir, f)
-                                addFile(outputDir, relpath, archivePrefix)
+                                addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check)
 
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
-                                addSrcFromDir(srcDir, archivePrefix)
+                                addSrcFromDir(srcDir, archivePrefix, arcnameCheck=overlay_check)
                     elif dep.isArchivableProject():
                         logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
                         archivePrefix = dep.archive_prefix()
@@ -3100,34 +3128,40 @@ class JavaProject(Project, ClasspathDependency):
         """
         _eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
 
-    def get_multireleasesources_flatten_map(self):
+    def get_overlay_flatten_map(self):
         """
-        Gets a map from the versioned source directories in this project to the
-        non-versioned source directories they [preside over](https://docs.oracle.com/javase/9/docs/specs/jar/jar.html).
-        """
-        if not hasattr(self, 'multiReleaseJarVersion'):
-            return {}
-        def _find_version_base_project():
-            extended_packages = self.extended_java_packages()
-            if not extended_packages:
-                abort('Project with a multiReleaseJarVersion attribute must depend on a project that defines a package extended by ' + self.name, context=self)
-            base_project = None
-            base_package = None
-            for extended_package in extended_packages:
-                for p in projects():
-                    if self != p and p.isJavaProject() and not hasattr(p, 'multiReleaseJarVersion'):
-                        if extended_package in p.defined_java_packages():
-                            if base_project is None:
-                                base_project = p
-                                base_package = extended_package
-                            else:
-                                if base_project != p:
-                                    abort('Multi-release jar versioned project {} must extend packages from exactly one project but extends {} from {} and {} from {}'.format(self, extended_package, p, base_project, base_package))
-            if not base_project:
-                abort('Multi-release jar versioned project {} must extend package(s) from one of its dependencies'.format(self))
-            return base_project
+        Gets a map from the source directories of this project to the
+        source directories the project it overlays (or
+        [presides overs](https://docs.oracle.com/javase/9/docs/specs/jar/jar.html)).
 
-        base = _find_version_base_project()
+        :return: an empty map if this is not an overlay or multi-release version project
+        """
+        if hasattr(self, 'multiReleaseJarVersion'):
+            def _find_version_base_project():
+                extended_packages = self.extended_java_packages()
+                if not extended_packages:
+                    abort('Project with a multiReleaseJarVersion attribute must depend on a project that defines a package extended by ' + self.name, context=self)
+                base_project = None
+                base_package = None
+                for extended_package in extended_packages:
+                    for dep in classpath_entries(self, includeSelf=False, preferProjects=True):
+                        if dep is not self and dep.isJavaProject() and not hasattr(dep, 'multiReleaseJarVersion'):
+                            if extended_package in dep.defined_java_packages():
+                                if base_project is None:
+                                    base_project = dep
+                                    base_package = extended_package
+                                else:
+                                    if base_project != dep:
+                                        abort('Multi-release jar versioned project {} must extend packages from exactly one project but extends {} from {} and {} from {}'.format(self, extended_package, dep, base_project, base_package))
+                if not base_project:
+                    abort('Multi-release jar versioned project {} must extend package(s) from one of its dependencies'.format(self))
+                return base_project
+            base = _find_version_base_project()
+        elif hasattr(self, 'overlayTarget'):
+            base = project(self.overlayTarget, context=self)
+        else:
+            return {}
+
         flatten_map = {}
         self_packages = self.defined_java_packages() | self.extended_java_packages()
         for package in self_packages:
@@ -3495,9 +3529,14 @@ class JavacLikeCompiler(JavaCompiler):
 
     def prepare(self, sourceFiles, project, outputDir, classPath, processorPath, sourceGenDir, jnigenDir,
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
-        javacArgs = ['-g', '-classpath', classPath, '-d', outputDir]
+        javacArgs = ['-g', '-d', outputDir]
         compliance = project.javaCompliance
-        if compliance >= '1.8':
+        if self.jdk.javaCompliance.value > 8 and compliance.value <= 8:
+            # Ensure classes from dependencies take precedence over those in the JDK image.
+            javacArgs.append('-Xbootclasspath/p:' + classPath)
+        else:
+            javacArgs += ['-classpath', classPath]
+        if compliance.value >= 8:
             javacArgs.append('-parameters')
         if processorPath:
             ensure_dir_exists(sourceGenDir)
@@ -3544,7 +3583,7 @@ class JavacCompiler(JavacLikeCompiler):
         if jnigenDir is not None:
             javacArgs += ['-h', jnigenDir]
 
-        lint = ['all', '-auxiliaryclass', '-processing']
+        lint = ['all', '-auxiliaryclass', '-processing', '-removal']
         overrides = project.get_javac_lint_overrides()
         if overrides:
             if 'none' in overrides:
@@ -8702,8 +8741,8 @@ class SourceSuite(Suite):
 
     def _verify_multirelease_projects(self):
         for d in self.projects:
-            if hasattr(d, 'multiReleaseJarVersion'):
-                d.get_multireleasesources_flatten_map()
+            if hasattr(d, 'multiReleaseJarVersion') or hasattr(d, 'overlayTarget'):
+                d.get_overlay_flatten_map()
 
     def version(self, abortOnError=True):
         """
@@ -10940,6 +10979,7 @@ A JavaCompliance simplifies comparing Java compliance values extracted from a JD
 """
 class JavaCompliance:
     def __init__(self, ver):
+        ver = str(ver)
         pattern = r'(?:1\.)?(\d+)(.*)'
         m = re.match(pattern, ver)
         assert m is not None, 'not a recognized version string: ' + ver
@@ -11053,6 +11093,8 @@ class JDKConfig:
         self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
         self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
         self.toolsjar = join(self.home, 'lib', 'tools.jar')
+        if not exists(self.toolsjar):
+            self.toolsjar = None
         self._classpaths_initialized = False
         self._bootclasspath = None
         self._extdirs = None
@@ -11364,6 +11406,34 @@ class JDKConfig:
                 modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
             setattr(self, '.modules', tuple(modules.values()))
         return getattr(self, '.modules')
+
+    def get_root_modules(self):
+        """
+        Gets the default set of root modules for the unnamed module.
+
+        From http://openjdk.java.net/jeps/261:
+
+        When the compiler compiles code in the unnamed module, the default set of
+        root modules for the unnamed module is computed as follows:
+
+        The java.se module is a root, if it exists. If it does not exist then every
+        java.* module on the upgrade module path or among the system modules that
+        exports at least one package, without qualification, is a root.
+
+        Every non-java.* module on the upgrade module path or among the system
+        modules that exports at least one package, without qualification, is also a root.
+
+        :return: list of JavaModuleDescriptor
+        """
+        modules = self.get_modules()
+        result = [m for m in modules if m.name == 'java.se']
+        has_java_dot_se = len(result) != 0
+        for mod in modules:
+            # no java.se => add all java.*
+            if not mod.name.startswith('java.') or not has_java_dot_se:
+                if any((len(to) == 0 for _, to in mod.exports.iteritems())):
+                    result.append(mod)
+        return result
 
     def get_transitive_requires_keyword(self):
         '''
@@ -12354,8 +12424,7 @@ def eclipseformat(args):
         batch_num += 1
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
-        # Eclipse does not (yet) run on JDK 9
-        jdk = get_jdk(versionCheck=lambda version: version < VersionSpec('9'), versionDescription='<9')
+        jdk = get_jdk()
 
         for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
             capture = OutputCapture()
@@ -13202,15 +13271,18 @@ def flattenMultiReleaseSources(args):
     parser = ArgumentParser(prog='mx flattenmultireleasesources')
     parser.add_argument('-c', '--commands', action='store_true', help='format the output as a series of commands to copy '\
                         'the versioned sources to the location of the non-versioned sources')
-    parser.add_argument('version', type=_parse_multireleasejar_version, help='major version of the Java release for which flattened sources will be produced')
+    parser.add_argument('version', type=int, help='major version of the Java release for which flattened sources will be produced')
 
     args = parser.parse_args(args)
     versions = {}
     for p in projects():
-        if p.isJavaProject() and hasattr(p, 'multiReleaseJarVersion'):
-            version = _parse_multireleasejar_version(getattr(p, 'multiReleaseJarVersion'))
+        if p.isJavaProject() and hasattr(p, 'multiReleaseJarVersion') or hasattr(p, 'overlayTarget'):
+            if hasattr(p, 'multiReleaseJarVersion'):
+                version = _parse_multireleasejar_version(getattr(p, 'multiReleaseJarVersion'))
+            else:
+                version = p.javaCompliance.value
             if version <= args.version:
-                versions.setdefault(version, []).append(p.get_multireleasesources_flatten_map())
+                versions.setdefault(version, []).append(p.get_overlay_flatten_map())
             else:
                 # Ignore overlays for versions higher than the one requested
                 pass
@@ -13381,8 +13453,7 @@ def _source_locator_memento(deps, jdk=None):
                 javaCompliance = dep.javaCompliance
 
     if javaCompliance:
-        ejee = _to_EclipseJavaExecutionEnvironment(javaCompliance)
-        jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(ejee)
+        jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/' +  _to_EclipseJRESystemLibrary(javaCompliance)
         memento = XMLDoc().element('classpathContainer', {'path' : jdkContainer}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
         sources.append(jdkContainer + ' [classpathContainer]')
@@ -13512,6 +13583,10 @@ def eclipseinit_cli(args):
     parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
+    if _EclipseJRESystemLibraries:
+        log('Ensure the following JDKs are defined in Eclipse (Preferences -> Java -> Installed JREs [-> Execution Environments]):')
+        for jre_name in _EclipseJRESystemLibraries:
+            log('  ' + jre_name)
 
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False, pythonProjects=False):
     """(re)generate Eclipse project configurations and working sets"""
@@ -13587,16 +13662,26 @@ def _get_eclipse_output_path(p, linkedResources=None):
     else:
         return outputDirRel
 
-def _to_EclipseJavaExecutionEnvironment(compliance):
+#: Highest Execution Environment defined by most recent Eclipse release.
+#: https://wiki.eclipse.org/Execution_Environments
+_max_Eclipse_JavaExecutionEnvironment = 10 # pylint: disable=invalid-name
+
+_EclipseJRESystemLibraries = set()
+
+def _to_EclipseJRESystemLibrary(compliance):
     """
-    Converts a Java compliance value to the max supported
-    Eclipse Execution Environment value.
+    Converts a Java compliance value to a JRE System Library that
+    can be put on a project's Build Path.
     """
     if not isinstance(compliance, JavaCompliance):
         compliance = JavaCompliance(compliance)
-    if compliance > '10':
-        return JavaCompliance('10')
-    return compliance
+
+    if compliance.value > _max_Eclipse_JavaExecutionEnvironment:
+        res = 'jdk-' + str(compliance)
+    else:
+        res = 'JavaSE-' + str(compliance)
+    _EclipseJRESystemLibraries.add(res)
+    return res
 
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     ensure_dir_exists(p.dir)
@@ -13704,18 +13789,23 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             if libFiles:
                 libFiles.append(path)
 
+    # When targeting JDK 8 or earlier, dependencies need to precede the JDK on the Eclipse build path.
+    # There may be classes in dependencies that are also in the JDK. We want to compile against the
+    # former. This is the same -Xbootclasspath:/p trick done in JavacLikeCompiler.prepare.
+    putJREFirstOnBuildPath = p.javaCompliance.value >= 9
+
+    sortedDeps = sorted(projectDeps)
     allProjectPackages = set()
-    for dep in sorted(projectDeps):
+    for dep in sortedDeps:
         if not dep.isNativeProject():
             allProjectPackages.update(dep.defined_java_packages())
-            out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
-
-    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
+            if not putJREFirstOnBuildPath:
+                out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
     # Every Java program depends on a JRE
-    ejee = _to_EclipseJavaExecutionEnvironment(p.javaCompliance)
-    out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-' + str(ejee)})
-    if jdk.javaCompliance >= '9' and ejee >= '9':
+    jreSystemLibrary = _to_EclipseJRESystemLibrary(jdk.javaCompliance)
+    out.open('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/' + jreSystemLibrary})
+    if jdk.javaCompliance >= '9':
         out.open('attributes')
         out.element('attribute', {'name' : 'module', 'value' : 'true'})
         moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
@@ -13726,11 +13816,27 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
             if exports:
                 addExportsValue = []
+                exported_modules = []
                 for module, pkgs in exports:
                     addExportsValue.extend([module + '/' + pkg + '=ALL-UNNAMED' for pkg in pkgs])
+                    exported_modules.append(module)
                 out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join(addExportsValue)})
+                roots = jdk.get_root_modules()
+                observable_modules = jdk.get_modules()
+                default_module_graph = get_transitive_closure(roots, observable_modules)
+                module_graph = get_transitive_closure(roots + exported_modules, observable_modules)
+                if default_module_graph != module_graph:
+                    # https://github.com/eclipse/eclipse.jdt.core/blob/00dd337bcfe08d8b2d60529b0f7874b88e621c06/org.eclipse.jdt.core/model/org/eclipse/jdt/internal/core/JavaProject.java#L704-L715
+                    out.element('attribute', {'name' : 'limit-modules', 'value' : ','.join([m.name for m in module_graph])})
         out.close('attributes')
     out.close('classpathentry')
+
+    if putJREFirstOnBuildPath:
+        for dep in sortedDeps:
+            if not dep.isNativeProject():
+                out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
+
+    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
 
     out.close('classpath')
     classpathFile = join(p.dir, '.classpath')
@@ -17017,7 +17123,8 @@ def _copy_eclipse_settings(p, files=None):
             with open(source) as f:
                 print >> out, f.read()
         if p.javaCompliance:
-            content = out.getvalue().replace('${javaCompliance}', str(_to_EclipseJavaExecutionEnvironment(p.javaCompliance)))
+            jc = p.javaCompliance if p.javaCompliance.value < _max_Eclipse_JavaExecutionEnvironment else JavaCompliance(_max_Eclipse_JavaExecutionEnvironment)
+            content = out.getvalue().replace('${javaCompliance}', str(jc))
         else:
             content = out.getvalue()
         if processors:
@@ -17243,7 +17350,6 @@ def list_commands(l):
 _build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
 _style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
 _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
-
 
 # Table of commands in alphabetical order.
 # Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
@@ -18151,7 +18257,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.179.9")  # zip descriptors
+version = VersionSpec("5.180.0")  # GR-11085 - support JDK8 overlays
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
