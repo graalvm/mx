@@ -1354,9 +1354,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
-                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(source))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(os.stat(source).st_mode) << 16
+                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix=''):
