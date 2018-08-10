@@ -1356,9 +1356,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
-                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(source))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(os.stat(source).st_mode) << 16
+                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
@@ -18257,7 +18257,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.0")  # GR-11085 - support JDK8 overlays
+version = VersionSpec("5.180.1")  # GR-11085 - support JDK8 overlays
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
