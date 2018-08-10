@@ -384,6 +384,31 @@ _versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
 def make_java_module(dist, jdk):
     """
     Creates a Java module from a distribution.
+    This updates the JAR by adding `module-info` classes.
+
+    The `META-INF` directory can not be versioned. However, we make an exception here for `META-INF/services`:
+    if different versions should have different service providers, a `META-INF/_versions/<version>/META-INF/services`
+    directory can be used (note the `_` before `versions`).
+    These service provider declarations will not be used to build the versioned module-info files and the
+    `META-INF/_versions/<version>` directories will be removed from the archive.
+    This is done using a separate versioning directory so that the JAR can be a valid multi-release JAR before this
+    transformation.
+
+    input:
+        com/foo/MyProvider.class                                    # JDK 8 or earlier specific provider
+        META-INF/services/com.foo.MyService                         # Contains: com.foo.MyProvider
+        META-INF/_versions/9/META-INF/services/com.foo.MyService    # Contains: com.foo.MyProvider
+        META-INF/versions/9/com/foo/MyProvider.class                # JDK 9 and 10 specific provider
+        META-INF/_versions/11/META-INF/services/com.foo.MyService   # Contains: provides com.foo.MyService with com.foo.MyProvider
+        META-INF/versions/11/com/foo/MyProvider.class               # JDK 11 and later specific provider
+
+    output:
+        com/foo/MyProvider.class                        # JDK 8 or earlier specific provider
+        META-INF/services/com.foo.MyService             # Contains: com.foo.MyProvider
+        META-INF/versions/9/module-info.class           # Contains: provides com.foo.MyService with com.foo.MyProvider
+        META-INF/versions/9/com/foo/MyProvider.class    # JDK 9 and 10 specific provider
+        META-INF/versions/11/module-info.class          # Contains: provides com.foo.MyService with com.foo.MyProvider
+        META-INF/versions/11/com/foo/MyProvider.class   # JDK 11 and later specific provider
 
     :param JARDistribution dist: the distribution from which to create a module
     :param JDKConfig jdk: a JDK with a version >= 9 that can be used to compile the module-info class
@@ -499,6 +524,9 @@ def make_java_module(dist, jdk):
 
         all_versions = set(versions.keys())
         if '9' not in all_versions:
+            # 9 is the first version that supports modules and can be versioned in the JAR:
+            # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
+            # so that the module works on JDK 9.
             all_versions = all_versions | {'common'}
             default_version = 'common'
         else:
@@ -540,7 +568,7 @@ def make_java_module(dist, jdk):
                         if exists(manifest):
                             with open(manifest) as fp:
                                 content = fp.readlines()
-                                newContent = [l for l in content if not 'Multi-Release:' in l]
+                                newContent = [l for l in content if 'Multi-Release:' not in l]
                             if newContent != content:
                                 with open(manifest, 'w') as fp:
                                     fp.write(''.join(newContent))
@@ -615,6 +643,7 @@ def make_java_module(dist, jdk):
         shutil.rmtree(work_directory)
     default_jmd.save()
     return default_jmd
+
 
 def get_transitive_closure(roots, observable_modules):
     """

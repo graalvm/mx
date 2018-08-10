@@ -152,7 +152,11 @@ class MxCompatibility500(object):
     def __repr__(self):
         return str(self)
 
-    def jarsUseJDKDisciminant(self):
+    def jarsUseJDKDiscriminant(self):
+        """
+        Should `mx.JARDistribution` use the jdk version used for the build as a `Dependency._extra_artifact_discriminant`
+        to avoid collisions of build artifacts when building with different JAVA_HOME/EXTRA_JAVA_HOMES settings.
+        """
         return False
 
 
@@ -346,7 +350,7 @@ class MxCompatibility5181(MxCompatibility51760):#pylint: disable=too-many-ancest
     def version():
         return mx.VersionSpec("5.181.0")
 
-    def jarsUseJDKDisciminant(self):
+    def jarsUseJDKDiscriminant(self):
         return True
 
 def minVersion():

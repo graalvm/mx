@@ -585,6 +585,11 @@ class Dependency(SuiteConstituent):
         return []
 
     def _extra_artifact_discriminant(self):
+        """
+        An extra string to help identify the current build configuration. It will be used in the generated path for the
+        built artifacts and will avoid unnecessary rebuilds when frequently changing this build configuration.
+        :rtype : str
+        """
         return None
 
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
@@ -1181,7 +1186,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return join(dirname(self._default_path()), self.default_source_filename())
 
     def _extra_artifact_discriminant(self):
-        if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDisciminant():
+        if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDiscriminant():
             return None
         compliance = self._compliance_for_build()
         if compliance:
