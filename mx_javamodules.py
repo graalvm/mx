@@ -559,3 +559,30 @@ def make_java_module(dist, jdk):
     os.rename(moduleJar + '.zip', moduleJar)
     jmd.save()
     return jmd
+
+def get_transitive_closure(roots, observable_modules):
+    """
+    Gets the transitive closure of the dependences of a set of root modules
+    (i.e. `roots`) with respect to a set of observable modules (i.e. `observable_modules`)
+
+    :param iterable roots: the roots modules (JavaModulesDescriptors or module names) for
+                           which the transitive closure is being requested
+    :param iterable observable_modules: set of modules in which the transitive dependencies must exist
+    """
+    name_to_module = {m.name : m for m in observable_modules}
+    transitive_closure = set()
+    def lookup_module(name):
+        m = name_to_module.get(name, None)
+        if m is None:
+            mx.abort('{} is not in the set of observable modules {}'.format(name, name_to_module.keys()))
+        return m
+    def add_transitive(mod):
+        if mod not in transitive_closure:
+            transitive_closure.add(mod)
+            for name in mod.requires.iterkeys():
+                add_transitive(lookup_module(name))
+    for root in roots:
+        if isinstance(root, basestring):
+            root = lookup_module(root)
+        add_transitive(root)
+    return transitive_closure

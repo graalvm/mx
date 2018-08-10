@@ -123,7 +123,11 @@ org.eclipse.jdt.core.compiler.problem.unusedParameterIncludeDocCommentReference=
 org.eclipse.jdt.core.compiler.problem.unusedParameterWhenImplementingAbstract=disabled
 org.eclipse.jdt.core.compiler.problem.unusedParameterWhenOverridingConcrete=disabled
 org.eclipse.jdt.core.compiler.problem.unusedPrivateMember=warning
-org.eclipse.jdt.core.compiler.problem.unusedWarningToken=warning
+# Prevent Eclipse warning about "unnecessary" @SuppressWarning("deprecation") annotations.
+# It's only unnecessary when compiling against a JDK that has not yet deprecated the
+# element in question. The trade off is that Eclipse will no longer warn about other
+# truly unnecessary suppressions.
+org.eclipse.jdt.core.compiler.problem.unusedWarningToken=ignore
 org.eclipse.jdt.core.compiler.problem.varargsArgumentNeedCast=warning
 org.eclipse.jdt.core.compiler.processAnnotations=disabled
 org.eclipse.jdt.core.compiler.source=${javaCompliance}

@@ -72,18 +72,19 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
 
             javacClasspath.append(dep.classpath_repr(resolve=True))
 
-        javaCompliance = p.javaCompliance
-        if javaCompliance.value < 10:
-            sourceLevel = javaCompliance.value
-        else:
-            sourceLevel = 9
+        sourceLevel = min(p.javaCompliance.value, 9)
 
         groups = groups + ['--group', "--classpath " + mx._separatedCygpathU2W(_escape_string(os.pathsep.join(javacClasspath))) + " --source " + str(sourceLevel) + " " + " ".join([_escape_string(d) for d in p.source_dirs()])]
 
     cmd = ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
     cmd = cmd + ['--fail-on-warnings', '--progress'] + args + groups
 
-    return mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=mx.get_jdk(javaCompliance))
+    jdk = mx.get_jdk(mx.JavaCompliance("8"), cancel='cannot run Jackpot', purpose="run Jackpot")
+    if jdk is None:
+        mx.warn('Skipping Jackpot since JDK 8 is not available')
+        return 0
+    else:
+        return mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
 
 def _escape_string(s):
     return s.replace("\\", "\\\\").replace(" ", "\\ ")
