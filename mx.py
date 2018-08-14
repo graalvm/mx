@@ -14989,6 +14989,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
     annotationProcessorProfiles = {}
 
     def _complianceToIntellijLanguageLevel(compliance):
+        # they changed the name format starting with JDK_10
+        if compliance.value >= 10:
+            # Lastest Idea 2018.2 only understands JDK_11 so clamp at that value
+            return 'JDK_' + str(min(compliance.value, 11))
         return 'JDK_1_' + str(compliance.value)
 
     def _intellij_external_project(externalProjects, host):
@@ -18289,7 +18293,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.2")  # intellij modules
+version = VersionSpec("5.180.3")  # intellij language level
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
