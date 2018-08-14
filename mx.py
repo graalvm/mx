@@ -15068,7 +15068,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             _intellij_external_project(getattr(p, 'externalProjects', None), p)
 
     max_checkstyle_version = None
+    compilerXml = None
     if java_modules:
+        if not module_files_only:
+            compilerXml = XMLDoc()
+            compilerXml.open('project', attributes={'version': '4'})
+            compilerXml.open('component', {'name': 'JavacSettings'})
+            compilerXml.open('option', {'name': 'ADDITIONAL_OPTIONS_OVERRIDE'})
+
         assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive() + _mx_suite.projects_recursive():
@@ -15114,6 +15121,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
             proj = p
 
+            dependencies_project_packages = set()
+
             def processDep(dep, edge):
                 if dep is proj:
                     return
@@ -15121,11 +15130,12 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     libraries.add(dep)
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 elif dep.isJavaProject():
+                    dependencies_project_packages.update(dep.defined_java_packages())
                     referenced_modules.add(dep.name)
                     moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep.name})
                 elif dep.isJdkLibrary():
                     jdk_libraries.add(dep)
-                    if not jdk.javaCompliance >= dep.jdkStandardizedSince:
+                    if jdk.javaCompliance < dep.jdkStandardizedSince:
                         moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                     else:
                         logv("{} skipping {} for {}".format(p, dep, jdk))
@@ -15140,6 +15150,25 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
 
             moduleXml.close('component')
+
+            if compilerXml and jdk.javaCompliance >= '9':
+                moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
+                if moduleDeps:
+                    exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.iteritems() if dependencies_project_packages.isdisjoint(pkgs)])
+                    if exports:
+                        args = []
+                        exported_modules = set()
+                        for m, pkgs in exports:
+                            args += ['--add-exports={}/{}=ALL-UNNAMED'.format(m, pkg) for pkg in pkgs]
+                            exported_modules.add(m)
+                        roots = set(jdk.get_root_modules())
+                        observable_modules = jdk.get_modules()
+                        default_module_graph = get_transitive_closure(roots, observable_modules)
+                        module_graph = get_transitive_closure(roots | exported_modules, observable_modules)
+                        extra_modules = module_graph - default_module_graph
+                        if extra_modules:
+                            args.append('--add-modules=' + ','.join((m.name for m in extra_modules)))
+                        compilerXml.element('module', {'name': p.name, 'options': ' '.join(args)})
 
             # Checkstyle
             checkstyleProj = project(p.checkstyleProj, context=p)
@@ -15171,6 +15200,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 declared_modules.add(p.name)
                 moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+        if compilerXml:
+            compilerXml.close('option')
+            compilerXml.close('component')
 
     python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
 
@@ -15286,8 +15318,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             log("Setting up JDK libraries using {0}".format(jdk))
 
         # Set annotation processor profiles up, and link them to modules in compiler.xml
-        compilerXml = XMLDoc()
-        compilerXml.open('project', attributes={'version': '4'})
+
         compilerXml.open('component', attributes={'name': 'CompilerConfiguration'})
 
         compilerXml.element('option', attributes={'name': "DEFAULT_COMPILER", 'value': 'Javac'})
@@ -15295,7 +15326,6 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         compilerXml.open('wildcardResourcePatterns')
         compilerXml.element('entry', attributes={'name': '!?*.java'})
         compilerXml.close('wildcardResourcePatterns')
-
         if annotationProcessorProfiles:
             compilerXml.open('annotationProcessing')
             for t, modules in sorted(annotationProcessorProfiles.iteritems()):
@@ -15322,6 +15352,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             compilerXml.close('annotationProcessing')
 
         compilerXml.close('component')
+
+    if compilerXml:
         compilerXml.close('project')
         compilerFile = join(ideaProjectDirectory, 'compiler.xml')
         update_file(compilerFile, compilerXml.xml(indent='  ', newl='\n'))
@@ -18257,7 +18289,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.1")  # GR-11085 - support JDK8 overlays
+version = VersionSpec("5.180.2")  # intellij modules
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
