@@ -15326,6 +15326,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         compilerXml.open('component', attributes={'name': 'CompilerConfiguration'})
 
         compilerXml.element('option', attributes={'name': "DEFAULT_COMPILER", 'value': 'Javac'})
+        # using the --release option with javac interferes with using --add-modules which is required for some projects
+        compilerXml.element('option', attributes={'name': "USE_RELEASE_OPTION", 'value': 'false'})
         compilerXml.element('resourceExtensions')
         compilerXml.open('wildcardResourcePatterns')
         compilerXml.element('entry', attributes={'name': '!?*.java'})
@@ -18293,7 +18295,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.3")  # intellij language level
+version = VersionSpec("5.180.4")  # intellij release option
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
