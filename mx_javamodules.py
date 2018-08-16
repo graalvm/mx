@@ -561,18 +561,6 @@ def make_java_module(dist, jdk):
                             else:
                                 zf.extract(name, dest_dir)
 
-                        manifest = join(dest_dir, 'META-INF/MANIFEST.MF')
-                        # Remove Multi-Release attribute from manifest as the jar
-                        # is now flattened. This is also a workaround for
-                        # https://bugs.openjdk.java.net/browse/JDK-8193802
-                        if exists(manifest):
-                            with open(manifest) as fp:
-                                content = fp.readlines()
-                                newContent = [l for l in content if 'Multi-Release:' not in l]
-                            if newContent != content:
-                                with open(manifest, 'w') as fp:
-                                    fp.write(''.join(newContent))
-
                         servicesDir = join(dest_dir, 'META-INF', 'services')
                         if exists(servicesDir):
                             for servicePathName in os.listdir(servicesDir):
@@ -592,8 +580,6 @@ def make_java_module(dist, jdk):
                                 serviceClassfile = service.replace('.', '/') + '.class'
                                 if exists(join(dest_dir, serviceClassfile)):
                                     uses.add(service)
-                            # Removing the services directory here is safe since the services directory directly is ignored on JDK 9+ but
-                            # we preserve it to allow for modular jars to be put on the class path for use cases such as Maven based testing.
 
             jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
                                        jarpath=moduleJar, dist=dist, modulepath=modulepath)
