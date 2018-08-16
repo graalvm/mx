@@ -1258,7 +1258,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                 Called when archiving starts. The `arc` and `srcArc` Archiver objects are for writing to the
                 binary and source jars for the distribution. The `services` dict is for collating the files
                 that will be written to ``META-INF/services`` in the binary jar. It is a map from service names
-                to a list of providers for the named service.
+                to a list of providers for the named service. If services should be versioned, an integer can be used
+                as a key and the value is a map from service names to a list of providers for this version.
             __add__(arcname, contents)
                 Submits an entry for addition to the binary archive (via the `zf` ZipFile field of the `arc` object).
                 Returns True if this object claims responsibility for adding/eliding `contents` to/from the archive,
@@ -1410,8 +1411,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if relpath.startswith(join('META-INF', 'services')):
                         service = basename(relpath)
                         assert dirname(relpath) == join('META-INF', 'services')
+                        m = versioned_meta_inf_re.match(arcname)
+                        if m:
+                            service_version = int(m.group(1))
+                            services_dict = services.setdefault(service_version, {})
+                        else:
+                            services_dict = services
                         with open(join(outputDir, relpath), 'r') as fp:
-                            services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                            services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
@@ -1481,7 +1488,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             jarPath = dep.path
                             jarSourcePath = dep.sourcesPath
                         else:
-                            abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+                            raise abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
                             if dep.isJARDistribution() or not dep.optional or exists(jarPath):
                                 addFromJAR(jarPath)
@@ -1568,10 +1575,32 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if hasattr(a, '__closing__'):
                         a.__closing__()
 
-                for service, providers in services.iteritems():
-                    arcname = 'META-INF/services/' + service
+                # accumulate services
+                services_versions = sorted([v for v in services.keys() if isinstance(v, int)])
+                if services_versions:
+                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, basestring)}
+                    for v in services_versions:
+                        for service, providers in services[v].items():
+                            providers_set = frozenset(providers)
+                            accumulated_providers = acummulated_services.setdefault(service, set())
+                            missing = accumulated_providers - providers_set
+                            accumulated_providers.update(providers_set)
+                            if missing:
+                                warn("Adding {} for {} at version {}".format(missing, service, v))
+                                services[v][service] = frozenset(accumulated_providers)
+
+                def add_service_providers(service, providers, archive_prefix=''):
+                    arcname = archive_prefix + 'META-INF/services/' + service
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
+
+                for service_or_version, providers in services.iteritems():
+                    if isinstance(service_or_version, int):
+                        services_version = service_or_version
+                        for service, providers_ in providers.iteritems():
+                            add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
+                    else:
+                        add_service_providers(service_or_version, providers)
 
         self.notify_updated()
 

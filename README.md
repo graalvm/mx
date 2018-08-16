@@ -120,6 +120,7 @@ Mx includes support for multiple versions of a Java class. The mechanism is insp
 similar to [multi-release jars](https://docs.oracle.com/javase/10/docs/specs/jar/jar.html#multi-release-jar-files).
 A versioned Java class has a base version and one or more versioned copies. The public signature of each
 copy (i.e., methods and fields accessed from outside the source file) must be identical.
+Note that the only API that is visible from the JAR is the one from the base version.
 
 Versioned classes for JDK 9 or later need to be in a project with a `javaCompliance` greater than
 or equal to 9 and a `multiReleaseJarVersion` attribute whose value is also greater or equal to 9.
