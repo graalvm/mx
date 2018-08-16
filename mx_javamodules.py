@@ -536,19 +536,19 @@ def make_java_module(dist, jdk):
             uses = base_uses.copy()
             provides = {}
             dest_dir = join(work_directory, version)
-            version_prefix = _versioned_prefix + version + '/'
-            special_version_prefix = _special_versioned_prefix + version + '/'
+            int_version = int(version) if version != 'common' else -1
 
             for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
                 if d.isJARDistribution():
                     with zipfile.ZipFile(d.original_path(), 'r') as zf:
                         for name in zf.namelist():
-                            if name.startswith(_versioned_prefix) or name.startswith(_special_versioned_prefix):
-                                unversioned_name = None
-                                if name.startswith(version_prefix):
-                                    unversioned_name = name[len(version_prefix):]
-                                elif name.startswith(special_version_prefix):
-                                    unversioned_name = name[len(special_version_prefix):]
+                            m = _versioned_re.match(name)
+                            if m:
+                                file_version = int(m.group(1))
+                                if file_version > int_version:
+                                    continue
+                                unversioned_name = m.group(2)
+                                if name.startswith(_special_versioned_prefix):
                                     if not unversioned_name.startswith('META-INF/services'):
                                         raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
                                 if unversioned_name:
@@ -625,7 +625,7 @@ def make_java_module(dist, jdk):
             # Append the module-info.class
             module_info_arc_dir = ''
             if version != 'common':
-                module_info_arc_dir = version_prefix
+                module_info_arc_dir = _versioned_prefix + version + '/'
             if version == default_version:
                 default_jmd = jmd
 
