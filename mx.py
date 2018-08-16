@@ -13584,9 +13584,21 @@ def eclipseinit_cli(args):
     args = parser.parse_args(args)
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
     if _EclipseJRESystemLibraries:
-        log('Ensure the following JDKs are defined in Eclipse (Preferences -> Java -> Installed JREs [-> Execution Environments]):')
-        for jre_name in _EclipseJRESystemLibraries:
-            log('  ' + jre_name)
+        log('----------------------------------------------')
+        executionEnvironments = [n for n in _EclipseJRESystemLibraries if n.startswith('JavaSE-')]
+        installedJREs = [n for n in _EclipseJRESystemLibraries if not n.startswith('JavaSE-')]
+        if executionEnvironments:
+            log('Ensure that these Execution Environments have a Compatible JRE in Eclipse (Preferences -> Java -> Installed JREs -> Execution Environments):')
+            for name in executionEnvironments:
+                log('  ' + name)
+        if installedJREs:
+            log('Ensure that there are Installed JREs with these exact names in Eclipse (Preferences -> Java -> Installed JREs):')
+            for name in installedJREs:
+                log('  ' + name)
+            log('You can set the "JRE name" field for a JDK when initially adding it or later with the "Edit..." button.')
+            log('See https://help.eclipse.org/photon/topic/org.eclipse.jdt.doc.user/tasks/task-add_new_jre.htm on how to add')
+            log('a new JDK to Eclipse. Be sure to select "Standard VM" (even on macOS) for the JRE type.')
+        log('----------------------------------------------')
 
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False, pythonProjects=False):
     """(re)generate Eclipse project configurations and working sets"""
@@ -18295,7 +18307,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.4")  # intellij release option
+version = VersionSpec("5.180.5")  # GR-11311 - improve JDK config instructions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
