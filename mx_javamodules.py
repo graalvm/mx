@@ -389,7 +389,7 @@ def make_java_module(dist, jdk):
     The `META-INF` directory can not be versioned. However, we make an exception here for `META-INF/services`:
     if different versions should have different service providers, a `META-INF/_versions/<version>/META-INF/services`
     directory can be used (note the `_` before `versions`).
-    These service provider declarations will not be used to build the versioned module-info files and the
+    These service provider declarations will be used to build the versioned module-info files and the
     `META-INF/_versions/<version>` directories will be removed from the archive.
     This is done using a separate versioning directory so that the JAR can be a valid multi-release JAR before this
     transformation.
