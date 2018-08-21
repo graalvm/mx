@@ -5929,13 +5929,23 @@ class GitConfig(VC):
             self.init(cache_path, bare=True)
         return cache_path
 
+    def _locked_cmd(self, repo, cmd, read_lock=False):
+        use_lock = self.object_cache_mode == 'refcache' and flock_cmd() is not None
+        if use_lock:
+            lock_cmd = [flock_cmd()]
+            if read_lock:
+                lock_cmd.append("-s")
+            lock_cmd.append(join(repo, 'lock'))
+            cmd = lock_cmd + cmd
+        return cmd
+
     def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
         hashed_url = hashlib.sha1(url).hexdigest()
         cmd = ['git', 'clone']
         if rev and self.object_cache_mode == 'refcache' and GitConfig._is_hash(rev):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
-                logvv("Requested revision " + rev + " not found in " + cache)
+                log("Fetch from " + url + " into cache " + cache)
                 self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache', '-c', 'gc.auto=0', '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*', '-c', 'remote.origin.url=' + url, cache]
         else:
@@ -5943,15 +5953,18 @@ class GitConfig(VC):
                 cmd += ['--branch', branch]
             if self.object_cache_mode:
                 cache = self._local_cache_repo()
-                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*', prune=True)
+                log("Fetch from " + url + " into cache " + cache)
+                self._fetch(cache, url, '+refs/heads/*:refs/remotes/' + hashed_url + '/*', prune=True, lock=True)
                 cmd += ['--reference', cache]
                 if self.object_cache_mode == 'dissociated':
                     cmd += ['--dissociate']
             cmd.append(url)
         if dest:
             cmd.append(dest)
-        self._log_clone(url, dest)
+        self._log_clone(url, dest, rev)
         out = OutputCapture()
+        if self.object_cache_mode:
+            cmd = self._locked_cmd(self._local_cache_repo(), cmd, read_lock=True)
         rc = self.run(cmd, nonZeroIsFatal=abortOnError, out=out)
         logvv(out.data)
         return rc == 0
@@ -5988,7 +6001,6 @@ class GitConfig(VC):
         # downsides: This parameter will have the effect of preventing you from
         # cloning it or fetching from it, and other repositories will be unable
         # to push to you, and you won't be able to push to other repositories.
-        self._log_clone(url, dest, rev)
         branch = None if GitConfig._is_hash(rev) else rev
         success = self._clone(url, dest=dest, abortOnError=abortOnError, branch=branch, rev=rev, **extra_args)
         if success and rev and GitConfig._is_hash(rev):
@@ -6001,12 +6013,7 @@ class GitConfig(VC):
 
     def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
         try:
-            fetch_cmd = ['git', 'fetch']
-            if lock and flock_cmd() is not None:
-                lockfile = join(vcdir, 'lock')
-                cmd = [flock_cmd(), lockfile] + fetch_cmd
-            else:
-                cmd = fetch_cmd
+            cmd = ['git', 'fetch']
             if prune:
                 cmd.append('--prune')
             if repository:
@@ -6016,6 +6023,8 @@ class GitConfig(VC):
                     cmd += refspec
                 else:
                     cmd.append(refspec)
+            if lock:
+                cmd = self._locked_cmd(vcdir, cmd)
             logvv(' '.join(map(pipes.quote, cmd)))
             return subprocess.check_call(cmd, cwd=vcdir)
         except subprocess.CalledProcessError:
@@ -18307,7 +18316,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.7")  # GR-11357
+version = VersionSpec("5.180.8")  # GR-10390
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
