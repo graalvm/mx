@@ -25,6 +25,8 @@
 # ----------------------------------------------------------------------------------------------------
 
 import json
+import os.path
+import platform
 import re
 import socket
 import time
@@ -32,12 +34,9 @@ import traceback
 import uuid
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
-import os.path
 from collections import OrderedDict
-import platform
 
 import mx
-
 
 _bm_suites = {}
 _benchmark_executor = None
@@ -912,6 +911,41 @@ class DeprecatedMixin(object):
         else:
             mx.abort(msg)
         return super(DeprecatedMixin, self).run(*args, **kwargs)
+
+
+class AveragingBenchmarkMixin(object):
+    """Provides utilities for computing the average time of the latest warmup runs.
+
+    Note that this mixin expects that the main benchmark class produces a sequence of
+    datapoints that have the metric.name dimension set to "warmup".
+    To add the average, this mixin appends a new datapoint whose metric.name dimension
+    is set to "time".
+
+    Benchmarks that mix in this class must manually invoke methods for computing extra
+    iteration counts and averaging, usually in their run method.
+    """
+
+    def getExtraIterationCount(self, iterations):
+        # Uses the number of warmup iterations to calculate the number of extra
+        # iterations needed by the benchmark to compute a more stable average result.
+        return min(20, iterations, max(6, int(iterations * 0.4)))
+
+    def addAverageAcrossLatestResults(self, results):
+        # Postprocess results to compute the resulting time by taking the average of last N runs,
+        # where N is 20% of the maximum number of iterations, at least 5 and at most 10.
+        warmupResults = [result for result in results if result["metric.name"] == "warmup"]
+        if warmupResults:
+            lastIteration = max((result["metric.iteration"] for result in warmupResults))
+            resultIterations = self.getExtraIterationCount(lastIteration + 1)
+            totalTimeForAverage = 0.0
+            for i in range(lastIteration - resultIterations + 1, lastIteration + 1):
+                result = next(result for result in warmupResults if result["metric.iteration"] == i)
+                totalTimeForAverage += result["metric.value"]
+            averageResult = next(result for result in warmupResults if result["metric.iteration"] == 0).copy()
+            averageResult["metric.value"] = totalTimeForAverage / resultIterations
+            averageResult["metric.name"] = "time"
+            averageResult["metric.average-over"] = resultIterations
+            results.append(averageResult)
 
 
 class WarnDeprecatedMixin(DeprecatedMixin):
