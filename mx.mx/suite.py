@@ -5,48 +5,47 @@ suite = {
     # ------------- Libraries -------------
 
     "JACOCOCORE" : {
-      "sha1" : "66215826a684eb6866d4c14a5a4f9c344f1d1eef",
-      "sourceSha1" : "a365ee459836b2aa18028929923923d15f0c3af9",
+      "sha1" : "49443afe176e3abb2f08f04e78b9b5e776a54705",
+      "sourceSha1" : "2ff20daf6c2d98fe93ad61627402db1f7fbd3cdc",
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.core",
-        "version" : "0.7.9",
+        "version" : "0.8.1",
       },
       "licence": "EPL-1.0",
     },
 
     "JACOCOAGENT" : {
-      "sha1" : "a6ac9cca89d889222a40dab9dd5039bfd22a4cff",
+      "sha1" : "9aa64427abccf89cfc44a72acaf9d288d80deb8b",
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.agent",
-        "version" : "0.7.9",
+        "version" : "0.8.1",
         "suffix" : "runtime",
       },
       "licence": "EPL-1.0",
     },
 
     "JACOCOREPORT" : {
-      "sha1" : "8a7f78fdf2a4e58762890d8e896a9298c2980c10",
-      "sourceSha1" : "e6703ef288523a8e63fa756d8adeaa70858d41b0",
+      "sha1" : "584d29c1b9e0d3a92e9588254a63fdce93b85702",
+      "sourceSha1" : "fb7b10645c16b804b6a8e8d6302ac5aebcba1ee4",
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.report",
-        "version" : "0.7.9",
+        "version" : "0.8.1",
       },
       "dependencies" : ["JACOCOCORE", "ASM_DEBUG_ALL"],
       "licence": "EPL-1.0",
     },
 
     "ASM_DEBUG_ALL": {
+      "sha1": "5d1f7d145b0094c3955dff56d3119d7bd9807aff",
+      "sourceSha1": "d1ce213dc9f28569f908355e7abd16db1f331943",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-debug-all",
-        "version": "5.0.4",
+        "version": "6.0_BETA",
       },
-      "sha1": "702b8525fcf81454235e5e2fa2a35f15ffc0ec7e",
-      # sources are omitted on purpose: they produce warnings due to duplicated jar entries
-      # see https://gitlab.ow2.org/asm/asm/issues/317795
       "license": "BSD-new",
     },
 
