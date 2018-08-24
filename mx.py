@@ -7038,7 +7038,8 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
         '-DartifactId=' + artifactId,
         '-Dversion=' + version,
         '-Dfile=' + filePath,
-        '-Dpackaging=' + extension
+        '-Dpackaging=' + extension,
+        '-DretryFailedDeploymentCount=10'
     ]
     if pomFile:
         cmd.append('-DpomFile=' + pomFile)
@@ -18316,7 +18317,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.9")  # GR-11403
+version = VersionSpec("5.180.10")  # GR-11417
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
