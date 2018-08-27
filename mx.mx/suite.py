@@ -4,7 +4,7 @@ suite = {
 
     # ------------- Libraries -------------
 
-    "JACOCOCORE" : {
+    "JACOCOCORE_0.8.2" : {
       "sha1" : "977b33afe2344a9ee801fd3317c54d8e1f9d7a79",
       "sourceSha1" : "46f38efb779fb08216379e1a196396f4e22bbe41",
       "maven" : {
@@ -12,11 +12,11 @@ suite = {
         "artifactId" : "org.jacoco.core",
         "version" : "0.8.2",
       },
-      "dependencies" : ["ASM", "ASM_COMMONS", "ASM_TREE"],
+      "dependencies" : ["ASM_6.2.1", "ASM_COMMONS_6.2.1", "ASM_TREE_6.2.1"],
       "licence": "EPL-1.0",
     },
 
-    "JACOCOAGENT" : {
+    "JACOCOAGENT_0.8.2" : {
       "sha1" : "4806883004063feb978b8811f00d5ea2138750bb",
       # Cannot download sources for "maven" library with "suffix" attribute
       "maven" : {
@@ -28,7 +28,7 @@ suite = {
       "licence": "EPL-1.0",
     },
 
-    "JACOCOREPORT" : {
+    "JACOCOREPORT_0.8.2" : {
       "sha1" : "50e133cdfd2d31ca5702b73615be70f801d3ae26",
       "sourceSha1" : "7488cd6e42cc4fa85b51200b7f451465692e033b",
       "maven" : {
@@ -36,11 +36,11 @@ suite = {
         "artifactId" : "org.jacoco.report",
         "version" : "0.8.2",
       },
-      "dependencies" : ["JACOCOCORE"],
+      "dependencies" : ["JACOCOCORE_0.8.2"],
       "licence": "EPL-1.0",
     },
 
-    "ASM": {
+    "ASM_6.2.1": {
       "sha1": "c01b6798f81b0fc2c5faa70cbe468c275d4b50c7",
       "sourceSha1" : "cee28077ac7a63d3de0b205ec314d83944ff6267",
       "maven": {
@@ -51,7 +51,7 @@ suite = {
       "license": "BSD-new",
     },
 
-    "ASM_ANALYSIS": {
+    "ASM_ANALYSIS_6.2.1": {
       "sha1": "e8b876c5ccf226cae2f44ed2c436ad3407d0ec1d",
       "sourceSha1" : "b0b249bd185677648692e7c57b488b6d7c2a6653",
       "maven": {
@@ -59,11 +59,11 @@ suite = {
         "artifactId": "asm-analysis",
         "version": "6.2.1",
       },
-      "dependencies" : ["ASM_TREE"],
+      "dependencies" : ["ASM_TREE_6.2.1"],
       "license": "BSD-new",
     },
 
-    "ASM_COMMONS": {
+    "ASM_COMMONS_6.2.1": {
       "sha1": "eaf31376d741a3e2017248a4c759209fe25c77d3",
       "sourceSha1" : "667fa0f9d370e7848b0e3d173942855a91fd1daf",
       "maven": {
@@ -71,11 +71,11 @@ suite = {
         "artifactId": "asm-commons",
         "version": "6.2.1",
       },
-      "dependencies" : ["ASM", "ASM_TREE", "ASM_ANALYSIS"],
+      "dependencies" : ["ASM_6.2.1", "ASM_TREE_6.2.1", "ASM_ANALYSIS_6.2.1"],
       "license": "BSD-new",
     },
 
-    "ASM_TREE": {
+    "ASM_TREE_6.2.1": {
       "sha1": "332b022092ecec53cdb6272dc436884b2d940615",
       "sourceSha1" : "072bd64989090e4ed58e4657e3d4481d96f643af",
       "maven": {
@@ -83,8 +83,42 @@ suite = {
         "artifactId": "asm-tree",
         "version": "6.2.1",
       },
-      "dependencies" : ["ASM"],
+      "dependencies" : ["ASM_6.2.1"],
       "license": "BSD-new",
+    },
+
+    "JACOCOCORE" : {  # deprecated, to be removed in a future version
+      "sha1" : "66215826a684eb6866d4c14a5a4f9c344f1d1eef",
+      "sourceSha1" : "a365ee459836b2aa18028929923923d15f0c3af9",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.core",
+        "version" : "0.7.9",
+      },
+      "licence": "EPL-1.0",
+    },
+
+    "JACOCOAGENT" : {  # deprecated, to be removed in a future version
+      "sha1" : "a6ac9cca89d889222a40dab9dd5039bfd22a4cff",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.agent",
+        "version" : "0.7.9",
+        "suffix" : "runtime",
+      },
+      "licence": "EPL-1.0",
+    },
+
+    "JACOCOREPORT" : {  # deprecated, to be removed in a future version
+      "sha1" : "8a7f78fdf2a4e58762890d8e896a9298c2980c10",
+      "sourceSha1" : "e6703ef288523a8e63fa756d8adeaa70858d41b0",
+      "maven" : {
+        "groupId" : "org.jacoco",
+        "artifactId" : "org.jacoco.report",
+        "version" : "0.7.9",
+      },
+      "dependencies" : ["JACOCOCORE", "ASM_DEBUG_ALL"],
+      "licence": "EPL-1.0",
     },
 
     "ASM_DEBUG_ALL": {  # deprecated, to be removed in a future version
@@ -375,7 +409,7 @@ suite = {
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8+",
       "dependencies" : [
-        "JACOCOREPORT",
+        "JACOCOREPORT_0.8.2",
         "JOPTSIMPLE_4_6",
       ],
     },
