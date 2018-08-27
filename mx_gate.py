@@ -526,7 +526,7 @@ def get_jacoco_agent_args():
     if use of JaCoCo has been requested otherwise returns None.
     '''
     if _jacoco == 'on' or _jacoco == 'append':
-        jacocoagent = mx.library("JACOCOAGENT", True)
+        jacocoagent = mx.library('JACOCOAGENT_0.8.2', True)
 
         includes = list(_jacoco_includes)
         baseExcludes = []
