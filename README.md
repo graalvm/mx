@@ -114,6 +114,20 @@ public @interface AddExports {
 }
 ```
 
+#### Coverage testing with JaCoCo
+
+To enable code coverage testing with JaCoCo, the JaCoCo agent needs to be
+injected through VM command line arguments. For this, mx provides the
+convenience method `mx_gate.get_jacoco_agent_args()` which returns a list of
+those arguments if coverage is requested (e.g. by using
+`mx gate --jacocout ...`), otherwise `None`.
+[Here](https://github.com/oracle/graal/blob/07412155ab8edc6b67b819c215f0d6dc986aef59/compiler/mx.compiler/mx_compiler.py#L746)
+is an example how it is used to enable coverage testing of the sources of the
+Graal compiler.
+Running code with the JaCoCo agent enabled outputs a `jacoco.exec` which can be
+converted into an HTML or CSV report with the `mx jacocoreport` command.
+
+
 ### Versioning sources for different JDK releases
 
 Mx includes support for multiple versions of a Java class. The mechanism is inspired by and
