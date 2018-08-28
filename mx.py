@@ -2119,6 +2119,21 @@ class LayoutDistribution(AbstractDistribution):
         source_type = source['source_type']
         provenance = "{}<-{}".format(destination, source['_str_'])
 
+        def add_symlink(source_file, src, abs_dest, archive_dest):
+            destination_directory = dirname(abs_dest)
+            ensure_dir_exists(destination_directory)
+            resolved_output_link_target = normpath(join(destination_directory, src))
+            if not resolved_output_link_target.startswith(output):
+                abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
+            archiver.add_link(src, archive_dest, provenance)
+            if exists(abs_dest):
+                # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
+                os.remove(abs_dest)
+            try:
+                os.symlink(src, abs_dest)
+            except IOError as e:
+                abort("Cannot create symlink. Target: '{}'; Destination: '{}'\nError: '{}'".format(src, abs_dest, e))
+
         def merge_recursive(src, dst, src_arcname, excludes):
             """
             Copies `src` to `dst`. If `src` is a directory copies recursively.
@@ -2130,11 +2145,7 @@ class LayoutDistribution(AbstractDistribution):
                 link_target = os.readlink(src)
                 if isabs(link_target):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
-                resolved_output_link_target = normpath(join(dirname(absolute_destination), link_target))
-                if not resolved_output_link_target.startswith(output):
-                    abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(src, resolved_output_link_target, output), context=self)
-                archiver.add_link(link_target, dst, provenance)
-                os.symlink(link_target, absolute_destination)
+                add_symlink(src, link_target, absolute_destination, dst)
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, os.lstat(src).st_mode)
                 for name in os.listdir(src):
@@ -2223,7 +2234,7 @@ class LayoutDistribution(AbstractDistribution):
             first_file_box = [True]
 
             def _filter_archive_name(name):
-                _root_match = True
+                _root_match = False
                 if path is not None:
                     matched = glob_match(path, name)
                     if not matched:
@@ -2318,16 +2329,7 @@ class LayoutDistribution(AbstractDistribution):
                 link_target_basename = basename(link_target)
                 absolute_destination = join(absolute_destination, link_target_basename)
                 clean_destination = join(clean_destination, link_target_basename)
-            destination_directory = dirname(absolute_destination)
-            ensure_dir_exists(destination_directory)
-            resolved_output_link_target = normpath(join(destination_directory, link_target))
-            if not resolved_output_link_target.startswith(output):
-                abort("Cannot add symlink that escapes the archive: link for '{}' would point to '{}' which is not in '{}'".format(destination, resolved_output_link_target, output), context=self)
-            archiver.add_link(link_target, clean_destination, provenance)
-            try:
-                os.symlink(link_target, absolute_destination)
-            except IOError as e:
-                abort("Cannot create symlink. Target: '{}'; Destination: '{}'\nError: '{}'".format(link_target, absolute_destination, e))
+            add_symlink(destination, link_target, absolute_destination, clean_destination)
         elif source_type == 'string':
             if destination.endswith('/'):
                 abort("Can not use `string` source with a destination ending with `/` ({})".format(destination), context=self)
@@ -18317,7 +18319,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.10")  # GR-11417
+version = VersionSpec("5.180.11")  # GR-11440
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
