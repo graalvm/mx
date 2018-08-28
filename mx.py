@@ -63,7 +63,7 @@ from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
-from os.path import join, basename, dirname, exists, isabs, expandvars, isdir, islink, normpath, realpath
+from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
 import fnmatch
 import operator
@@ -2126,13 +2126,10 @@ class LayoutDistribution(AbstractDistribution):
             if not resolved_output_link_target.startswith(output):
                 abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
             archiver.add_link(src, archive_dest, provenance)
-            if exists(abs_dest):
+            if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            try:
-                os.symlink(src, abs_dest)
-            except IOError as e:
-                abort("Cannot create symlink. Target: '{}'; Destination: '{}'\nError: '{}'".format(src, abs_dest, e))
+            os.symlink(src, abs_dest)
 
         def merge_recursive(src, dst, src_arcname, excludes):
             """
@@ -18319,7 +18316,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.11")  # GR-11440
+version = VersionSpec("5.180.12")  # GR-11440 part 2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
