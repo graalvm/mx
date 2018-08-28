@@ -2223,7 +2223,7 @@ class LayoutDistribution(AbstractDistribution):
             first_file_box = [True]
 
             def _filter_archive_name(name):
-                _root_match = True
+                _root_match = False
                 if path is not None:
                     matched = glob_match(path, name)
                     if not matched:
