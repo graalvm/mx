@@ -18318,7 +18318,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.13")  # repeatable mx javadoc
+version = VersionSpec("5.180.14")  # GR-7929
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

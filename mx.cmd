@@ -1,1 +1,1 @@
-python %~dp0/mx.py %*
+@python %~dp0mx.py %*
