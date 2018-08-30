@@ -216,6 +216,7 @@ _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
 _mavenRepoBaseURLs = [
+    "https://maven-central.storage.googleapis.com/repos/central/data/",
     "https://repo1.maven.org/maven2/",
     "https://search.maven.org/remotecontent?filepath="
 ]
