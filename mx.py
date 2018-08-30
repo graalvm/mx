@@ -16007,6 +16007,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-XDignore.symbol.file',
                      '-classpath', cp,
                      '-quiet',
+                     '-notimestamp',
                      '-d', out,
                      '-overview', overviewFile,
                      '-sourcepath', sp,
@@ -16134,6 +16135,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         run([get_jdk().javadoc, memory,
              '-classpath', cp,
              '-quiet',
+             '-notimestamp',
              '-d', out,
              '-doclet', 'org.apidesign.javadoc.codesnippet.Doclet',
              '-docletpath', snippetslib,
@@ -18316,7 +18318,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.12")  # GR-11440 part 2
+version = VersionSpec("5.180.13")  # repeatable mx javadoc
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
