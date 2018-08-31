@@ -420,6 +420,9 @@ class Dependency(SuiteConstituent):
     def isResourceLibrary(self):
         return isinstance(self, ResourceLibrary)
 
+    def isPackedResourceLibrary(self):
+        return isinstance(self, PackedResourceLibrary)
+
     def isJreLibrary(self):
         return isinstance(self, JreLibrary)
 
@@ -631,7 +634,7 @@ def _get_dependency_path(dname):
         path = d.path
     elif d.isTARDistribution() and hasattr(d, "output"):
         path = d.output
-    elif d.isLibrary():
+    elif d.isLibrary() or d.isResourceLibrary():
         path = d.get_path(resolve=True)
     elif d.isProject():
         path = d.dir
@@ -4475,6 +4478,130 @@ class ResourceLibrary(BaseLibrary):
 
     def _comparison_key(self):
         return (self.sha1, self.name)
+
+
+class Extractor(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, src):
+        self.src = src
+
+    def extract(self, dst):
+        logv("Extracting {} to {}".format(self.src, dst))
+        with self._open() as ar:
+            logv("Sanity checking archive...")
+            if any((m for m in self._getnames(ar) if not self._is_sane_name(m, dst))):
+                abort("Refusing to create files outside of the destination folder.\n" +
+                      "Reasons might be entries with absolute paths or paths pointing to the parent directory (starting with `..`).\n" +
+                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join((m for m in self._getnames(ar) if not self._is_sane_name(m, dst)))
+                ))
+            self._extractall(ar, dst)
+
+    @abstractmethod
+    def _open(self):
+        pass
+
+    @abstractmethod
+    def _getnames(self, ar):
+        pass
+
+    @abstractmethod
+    def _extractall(self, ar, dst):
+        pass
+
+    def _is_sane_name(self, m, dst):
+        return os.path.realpath(os.path.join(dst, m)).startswith(os.path.realpath(dst))
+
+    @staticmethod
+    def create(src):
+        if src.endswith(".tar") or src.endswith(".tar.gz"):
+            return TarExtractor(src)
+        if src.endswith(".zip"):
+            return ZipExtractor(src)
+        abort("Don't know how to extract the archive: " + src)
+
+
+class TarExtractor(Extractor):
+
+    def _open(self):
+        return tarfile.open(self.src)
+
+    def _getnames(self, ar):
+        return ar.getnames()
+
+    def _extractall(self, ar, dst):
+        return ar.extractall(dst)
+
+
+class ZipExtractor(Extractor):
+
+    def _open(self):
+        return zipfile.ZipFile(self.src)
+
+    def _getnames(self, ar):
+        return ar.namelist()
+
+    def _extractall(self, ar, dst):
+        return ar.extractall(dst)
+
+
+class PackedResourceLibrary(ResourceLibrary):
+    """
+    A ResourceLibrary that comes in an archive and should be extraced after downloading.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(PackedResourceLibrary, self).__init__(*args, **kwargs)
+        # self.path points to the archive
+        # self.extract_path points to the extracted content of the archive
+        archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
+        if self.path == archive_path:
+            # default path: generate path for extraction
+            self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
+        else:
+            # custom path: use generated path for archive and specified for the result
+            self.extract_path = self.path
+            self.path = archive_path
+
+    def _version_file(self, dst):
+        return os.path.join(dst, "_".join([self.name, self.sha1]))
+
+    def _check_extract_needed(self, dst, src):
+        if not os.path.exists(dst):
+            logvv("Destination does not exist")
+            logvv("Destination: " + dst)
+            return True
+        if os.path.getmtime(src) > os.path.getmtime(dst):
+            logvv("Destination older than source")
+            logvv("Destination: " + dst)
+            logvv("Source:      " + src)
+            return True
+        if not os.path.exists(self._version_file(dst)):
+            logvv("Version file does not exist: " + self._version_file(dst))
+            return True
+        return False
+
+    def get_path(self, resolve):
+        extract_path = _make_absolute(self.extract_path, self.suite.dir)
+        download_path = super(PackedResourceLibrary, self).get_path(resolve)
+        if resolve and self._check_extract_needed(extract_path, download_path):
+            # clean destination
+            shutil.rmtree(extract_path, ignore_errors=True)
+            # extract archive
+            Extractor.create(download_path).extract(extract_path)
+            # ensure modification time is up to date
+            os.utime(extract_path, None)
+            # create version file for non-default locations
+            versionFile = self._version_file(extract_path)
+            with open(versionFile, 'a'):
+                os.utime(versionFile, None)
+        return extract_path
+
+    def _check_download_needed(self):
+        need_download = super(PackedResourceLibrary, self)._check_download_needed()
+        extract_path = _make_absolute(self.extract_path, self.suite.dir)
+        download_path = _make_absolute(self.path, self.suite.dir)
+        return need_download or self._check_extract_needed(extract_path, download_path)
 
 
 class JreLibrary(BaseLibrary, ClasspathDependency):
@@ -8514,7 +8641,10 @@ class Suite(object):
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
-            if resource:
+            packedResource = attrs.pop('packedResource', False)
+            if packedResource:
+                l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
+            elif resource:
                 l = ResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             else:
                 l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
@@ -18318,7 +18448,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.180.14")  # GR-7929
+version = VersionSpec("5.181.0")  # support packed resource libraries
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
