@@ -4587,14 +4587,26 @@ class PackedResourceLibrary(ResourceLibrary):
         if resolve and self._check_extract_needed(extract_path, download_path):
             # clean destination
             shutil.rmtree(extract_path, ignore_errors=True)
-            # extract archive
-            Extractor.create(download_path).extract(extract_path)
-            # ensure modification time is up to date
-            os.utime(extract_path, None)
-            # create version file for non-default locations
-            versionFile = self._version_file(extract_path)
-            with open(versionFile, 'a'):
-                os.utime(versionFile, None)
+            extract_path_tmp = tempfile.mkdtemp(suffix=basename(extract_path), dir=dirname(extract_path))
+            try:
+                # extract archive
+                Extractor.create(download_path).extract(extract_path_tmp)
+                # ensure modification time is up to date
+                os.utime(extract_path_tmp, None)
+                # create version file for non-default locations
+                versionFile = self._version_file(extract_path_tmp)
+                with open(versionFile, 'a'):
+                    os.utime(versionFile, None)
+                logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
+                os.rename(extract_path_tmp, extract_path)
+            except OSError as ose:
+                # Rename failed. Race with other process?
+                if self._check_extract_needed(extract_path, download_path):
+                    # ok something really went wrong
+                    abort("Extracting {} failed!".format(download_path), context=ose)
+            finally:
+                shutil.rmtree(extract_path_tmp, ignore_errors=True)
+
         return extract_path
 
     def _check_download_needed(self):
@@ -18448,7 +18460,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.181.0")  # support packed resource libraries
+version = VersionSpec("5.181.1")  # extract packed resource libraries into temp dir
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
