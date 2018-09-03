@@ -10020,6 +10020,24 @@ def dependencies(opt_limit_to_suite=False):
     itertools.ifilter(lambda d: not d.suite.internal, it)
     return it
 
+def defaultDependencies(opt_limit_to_suite=False):
+    """
+    Returns a tuple of removed non-default dependencies (i.e., attribute `defaultBuild=False`) and default dependencies.
+    """
+    deps = []
+    removedDeps = []
+    for d in dependencies(opt_limit_to_suite):
+        if hasattr(d, "defaultBuild"):
+            if d.defaultBuild is False:
+                removedDeps.append(d)
+            elif d.defaultBuild is True:
+                deps.append(d)
+            else:
+                abort('Unsupported value "{}" {} for entry {}. The only supported values are boolean True or False.'.format(d.defaultBuild, type(d.defaultBuild), d.name))
+        else:
+            deps.append(d)
+    return removedDeps, deps
+
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     """
     Walks a spanning tree of the dependency graph. The first time a dependency `dep` is seen, if the
@@ -12142,6 +12160,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('--alt-javac', dest='alt_javac', help='path to alternative javac executable', metavar='<path>')
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
     parser.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
+    parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -12210,7 +12229,12 @@ def build(cmd_args, parser=None):
 
         # Omit Libraries so that only the ones required to build other
         # dependencies are downloaded
-        roots = [d for d in dependencies() if not d.isLibrary()]
+        removed, deps = ([], dependencies()) if args.all else defaultDependencies()
+        if removed:
+            log('Non-default dependencies removed from build (use mx build --all to build them):')
+            for d in removed:
+                log(' {}'.format(d))
+        roots = [d for d in deps if not d.isLibrary()]
 
         if roots:
             roots = _dependencies_opt_limit_to_suites(roots)
@@ -13345,13 +13369,23 @@ def clean(args, parser=None):
     parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
     parser.add_argument('--dependencies', '--projects', action='store', help='comma separated projects to clean (omit to clean all projects)')
     parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
+    parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
 
     args = parser.parse_args(args)
+
+
+    def _collect_clean_dependencies():
+        if args.all:
+            return dependencies(True)
+        _, roots = defaultDependencies(True)
+        res = []
+        walk_deps(roots, visit=lambda d, e: res.append(d))
+        return _dependencies_opt_limit_to_suites(res)
 
     if args.dependencies is not None:
         deps = [dependency(name) for name in args.dependencies.split(',')]
     else:
-        deps = dependencies(True)
+        deps = _collect_clean_dependencies()
 
     # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
     for dep in deps:
@@ -18460,7 +18494,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.181.1")  # extract packed resource libraries into temp dir
+version = VersionSpec("5.182.0")  # defaultBuild in dependencies
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
