@@ -12212,9 +12212,9 @@ def build(cmd_args, parser=None):
         # dependencies are downloaded
         roots = [d for d in dependencies() if not d.isLibrary()]
 
-    if roots:
-        roots = _dependencies_opt_limit_to_suites(roots)
-        # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
+        if roots:
+            roots = _dependencies_opt_limit_to_suites(roots)
+            # N.B. Limiting to a suite only affects the starting set of dependencies. Dependencies in other suites will still be built
 
     sortedTasks = []
     taskMap = {}
