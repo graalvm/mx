@@ -133,7 +133,7 @@ import mx_benchplot
 import mx_downstream
 import mx_subst
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure
+from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure, get_module_name
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -285,10 +285,11 @@ def _debug_walk_deps_helper(dep, edge, ignoredEdges):
             print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
         DEBUG_WALK_DEPS_LINE += 1
 
-"""
-Represents an edge traversed while visiting a spanning tree of the dependency graph.
-"""
+
 class DepEdge:
+    """
+    Represents an edge traversed while visiting a spanning tree of the dependency graph.
+    """
     def __init__(self, src, kind, prev):
         """
         :param src: the source of this dependency edge
@@ -583,6 +584,14 @@ class Dependency(SuiteConstituent):
     def defined_java_packages(self):
         return []
 
+    def _extra_artifact_discriminant(self):
+        """
+        An extra string to help identify the current build configuration. It will be used in the generated path for the
+        built artifacts and will avoid unnecessary rebuilds when frequently changing this build configuration.
+        :rtype : str
+        """
+        return None
+
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
         """
         Resolves any string entries in 'deps' to the Dependency objects named
@@ -736,7 +745,12 @@ class BuildTask(object):
         Returns True if file already existed and did not reflect the current dependencies.
         """
         typePrefix = type(self.subject).__name__
-        savedDepsFile = join(self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix, self.subject.name)
+        p = [self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix]
+        discriminant = self.subject._extra_artifact_discriminant()
+        if discriminant:
+            p.append(discriminant)
+        p.append(self.subject.name)
+        savedDepsFile = join(*p)
         currentDeps = [d.subject.name for d in self.deps]
         outOfDate = False
         if exists(savedDepsFile):
@@ -1015,7 +1029,12 @@ class Distribution(Dependency):
         nyi('localExtension', self)
 
     def _default_path(self):
-        return join(self.suite.get_output_root(platformDependent=self.platformDependent), 'dists', self.default_filename())
+        p = [self.suite.get_output_root(platformDependent=self.platformDependent), 'dists']
+        discriminant = self._extra_artifact_discriminant()
+        if discriminant:
+            p.append(discriminant)
+        p.append(self.default_filename())
+        return join(*p)
 
     def default_filename(self):
         return _map_to_maven_dist_name(self.name) + '.' + self.localExtension()
@@ -1080,6 +1099,9 @@ class Distribution(Dependency):
     def overlapped_distributions(self):
         return self.resolved_overlaps
 
+    def post_init(self):
+        pass
+
 
 class JARDistribution(Distribution, ClasspathDependency):
     """
@@ -1116,18 +1138,18 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.subDir = subDir
         if path:
             path = mx_subst.path_substitutions.substitute(path)
-            self._path = _make_absolute(path.replace('/', os.sep), suite.dir)
+            self._path = _make_absolute(path.replace('/', os.sep), self.suite.dir)
         else:
-            self._path = _make_absolute(self._default_path(), suite.dir)
+            self._path = None
         if sourcesPath == '<none>':
             # `<none>` is used in the `suite.py` is used to specify that there should be no source zip.
-            self.sourcesPath = None
+            self._sources_path = None
         elif sourcesPath:
-            sourcesPath = mx_subst.path_substitutions.substitute(sourcesPath)
-            self.sourcesPath = _make_absolute(sourcesPath.replace('/', os.sep), suite.dir)
+            sources_path = mx_subst.path_substitutions.substitute(sourcesPath)
+            self._sources_path = _make_absolute(sources_path.replace('/', os.sep), self.suite.dir)
         else:
-            # sourcesPath=None denotes that no sourcesPath was specified in `suite.py` and we should generate one.
-            self.sourcesPath = _make_absolute(self._default_source_path(), suite.dir)
+            self._sources_path = '<uninitialized>'
+
         self.archiveparticipants = []
         self.mainClass = mainClass
         self.javaCompliance = JavaCompliance(javaCompliance) if javaCompliance else None
@@ -1145,6 +1167,16 @@ class JARDistribution(Distribution, ClasspathDependency):
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
             self.buildDependencies.append("mx:PROGUARD_6_0_3")
+
+    def post_init(self):
+        # paths are initialized late to be able to figure out the max jdk
+        if self._path is None:
+            self._path = _make_absolute(self._default_path(), self.suite.dir)
+
+        if self._sources_path == '<uninitialized>':
+            # self._sources_path== '<uninitialized>' denotes that no sourcesPath was specified in `suite.py` and we should generate one.
+            self._sources_path = _make_absolute(self._default_source_path(), self.suite.dir)
+
         assert self.path.endswith(self.localExtension())
 
     def default_source_filename(self):
@@ -1152,6 +1184,24 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def _default_source_path(self):
         return join(dirname(self._default_path()), self.default_source_filename())
+
+    def _extra_artifact_discriminant(self):
+        if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDiscriminant():
+            return None
+        compliance = self._compliance_for_build()
+        if compliance:
+            return "jdk{}".format(compliance)
+        return None
+
+    def _compliance_for_build(self):
+        # This JAR will contain class files up to maxJavaCompliance
+        compliance = self.maxJavaCompliance()
+        if compliance < '9' and get_module_name(self):
+            # if it is modular, bump compliance to 9+ to get a module-info file
+            jdk9 = get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
+            if jdk9:
+                compliance = max(compliance, jdk9.javaCompliance)
+        return compliance
 
     @property
     def path(self):
@@ -1161,12 +1211,20 @@ class JARDistribution(Distribution, ClasspathDependency):
             return self.original_path()
 
     def _stripped_path(self):
+        assert self._path is not None, self.name
         return join(ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
 
     def original_path(self):
+        assert self._path is not None, self.name
         return self._path
 
+    @property
+    def sourcesPath(self):
+        assert self._sources_path != '<uninitialized>'
+        return self._sources_path
+
     def maxJavaCompliance(self):
+        """:rtype : JavaCompliance"""
         if not hasattr(self, '.maxJavaCompliance'):
             javaCompliances = [p.javaCompliance for p in self.archived_deps() if p.isJavaProject()]
             if self.javaCompliance is not None:
@@ -1183,8 +1241,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         if jdk.javaCompliance >= '9':
             info = get_java_module_info(self)
             if info:
-                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                paths.append(moduleJar)
+                _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
+                paths.append(pickle_path)
         return paths
 
     def is_stripped(self):
@@ -1200,7 +1258,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                 Called when archiving starts. The `arc` and `srcArc` Archiver objects are for writing to the
                 binary and source jars for the distribution. The `services` dict is for collating the files
                 that will be written to ``META-INF/services`` in the binary jar. It is a map from service names
-                to a list of providers for the named service.
+                to a list of providers for the named service. If services should be versioned, an integer can be used
+                as a key and the value is a map from service names to a list of providers for this version.
             __add__(arcname, contents)
                 Submits an entry for addition to the binary archive (via the `zf` ZipFile field of the `arc` object).
                 Returns True if this object claims responsibility for adding/eliding `contents` to/from the archive,
@@ -1247,6 +1306,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         snippetsPattern = None
         if hasattr(self.suite, 'snippetsPattern'):
             snippetsPattern = re.compile(self.suite.snippetsPattern)
+
+        versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
 
         services = {}
         manifestEntries = [] # list of "<name>: <value>" strings
@@ -1336,6 +1397,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                     if guard:
                                         contents = source_zf.read(arcname)
                                         if not participants__add__(arcname, contents):
+                                            if versioned_meta_inf_re.match(arcname):
+                                                warn("META-INF resources can not be versioned ({} from {}). The resulting JAR will be invalid.".format(arcname, jarPath))
                                             # The JDK's ZipInputStream will fail to read files with a data descriptor written by python's zipfile
                                             info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
@@ -1348,8 +1411,14 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if relpath.startswith(join('META-INF', 'services')):
                         service = basename(relpath)
                         assert dirname(relpath) == join('META-INF', 'services')
+                        m = versioned_meta_inf_re.match(arcname)
+                        if m:
+                            service_version = int(m.group(1))
+                            services_dict = services.setdefault(service_version, {})
+                        else:
+                            services_dict = services
                         with open(join(outputDir, relpath), 'r') as fp:
-                            services.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                            services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
@@ -1359,6 +1428,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 with open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
+                                    if versioned_meta_inf_re.match(arcname):
+                                        warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
                                     info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
                                     info.compress_type = arc.zf.compression
                                     info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
@@ -1417,7 +1488,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             jarPath = dep.path
                             jarSourcePath = dep.sourcesPath
                         else:
-                            abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+                            raise abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
                             if dep.isJARDistribution() or not dep.optional or exists(jarPath):
                                 addFromJAR(jarPath)
@@ -1504,15 +1575,38 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if hasattr(a, '__closing__'):
                         a.__closing__()
 
-                for service, providers in services.iteritems():
-                    arcname = 'META-INF/services/' + service
+                # accumulate services
+                services_versions = sorted([v for v in services.keys() if isinstance(v, int)])
+                if services_versions:
+                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, basestring)}
+                    for v in services_versions:
+                        for service, providers in services[v].items():
+                            providers_set = frozenset(providers)
+                            accumulated_providers = acummulated_services.setdefault(service, set())
+                            missing = accumulated_providers - providers_set
+                            accumulated_providers.update(providers_set)
+                            if missing:
+                                warn("Adding {} for {} at version {}".format(missing, service, v))
+                                services[v][service] = frozenset(accumulated_providers)
+
+                def add_service_providers(service, providers, archive_prefix=''):
+                    arcname = archive_prefix + 'META-INF/services/' + service
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
+                for service_or_version, providers in services.iteritems():
+                    if isinstance(service_or_version, int):
+                        services_version = service_or_version
+                        for service, providers_ in providers.iteritems():
+                            add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
+                    else:
+                        add_service_providers(service_or_version, providers)
+
         self.notify_updated()
-        jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '9':
-            jmd = make_java_module(self, jdk)
+
+        compliance = self._compliance_for_build()
+        if compliance >= '9':
+            jmd = make_java_module(self, get_jdk(compliance))
             if jmd:
                 setattr(self, '.javaModule', jmd)
 
@@ -1626,11 +1720,6 @@ class JARDistribution(Distribution, ClasspathDependency):
         if not single:
             if self.sourcesPath:
                 yield self.sourcesPath, self.default_source_filename()
-            if get_jdk(tag='default').javaCompliance >= '9':
-                info = get_java_module_info(self)
-                if info:
-                    _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                    yield moduleJar, basename(moduleJar)
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
 
@@ -1642,14 +1731,16 @@ class JARDistribution(Distribution, ClasspathDependency):
             res = _needsUpdate(newestInput, self.sourcesPath)
             if res:
                 return res
-        jdk = get_jdk(tag='default')
-        if jdk.javaCompliance >= '9':
+        if self._compliance_for_build() >= '9':
             info = get_java_module_info(self)
             if info:
-                _, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-                ts = TimeStampFile(moduleJar)
-                if ts.isOlderThan(self.path):
-                    return '{} is older than {}'.format(ts, self.path)
+                _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
+                res = _needsUpdate(newestInput, pickle_path)
+                if res:
+                    return res
+                res = _needsUpdate(self.path, pickle_path)
+                if res:
+                    return res
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
@@ -8497,6 +8588,7 @@ class Suite(object):
                 self._load_distribution(name, attrs)
 
     def _load_distribution(self, name, attrs):
+        """:rtype : Distribution"""
         assert not '>' in name
         context = 'distribution ' + name
         className = attrs.pop('class', None)
@@ -8770,6 +8862,9 @@ class Suite(object):
             imported_suite._init_metadata()
             imported_suite._resolve_dependencies()
             imported_suite._post_init()
+            if not imported_suite.isBinarySuite():
+                for dist in imported_suite.dists:
+                    dist.post_init()
         return imported_suite
 
     def scm_metadata(self, abortOnError=False):
@@ -9294,6 +9389,7 @@ class BinarySuite(Suite):
 
     def _load_distribution(self, name, attrs):
         ret = super(BinarySuite, self)._load_distribution(name, attrs)
+        ret.post_init()
         self.vc.getDistribution(self.dir, ret)
         return ret
 
@@ -9526,11 +9622,13 @@ def get_opts():
     assert _argParser.parsed is True
     return _opts
 
-def suites(opt_limit_to_suite=False, includeBinary=True):
+def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
     Get the list of all loaded suites.
     """
     res = [s for s in _suites.values() if not s.internal and (includeBinary or isinstance(s, SourceSuite))]
+    if include_mx:
+        res.append(_mx_suite)
     if opt_limit_to_suite and _opts.specific_suites:
         res = [s for s in res if s.name in _opts.specific_suites]
     return res
@@ -9691,6 +9789,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
         abort('distribution template ' + t.name + ' could not be instantiated with ' + str(args), context=t)
     t.suite._register_distribution(d)
     d.resolveDeps()
+    d.post_init()
     return d
 
 def _get_reasons_dep_was_removed(name, indent):
@@ -11242,14 +11341,16 @@ def _filter_non_existant_paths(paths):
         return os.pathsep.join([path for path in _separatedCygpathW2U(paths).split(os.pathsep) if exists(path)])
     return None
 
+
 class JDKConfigException(Exception):
     def __init__(self, value):
         Exception.__init__(self, value)
 
-"""
-A JDKConfig object encapsulates info about an installed or deployed JDK.
-"""
+
 class JDKConfig:
+    """
+    A JDKConfig object encapsulates info about an installed or deployed JDK.
+    """
     def __init__(self, home, tag=None):
         home = os.path.abspath(home)
         self.home = home
@@ -11605,11 +11706,11 @@ class JDKConfig:
         return result
 
     def get_transitive_requires_keyword(self):
-        '''
+        """
         Gets the keyword used to denote transitive dependencies. This can also effectively
         be used to determine if this is JDK contains the module changes made by
         https://bugs.openjdk.java.net/browse/JDK-8169069.
-        '''
+        """
         if self.javaCompliance < '9':
             abort('Cannot call get_transitive_requires_keyword() for pre-9 JDK ' + str(self))
         self.get_modules()
@@ -12217,7 +12318,11 @@ def build(cmd_args, parser=None):
         # This is the normal case for build (e.g. `mx build`) so be
         # clear about JDKs being used ...
         log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
+        if _opts.java_home and _opts.java_home != get_env('JAVA_HOME', ''):
+            log('--java-home: ' + _opts.java_home)
         log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
+        if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
+            log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
@@ -17862,6 +17967,9 @@ def _use_binary_suite(suite_name):
 
 
 def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=True, clone_binary_first=False):
+    """
+    :rtype : (Suite | None, bool)
+    """
     search_mode = 'binary' if _use_binary_suite(suite_import.name) else 'source'
     clone_mode = 'binary' if clone_binary_first else search_mode
 
@@ -18446,8 +18554,8 @@ def main():
         dist.walk_deps(preVisit=_visit_and_find_jmh_dep)
         return NonLocal.jmh_found
 
-    for suite in suites(True, includeBinary=False):
-        for d in suite.dists:
+    for s_ in suites(True, includeBinary=False):
+        for d in s_.dists:
             if _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
@@ -18469,6 +18577,11 @@ def main():
         if not _get_command_property(command, "keepUnsatisfiedDependencies"):
             global _removedDeps
             _removedDeps = _remove_unsatisfied_deps()
+
+    # Finally post_init remaining distributions
+    for s_ in suites(includeBinary=False, include_mx=True):
+        for d in s_.dists:
+            d.post_init()
 
     def term_handler(signum, frame):
         abort(1, killsig=signal.SIGTERM)
@@ -18494,7 +18607,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.182.0")  # defaultBuild in dependencies
+version = VersionSpec("5.183.0")  # versioned multi-release modular JARs
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

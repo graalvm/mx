@@ -148,6 +148,8 @@ public class FindClassesByAnnotatedMethods {
     private static final byte CONSTANT_MethodType = 16;
     private static final byte CONSTANT_Dynamic = 17;
     private static final byte CONSTANT_InvokeDynamic = 18;
+    private static final byte CONSTANT_Module = 19;
+    private static final byte CONSTANT_Package = 20;
 
     private static void readClassfile(DataInputStream stream, Collection<String> methodAnnotationTypes) throws IOException {
         // magic
@@ -212,7 +214,9 @@ public class FindClassesByAnnotatedMethods {
             switch (tag) {
                 case CONSTANT_Class:
                 case CONSTANT_String:
-                case CONSTANT_MethodType: {
+                case CONSTANT_MethodType:
+                case CONSTANT_Module:
+                case CONSTANT_Package: {
                     skipFully(stream, 2);
                     break;
                 }
