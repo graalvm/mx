@@ -18610,7 +18610,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.183.0")  # versioned multi-release modular JARs
+version = VersionSpec("5.183.1")  # binary suites compliance
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
