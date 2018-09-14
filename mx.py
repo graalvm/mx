@@ -1225,6 +1225,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def maxJavaCompliance(self):
         """:rtype : JavaCompliance"""
+        assert not self.suite.isBinarySuite()
         if not hasattr(self, '.maxJavaCompliance'):
             javaCompliances = [p.javaCompliance for p in self.archived_deps() if p.isJavaProject()]
             if self.javaCompliance is not None:
@@ -1731,6 +1732,8 @@ class JARDistribution(Distribution, ClasspathDependency):
             res = _needsUpdate(newestInput, self.sourcesPath)
             if res:
                 return res
+        if self.suite.isBinarySuite():
+            return None
         if self._compliance_for_build() >= '9':
             info = get_java_module_info(self)
             if info:
@@ -18607,7 +18610,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.183.0")  # versioned multi-release modular JARs
+version = VersionSpec("5.183.1")  # binary suites compliance
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
