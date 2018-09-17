@@ -4162,6 +4162,9 @@ class NativeBuildTask(ProjectBuildTask):
             jobs = 1
         elif hasattr(project, 'max_jobs'):
             jobs = min(int(project.max_jobs), cpu_count())
+        elif get_os() == 'darwin' and not _opts.cpu_count:
+            # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
+            jobs = 1
         else:
             jobs = cpu_count()
         ProjectBuildTask.__init__(self, args, jobs, project)
@@ -18610,7 +18613,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.183.1")  # binary suites compliance
+version = VersionSpec("5.183.2")  # darwin parallel make bug
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
