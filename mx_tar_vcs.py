@@ -17,6 +17,10 @@ class TarVC(object):
             return directory[:-len("/tools")]
         if directory.endswith("/sdk"):
             return directory[:-len("/sdk")]
+        if directory.endswith("/substratevm"):
+            return directory[:-len("/substratevm")]
+        if directory.endswith("/vm"):
+            return directory[:-len("/vm")]
 
         return directory
 
