@@ -12863,8 +12863,11 @@ def pylint(args):
 
 
 class TempDir(object):
+    def __init__(self, parent_dir=None):
+        self.parent_dir = parent_dir
+
     def __enter__(self):
-        self.tmp_dir = mkdtemp()
+        self.tmp_dir = mkdtemp(dir=self.parent_dir)
         return self.tmp_dir
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -12872,6 +12875,9 @@ class TempDir(object):
 
 
 class TempDirCwd(TempDir):
+    def __init__(self, parent_dir=None):
+        super(TempDirCwd, self).__init__(parent_dir)
+
     def __enter__(self):
         super(TempDirCwd, self).__enter__()
         self.prev_dir = os.getcwd()
@@ -18613,7 +18619,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.183.2")  # darwin parallel make bug
+version = VersionSpec("5.183.3")  # GR-11753
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
