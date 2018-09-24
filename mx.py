@@ -4166,7 +4166,9 @@ class NativeBuildTask(ProjectBuildTask):
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             jobs = 1
         else:
-            jobs = cpu_count()
+            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the "max_jobs" attribute.
+            # Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter how much parallelism the build machine supports.
+            jobs = min(8, cpu_count())
         ProjectBuildTask.__init__(self, args, jobs, project)
         self._newestOutput = None
 
@@ -18619,7 +18621,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.184.0")  # proguard: only keep runtime visible annotations
+version = VersionSpec("5.184.1")  # GR-11780
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
