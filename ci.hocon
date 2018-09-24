@@ -1,5 +1,5 @@
 # overlay version
-overlay = fa8b5cf06baa73cad0145b6379969885eb46b634
+overlay = 56b068e466a6ef00ef8b2580ad3473d0336ed09c
 
 # These are used in the overlay
 java8 : {name : labsjdk, version : "8u172-jvmci-0.48", platformspecific: true}

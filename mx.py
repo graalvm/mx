@@ -1679,7 +1679,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                     '-adaptresourcefilecontents', 'META-INF/services/*',
                     '-adaptresourcefilenames', 'META-INF/services/*',
                     '-renamesourcefileattribute', 'stripped',
-                    '-keepattributes', 'Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,*Annotation*,EnclosingMethod',
+                    '-keepattributes', 'Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,RuntimeVisible*Annotations,EnclosingMethod,AnnotationDefault',
                 ]
 
                 # add mappings of all stripped dependencies (must be one file)
@@ -18619,7 +18619,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.183.3")  # GR-11753
+version = VersionSpec("5.184.0")  # proguard: only keep runtime visible annotations
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
