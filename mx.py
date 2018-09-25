@@ -10448,16 +10448,16 @@ def addJDKFactory(tag, compliance, factory):
     complianceMap = _jdkFactories.setdefault(tag, {})
     complianceMap[compliance] = factory
 
-def _getJDKFactory(tag, compliance):
+
+def _getJDKFactory(tag, versionCheck):
     if tag not in _jdkFactories:
         return None
     complianceMap = _jdkFactories[tag]
-    if not compliance:
-        highestCompliance = sorted(complianceMap.iterkeys())[-1]
-        return complianceMap[highestCompliance]
-    if compliance not in complianceMap:
-        return None
-    return complianceMap[compliance]
+    for compliance in sorted(complianceMap.iterkeys(), reverse=True):
+        if not versionCheck or versionCheck(VersionSpec(str(compliance))):
+            return complianceMap[compliance]
+    return None
+
 
 """
 A namedtuple for the result of get_jdk_option().
@@ -10465,6 +10465,8 @@ A namedtuple for the result of get_jdk_option().
 TagCompliance = namedtuple('TagCompliance', ['tag', 'compliance'])
 
 _jdk_option = None
+
+
 def get_jdk_option():
     """
     Gets the tag and compliance (as a TagCompliance object) derived from the --jdk option.
@@ -10498,10 +10500,10 @@ def get_jdk_option():
                 try:
                     jdkCompliance = JavaCompliance(tag_compliance[1])
                 except AssertionError as e:
-                    abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
+                    raise abort('Could not parse --jdk argument \'{}\' (should be of the form "[tag:]compliance")\n{}'.format(option, e))
 
         if jdktag and jdktag != DEFAULT_JDK_TAG:
-            factory = _getJDKFactory(jdktag, jdkCompliance)
+            factory = _getJDKFactory(jdktag, jdkCompliance._exact_match if jdkCompliance else None)
             if not factory:
                 if len(_jdkFactories) == 0:
                     abort("No JDK providers available")
@@ -10514,7 +10516,9 @@ def get_jdk_option():
         _jdk_option = TagCompliance(jdktag, jdkCompliance)
     return _jdk_option
 
+
 DEFAULT_JDK_TAG = 'default'
+
 
 def _is_supported_by_jdt(jdk):
     """
@@ -10530,8 +10534,10 @@ def _is_supported_by_jdt(jdk):
         assert isinstance(jdk, JDKConfig)
     return jdk.javaCompliance < '9'
 
+
 _jdks_cache = {}
 _canceled_jdk_requests = set()
+
 
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
     """
@@ -10550,24 +10556,29 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     # 2. JDK specified by set_java_command_default_jdk_tag
     # 3. JDK selected by DEFAULT_JDK_TAG tag
 
+    default_query = versionCheck is None and tag is None
+
     if tag is None:
         jdkOpt = get_jdk_option()
         if versionCheck is None and jdkOpt.compliance:
             versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
-    else:
-        jdkOpt = TagCompliance(tag, None)
 
-    defaultTag = tag == DEFAULT_JDK_TAG
-    defaultJdk = defaultTag and versionCheck is None and not purpose
+    defaultJdk = default_query and not purpose
 
     # Backwards compatibility support
     if kwargs:
         assert len(kwargs) == 1 and 'defaultJdk' in kwargs, 'unsupported arguments: ' + str(kwargs)
         defaultJdk = kwargs['defaultJdk']
 
-    if tag and not defaultTag:
-        factory = _getJDKFactory(tag, jdkOpt.compliance)
+    # interpret string and compliance as compliance check
+    if isinstance(versionCheck, types.StringTypes):
+        versionCheck = JavaCompliance(versionCheck)
+    if isinstance(versionCheck, JavaCompliance):
+        versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
+
+    if tag != DEFAULT_JDK_TAG:
+        factory = _getJDKFactory(tag, versionCheck)
         if factory:
             jdk = factory.getJDKConfig()
             if jdk.tag is not None:
@@ -10576,15 +10587,9 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
                 jdk.tag = tag
         else:
             jdk = None
-        _jdks_cache[cache_key] = jdk
-        return jdk
-
-    # interpret string and compliance as compliance check
-    if isinstance(versionCheck, types.StringTypes):
-        requiredCompliance = JavaCompliance(versionCheck)
-        versionCheck, versionDescription = _convert_compliance_to_version_check(requiredCompliance)
-    elif isinstance(versionCheck, JavaCompliance):
-        versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
+        if jdk is not None or default_query:
+            _jdks_cache[cache_key] = jdk
+            return jdk
 
     global _default_java_home, _extra_java_homes
     if cancel and (versionDescription, purpose) in _canceled_jdk_requests:
@@ -17905,7 +17910,6 @@ def _remove_unsatisfied_deps():
                                 logv('[' + reason + ']')
                                 removedDeps[dep] = reason
                             else:
-
                                 abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
         elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
             dist = dep
@@ -18621,7 +18625,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.184.1")  # GR-11780
+version = VersionSpec("5.184.2")  # get_jdk
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
