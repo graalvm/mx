@@ -7193,6 +7193,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                     pom.element('type', data=dep.remoteExtension())
                 pom.close('dependency')
         for l in directLibDeps:
+            if (l.isJdkLibrary() or l.isJreLibrary()) and l.is_provided_by(get_jdk()) and l.is_provided_by(get_jdk(dist.maxJavaCompliance())):
+                continue
             if hasattr(l, 'maven'):
                 mavenMetaData = l.maven
                 pom.open('dependency')
