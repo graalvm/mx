@@ -216,6 +216,7 @@ def add_omit_clean_args(parser):
     parser.add_argument('-n', '--omit-native-clean', action='store_false', dest='cleanNative', help='omit cleaning and building native code')
     parser.add_argument('-e', '--omit-ide-clean', action='store_false', dest='cleanIDE', help='omit ideclean/ideinit')
     parser.add_argument('-d', '--omit-dist-clean', action='store_false', dest='cleanDist', help='omit cleaning distributions')
+    parser.add_argument('--omit-clean-all', action='store_false', dest='cleanAll', help='omit cleaning non-default build targets')
     parser.add_argument('-o', '--omit-clean', action='store_true', dest='noClean', help='equivalent to -j -n -e')
 
 def gate_clean(cleanArgs, tasks, name='Clean', tags=None):
@@ -233,6 +234,7 @@ def check_gate_noclean_arg(args):
         args.cleanJava = False
         args.cleanNative = False
         args.cleanDist = False
+        args.cleanAll = False
     cleanArgs = []
     if not args.cleanNative:
         cleanArgs.append('--no-native')
@@ -240,6 +242,8 @@ def check_gate_noclean_arg(args):
         cleanArgs.append('--no-java')
     if not args.cleanDist:
         cleanArgs.append('--no-dist')
+    if args.cleanAll:
+        cleanArgs.append('--all')
     return cleanArgs
 
 def _warn_or_abort(msg, strict_mode):
