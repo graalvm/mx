@@ -15238,12 +15238,15 @@ def intellijinit_cli(args):
     parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
     parser.add_argument('--no-external-projects', action='store_false', dest='externalProjects', help='Do not generate external projects.')
     parser.add_argument('--no-java-projects', '--mx-python-modules-only', action='store_false', dest='javaModules', help='Do not generate projects for the java projects.')
+    parser.add_argument('--native-projects', action='store_true', dest='nativeProjects', help='Generate native projects.')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
-    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules, generate_external_projects=args.externalProjects)
+    intellijinit(args.remainder, mx_python_modules=args.pythonProjects, java_modules=args.javaModules,
+                 generate_external_projects=args.externalProjects, native_projects=args.nativeProjects)
 
 
-def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True, generate_external_projects=True):
+def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True,
+                 generate_external_projects=True, native_projects=False):
     """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
@@ -15251,7 +15254,9 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     declared_modules = set()
     referenced_modules = set()
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules, generate_external_projects, java_modules and not suite.isBinarySuite(), suite != primary_suite())
+        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules,
+                        generate_external_projects, java_modules and not suite.isBinarySuite(), suite != primary_suite(),
+                        generate_native_projects=native_projects)
 
     if len(referenced_modules - declared_modules) != 0:
         abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
@@ -15283,7 +15288,8 @@ def _intellij_library_file_name(library_name):
     return library_name.replace('.', '_').replace('-', '_') + '.xml'
 
 
-def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False, generate_external_projects=True, java_modules=True, module_files_only=False):
+def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False,
+                    generate_external_projects=True, java_modules=True, module_files_only=False, generate_native_projects=False):
     libraries = set()
     jdk_libraries = set()
 
@@ -15575,6 +15581,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
             mxModuleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + mxModuleFilePath, 'filepath': mxModuleFilePath})
+
+    if generate_native_projects:
+        _intellij_native_projects(s, module_files_only, declared_modules, modulesXml)
 
     if generate_external_projects:
         _intellij_external_project(s.suiteDict.get('externalProjects', None), s)
@@ -15901,6 +15910,39 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         update_file(vcsFile, vcsXml.xml(indent='  ', newl='\n'))
 
         # TODO look into copyright settings
+
+
+def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml):
+    for p in s.projects_recursive() + _mx_suite.projects_recursive():
+        if not p.isNativeProject():
+            continue
+
+        ensure_dir_exists(p.dir)
+
+        moduleXml = XMLDoc()
+        moduleXml.open('module', attributes={'type': 'CPP_MODULE'})
+
+        moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'false'})
+
+        moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+        for src in p.srcDirs:
+            srcDir = join(p.dir, src)
+            ensure_dir_exists(srcDir)
+            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + src,
+                                                          'isTestSource': str(p.is_test_project())})
+        moduleXml.close('content')
+
+        moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
+
+        moduleXml.close('component')
+        moduleXml.close('module')
+        moduleFile = join(p.dir, p.name + '.iml')
+        update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+
+        if not module_files_only:
+            declared_modules.add(p.name)
+            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
+            modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
 
 def dir_contains_files_recursively(directory, file_pattern):
@@ -18625,7 +18667,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.184.3")  # make the gate clean task clean more
+version = VersionSpec("5.185.0")  # Intellij Native Projects
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
