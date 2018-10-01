@@ -13333,7 +13333,9 @@ def checkstyle(args):
     class Batch:
         def __init__(self, config, suite):
             self.suite = suite
-            self.timestamp = TimeStampFile(join(suite.get_mx_output_dir(), 'checkstyle-timestamps', os.path.abspath(config)[1:] + '.timestamp'))
+            config_relative_to_root = os.path.relpath(os.path.abspath(config), os.sep)
+            self.timestamp = TimeStampFile(join(suite.get_mx_output_dir(), 'checkstyle-timestamps',
+                                                config_relative_to_root + '.timestamp'))
             self.sources = []
             self.projects = []
 
