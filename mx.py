@@ -15474,7 +15474,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                         logv("{} skipping {} for {}".format(p, dep, jdk))
                 elif dep.isJreLibrary():
                     pass
-                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject():
+                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
                     logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
@@ -18669,7 +18669,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.185.3")  # GR-11923
+version = VersionSpec("5.185.4")  # Intellij ignore resource dependencies
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
