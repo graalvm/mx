@@ -604,6 +604,13 @@ def make_java_module(dist, jdk):
                 for module, packages_ in concealedRequires.iteritems():
                     for package in packages_:
                         javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
+            # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
+            # Disable the "bootstrap class path not set in conjunction with -source N" warning
+            # as we're relying on the Java compliance of project to correctly specify a JDK range
+            # providing the API required by the project. Also disable the warning about unknown
+            # modules in qualified exports (not sure how to avoid these since we build modules
+            # separately).
+            javacCmd.append('-Xlint:-options,-module')
             javacCmd.append(module_info_java)
             mx.run(javacCmd)
             module_info_class = join(dest_dir, 'module-info.class')
