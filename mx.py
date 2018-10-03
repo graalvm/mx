@@ -11496,8 +11496,12 @@ class JDKConfig:
                 return []
             return self.debug_args
 
+        def add_coverage_args():
+            # jacoco flags might change in-process -> do not cache
+            return mx_gate.get_jacoco_agent_args() or []
+
         if addDefaultArgs:
-            return self.java_args_pfx + self.java_args + add_debug_args() + self.java_args_sfx + args
+            return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args() + self.java_args_sfx + args
         return args
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
