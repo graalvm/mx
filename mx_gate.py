@@ -581,6 +581,7 @@ def jacocoreport(args):
     Default output directory is 'coverage', but an alternative can be provided as an argument."""
 
     dist_name = "MX_JACOCO_REPORT"
+    mx.command_function("build")(['--dependencies', dist_name])
     dist = mx.distribution(dist_name)
     jdk = mx.get_jdk(dist.javaCompliance)
 
@@ -595,7 +596,10 @@ def jacocoreport(args):
         projsetting = getattr(p, 'jacoco', '')
         if projsetting == 'include' or projsetting == '':
             if isinstance(p, mx.ClasspathDependency):
-                includedirs.append(p.dir + ":" + p.classpath_repr(jdk))
+                source_dirs = []
+                if p.isJavaProject():
+                    source_dirs += p.source_dirs() + [p.source_gen_dir()]
+                includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
 
     mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
                  '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs), jdk=jdk)
