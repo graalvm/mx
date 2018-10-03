@@ -11496,8 +11496,12 @@ class JDKConfig:
                 return []
             return self.debug_args
 
+        def add_coverage_args():
+            # jacoco flags might change in-process -> do not cache
+            return mx_gate.get_jacoco_agent_args() or []
+
         if addDefaultArgs:
-            return self.java_args_pfx + self.java_args + add_debug_args() + self.java_args_sfx + args
+            return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args() + self.java_args_sfx + args
         return args
 
     def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
@@ -18671,7 +18675,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.186.0")  # GR-11731
+version = VersionSpec("5.187.0")  # JaCoCo agent flags
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

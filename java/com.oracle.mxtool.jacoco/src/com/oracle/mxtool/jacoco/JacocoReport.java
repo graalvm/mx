@@ -64,19 +64,25 @@ public class JacocoReport {
      * Project specification.
      */
     public static class ProjectSpec {
-        private final File srcDir;
+        private final File projectDir;
         private final File binDir;
+        private final File[] srcDirs;
 
         /**
          * @param spec a specification string in the form "project-dir:binary-dir".
          */
         public ProjectSpec(String spec) {
-            String[] s = spec.split(":", 2);
-            if (s.length != 2) {
+            String[] s = spec.split(":");
+            if (s.length < 2) {
                 throw new RuntimeException(String.format("Unsupported project specification: %s", spec));
             }
-            this.srcDir = new File(s[0]);
+            this.projectDir = new File(s[0]);
             this.binDir = new File(s[1]);
+
+            srcDirs = new File[s.length - 2];
+            for (int i = 2; i < s.length; i++) {
+                srcDirs[i - 2] = new File(s[i]);
+            }
         }
     }
 
@@ -112,8 +118,8 @@ public class JacocoReport {
         }
         List<BundleAndProject> bundles = new ArrayList<>(projects.size());
         for (ProjectSpec project : projects) {
-            System.out.print("Analyzing project '" + project.srcDir + "'... ");
-            bundles.add(new BundleAndProject(analyseProject(project.binDir, project.srcDir.getName()), project.srcDir));
+            System.out.print("Analyzing project '" + project.projectDir + "'... ");
+            bundles.add(new BundleAndProject(analyseProject(project.binDir, project.projectDir.getName()), project.srcDirs));
             System.out.println("OK");
         }
         if (format.equals("html")) {
@@ -131,11 +137,11 @@ public class JacocoReport {
 
     private static class BundleAndProject {
         final IBundleCoverage bundle;
-        final File project;
+        final File[] srcDirs;
 
-        public BundleAndProject(IBundleCoverage bundle, File project) {
+        public BundleAndProject(IBundleCoverage bundle, File[] srcDirs) {
             this.bundle = bundle;
-            this.project = project;
+            this.srcDirs = srcDirs;
         }
 
         @Override
@@ -193,7 +199,7 @@ public class JacocoReport {
         visitor.visitInfo(sessionInfoStore.getInfos(), executionDataStore.getContents());
         IReportGroupVisitor group = visitor.visitGroup("Graal");
         for (BundleAndProject bundleAndProject : bundleAndProjects) {
-            group.visitBundle(bundleAndProject.bundle, new MultiDirectorySourceFileLocator("utf-8", 4, new File(bundleAndProject.project, "src"), new File(bundleAndProject.project, "src_gen")));
+            group.visitBundle(bundleAndProject.bundle, new MultiDirectorySourceFileLocator("utf-8", 4, bundleAndProject.srcDirs));
         }
 
         visitor.visitEnd();

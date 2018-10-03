@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 
 import os, re, time, datetime
+import zipfile
 from os.path import join, exists
 from argparse import ArgumentParser
 
@@ -284,7 +285,9 @@ def gate(args):
     parser.add_argument('--all-suites', action='store_true', help='run gate tasks for all suites, not just the primary suite')
     parser.add_argument('--dry-run', action='store_true', help='just show the tasks that will be run without running them')
     parser.add_argument('-x', action='store_true', help='makes --task-filter or --tags an exclusion instead of inclusion filter')
-    parser.add_argument('--jacocout', help='specify the output directory for jacoco report')
+    jacoco = parser.add_mutually_exclusive_group()
+    jacoco.add_argument('--jacocout', help='specify the output directory for jacoco report')
+    jacoco.add_argument('--jacoco-zip', help='specify the output zip file for jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
@@ -315,6 +318,9 @@ def gate(args):
             Task.tags += [Tags.always]
     elif args.x:
         mx.abort('-x option cannot be used without --task-filter or the --tags option')
+
+    if args.jacoco_zip:
+        args.jacocout = 'html'
 
     if not args.extra_build_args:
         args.extra_build_args = []
@@ -494,10 +500,17 @@ def _run_gate(cleanArgs, args, tasks):
         if args.all_suites or suite is mx.primary_suite():
             runner(args, tasks)
 
-
     if args.jacocout is not None:
         mx.command_function('jacocoreport')([args.jacocout])
         _jacoco = 'off'
+    if args.jacoco_zip is not None:
+        mx.log('Creating JaCoCo report archive: {}'.format(args.jacoco_zip))
+        with zipfile.ZipFile(args.jacoco_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write('jacoco.exec')
+            for root, _, files in os.walk(args.jacocout):
+                for f in files:
+                    zf.write(os.path.join(root, f))
+        mx.log('Archiving done.')
 
 def checkheaders(args):
     """check Java source headers against any required pattern"""
@@ -568,6 +581,7 @@ def jacocoreport(args):
     Default output directory is 'coverage', but an alternative can be provided as an argument."""
 
     dist_name = "MX_JACOCO_REPORT"
+    mx.command_function("build")(['--dependencies', dist_name])
     dist = mx.distribution(dist_name)
     jdk = mx.get_jdk(dist.javaCompliance)
 
@@ -582,7 +596,10 @@ def jacocoreport(args):
         projsetting = getattr(p, 'jacoco', '')
         if projsetting == 'include' or projsetting == '':
             if isinstance(p, mx.ClasspathDependency):
-                includedirs.append(p.dir + ":" + p.classpath_repr(jdk))
+                source_dirs = []
+                if p.isJavaProject():
+                    source_dirs += p.source_dirs() + [p.source_gen_dir()]
+                includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
 
     mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
                  '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs), jdk=jdk)
