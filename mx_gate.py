@@ -487,8 +487,9 @@ def _run_gate(cleanArgs, args, tasks):
         if t:
             mx.command_function('verifylibraryurls')([])
 
-    if exists('jacoco.exec'):
-        os.unlink('jacoco.exec')
+    jacoco_exec = 'jacoco.exec'
+    if exists(jacoco_exec):
+        os.unlink(jacoco_exec)
 
     if args.jacocout is not None:
         _jacoco = 'append'
@@ -506,7 +507,7 @@ def _run_gate(cleanArgs, args, tasks):
     if args.jacoco_zip is not None:
         mx.log('Creating JaCoCo report archive: {}'.format(args.jacoco_zip))
         with zipfile.ZipFile(args.jacoco_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write('jacoco.exec')
+            zf.write(jacoco_exec, join(args.jacocout, jacoco_exec))
             for root, _, files in os.walk(args.jacocout):
                 for f in files:
                     zf.write(os.path.join(root, f))
