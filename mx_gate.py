@@ -487,8 +487,9 @@ def _run_gate(cleanArgs, args, tasks):
         if t:
             mx.command_function('verifylibraryurls')([])
 
-    if exists('jacoco.exec'):
-        os.unlink('jacoco.exec')
+    jacoco_exec = 'jacoco.exec'
+    if exists(jacoco_exec):
+        os.unlink(jacoco_exec)
 
     if args.jacocout is not None:
         _jacoco = 'append'
@@ -506,7 +507,7 @@ def _run_gate(cleanArgs, args, tasks):
     if args.jacoco_zip is not None:
         mx.log('Creating JaCoCo report archive: {}'.format(args.jacoco_zip))
         with zipfile.ZipFile(args.jacoco_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write('jacoco.exec')
+            zf.write(jacoco_exec, join(args.jacocout, jacoco_exec))
             for root, _, files in os.walk(args.jacocout):
                 for f in files:
                     zf.write(os.path.join(root, f))
@@ -537,6 +538,13 @@ def add_jacoco_excluded_annotations(annotations):
     """
     _jacoco_excluded_annotations.extend(annotations)
 
+_jacoco_whitelisted_packages = []
+
+def _jacoco_is_package_whitelisted(package):
+    if not _jacoco_whitelisted_packages:
+        return True
+    return any(package.startswith(w) for w in _jacoco_whitelisted_packages)
+
 def get_jacoco_agent_args():
     '''
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
@@ -549,9 +557,11 @@ def get_jacoco_agent_args():
         baseExcludes = []
         for p in mx.projects():
             projsetting = getattr(p, 'jacoco', '')
-            if projsetting == 'exclude':
+            if not _jacoco_is_package_whitelisted(p.name):
                 baseExcludes.append(p.name)
-            if projsetting == 'include':
+            elif projsetting == 'exclude':
+                baseExcludes.append(p.name)
+            elif projsetting == 'include':
                 includes.append(p.name + '.*')
 
         def _filter(l):
@@ -560,8 +570,8 @@ def get_jacoco_agent_args():
         excludes = []
         for p in mx.projects():
             if p.isJavaProject():
-                excludes += _filter(p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True).keys())
-                excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeInnerClasses=True).keys())
+                excludes += _filter(p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True, includeGenSrc=True).keys())
+                excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeInnerClasses=True, includeGenSrc=True).keys())
 
         excludes += [package + '.*' for package in baseExcludes]
         agentOptions = {
@@ -594,7 +604,7 @@ def jacocoreport(args):
     includedirs = []
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
-        if projsetting == 'include' or projsetting == '':
+        if (projsetting == 'include' or projsetting == '') and _jacoco_is_package_whitelisted(p.name):
             if isinstance(p, mx.ClasspathDependency):
                 source_dirs = []
                 if p.isJavaProject():
@@ -602,4 +612,5 @@ def jacocoreport(args):
                 includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
 
     mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
-                 '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs), jdk=jdk)
+                 '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs),
+                jdk=jdk, addDefaultArgs=False)

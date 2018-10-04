@@ -3020,7 +3020,7 @@ class JavaProject(Project, ClasspathDependency):
 
         return nbdict
 
-    def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False):
+    def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False, includeGenSrc=False):
         """
         Scan the sources of this project for Java source files containing a line starting with 'annotation'
         (ignoring preceding whitespace) and return a dict mapping fully qualified class names to a tuple
@@ -3028,16 +3028,20 @@ class JavaProject(Project, ClasspathDependency):
         """
 
         matches = lambda line: len([a for a in annotations if line == a or line.startswith(a + '(')]) != 0
-        return self.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses)
+        return self.find_classes_with_matching_source_line(pkgRoot, matches, includeInnerClasses, includeGenSrc)
 
-    def find_classes_with_matching_source_line(self, pkgRoot, function, includeInnerClasses=False):
+    def find_classes_with_matching_source_line(self, pkgRoot, function, includeInnerClasses=False, includeGenSrc=False):
         """
         Scan the sources of this project for Java source files containing a line for which
         'function' returns true. A map from class name to source file path for each existing class
         corresponding to a matched source file is returned.
         """
         result = dict()
-        for srcDir in self.source_dirs():
+        source_dirs = self.source_dirs()
+        if includeGenSrc:
+            source_dirs.append(self.source_gen_dir())
+
+        for srcDir in source_dirs:
             outputDir = self.output_dir()
             for root, _, files in os.walk(srcDir):
                 for name in files:
@@ -10285,6 +10289,7 @@ environment variables:
         self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
         self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
         self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
+        self.add_argument('--jacoco-whitelist-package', help='only include classes in the specified package', metavar='<package>', action='append', default=[])
         self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
         self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='use JDK matching a project\'s Java compliance when compiling (legacy - this is the only supported mode)', default=True)
         self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
@@ -10387,6 +10392,7 @@ environment variables:
             opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
 
             mx_gate._jacoco = opts.jacoco
+            mx_gate._jacoco_whitelisted_packages.extend(opts.jacoco_whitelist_package)
             mx_gate.Task.verbose = opts.verbose
         else:
             parser = ArgParser(parents=[self])
@@ -18675,7 +18681,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.187.0")  # JaCoCo agent flags
+version = VersionSpec("5.188.0")  # JaCoCo package filter
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
