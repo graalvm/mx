@@ -7109,6 +7109,9 @@ def _mavenGroupId(suite):
 
 
 def _genPom(dist, versionGetter, validateMetadata='none'):
+    """
+    :type dist: Distribution
+    """
     groupId = dist.maven_group_id()
     artifactId = dist.maven_artifact_id()
     version = versionGetter(dist.suite)
@@ -7122,6 +7125,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
     pom.element('groupId', data=groupId)
     pom.element('artifactId', data=artifactId)
     pom.element('version', data=version)
+    if dist.remoteExtension() != 'jar':
+        pom.element('packaging', data=dist.remoteExtension())
     if dist.suite.url:
         pom.element('url', data=dist.suite.url)
     elif validateMetadata != 'none':
@@ -7179,7 +7184,7 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
             if dep.suite.internal:
                 warn("_genPom({}): ignoring internal dependency {}".format(dist, dep))
                 continue
-            if validateMetadata != 'none' and not (dep.isJARDistribution() and dep.maven):
+            if validateMetadata != 'none' and not getattr(dep, 'maven', False):
                 if validateMetadata == 'full':
                     dist.abort("Distribution depends on non-maven distribution {}".format(dep))
                 dist.warn("Distribution depends on non-maven distribution {}".format(dep))
@@ -7205,6 +7210,8 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 pom.element('groupId', data=mavenMetaData['groupId'])
                 pom.element('artifactId', data=mavenMetaData['artifactId'])
                 pom.element('version', data=mavenMetaData['version'])
+                if 'suffix' in mavenMetaData:
+                    pom.element('classifier', data=mavenMetaData['suffix'])
                 pom.close('dependency')
             elif validateMetadata != 'none':
                 if 'library-coordinates' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
@@ -7487,13 +7494,13 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                             arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
                         _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
                 else:
-                    log("Skip deploying {}".format(full_maven_name))
+                    logv("Skip deploying {}".format(full_maven_name))
             else:
+                pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
+                if _opts.very_verbose or (dryRun and _opts.verbose):
+                    with open(pomFile) as f:
+                        log(f.read())
                 if dist.isJARDistribution():
-                    pomFile = _tmpPomFile(dist, versionGetter, validateMetadata)
-                    if _opts.very_verbose or (dryRun and _opts.verbose):
-                        with open(pomFile) as f:
-                            log(f.read())
                     javadocPath = None
                     if generateJavadoc:
                         projects = [p for p in dist.archived_deps() if p.isJavaProject()]
@@ -7544,7 +7551,6 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         os.unlink(pushed_file)
                     if pushed_src_file != dist.sourcesPath:
                         os.unlink(pushed_src_file)
-                    os.unlink(pomFile)
                     if javadocPath:
                         os.unlink(javadocPath)
                 elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
@@ -7555,10 +7561,12 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                          settingsXml=settingsXml,
                                          extension=dist.remoteExtension(),
                                          dryRun=dryRun,
+                                         pomFile=pomFile,
                                          gpg=gpg, keyid=keyid,
                                          extraFiles=extraFiles)
                 else:
                     warn('Unsupported distribution: ' + dist.name)
+                os.unlink(pomFile)
     if repo_metadata_name:
         os.unlink(repo_metadata_name)
 
