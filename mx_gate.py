@@ -25,6 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 
 import os, re, time, datetime
+import tempfile
 import zipfile
 from os.path import join, exists
 from argparse import ArgumentParser
@@ -288,6 +289,7 @@ def gate(args):
     jacoco = parser.add_mutually_exclusive_group()
     jacoco.add_argument('--jacocout', help='specify the output directory for jacoco report')
     jacoco.add_argument('--jacoco-zip', help='specify the output zip file for jacoco report')
+    parser.add_argument('--jacoco-omit-excluded', action='store_true', help='omit excluded files from jacoco report')
     parser.add_argument('--strict-mode', action='store_true', help='abort if a task cannot be executed due to missing tool configuration')
     parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
@@ -502,7 +504,10 @@ def _run_gate(cleanArgs, args, tasks):
             runner(args, tasks)
 
     if args.jacocout is not None:
-        mx.command_function('jacocoreport')([args.jacocout])
+        jacoco_args = [args.jacocout]
+        if args.jacoco_omit_excluded:
+            jacoco_args = ['--omit-excluded'] + jacoco_args
+        mx.command_function('jacocoreport')(jacoco_args)
         _jacoco = 'off'
     if args.jacoco_zip is not None:
         mx.log('Creating JaCoCo report archive: {}'.format(args.jacoco_zip))
@@ -545,6 +550,34 @@ def _jacoco_is_package_whitelisted(package):
         return True
     return any(package.startswith(w) for w in _jacoco_whitelisted_packages)
 
+def _jacoco_excludes_includes():
+    includes = list(_jacoco_includes)
+    baseExcludes = []
+    for p in mx.projects():
+        projsetting = getattr(p, 'jacoco', '')
+        if not _jacoco_is_package_whitelisted(p.name):
+            baseExcludes.append(p.name)
+        elif projsetting == 'exclude':
+            baseExcludes.append(p.name)
+        elif projsetting == 'include':
+            includes.append(p.name + '.*')
+
+    def _filter(l):
+        # filter out specific classes which are already covered by a baseExclude package
+        return [clazz for clazz in l if not any([clazz.startswith(package) for package in baseExcludes])]
+
+    excludes = []
+    for p in mx.projects():
+        if p.isJavaProject():
+            excludes += _filter(
+                p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True,
+                                                includeGenSrc=True).keys())
+            excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line,
+                                                                         includeInnerClasses=True,
+                                                                         includeGenSrc=True).keys())
+    excludes += [package + '.*' for package in baseExcludes]
+    return excludes, includes
+
 def get_jacoco_agent_args():
     '''
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
@@ -553,27 +586,7 @@ def get_jacoco_agent_args():
     if _jacoco == 'on' or _jacoco == 'append':
         jacocoagent = mx.library("JACOCOAGENT", True)
 
-        includes = list(_jacoco_includes)
-        baseExcludes = []
-        for p in mx.projects():
-            projsetting = getattr(p, 'jacoco', '')
-            if not _jacoco_is_package_whitelisted(p.name):
-                baseExcludes.append(p.name)
-            elif projsetting == 'exclude':
-                baseExcludes.append(p.name)
-            elif projsetting == 'include':
-                includes.append(p.name + '.*')
-
-        def _filter(l):
-            # filter out specific classes which are already covered by a baseExclude package
-            return [clazz for clazz in l if not any([clazz.startswith(package) for package in baseExcludes])]
-        excludes = []
-        for p in mx.projects():
-            if p.isJavaProject():
-                excludes += _filter(p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True, includeGenSrc=True).keys())
-                excludes += _filter(p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeInnerClasses=True, includeGenSrc=True).keys())
-
-        excludes += [package + '.*' for package in baseExcludes]
+        excludes, includes = _jacoco_excludes_includes()
         agentOptions = {
                         'append' : 'true' if _jacoco == 'append' else 'false',
                         'inclbootstrapclasses' : 'true',
@@ -597,6 +610,7 @@ def jacocoreport(args):
 
     parser = ArgumentParser(prog='mx jacocoreport')
     parser.add_argument('--format', help='Export format (HTML or XML)', default='html', choices=['html', 'xml'])
+    parser.add_argument('--omit-excluded', action='store_true', help='omit excluded files from report')
     parser.add_argument('output_directory', help='Output directory', default='coverage', nargs='?')
     args = parser.parse_args(args)
 
@@ -611,6 +625,18 @@ def jacocoreport(args):
                     source_dirs += p.source_dirs() + [p.source_gen_dir()]
                 includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
 
-    mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path,
-                 '--in', 'jacoco.exec', '--out', args.output_directory, '--format', args.format] + sorted(includedirs),
-                jdk=jdk, addDefaultArgs=False)
+    def _run_reporter(extra_args=None):
+        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', 'jacoco.exec', '--out',
+                     args.output_directory, '--format', args.format] +
+                    (extra_args or []) +
+                    sorted(includedirs),
+                    jdk=jdk, addDefaultArgs=False)
+
+    if not args.omit_excluded:
+        _run_reporter()
+    else:
+        with tempfile.NamedTemporaryFile(suffix="jacoco-report-exclude", mode="w") as fp:
+            excludes, _ = _jacoco_excludes_includes()
+            fp.writelines((e + "\n" for e in excludes))
+            fp.flush()
+            _run_reporter(['--exclude-file', fp.name])
