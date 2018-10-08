@@ -29,12 +29,16 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.jacoco.core.analysis.Analyzer;
 import org.jacoco.core.analysis.CoverageBuilder;
 import org.jacoco.core.analysis.IBundleCoverage;
+import org.jacoco.core.analysis.ICoverageVisitor;
 import org.jacoco.core.data.ExecutionDataReader;
 import org.jacoco.core.data.ExecutionDataStore;
 import org.jacoco.core.data.SessionInfoStore;
@@ -50,14 +54,20 @@ import joptsimple.NonOptionArgumentSpec;
 import joptsimple.OptionException;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
+import org.objectweb.asm.ClassReader;
 
 public class JacocoReport {
+    private final List<String> excludes;
     private ExecutionDataStore executionDataStore;
     private SessionInfoStore sessionInfoStore;
 
-    public JacocoReport() {
+    public JacocoReport(List<String> excludes) {
         executionDataStore = new ExecutionDataStore();
         sessionInfoStore = new SessionInfoStore();
+        this.excludes = excludes.stream() //
+                        .map(s -> s.endsWith(".*") ? s.substring(0, s.length() - 2) : s) //
+                        .map(s -> s.replace('.', '/')) //
+                        .collect(Collectors.toList());
     }
 
     /**
@@ -92,6 +102,8 @@ public class JacocoReport {
         NonOptionArgumentSpec<ProjectSpec> projectsSpec = parser.nonOptions("The project directories to analyse").ofType(ProjectSpec.class);
         ArgumentAcceptingOptionSpec<File> outSpec = parser.accepts("out").withRequiredArg().ofType(File.class).defaultsTo(new File("coverage"));
         ArgumentAcceptingOptionSpec<String> formatSpec = parser.accepts("format").withRequiredArg().ofType(String.class).defaultsTo("html");
+        ArgumentAcceptingOptionSpec<File> excludeFile = parser.accepts("exclude-file").withOptionalArg().ofType(File.class);
+
         OptionSet options;
         try {
             options = parser.parse(args);
@@ -107,7 +119,14 @@ public class JacocoReport {
             return;
         }
 
-        new JacocoReport().makeReport(options.valueOf(outSpec), options.valuesOf(projectsSpec), options.valuesOf(inputsSpec), options.valueOf(formatSpec));
+        List<String> excludes;
+        File excludeOptionValue = options.valueOf(excludeFile);
+        if (excludeOptionValue == null) {
+            excludes = Collections.emptyList();
+        } else {
+            excludes = Files.readAllLines(excludeOptionValue.toPath());
+        }
+        new JacocoReport(excludes).makeReport(options.valueOf(outSpec), options.valuesOf(projectsSpec), options.valuesOf(inputsSpec), options.valueOf(formatSpec));
     }
 
     public void makeReport(File reportDirectory, List<ProjectSpec> projects, List<File> execDatas, String format) throws IOException {
@@ -205,9 +224,33 @@ public class JacocoReport {
         visitor.visitEnd();
     }
 
+    private class JaCoCoAnalyzer extends Analyzer {
+
+        public JaCoCoAnalyzer(ExecutionDataStore executionData, ICoverageVisitor coverageVisitor) {
+            super(executionData, coverageVisitor);
+        }
+
+        @Override
+        public void analyzeClass(final ClassReader reader) {
+            String className = reader.getClassName();
+            if (!isClassExcluded(className)) {
+                super.analyzeClass(reader);
+            }
+        }
+    }
+
+    private boolean isClassExcluded(String className) {
+        for (String excludePattern : excludes) {
+            if (className.startsWith(excludePattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public IBundleCoverage analyseProject(File project, String name) throws IOException {
         final CoverageBuilder coverageBuilder = new CoverageBuilder();
-        final Analyzer analyzer = new Analyzer(executionDataStore, coverageBuilder);
+        final Analyzer analyzer = new JaCoCoAnalyzer(executionDataStore, coverageBuilder);
 
         analyzer.analyzeAll(project);
 
