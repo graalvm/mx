@@ -18693,7 +18693,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.189.0")  # native pom
+version = VersionSpec("5.190.0")  # JaCoCo report omit excludes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
