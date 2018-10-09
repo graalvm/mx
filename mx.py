@@ -15426,13 +15426,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
     max_checkstyle_version = None
     compilerXml = None
+
     if java_modules:
         if not module_files_only:
             compilerXml = XMLDoc()
             compilerXml.open('project', attributes={'version': '4'})
-            compilerXml.open('component', {'name': 'JavacSettings'})
-            compilerXml.open('option', {'name': 'ADDITIONAL_OPTIONS_OVERRIDE'})
 
+        # The IntelliJ parser seems to mishandle empty ADDITIONAL_OPTIONS_OVERRIDE elements
+        # so only emit the section if there will be something in it.
+        additionalOptionsOverrides = False
         assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
         for p in s.projects_recursive() + _mx_suite.projects_recursive():
@@ -15525,6 +15527,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                         extra_modules = module_graph - default_module_graph
                         if extra_modules:
                             args.append('--add-modules=' + ','.join((m.name for m in extra_modules)))
+                        if not additionalOptionsOverrides:
+                            additionalOptionsOverrides = True
+                            compilerXml.open('component', {'name': 'JavacSettings'})
+                            compilerXml.open('option', {'name': 'ADDITIONAL_OPTIONS_OVERRIDE'})
                         compilerXml.element('module', {'name': p.name, 'options': ' '.join(args)})
 
             # Checkstyle
@@ -15557,7 +15563,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 declared_modules.add(p.name)
                 moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
-        if compilerXml:
+        if additionalOptionsOverrides:
             compilerXml.close('option')
             compilerXml.close('component')
 
@@ -18693,7 +18699,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.0")  # JaCoCo report omit excludes
+version = VersionSpec("5.190.1")  # ADDITIONAL_OPTIONS_OVERRIDE
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
