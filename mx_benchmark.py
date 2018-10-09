@@ -1697,7 +1697,7 @@ class BenchmarkExecutor(object):
                 factor = function[len("multiply("):-1]
                 try:
                     factor = float(factor)
-                except ValueError as e:
+                except ValueError:
                     raise ValueError("'metric.score-function' multiply factor must be numerical ! "
                                      "Got '{}'".format(factor))
                 datapoint["metric.score-value"] = float(metric_value) * factor
