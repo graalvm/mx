@@ -16277,13 +16277,13 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
     def assess_candidate(p, projects):
         if p in projects:
-            return (False, 'Already visited')
+            return False, 'Already visited'
         if not args.implementation and p.is_test_project():
-            return (False, 'Test project')
+            return False, 'Test project'
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
-            return (True, None)
-        return (False, 'package-list file exists')
+            return True, None
+        return False, 'package-list file exists'
 
     projects = []
     """ :type: list[JavaProject]"""
@@ -16301,9 +16301,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if not added:
                 logv('[{0} - skipping {1}]'.format(reason, p.name))
     snippets = []
-    for p in projects_opt_limit_to_suites():
-        if p.isJavaProject():
-            snippets += p.source_dirs()
+    for s in set((p.suite for p in projects)):
+        assert isinstance(s, SourceSuite)
+        for p in s.projects:
+            if p.isJavaProject():
+                snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
 
@@ -18699,7 +18701,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.2")  # Fixed AveragingBenchmarkMixin and added mulitply(<factor>) score-function
+version = VersionSpec("5.190.3")  # javadoc snippets
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
