@@ -1693,6 +1693,14 @@ class BenchmarkExecutor(object):
             # Apply the score function to the metric value.
             if function is "id":
                 datapoint["metric.score-value"] = metric_value
+            elif function.startswith("multiply(") and function.endswith(")"):
+                factor = function[len("multiply("):-1]
+                try:
+                    factor = float(factor)
+                except ValueError as e:
+                    raise ValueError("'metric.score-function' multiply factor must be numerical ! "
+                                     "Got '{}'".format(factor))
+                datapoint["metric.score-value"] = float(metric_value) * factor
             else:
                 mx.abort("Unknown score function '{0}'.".format(function))
 
