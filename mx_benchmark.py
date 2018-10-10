@@ -933,19 +933,21 @@ class AveragingBenchmarkMixin(object):
     def addAverageAcrossLatestResults(self, results):
         # Postprocess results to compute the resulting time by taking the average of last N runs,
         # where N is 20% of the maximum number of iterations, at least 5 and at most 10.
-        warmupResults = [result for result in results if result["metric.name"] == "warmup"]
-        if warmupResults:
-            lastIteration = max((result["metric.iteration"] for result in warmupResults))
-            resultIterations = self.getExtraIterationCount(lastIteration + 1)
-            totalTimeForAverage = 0.0
-            for i in range(lastIteration - resultIterations + 1, lastIteration + 1):
-                result = next(result for result in warmupResults if result["metric.iteration"] == i)
-                totalTimeForAverage += result["metric.value"]
-            averageResult = next(result for result in warmupResults if result["metric.iteration"] == 0).copy()
-            averageResult["metric.value"] = totalTimeForAverage / resultIterations
-            averageResult["metric.name"] = "time"
-            averageResult["metric.average-over"] = resultIterations
-            results.append(averageResult)
+        benchmarkNames = set([r["benchmark"] for r in results])
+        for benchmark in benchmarkNames:
+            warmupResults = [result for result in results if result["metric.name"] == "warmup" and result["benchmark"] == benchmark]
+            if warmupResults:
+                lastIteration = max((result["metric.iteration"] for result in warmupResults))
+                resultIterations = self.getExtraIterationCount(lastIteration + 1)
+                totalTimeForAverage = 0.0
+                for i in range(lastIteration - resultIterations + 1, lastIteration + 1):
+                    result = next(result for result in warmupResults if result["metric.iteration"] == i)
+                    totalTimeForAverage += result["metric.value"]
+                averageResult = next(result for result in warmupResults if result["metric.iteration"] == 0).copy()
+                averageResult["metric.value"] = totalTimeForAverage / resultIterations
+                averageResult["metric.name"] = "time"
+                averageResult["metric.average-over"] = resultIterations
+                results.append(averageResult)
 
 
 class WarnDeprecatedMixin(DeprecatedMixin):
@@ -1691,6 +1693,14 @@ class BenchmarkExecutor(object):
             # Apply the score function to the metric value.
             if function is "id":
                 datapoint["metric.score-value"] = metric_value
+            elif function.startswith("multiply(") and function.endswith(")"):
+                factor = function[len("multiply("):-1]
+                try:
+                    factor = float(factor)
+                except ValueError:
+                    raise ValueError("'metric.score-function' multiply factor must be numerical ! "
+                                     "Got '{}'".format(factor))
+                datapoint["metric.score-value"] = float(metric_value) * factor
             else:
                 mx.abort("Unknown score function '{0}'.".format(function))
 
