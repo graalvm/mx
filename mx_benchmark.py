@@ -1583,6 +1583,21 @@ class BenchmarkExecutor(object):
     def buildNumber(self):
         return build_number()
 
+    def extras(self, mxBenchmarkArgs):
+        extras = {}
+        if mxBenchmarkArgs.extras:
+            for kv in mxBenchmarkArgs.extras.split(","):
+                split_kv = kv.split(":")
+                if len(split_kv) != 2:
+                    raise ValueError("Cannot handle extra '{}'. "
+                                     "Extras key-value pairs must contain a single colon.".format(kv))
+                k, v = split_kv
+                if not re.match("^[\w\d\._-]*$", k):
+                    raise ValueError("Extra key can only contain numbers, characters, underscores and dashes. "
+                                     "Got '{}'".format(k))
+                extras["extra.{}".format(k)] = v
+        return extras
+
     def checkEnvironmentVars(self):
         pass
 
@@ -1616,6 +1631,8 @@ class BenchmarkExecutor(object):
           "metric.score-function": "id",
           "warnings": "",
         }
+
+        standard.update(self.extras(mxBenchmarkArgs))
 
         def commit_info(prefix, mxsuite):
             vc = mxsuite.vc
@@ -1747,6 +1764,8 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--ignore-suite-commit-info", default=None, type=lambda s: s.split(","),
             help="A comma-separated list of suite dependencies whose commit info must not be included.")
+        parser.add_argument(
+            "--extras", default=None, help="One or more comma separated key:value pairs to add to the results file.")
         parser.add_argument(
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
