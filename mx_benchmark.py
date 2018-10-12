@@ -1592,7 +1592,7 @@ class BenchmarkExecutor(object):
                     raise ValueError("Cannot handle extra '{}'. "
                                      "Extras key-value pairs must contain a single colon.".format(kv))
                 k, v = split_kv
-                if not re.match("^[\w\d\._-]*$", k):
+                if not re.match(r"^[\w\d\._-]*$", k):
                     raise ValueError("Extra key can only contain numbers, characters, underscores and dashes. "
                                      "Got '{}'".format(k))
                 extras["extra.{}".format(k)] = v
