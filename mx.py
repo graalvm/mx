@@ -18701,7 +18701,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.4")  # mx benchmark --extras=foo:bla dacapo:fop
+version = VersionSpec("5.190.5")  # GR-12088
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
