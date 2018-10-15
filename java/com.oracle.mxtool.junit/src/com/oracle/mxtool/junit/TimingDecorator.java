@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2017, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,8 +24,8 @@
  */
 package com.oracle.mxtool.junit;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.runner.Description;
 
@@ -42,8 +42,8 @@ class TimingDecorator extends MxRunListenerDecorator {
 
     TimingDecorator(MxRunListener l) {
         super(l);
-        this.classTimes = new HashMap<>();
-        this.testTimes = new HashMap<>();
+        this.classTimes = new ConcurrentHashMap<>();
+        this.testTimes = new ConcurrentHashMap<>();
     }
 
     @Override
