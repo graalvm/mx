@@ -18554,12 +18554,9 @@ def main():
     _mx_suite._resolve_dependencies()
     _mx_suite._post_init()
 
+    # Do not treat initial_command as an abbreviation as it would prevent
+    # mx extensions from defining commands that match an abbreviation.
     initial_command = _argParser.initialCommandAndArgs[0] if len(_argParser.initialCommandAndArgs) > 0 else None
-    if initial_command and initial_command not in _commands:
-        hits = [c for c in _commands.iterkeys() if c.startswith(initial_command)]
-        if len(hits) == 1:
-            initial_command = hits[0]
-
     is_suite_context_free = initial_command and initial_command in _suite_context_free
     should_discover_suites = not is_suite_context_free and not (initial_command and initial_command in _no_suite_discovery)
     should_load_suites = should_discover_suites and not (initial_command and initial_command in _no_suite_loading)
@@ -18701,7 +18698,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.5")  # GR-12088
+version = VersionSpec("5.190.6")  # GR-12105
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
