@@ -18151,6 +18151,7 @@ update_commands("mx", {
     'sigtest': [mx_sigtest.sigtest, ''],
     'sincoming': [sincoming, ''],
     'site': [site, '[options]'],
+    'sonarqube-upload': [mx_gate.sonarqube_upload, '[options]'],
     'spull': [spull, '[options]'],
     'stip': [stip, ''],
     'suites': [show_suites, ''],
@@ -19015,7 +19016,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.207.0")  # GR-12499
+version = VersionSpec("5.208.0")  # sonarqube-upload
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
