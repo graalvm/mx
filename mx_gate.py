@@ -748,7 +748,7 @@ def _jacoco_exclude_classes(projects):
 
 
 def sonarqube_upload(args):
-    """upload JaCoCo result to SonarQube"""
+    """run SonarQube scanner and upload JaCoCo results"""
 
     sonarqube_cli = mx.library("SONARSCANNER_CLI_3_3_0_1492", True)
 
