@@ -3244,7 +3244,7 @@ class JavaProject(Project, ClasspathDependency):
                                     pkgOutputDir = join(outputDir, pkg.replace('.', os.path.sep))
                                     if exists(pkgOutputDir):
                                         for e in os.listdir(pkgOutputDir):
-                                            if e.endswith('.class') and (e.startswith(simpleClassName) or e.startswith(simpleClassName + '$')):
+                                            if e.endswith('.class') and e.startswith(simpleClassName + '$'):
                                                 className = pkg + '.' + e[:-len('.class')]
                                                 result[className] = (source, matchingLineFound)
         return result
