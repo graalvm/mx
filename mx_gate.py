@@ -740,11 +740,9 @@ def _jacoco_exclude_classes(projects):
     excludeClasses = {}
 
     for p in projects:
-        r = p.find_classes_with_annotations(None, _jacoco_excluded_annotations,
-                                            includeInnerClasses=True, includeGenSrc=True)
+        r = p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeGenSrc=True)
         excludeClasses.update(r)
-        r = p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line,
-                                                     includeInnerClasses=True, includeGenSrc=True)
+        r = p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeGenSrc=True)
         excludeClasses.update(r)
     return excludeClasses
 
@@ -769,23 +767,31 @@ def sonarqube_upload(args):
 
     basedir = mx.primary_suite().dir
 
-    java_bin = []
-    java_src = []
-
-    # collect all sources and binaries -- do exclusion later
-    for p in mx.projects(limit_to_primary=True):
-        if p.isJavaProject():
-            java_src.extend(p.source_dirs())
-            if not args.exclude_generated:
-                gen_dir = p.source_gen_dir()
-                if os.path.exists(gen_dir):
-                    java_src.append(gen_dir)
-            java_bin.append(p.output_dir())
-
     # collect excluded projects
     excludes, includes = _jacoco_excludes_includes_projects(limit_to_primary=True)
     # collect excluded classes
     exclude_classes = _jacoco_exclude_classes(includes)
+    java_bin = []
+    java_src = []
+    java_libs = []
+
+    def _visit_deps(dep, edge):
+        if dep.isJARDistribution() or dep.isLibrary():
+            java_libs.append(dep.classpath_repr())
+
+    mx.walk_deps(includes, visit=_visit_deps)
+
+    # collect all sources and binaries -- do exclusion later
+    for p in includes:
+        java_src.extend(p.source_dirs())
+        if not args.exclude_generated:
+            gen_dir = p.source_gen_dir()
+            if os.path.exists(gen_dir):
+                java_src.append(gen_dir)
+        java_bin.append(p.output_dir())
+
+    java_src = [os.path.relpath(s, basedir) for s in java_src]
+    java_bin = [os.path.relpath(b, basedir) for b in java_bin]
 
     exclude_dirs = []
     for p in excludes:
@@ -808,8 +814,9 @@ def sonarqube_upload(args):
     _add_default_prop('sonar.jacoco.reportPaths', jacoco_exec)
     _add_default_prop('sonar.sources', ','.join(java_src))
     _add_default_prop('sonar.java.binaries', ','.join(java_bin))
+    _add_default_prop('sonar.java.libraries', ','.join(java_libs))
     exclude_patterns = [os.path.relpath(e.dir, basedir) + '**' for e in exclude_dirs] + \
-                       [os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]
+                       list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]))
     if exclude_patterns:
         _add_default_prop('sonar.exclusions', ','.join(exclude_patterns))
         _add_default_prop('sonar.coverage.exclusions', ','.join(exclude_patterns))
