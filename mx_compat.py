@@ -67,6 +67,9 @@ class MxCompatibility500(object):
     def mavenDeployJavadoc(self):
         return False
 
+    def mavenSupportsClassifier(self):
+        return False
+
     def checkstyleVersion(self):
         return '6.0'
 
@@ -361,7 +364,6 @@ class MxCompatibility5181(MxCompatibility51760):#pylint: disable=too-many-ancest
     def jarsUseJDKDiscriminant(self):
         return True
 
-
 class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ancestors
     @staticmethod
     def version():
@@ -370,6 +372,13 @@ class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ance
     def check_package_locations(self):
         return True
 
+class MxCompatibility5195(MxCompatibility5194):#pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.195.0")
+
+    def mavenSupportsClassifier(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()
