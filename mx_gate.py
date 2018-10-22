@@ -26,6 +26,7 @@
 
 import os, re, time, datetime
 import tempfile
+import pipes
 import zipfile
 from os.path import join, exists
 from argparse import ArgumentParser
@@ -360,15 +361,34 @@ def gate(args):
     Task.startTime = time.time()
     tasks = []
     total = Task('Gate')
+
+    import mx_commands
+    def print_mx_command(command, usage_msg, doc_function, *args, **kwargs):
+        message_color = 'blue'
+        one_list = len(args) == 1 and isinstance(args[0], (list,))
+        kwargs_absent = len(kwargs) == 0
+        if one_list and kwargs_absent:  # gate command reproducible on the command line
+            mx.log(mx.colorize('\nTo reproduce, run:\n', color=message_color))
+            quoted_args = (' '.join([pipes.quote(str(arg)) for arg in args[0]]))
+            mx.log(mx.colorize('mx ' + command + ' ' + quoted_args + '\n', color=message_color))
+        else:
+            mx.log(mx.colorize('\nTo reproduce run mx ' + command + '. This command was run programatically, and might not be reproducible in the shell. The arguments were:\n', color=message_color))
+            if not one_list:
+                mx.log(mx.colorize('args: ' + str(args), color=message_color))
+            if not kwargs_absent:
+                mx.log(mx.colorize('kwargs: ' + str(kwargs), color=message_color))
+
     try:
+        mx_commands.add_command_callback(print_mx_command)
         _run_gate(cleanArgs, args, tasks)
     except KeyboardInterrupt:
         total.abort(1)
-
     except BaseException as e:
         import traceback
         traceback.print_exc()
         total.abort(str(e))
+    finally:
+        mx_commands.remove_command_callback(print_mx_command)
 
     total.stop()
 
