@@ -27,6 +27,7 @@
 #
 
 import mx
+import mx_primary_suite
 import os
 from os.path import join, exists
 
@@ -46,7 +47,7 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
         jackpotJar = mx.library('JACKPOT').get_path(resolve=True)
     assert exists(jackpotJar)
     if suite is None:
-        suite = mx._primary_suite
+        suite = mx_primary_suite._primary_suite
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
