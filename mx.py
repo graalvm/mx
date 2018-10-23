@@ -71,12 +71,45 @@ import calendar
 import multiprocessing
 from stat import S_IMODE
 
-import mx_primary_suite
-import mx_commands
+from mx_commands import MxCommands
+_mx_commands = MxCommands("mx")
 
-# following commands are included for backwards compatibility
-from mx_primary_suite import primary_suite
-from mx_commands import command_function, update_commands # pylint: disable=unused-import
+
+def command_function(name, fatalIfMissing=True):
+    """
+    Return the function for the (possibly overridden) command named `name`.
+    If no such command, abort if `fatalIsMissing` is True, else return None
+    """
+    return _mx_commands.command_function(name, fatalIfMissing)
+
+
+def update_commands(suite, new_commands):
+    """
+    Using the decorator mx_command is preferred over this function.
+
+    :param suite: for which the command is added.
+    :param new_commands: keys are command names, value are lists: [<function>, <usage msg>, <format doc function>]
+        if any of the format args are instances of callable, then they are called with an 'env' are before being
+        used in the call to str.format().
+    """
+    _mx_commands.update_commands(suite.name, new_commands)
+
+
+def command(suite_name, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
+    """
+    Decorator for making a function an mx shell command.
+
+    The annotated function should receive a single argument with the string list of arguments.
+
+    :param suite_name: suite to which the command belongs to.
+    :param command: the command name. Will be used in the shell command.
+    :param usage_msg: message to display usage.
+    :param doc_function: function to render the documentation for this feature.
+    :param props: a dictionary of properties attributed to this command.
+    :param auto_add: automatically it to the commands.
+    :return: the decorator factory for the function.
+    """
+    return _mx_commands.mx_command(suite_name, command, usage_msg, doc_function, props, auto_add)
 
 # Define this machinery early in case other modules want to use them
 
@@ -257,6 +290,26 @@ _jdkProvidedSuites = set()
 
 # List of functions to run after options have been parsed
 _opts_parsed_deferrables = []
+
+_primary_suite_path = None
+_primary_suite = None
+_primary_suite_deferrables = []
+
+
+def _primary_suite_init(s):
+    global _primary_suite
+    assert not _primary_suite
+    _primary_suite = s
+    _primary_suite.primary = True
+    os.environ['MX_PRIMARY_SUITE_PATH'] = s.dir
+    for deferrable in _primary_suite_deferrables:
+        deferrable()
+
+
+def primary_suite():
+    """:rtype: Suite"""
+    return _primary_suite
+
 
 
 def nyi(name, obj):
@@ -7786,9 +7839,9 @@ class SuiteModel:
         os.environ[envKey] = name
 
         if name.startswith('sibling'):
-            return SiblingSuiteModel(mx_primary_suite._primary_suite_path, name)
+            return SiblingSuiteModel(_primary_suite_path, name)
         elif name.startswith('nested'):
-            return NestedImportsSuiteModel(mx_primary_suite._primary_suite_path, name)
+            return NestedImportsSuiteModel(_primary_suite_path, name)
         else:
             abort('unknown suitemodel type: ' + name)
 
@@ -9449,7 +9502,7 @@ class MXSuite(InternalSuite):
             assert primary_suite()
             if self == primary_suite():
                 SourceSuite._load_env_in_mxDir(self.mxDir)
-        mx_primary_suite.add_primary_suite_deferrable(_deferrable)
+        _primary_suite_deferrables.append(_deferrable)
 
 
 class MXTestsSuite(InternalSuite):
@@ -10236,6 +10289,14 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
     else:
         return [], args
 
+
+def _format_commands():
+    msg = '\navailable commands:\n'
+    commands = _mx_commands.commands()
+    msg += _mx_commands.list_commands(sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k]))
+    return msg + '\n'
+
+
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
@@ -10257,7 +10318,7 @@ environment variables:
                            local cache. Hence, remote references will be synchronized occasionally. This
                            allows cloning without even contacting the git server.
                         The cache is located at `~/.mx/git-cache`.
-""" + mx_commands._format_commands()
+""" + _format_commands()
 
 
     def __init__(self, parents=None):
@@ -10383,16 +10444,16 @@ environment variables:
                 os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
             os.environ['HOME'] = opts.user_home
 
-            mx_primary_suite._primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
-            if mx_primary_suite._primary_suite_path:
-                mx_primary_suite._primary_suite_path = os.path.abspath(mx_primary_suite._primary_suite_path)
+            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
+            if _primary_suite_path:
+                _primary_suite_path = os.path.abspath(_primary_suite_path)
 
             global _suitemodel
             _suitemodel = SuiteModel.create_suitemodel(opts)
 
             # Communicate primary suite path to mx subprocesses
-            if mx_primary_suite._primary_suite_path:
-                os.environ['MX_PRIMARY_SUITE_PATH'] = mx_primary_suite._primary_suite_path
+            if _primary_suite_path:
+                os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
 
             opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
 
@@ -13556,16 +13617,16 @@ Given a command name, print help for that command."""
         return
 
     name = args[0]
-    if not mx_commands._commands.has_key(name):
-        hits = [c for c in mx_commands._commands.iterkeys() if c.startswith(name)]
+    if name not in _mx_commands.commands():
+        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(name)]
         if len(hits) == 1:
             name = hits[0]
         elif len(hits) == 0:
-            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(name, mx_commands._format_commands()))
+            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(name, _format_commands()))
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(name, ' '.join(hits)))
 
-    value = mx_commands._commands[name]
+    value = _mx_commands.commands()[name]
     (func, usage) = value[:2]
     doc = func.__doc__
     if len(value) > 2:
@@ -17730,14 +17791,14 @@ def print_simple_help():
 
 
 def list_commands(l):
-    return mx_commands._list_commands(l)
+    return _mx_commands.list_commands(l)
 
 _build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
 _style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
 _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 
-mx_commands._update_commands({
+_mx_commands.update_commands("mx", {
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
@@ -17856,12 +17917,12 @@ def _findPrimarySuiteMxDirFrom(d):
 
 def _findPrimarySuiteMxDir():
     # check for explicit setting
-    if mx_primary_suite._primary_suite_path is not None:
-        mxDir = _is_suite_dir(mx_primary_suite._primary_suite_path)
+    if _primary_suite_path is not None:
+        mxDir = _is_suite_dir(_primary_suite_path)
         if mxDir is not None:
             return mxDir
         else:
-            abort(mx_primary_suite._primary_suite_path + ' does not contain an mx suite')
+            abort(_primary_suite_path + ' does not contain an mx suite')
 
     # try current working directory first
     mxDir = _findPrimarySuiteMxDirFrom(os.getcwd())
@@ -18513,7 +18574,7 @@ def main():
     else:
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
-            mx_primary_suite._init(_mx_suite)
+            _primary_suite_init(_mx_suite)
             _mx_suite.internal = False
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
@@ -18532,7 +18593,7 @@ def main():
                 primary = _discover_suites(primarySuiteMxDir, load=should_load_suites)
             else:
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
-            mx_primary_suite._init(primary)
+            _primary_suite_init(primary)
         else:
             if not is_optional_suite_context:
                 abort('no primary suite found for %s' % initial_command)
@@ -18585,19 +18646,19 @@ def main():
     command = commandAndArgs[0]
     command_args = commandAndArgs[1:]
 
-    if command not in mx_commands._commands:
-        hits = [c for c in mx_commands._commands.iterkeys() if c.startswith(command)]
+    if command not in _mx_commands.commands():
+        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(command)]
         if len(hits) == 1:
             command = hits[0]
         elif len(hits) == 0:
-            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(command, mx_commands._format_commands()))
+            abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(command, _format_commands()))
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
-    c, _ = mx_commands._commands[command][:2]
+    c, _ = _mx_commands.commands()[command][:2]
 
     if primarySuiteMxDir and should_load_suites:
-        if not mx_commands.get_command_property(command, "keepUnsatisfiedDependencies"):
+        if not _mx_commands.get_command_property(command, "keepUnsatisfiedDependencies"):
             global _removedDeps
             _removedDeps = _remove_unsatisfied_deps()
 

@@ -362,8 +362,7 @@ def gate(args):
     tasks = []
     total = Task('Gate')
 
-    import mx_commands
-    def print_mx_command(command, usage_msg, doc_function, *args, **kwargs):
+    def print_mx_command(command, usage_msg, doc_function, props, *args, **kwargs):
         message_color = 'blue'
         one_list = len(args) == 1 and isinstance(args[0], (list,))
         kwargs_absent = len(kwargs) == 0
@@ -379,7 +378,7 @@ def gate(args):
                 mx.log(mx.colorize('kwargs: ' + str(kwargs), color=message_color))
 
     try:
-        mx_commands.add_command_callback(print_mx_command)
+        mx._mx_commands.add_command_callback(print_mx_command)
         _run_gate(cleanArgs, args, tasks)
     except KeyboardInterrupt:
         total.abort(1)
@@ -388,7 +387,7 @@ def gate(args):
         traceback.print_exc()
         total.abort(str(e))
     finally:
-        mx_commands.remove_command_callback(print_mx_command)
+        mx._mx_commands.remove_command_callback(print_mx_command)
 
     total.stop()
 

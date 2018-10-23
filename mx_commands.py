@@ -27,133 +27,94 @@
 #
 from functools import wraps
 
-import mx_primary_suite
 
-_commands = {}
+class MxCommands(object):
+    def __init__(self, blessed_suite_name):
+        self._commands = {}
+        self._commands_to_suite_name = {}
+        self._command_callbacks = []
+        self._blessed_suite_name = blessed_suite_name
 
-_commandsToSuite = {}
+    def commands(self):
+        return self._commands.copy()
 
+    def list_commands(self, l):
+        msg = ""
+        for cmd in l:
+            c, _ = self._commands[cmd][:2]
+            doc = c.__doc__
+            if doc is None:
+                doc = ''
+            msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+        return msg
 
-def _command_function(name, fatal_if_missing):
-    if name in _commands:
-        return _commands[name][0]
-    else:
-        if fatal_if_missing:
-            import mx
-            mx.abort('command ' + name + ' does not exist')
+    def add_command_callback(self, callback):
+        self._command_callbacks.append(callback)
+
+    def remove_command_callback(self, callback):
+        self._command_callbacks.remove(callback)
+
+    def get_command_property(self, command, property_name):
+        c = self._commands.get(command)
+        if c and len(c) >= 4:
+            props = c[3]
+            if props and property_name in props:
+                return props[property_name]
+        return None
+
+    def command_function(self, name, fatal_if_missing=True):
+        """
+        Return the function for the (possibly overridden) command named `name`.
+        If no such command, abort if `fatal_is_missing` is True, else return None
+        """
+        if name in self._commands:
+            return self._commands[name][0]
         else:
-            return None
-
-
-def _update_commands(new_commands, suite=None):
-    for key, value in new_commands.iteritems():
-        assert ':' not in key
-        old = _commands.get(key)
-        if old is not None:
-            old_suite = _commandsToSuite.get(key)
-            if not old_suite:
-                # Core mx command is overridden by first suite
-                # defining command of same name. The core mx
-                # command has its name prefixed with ':'.
-                _commands[':' + key] = old
+            if fatal_if_missing:
+                import mx
+                mx.abort('command ' + name + ' does not exist')
             else:
-                # Previously specified command from another suite
-                # is made available using a qualified name.
-                # The last (primary) suite (depth-first init) always defines the generic command
-                # N.B. Dynamically loaded suites loaded via Suite.import_suite register after the primary
-                # suite but they must not override the primary definition.
-                if old_suite == mx_primary_suite._primary_suite:
-                    # ensure registered as qualified by the registering suite
-                    key = suite.name + ':' + key
+                return None
+
+    def update_commands(self, suite_name, new_commands):
+        """
+        Using the decorator mx_commands.mx_commands is preferred over this function.
+
+        :param suite_name: for which the command is added.
+        :param new_commands: Keys are command names, value are lists: [<function>, <usage msg>, <format doc function>]
+        If any of the format args are instances of Callable, then they are called with an 'env' are before being
+        used in the call to str.format().
+        """
+        assert suite_name is not None
+        for key, value in new_commands.iteritems():
+            assert ':' not in key
+            old = self._commands.get(key)
+            if old is not None:
+                old_suite_name = self._commands_to_suite_name.get(key)
+                if old_suite_name is self._blessed_suite_name:
+                    # Core mx command is overridden by first suite
+                    # defining command of same name. The core mx
+                    # command has its name prefixed with ':'.
+                    self._commands[':' + key] = old
                 else:
-                    qualified_key = old_suite.name + ':' + key
-                    _commands[qualified_key] = old
+                    self._commands[old_suite_name + ':' + key] = old
 
-        _commands[key] = value
-        if suite:
-            _commandsToSuite[key] = suite
+            self._commands[key] = value
+            self._commands_to_suite_name[key] = suite_name
 
+    def mx_command(self, suite, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
+        def mx_command_decorator(command_func):
+            @wraps(command_func)
+            def mx_command_wrapped(*args, **kwargs):
+                for callback in self._command_callbacks:
+                    callback(command, usage_msg, doc_function, props, *args, **kwargs)
 
-def _format_commands():
-    msg = '\navailable commands:\n'
-    msg += _list_commands(sorted([k for k in _commands.iterkeys() if ':' not in k]) + sorted([k for k in _commands.iterkeys() if ':' in k]))
-    return msg + '\n'
+                return command_func(*args, **kwargs)
 
+            if auto_add:
+                self.update_commands(suite, {
+                    command: [mx_command_wrapped, usage_msg, doc_function]
+                })
+            return mx_command_wrapped
 
-def _list_commands(l):
-    msg = ""
-    for cmd in l:
-        c, _ = _commands[cmd][:2]
-        doc = c.__doc__
-        if doc is None:
-            doc = ''
-        msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
-    return msg
-
-
-def get_command_property(command, property_name):
-    c = _commands.get(command)
-    if c and len(c) >= 4:
-        props = c[3]
-        if props and property_name in props:
-            return props[property_name]
-    return None
-
-
-_command_callbacks = []
-
-
-def add_command_callback(callback):
-    _command_callbacks.append(callback)
-
-
-def remove_command_callback(callback):
-    _command_callbacks.remove(callback)
-
-
-def suite_command(suite, command, usage_msg=None, doc_function=None, auto_add=True):
-    if suite is None:
-        raise ValueError('suite must be defined')
-    return _mx_command(suite, command, usage_msg, doc_function, auto_add)
-
-
-def mx_command(command, usage_msg=None, doc_function=None, auto_add=True):
-    return _mx_command(None, command, usage_msg, doc_function, auto_add)
-
-
-def _mx_command(suite, command, usage_msg=None, doc_function=None, auto_add=True):
-    def mx_command_decorator(command_func):
-        @wraps(command_func)
-        def mx_command_wrapped(*args, **kwargs):
-            for callback in _command_callbacks:
-                callback(command, usage_msg, doc_function, *args, **kwargs)
-
-            return command_func(*args, **kwargs)
-
-        if auto_add:
-            _update_commands({
-                command: [mx_command_wrapped, usage_msg, doc_function]
-            }, suite)
-        return mx_command_wrapped
-
-    return mx_command_decorator
-
-
-def command_function(name, fatalIfMissing=True):
-    """
-    Return the function for the (possibly overridden) command named `name`.
-    If no such command, abort if `fatalIsMissing` is True, else return None
-    """
-    return _command_function(name, fatalIfMissing)
-
-
-def update_commands(suite, new_commands):
-    """
-    Using the decorator mx_commands.mx_commands is preferred over this function.
-
-     :param suite: for which the command is added.
-    :param new_commands: Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
-    If any of the format args are instances of Callable, then they are called with an 'env' are before being
-    used in the call to str.format().
-    """
-    _update_commands(new_commands, suite)
+        return mx_command_decorator

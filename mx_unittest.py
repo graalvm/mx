@@ -34,7 +34,6 @@ import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
 from os.path import exists, join, basename
 
-import mx_commands
 
 def _read_cached_testclasses(cachesDir, jar, jdk):
     """
@@ -349,9 +348,10 @@ def is_strictly_positive(value):
     return value
 
 
-@mx_commands.mx_command(command='unittest',
-                        usage_msg='[unittest options] [--] [VM options] [filters...]',
-                        doc_function=unittestHelpSuffix)
+@mx.command(suite_name="mx",
+            command='unittest',
+            usage_msg='[unittest options] [--] [VM options] [filters...]',
+            doc_function=unittestHelpSuffix)
 def unittest(args):
     """run the JUnit tests"""
 

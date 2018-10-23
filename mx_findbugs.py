@@ -27,7 +27,6 @@
 #
 
 import mx
-import mx_primary_suite
 import os
 import tempfile
 import zipfile
@@ -58,7 +57,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
     """run FindBugs against non-test Java projects"""
     findBugsHome = mx.get_env('FINDBUGS_HOME', None)
     if suite is None:
-        suite = mx_primary_suite._primary_suite
+        suite = mx.primary_suite()
     if findBugsHome:
         findbugsJar = join(findBugsHome, 'lib', 'findbugs.jar')
     else:
