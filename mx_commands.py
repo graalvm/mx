@@ -32,7 +32,8 @@ class MxCommands(object):
     def __init__(self, blessed_suite_name):
         self._commands = {}
         self._commands_to_suite_name = {}
-        self._command_callbacks = []
+        self._command_before_callbacks = []
+        self._command_after_callbacks = []
         self._blessed_suite_name = blessed_suite_name
 
     def commands(self):
@@ -48,11 +49,21 @@ class MxCommands(object):
             msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
         return msg
 
-    def add_command_callback(self, callback):
-        self._command_callbacks.append(callback)
+    def add_command_callback(self, callback_before=None, callback_after=None):
+        assert not (callback_before is None and callback_after is None)
 
-    def remove_command_callback(self, callback):
-        self._command_callbacks.remove(callback)
+        if callback_before is not None:
+            self._command_before_callbacks.append(callback_before)
+        if callback_after is not None:
+            self._command_after_callbacks.append(callback_after)
+
+    def remove_command_callback(self, callback_before=None, callback_after=None):
+        assert not (callback_before is None and callback_after is None)
+        if callback_before is not None:
+            self._command_before_callbacks.remove(callback_before)
+        if callback_after is not None:
+            self._command_after_callbacks.remove(callback_after)
+
 
     def get_command_property(self, command, property_name):
         c = self._commands.get(command)
@@ -81,15 +92,17 @@ class MxCommands(object):
         Using the decorator mx_commands.mx_commands is preferred over this function.
 
         :param suite_name: for which the command is added.
-        :param new_commands: Keys are command names, value are lists: [<function>, <usage msg>, <format doc function>]
-        If any of the format args are instances of Callable, then they are called with an 'env' are before being
-        used in the call to str.format().
+        :param new_commands: Keys are command names, values are:
+               [<function>, <usage msg>, <format doc function>, <properties>]
+               If any of the format args are instances of Callable, then they are called with an 'env' are before being
+               used in the call to str.format().
         """
         assert suite_name is not None
+        _length_of_command = 4
         for key, command in new_commands.iteritems():
             assert len(command) > 0 and command[0] is not None
             if not hasattr(command[0], '_wrapped_mx_command'):
-                args = [suite_name, key] + command[1:4] + [False]
+                args = [suite_name, key] + command[1:_length_of_command] + [False]
                 command[0] = self.mx_command(*args)(command[0])
 
             assert ':' not in key
@@ -107,14 +120,19 @@ class MxCommands(object):
             self._commands[key] = command
             self._commands_to_suite_name[key] = suite_name
 
-    def mx_command(self, suite_name, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
+    def mx_command(self, suite_name, command, usage_msg='', doc_function=None, props=None, auto_add=True):
         def mx_command_decorator(command_func):
             @wraps(command_func)
             def mx_command_wrapped(*args, **kwargs):
-                for callback in self._command_callbacks:
+                for callback in self._command_before_callbacks:
                     callback(command, usage_msg, doc_function, props, *args, **kwargs)
 
-                return command_func(*args, **kwargs)
+                try:
+                    command_func(*args, **kwargs)
+                finally:
+                    for callback in self._command_after_callbacks:
+                        callback(command, usage_msg, doc_function, props, *args, **kwargs)
+
             mx_command_wrapped._wrapped_mx_command = True
             if auto_add:
                 self.update_commands(suite_name, {

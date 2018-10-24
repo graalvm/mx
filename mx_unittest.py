@@ -349,7 +349,7 @@ def is_strictly_positive(value):
 
 
 @mx.command(suite_name="mx",
-            command='unittest',
+            command_name='unittest',
             usage_msg='[unittest options] [--] [VM options] [filters...]',
             doc_function=unittestHelpSuffix)
 def unittest(args):

@@ -95,7 +95,7 @@ def update_commands(suite, new_commands):
     _mx_commands.update_commands(suite.name, new_commands)
 
 
-def command(suite_name, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
+def command(suite_name, command_name, usage_msg='', doc_function=None, props=None, auto_add=True):
     """
     Decorator for making a function an mx shell command.
 
@@ -109,7 +109,7 @@ def command(suite_name, command, usage_msg=None, doc_function=None, props=None, 
     :param auto_add: automatically it to the commands.
     :return: the decorator factory for the function.
     """
-    return _mx_commands.mx_command(suite_name, command, usage_msg, doc_function, props, auto_add)
+    return _mx_commands.mx_command(suite_name, command_name, usage_msg, doc_function, props, auto_add)
 
 # Define this machinery early in case other modules want to use them
 
