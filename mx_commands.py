@@ -86,7 +86,12 @@ class MxCommands(object):
         used in the call to str.format().
         """
         assert suite_name is not None
-        for key, value in new_commands.iteritems():
+        for key, command in new_commands.iteritems():
+            assert len(command) > 0 and command[0] is not None
+            if not hasattr(command[0], '_wrapped_mx_command'):
+                args = [suite_name, key] + command[1:4] + [False]
+                command[0] = self.mx_command(*args)(command[0])
+
             assert ':' not in key
             old = self._commands.get(key)
             if old is not None:
@@ -99,10 +104,10 @@ class MxCommands(object):
                 else:
                     self._commands[old_suite_name + ':' + key] = old
 
-            self._commands[key] = value
+            self._commands[key] = command
             self._commands_to_suite_name[key] = suite_name
 
-    def mx_command(self, suite, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
+    def mx_command(self, suite_name, command, usage_msg=None, doc_function=None, props=None, auto_add=True):
         def mx_command_decorator(command_func):
             @wraps(command_func)
             def mx_command_wrapped(*args, **kwargs):
@@ -110,9 +115,9 @@ class MxCommands(object):
                     callback(command, usage_msg, doc_function, props, *args, **kwargs)
 
                 return command_func(*args, **kwargs)
-
+            mx_command_wrapped._wrapped_mx_command = True
             if auto_add:
-                self.update_commands(suite, {
+                self.update_commands(suite_name, {
                     command: [mx_command_wrapped, usage_msg, doc_function]
                 })
             return mx_command_wrapped

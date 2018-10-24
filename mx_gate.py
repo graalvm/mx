@@ -361,33 +361,45 @@ def gate(args):
     Task.startTime = time.time()
     tasks = []
     total = Task('Gate')
+    all_commands = []
 
-    def print_mx_command(command, usage_msg, doc_function, props, *args, **kwargs):
-        message_color = 'blue'
-        one_list = len(args) == 1 and isinstance(args[0], (list,))
-        kwargs_absent = len(kwargs) == 0
-        if one_list and kwargs_absent:  # gate command reproducible on the command line
-            mx.log(mx.colorize('\nTo reproduce, run:\n', color=message_color))
-            quoted_args = (' '.join([pipes.quote(str(arg)) for arg in args[0]]))
-            mx.log(mx.colorize('mx ' + command + ' ' + quoted_args + '\n', color=message_color))
-        else:
-            mx.log(mx.colorize('\nTo reproduce run mx ' + command + '. This command was run programatically, and might not be reproducible in the shell. The arguments were:\n', color=message_color))
-            if not one_list:
-                mx.log(mx.colorize('args: ' + str(args), color=message_color))
-            if not kwargs_absent:
-                mx.log(mx.colorize('kwargs: ' + str(kwargs), color=message_color))
+    def shell_quoted_args(args):
+        return ' '.join([pipes.quote(str(arg)) for arg in args])
+
+    def mx_command_executed(command, usage_msg, doc_function, props, *args, **kwargs):
+        all_commands.append((command, args, kwargs))
+        mx.log(mx.colorize('Running: mx ' + command + ' ' + shell_quoted_args(args[0]), color='blue'))
+
+    def print_commands_on_failure():
+        message_color = 'red'
+        mx.log(mx.colorize('\nThe sequence of mx commands that were executed until the failure follows:\n', color=message_color))
+        for command, command_args, kwargs in all_commands:
+            one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
+            kwargs_absent = len(kwargs) == 0
+            if one_list and kwargs_absent:  # gate command reproducible on the command line
+                quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
+                mx.log(mx.colorize('mx ' + command + ' ' + quoted_args, color=message_color))
+            else:
+                args_message = '(Programatically executed. '
+                if not one_list:
+                    args_message += 'Args: ' + str(command_args)
+                if not kwargs_absent:
+                    args_message += 'Kwargs: ' + str(kwargs)
+                args_message += ')'
+                mx.log(mx.colorize('mx ' + command + args_message, color=message_color))
 
     try:
-        mx._mx_commands.add_command_callback(print_mx_command)
+        mx._mx_commands.add_command_callback(mx_command_executed)
         _run_gate(cleanArgs, args, tasks)
     except KeyboardInterrupt:
         total.abort(1)
     except BaseException as e:
         import traceback
         traceback.print_exc()
+        print_commands_on_failure()
         total.abort(str(e))
     finally:
-        mx._mx_commands.remove_command_callback(print_mx_command)
+        mx._mx_commands.remove_command_callback(mx_command_executed)
 
     total.stop()
 
