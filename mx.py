@@ -59,7 +59,7 @@ import glob
 import urllib2, urlparse
 import filecmp
 import json
-from collections import Callable, OrderedDict, namedtuple, deque
+from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
@@ -94,7 +94,6 @@ def update_commands(suite, new_commands):
     suite_name = suite if isinstance(suite, basestring) else suite.name
 
     _length_of_command = 4
-    mx_commands = []
     for command_name, command_list in new_commands.iteritems():
         assert len(command_list) > 0 and command_list[0] is not None
         args = [suite_name, command_name] + command_list[1:_length_of_command] + [True]
@@ -13651,7 +13650,7 @@ Given a command name, print help for that command."""
             format_args.append(command.doc_function())
 
         doc = doc.format(*format_args)
-    print 'mx {0} {1}\n\n{2}\n'.format(name, usage, doc)
+    print 'mx {0} {1}\n\n{2}\n'.format(name, command.usage_msg, doc)
 
 def _parse_multireleasejar_version(value):
     try:
@@ -18660,6 +18659,7 @@ def main():
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
+    mx_gate._mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
     if command not in _mx_commands.commands():

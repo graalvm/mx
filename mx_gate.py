@@ -187,6 +187,7 @@ class Task:
 _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
+_mx_args = []
 
 def add_gate_argument(*args, **kwargs):
     """
@@ -364,13 +365,16 @@ def gate(args):
     all_commands = []
 
     def shell_quoted_args(args):
-        return ' '.join([pipes.quote(str(arg)) for arg in args])
+        args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
+        if args_string is not '':
+            args_string = ' ' + args_string
+        return args_string
 
     def mx_command_entered(command, *args, **kwargs):
         global _command_level
         if _command_level is 0:
             all_commands.append((command.command, args, kwargs))
-            mx.log(mx.colorize('Running: mx ' + command.command + ' ' + shell_quoted_args(args[0]), color='blue'))
+            mx.log(mx.colorize('Running: mx' + shell_quoted_args(_mx_args) + ' ' + command.command + shell_quoted_args(args[0]), color='blue'))
         _command_level = _command_level + 1
 
     def mx_command_left(command, *args, **kwargs):
@@ -394,7 +398,7 @@ def gate(args):
                 if not kwargs_absent:
                     args_message += 'Kwargs: ' + str(kwargs)
                 args_message += ')'
-                mx.log(mx.colorize('mx ' + command + args_message, color=message_color))
+                mx.log(mx.colorize('mx' + shell_quoted_args(_mx_args) + ' ' + command + args_message, color=message_color))
 
     try:
         mx._mx_commands.add_command_callback(mx_command_entered, mx_command_left)
