@@ -351,7 +351,8 @@ def is_strictly_positive(value):
 @mx.command(suite_name="mx",
             command_name='unittest',
             usage_msg='[unittest options] [--] [VM options] [filters...]',
-            doc_function=unittestHelpSuffix)
+            doc_function=unittestHelpSuffix,
+            auto_add=False)
 def unittest(args):
     """run the JUnit tests"""
 

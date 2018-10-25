@@ -366,14 +366,14 @@ def gate(args):
     def shell_quoted_args(args):
         return ' '.join([pipes.quote(str(arg)) for arg in args])
 
-    def mx_command_entered(command, usage_msg, doc_function, props, *args, **kwargs):
+    def mx_command_entered(command, *args, **kwargs):
         global _command_level
         if _command_level is 0:
-            all_commands.append((command, args, kwargs))
-            mx.log(mx.colorize('Running: mx ' + command + ' ' + shell_quoted_args(args[0]), color='blue'))
+            all_commands.append((command.command, args, kwargs))
+            mx.log(mx.colorize('Running: mx ' + command.command + ' ' + shell_quoted_args(args[0]), color='blue'))
         _command_level = _command_level + 1
 
-    def mx_command_left(command, usage_msg, doc_function, props, *args, **kwargs):
+    def mx_command_left(command, *args, **kwargs):
         global _command_level
         assert _command_level >= 0
         _command_level = _command_level - 1

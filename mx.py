@@ -70,8 +70,7 @@ import operator
 import calendar
 import multiprocessing
 from stat import S_IMODE
-
-from mx_commands import MxCommands
+from mx_commands import MxCommands, MxCommand
 _mx_commands = MxCommands("mx")
 
 
@@ -92,24 +91,39 @@ def update_commands(suite, new_commands):
         if any of the format args are instances of callable, then they are called with an 'env' are before being
         used in the call to str.format().
     """
-    _mx_commands.update_commands(suite.name, new_commands)
+    suite_name = suite if isinstance(suite, basestring) else suite.name
+
+    _length_of_command = 4
+    mx_commands = []
+    for command_name, command_list in new_commands.iteritems():
+        assert len(command_list) > 0 and command_list[0] is not None
+        args = [suite_name, command_name] + command_list[1:_length_of_command] + [True]
+        command_decorator = command(*args)
+        # apply the decorator so all functions are tracked
+        command_list[0] = command_decorator(command_list[0])
 
 
 def command(suite_name, command_name, usage_msg='', doc_function=None, props=None, auto_add=True):
     """
     Decorator for making a function an mx shell command.
 
-    The annotated function should receive a single argument with the string list of arguments.
+    The annotated function should have a single parameter typed List[String].
 
     :param suite_name: suite to which the command belongs to.
-    :param command: the command name. Will be used in the shell command.
+    :param command_name: the command name. Will be used in the shell command.
     :param usage_msg: message to display usage.
     :param doc_function: function to render the documentation for this feature.
     :param props: a dictionary of properties attributed to this command.
     :param auto_add: automatically it to the commands.
     :return: the decorator factory for the function.
     """
-    return _mx_commands.mx_command(suite_name, command_name, usage_msg, doc_function, props, auto_add)
+    def mx_command_decorator_factory(command_func):
+        mx_command = MxCommand(_mx_commands, command_func, suite_name, command_name, usage_msg, doc_function, props)
+        if auto_add:
+            _mx_commands.add_commands([mx_command])
+        return mx_command
+
+    return mx_command_decorator_factory
 
 # Define this machinery early in case other modules want to use them
 
@@ -293,6 +307,7 @@ _opts_parsed_deferrables = []
 
 _primary_suite_path = None
 _primary_suite = None
+# List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
 
 
@@ -309,7 +324,6 @@ def _primary_suite_init(s):
 def primary_suite():
     """:rtype: Suite"""
     return _primary_suite
-
 
 
 def nyi(name, obj):
@@ -10293,7 +10307,8 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 def _format_commands():
     msg = '\navailable commands:\n'
     commands = _mx_commands.commands()
-    msg += _mx_commands.list_commands(sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k]))
+    sorted_commands = sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k])
+    msg += _mx_commands.list_commands(sorted_commands)
     return msg + '\n'
 
 
@@ -13626,18 +13641,16 @@ Given a command name, print help for that command."""
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(name, ' '.join(hits)))
 
-    value = _mx_commands.commands()[name]
-    (func, usage) = value[:2]
-    doc = func.__doc__
-    if len(value) > 2:
-        docArgs = value[2:]
-        fmtArgs = []
-        for d in docArgs:
-            if isinstance(d, Callable):
-                fmtArgs += [d()]
-            else:
-                fmtArgs += [str(d)]
-        doc = doc.format(*fmtArgs)
+    command = _mx_commands.commands()[name]
+    doc = command.command_function.__doc__
+    if command.has_documentation():
+        format_args = []
+        if command.usage_msg:
+            format_args.append(command.usage_msg)
+        if command.doc_function:
+            format_args.append(command.doc_function())
+
+        doc = doc.format(*format_args)
     print 'mx {0} {1}\n\n{2}\n'.format(name, usage, doc)
 
 def _parse_multireleasejar_version(value):
@@ -15312,7 +15325,9 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
+@command('mx', 'intellijinit')
 def intellijinit_cli(args):
+    """(re)generate Intellij project configurations"""
     parser = ArgumentParser(prog='mx ideinit')
     parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
     parser.add_argument('--no-external-projects', action='store_false', dest='externalProjects', help='Do not generate external projects.')
@@ -15326,7 +15341,6 @@ def intellijinit_cli(args):
 
 def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True,
                  generate_external_projects=True, native_projects=False):
-    """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
@@ -17798,7 +17812,7 @@ _style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', '
 _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 
-_mx_commands.update_commands("mx", {
+update_commands("mx", {
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
@@ -17826,7 +17840,6 @@ _mx_commands.update_commands("mx", {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
-    'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
@@ -17861,8 +17874,11 @@ _mx_commands.update_commands("mx", {
     'verifysourceinproject': [verifysourceinproject, ''],
     'version': [show_version, ''],
 })
-# The decorator on the following functions adds them to the list in _mx_commands.
-from mx_unittest import unittest # pylint: disable=unused-import
+
+from mx_unittest import unittest
+_mx_commands.add_commands([
+    unittest,
+])
 
 _argParser = ArgParser()
 
@@ -18655,7 +18671,7 @@ def main():
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
-    c, _ = _mx_commands.commands()[command][:2]
+    c = _mx_commands.commands()[command]
 
     if primarySuiteMxDir and should_load_suites:
         if not _mx_commands.get_command_property(command, "keepUnsatisfiedDependencies"):

@@ -25,29 +25,23 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-from functools import wraps
 
 
 class MxCommands(object):
     def __init__(self, blessed_suite_name):
         self._commands = {}
         self._commands_to_suite_name = {}
+        self._blessed_suite_name = blessed_suite_name
         self._command_before_callbacks = []
         self._command_after_callbacks = []
-        self._blessed_suite_name = blessed_suite_name
 
-    def commands(self):
-        return self._commands.copy()
+    @property
+    def command_before_callbacks(self):
+        return list(self._command_before_callbacks)
 
-    def list_commands(self, l):
-        msg = ""
-        for cmd in l:
-            c, _ = self._commands[cmd][:2]
-            doc = c.__doc__
-            if doc is None:
-                doc = ''
-            msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
-        return msg
+    @property
+    def command_after_callbacks(self):
+        return list(self._command_after_callbacks)
 
     def add_command_callback(self, callback_before=None, callback_after=None):
         assert not (callback_before is None and callback_after is None)
@@ -64,13 +58,23 @@ class MxCommands(object):
         if callback_after is not None:
             self._command_after_callbacks.remove(callback_after)
 
+    def commands(self):
+        return self._commands.copy()
+
+    def list_commands(self, l):
+        msg = ""
+        for cmd in l:
+            doc = self._commands[cmd].command_function.__doc__
+            if doc is None:
+                doc = ''
+            msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+        return msg
 
     def get_command_property(self, command, property_name):
         c = self._commands.get(command)
-        if c and len(c) >= 4:
-            props = c[3]
-            if props and property_name in props:
-                return props[property_name]
+        if c.props:
+            if property_name in c.props:
+                return c.props[property_name]
         return None
 
     def command_function(self, name, fatal_if_missing=True):
@@ -79,7 +83,7 @@ class MxCommands(object):
         If no such command, abort if `fatal_is_missing` is True, else return None
         """
         if name in self._commands:
-            return self._commands[name][0]
+            return self._commands[name]
         else:
             if fatal_if_missing:
                 import mx
@@ -87,24 +91,9 @@ class MxCommands(object):
             else:
                 return None
 
-    def update_commands(self, suite_name, new_commands):
-        """
-        Using the decorator mx_commands.mx_commands is preferred over this function.
-
-        :param suite_name: for which the command is added.
-        :param new_commands: Keys are command names, values are:
-               [<function>, <usage msg>, <format doc function>, <properties>]
-               If any of the format args are instances of Callable, then they are called with an 'env' are before being
-               used in the call to str.format().
-        """
-        assert suite_name is not None
-        _length_of_command = 4
-        for key, command in new_commands.iteritems():
-            assert len(command) > 0 and command[0] is not None
-            if not hasattr(command[0], '_wrapped_mx_command'):
-                args = [suite_name, key] + command[1:_length_of_command] + [False]
-                command[0] = self.mx_command(*args)(command[0])
-
+    def add_commands(self, new_commands):
+        for mx_command in new_commands:
+            key = mx_command.command
             assert ':' not in key
             old = self._commands.get(key)
             if old is not None:
@@ -117,27 +106,30 @@ class MxCommands(object):
                 else:
                     self._commands[old_suite_name + ':' + key] = old
 
-            self._commands[key] = command
-            self._commands_to_suite_name[key] = suite_name
+            self._commands[key] = mx_command
+            self._commands_to_suite_name[key] = mx_command.suite_name
 
-    def mx_command(self, suite_name, command, usage_msg='', doc_function=None, props=None, auto_add=True):
-        def mx_command_decorator(command_func):
-            @wraps(command_func)
-            def mx_command_wrapped(*args, **kwargs):
-                for callback in self._command_before_callbacks:
-                    callback(command, usage_msg, doc_function, props, *args, **kwargs)
 
-                try:
-                    command_func(*args, **kwargs)
-                finally:
-                    for callback in self._command_after_callbacks:
-                        callback(command, usage_msg, doc_function, props, *args, **kwargs)
+class MxCommand(object):
 
-            mx_command_wrapped._wrapped_mx_command = True
-            if auto_add:
-                self.update_commands(suite_name, {
-                    command: [mx_command_wrapped, usage_msg, doc_function]
-                })
-            return mx_command_wrapped
+    def __init__(self, mx_commands, command_function, suite_name, command, usage_msg='', doc_function=None, props=None):
+        self._mx_commands = mx_commands
+        self._command_function = command_function
+        self.suite_name = suite_name
+        self.command = command
+        self.usage_msg = usage_msg
+        self.doc_function = doc_function
+        self.props = props
 
-        return mx_command_decorator
+    @property
+    def command_function(self):
+        return self._command_function
+
+    def __call__(self, *args, **kwargs):
+        for callback in self._mx_commands.command_before_callbacks:
+            callback(self, *args, **kwargs)
+        try:
+            return self.command_function(*args, **kwargs)
+        finally:
+            for callback in self._mx_commands.command_after_callbacks:
+                callback(self, *args, **kwargs)
