@@ -15506,7 +15506,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
             p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
-            moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
+            moduleXml.element('orderEntry', attributes={'type': 'inheritedJdk'})
 
             moduleXml.close('component')
 
