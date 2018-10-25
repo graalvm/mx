@@ -17941,6 +17941,7 @@ def _check_dependency_cycles():
         assert last is dep
     walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
 
+
 def _remove_unsatisfied_deps():
     """
     Remove projects and libraries that (recursively) depend on an optional library
@@ -17952,6 +17953,7 @@ def _remove_unsatisfied_deps():
     A reason may be the name of another removed dependency.
     """
     removedDeps = OrderedDict()
+
     def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
@@ -17963,43 +17965,33 @@ def _remove_unsatisfied_deps():
                 finally:
                     dep.optional = True
                 if not path:
-                    reason = 'optional library {} was removed as {} does not exist'.format(dep, dep.path)
-                    logv('[' + reason + ']')
-                    removedDeps[dep] = reason
+                    note_removal(dep, 'optional library {0} was removed as {0.path} does not exist'.format(dep))
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
-                reason = 'project {0} was removed as JDK {1} is not available'.format(dep, dep.javaCompliance)
-                logv('[' + reason + ']')
-                removedDeps[dep] = reason
+                note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
             else:
                 for depDep in list(dep.deps):
                     if depDep in removedDeps:
-                        logv('[removed {} because {} was removed]'.format(dep, depDep))
-                        removedDeps[dep] = depDep.name
+                        note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
                     elif depDep.isJreLibrary() or depDep.isJdkLibrary():
                         lib = depDep
                         if not lib.is_provided_by(depJdk):
                             if lib.optional:
-                                reason = 'project {} was removed as dependency {} is missing'.format(dep, lib)
-                                logv('[' + reason + ']')
-                                removedDeps[dep] = reason
+                                note_removal(dep, 'project {} was removed as dependency {} is missing'.format(dep, lib))
                             else:
                                 abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
         elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
-            dist = dep
-            if dist.deps:
-                distRemovedDeps = []
-                for distDep in list(dist.deps):
-                    if distDep in removedDeps:
-                        logv('[{0} was removed from distribution {1}]'.format(distDep, dist))
-                        dist.deps.remove(distDep)
-                        distRemovedDeps.append(distDep)
-                if not any((d.isProject() or (d.isBaseLibrary() and not d.isJdkLibrary() and not d.isJreLibrary() and d not in dep.excludedLibs) for d in dist.deps)):
-                    reason = 'distribution {} was removed as all its project and non-JDK library dependencies were removed'.format(dep)
-                    logv('[' + reason + ']')
-                    removedDeps[dep] = (reason, [e.name for e in distRemovedDeps])
+            prune(dep, discard=lambda d: not any(dd.isProject()
+                                                 or (dd.isBaseLibrary()
+                                                     and not dd.isJdkLibrary()
+                                                     and not dd.isJreLibrary()
+                                                     and dd not in d.excludedLibs)
+                                                 for dd in d.deps))
+        elif isinstance(dep, NativeTARDistribution):
+            prune(dep)
+
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
             if isinstance(reasonAttr, bool):
@@ -18010,16 +18002,30 @@ def _remove_unsatisfied_deps():
                 strippedReason = reasonAttr.strip()
                 if len(strippedReason) != 0:
                     if not strippedReason == "false":
-                        reason = '{} removed: {}'.format(dep, strippedReason)
-                        logv('[' + reason + ']')
-                        removedDeps[dep] = reason
+                        note_removal(dep, '{} removed: {}'.format(dep, strippedReason))
                 else:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
         if hasattr(dep, 'buildDependencies'):
             for buildDep in list(dep.buildDependencies):
                 if buildDep in removedDeps:
-                    logv('[removed {} because {} was removed]'.format(dep, buildDep))
-                    removedDeps[dep] = buildDep.name
+                    note_removal(dep, 'removed {} because {} was removed'.format(dep, buildDep))
+
+    def prune(dist, discard=lambda d: not d.deps):
+        assert dist.isDistribution()
+        if dist.deps:
+            distRemovedDeps = []
+            for distDep in list(dist.deps):
+                if distDep in removedDeps:
+                    logv('[{} was removed from distribution {}]'.format(distDep, dist))
+                    dist.deps.remove(distDep)
+                    distRemovedDeps.append(distDep)
+            if discard(dist):
+                note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
+                             details=[e.name for e in distRemovedDeps])
+
+    def note_removal(dep, reason, details=None):
+        logv('[' + reason + ']')
+        removedDeps[dep] = reason if details is None else (reason, details)
 
     walk_deps(visit=visit)
 
@@ -18031,6 +18037,7 @@ def _remove_unsatisfied_deps():
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
     return res
+
 
 def _get_command_property(command, propertyName):
     c = _commands.get(command)
@@ -18698,7 +18705,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.7")  # GR-12103
+version = VersionSpec("5.190.8")  # GR-12187
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
