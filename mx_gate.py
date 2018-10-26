@@ -26,6 +26,7 @@
 
 import os, re, time, datetime
 import tempfile
+import pipes
 import zipfile
 from os.path import join, exists
 from argparse import ArgumentParser
@@ -186,6 +187,7 @@ class Task:
 _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
+_mx_args = []
 
 def add_gate_argument(*args, **kwargs):
     """
@@ -275,7 +277,7 @@ def parse_tags_argument(tags_arg, exclude):
             # init counter
             Task.tags_count[tag] = 0
         Task.tags.append(tag)
-
+_command_level = 0
 def gate(args):
     """run the tests used to validate a push
 
@@ -360,15 +362,56 @@ def gate(args):
     Task.startTime = time.time()
     tasks = []
     total = Task('Gate')
+    all_commands = []
+
+    def shell_quoted_args(args):
+        args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
+        if args_string is not '':
+            args_string = ' ' + args_string
+        return args_string
+
+    def mx_command_entered(command, *args, **kwargs):
+        global _command_level
+        if _command_level is 0:
+            all_commands.append((command.command, args, kwargs))
+            mx.log(mx.colorize('Running: mx' + shell_quoted_args(_mx_args) + ' ' + command.command + shell_quoted_args(args[0]), color='blue'))
+        _command_level = _command_level + 1
+
+    def mx_command_left(command, *args, **kwargs):
+        global _command_level
+        assert _command_level >= 0
+        _command_level = _command_level - 1
+
+    def print_commands_on_failure():
+        message_color = 'red'
+        mx.log(mx.colorize('\nThe sequence of mx commands that were executed until the failure follows:\n', color=message_color))
+        for command, command_args, kwargs in all_commands:
+            one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
+            kwargs_absent = len(kwargs) == 0
+            if one_list and kwargs_absent:  # gate command reproducible on the command line
+                quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
+                mx.log(mx.colorize('mx ' + command + ' ' + quoted_args, color=message_color))
+            else:
+                args_message = '(Programatically executed. '
+                if not one_list:
+                    args_message += 'Args: ' + str(command_args)
+                if not kwargs_absent:
+                    args_message += 'Kwargs: ' + str(kwargs)
+                args_message += ')'
+                mx.log(mx.colorize('mx' + shell_quoted_args(_mx_args) + ' ' + command + args_message, color=message_color))
+
     try:
+        mx._mx_commands.add_command_callback(mx_command_entered, mx_command_left)
         _run_gate(cleanArgs, args, tasks)
     except KeyboardInterrupt:
         total.abort(1)
-
     except BaseException as e:
         import traceback
         traceback.print_exc()
+        print_commands_on_failure()
         total.abort(str(e))
+    finally:
+        mx._mx_commands.remove_command_callback(mx_command_entered, mx_command_left)
 
     total.stop()
 
