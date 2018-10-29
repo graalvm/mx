@@ -517,7 +517,7 @@ class Dependency(SuiteConstituent):
         return isinstance(self, JavaProject)
 
     def isNativeProject(self):
-        return isinstance(self, NativeProject)
+        return isinstance(self, AbstractNativeProject)
 
     def isArchivableProject(self):
         return isinstance(self, ArchivableProject)
@@ -4225,29 +4225,32 @@ def _merge_file_contents(input_files, output_file):
             shutil.copyfileobj(input_file, output_file)
         output_file.flush()
 
-"""
-A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
-to a classpath containing all JavaProject dependencies.
-Additional attributes:
-  results: a list of result file names that will be packaged if the project is part of a distribution
-  headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
-  output: the directory where the Makefile puts the `results`
-  vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
-         if `False` or undefined, make will be executed from the source directory
-  buildEnv: a dictionary of custom environment variables that are passed to the `make` process
-"""
-class NativeProject(Project):
+
+class AbstractNativeProject(Project):
+    def isPlatformDependent(self):
+        return True
+
+
+class NativeProject(AbstractNativeProject):
+    """
+    A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
+    to a classpath containing all JavaProject dependencies.
+    Additional attributes:
+      results: a list of result file names that will be packaged if the project is part of a distribution
+      headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
+      output: the directory where the Makefile puts the `results`
+      vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
+             if `False` or undefined, make will be executed from the source directory
+      buildEnv: a dictionary of custom environment variables that are passed to the `make` process
+    """
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
+        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
-
-    def isPlatformDependent(self):
-        return True
 
     def getOutput(self, replaceVar=mx_subst.results_substitutions):
         if self.output:
@@ -4296,20 +4299,36 @@ class NativeProject(Project):
                 yield os.path.join(srcdir, h), filename
 
 
-class NativeBuildTask(ProjectBuildTask):
+class AbstractNativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
-        if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
-            jobs = 1
-        elif hasattr(project, 'max_jobs'):
+        if hasattr(project, 'max_jobs'):
             jobs = min(int(project.max_jobs), cpu_count())
+        else:
+            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
+            # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
+            # how much parallelism the build machine supports.
+            jobs = min(8, cpu_count())
+        super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
+
+    def buildForbidden(self):
+        if not self.args.native:
+            return True
+        return super(AbstractNativeBuildTask, self).buildForbidden()
+
+    def cleanForbidden(self):
+        if not self.args.native:
+            return True
+        return super(AbstractNativeBuildTask, self).cleanForbidden()
+
+
+class NativeBuildTask(AbstractNativeBuildTask):
+    def __init__(self, args, project):
+        super(NativeBuildTask, self).__init__(args, project)
+        if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
+            self.parallelism = 1
         elif get_os() == 'darwin' and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
-            jobs = 1
-        else:
-            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the "max_jobs" attribute.
-            # Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter how much parallelism the build machine supports.
-            jobs = min(8, cpu_count())
-        ProjectBuildTask.__init__(self, args, jobs, project)
+            self.parallelism = 1
         self._newestOutput = None
 
     def __str__(self):
@@ -4364,19 +4383,6 @@ class NativeBuildTask(ProjectBuildTask):
         if ret_code != 0:
             return (True, "rebuild needed by GNU Make")
         return (False, "up to date according to GNU Make")
-
-    def buildForbidden(self):
-        if ProjectBuildTask.buildForbidden(self):
-            return True
-        if not self.args.native:
-            return True
-
-    def cleanForbidden(self):
-        if ProjectBuildTask.cleanForbidden(self):
-            return True
-        if not self.args.native:
-            return True
-        return False
 
     def newestOutput(self):
         if self._newestOutput is None:
@@ -9269,9 +9275,15 @@ class SourceSuite(Suite):
                     testProject = attrs.pop('testProject', old_test_project)
 
                     if native:
-                        output = attrs.pop('output', None)
-                        results = Suite._pop_list(attrs, 'results', context)
-                        p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, testProject=testProject, **attrs)
+                        if isinstance(native, bool):
+                            output = attrs.pop('output', None)
+                            results = Suite._pop_list(attrs, 'results', context)
+                            p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
+                                              theLicense=theLicense, testProject=testProject, **attrs)
+                        else:
+                            from mx_native import DefaultNativeProject
+                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, theLicense,
+                                                     kind=native, testProject=testProject, **attrs)
                     else:
                         javaCompliance = attrs.pop('javaCompliance', None)
                         if javaCompliance is None:
@@ -12526,14 +12538,14 @@ def build(cmd_args, parser=None):
                     reason, _ = reason
                 log(' {}'.format(reason))
 
-        # Omit Libraries so that only the ones required to build other
-        # dependencies are downloaded
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
             log('Non-default dependencies removed from build (use mx build --all to build them):')
             for d in removed:
                 log(' {}'.format(d))
-        roots = [d for d in deps if not d.isLibrary()]
+
+        # Omit all libraries so that only the ones required to build other dependencies are downloaded
+        roots = [d for d in deps if not d.isBaseLibrary()]
 
         if roots:
             roots = _dependencies_opt_limit_to_suites(roots)
