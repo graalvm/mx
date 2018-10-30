@@ -59,7 +59,7 @@ import glob
 import urllib2, urlparse
 import filecmp
 import json
-from collections import OrderedDict, namedtuple, deque
+from collections import Callable, OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
@@ -70,59 +70,6 @@ import operator
 import calendar
 import multiprocessing
 from stat import S_IMODE
-from mx_commands import MxCommands, MxCommand
-_mx_commands = MxCommands("mx")
-
-
-def command_function(name, fatalIfMissing=True):
-    """
-    Return the function for the (possibly overridden) command named `name`.
-    If no such command, abort if `fatalIsMissing` is True, else return None
-    """
-    return _mx_commands.command_function(name, fatalIfMissing)
-
-
-def update_commands(suite, new_commands):
-    """
-    Using the decorator mx_command is preferred over this function.
-
-    :param suite: for which the command is added.
-    :param new_commands: keys are command names, value are lists: [<function>, <usage msg>, <format doc function>]
-        if any of the format args are instances of callable, then they are called with an 'env' are before being
-        used in the call to str.format().
-    """
-    suite_name = suite if isinstance(suite, basestring) else suite.name
-
-    _length_of_command = 4
-    for command_name, command_list in new_commands.iteritems():
-        assert len(command_list) > 0 and command_list[0] is not None
-        args = [suite_name, command_name] + command_list[1:_length_of_command] + [True]
-        command_decorator = command(*args)
-        # apply the decorator so all functions are tracked
-        command_list[0] = command_decorator(command_list[0])
-
-
-def command(suite_name, command_name, usage_msg='', doc_function=None, props=None, auto_add=True):
-    """
-    Decorator for making a function an mx shell command.
-
-    The annotated function should have a single parameter typed List[String].
-
-    :param suite_name: suite to which the command belongs to.
-    :param command_name: the command name. Will be used in the shell command.
-    :param usage_msg: message to display usage.
-    :param doc_function: function to render the documentation for this feature.
-    :param props: a dictionary of properties attributed to this command.
-    :param auto_add: automatically it to the commands.
-    :return: the decorator factory for the function.
-    """
-    def mx_command_decorator_factory(command_func):
-        mx_command = MxCommand(_mx_commands, command_func, suite_name, command_name, usage_msg, doc_function, props)
-        if auto_add:
-            _mx_commands.add_commands([mx_command])
-        return mx_command
-
-    return mx_command_decorator_factory
 
 # Define this machinery early in case other modules want to use them
 
@@ -174,6 +121,7 @@ def no_suite_discovery(func):
     _no_suite_discovery.append(func.__name__)
     return func
 
+import mx_unittest
 import mx_findbugs
 import mx_sigtest
 import mx_gate
@@ -288,6 +236,8 @@ _jdkFactories = {}
 _annotationProcessors = None
 _mx_suite = None
 _mx_tests_suite = None
+_primary_suite_path = None
+_primary_suite = None
 _suitemodel = None
 _opts = Namespace()
 _extra_java_homes = []
@@ -301,28 +251,11 @@ _original_environ = dict(os.environ)
 _original_directory = os.getcwd()
 _jdkProvidedSuites = set()
 
-# List of functions to run after options have been parsed
-_opts_parsed_deferrables = []
-
-_primary_suite_path = None
-_primary_suite = None
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
 
-
-def _primary_suite_init(s):
-    global _primary_suite
-    assert not _primary_suite
-    _primary_suite = s
-    _primary_suite.primary = True
-    os.environ['MX_PRIMARY_SUITE_PATH'] = s.dir
-    for deferrable in _primary_suite_deferrables:
-        deferrable()
-
-
-def primary_suite():
-    """:rtype: Suite"""
-    return _primary_suite
+# List of functions to run after options have been parsed
+_opts_parsed_deferrables = []
 
 
 def nyi(name, obj):
@@ -9512,8 +9445,8 @@ class MXSuite(InternalSuite):
         # be determined when the primary suite has been set so it must be deferred but
         # since the primary suite env should be loaded last this should be ok.
         def _deferrable():
-            assert primary_suite()
-            if self == primary_suite():
+            assert _primary_suite
+            if self == _primary_suite:
                 SourceSuite._load_env_in_mxDir(self.mxDir)
         _primary_suite_deferrables.append(_deferrable)
 
@@ -9732,6 +9665,10 @@ def suite(name, fatalIfMissing=True, context=None):
         abort('suite named ' + name + ' not found', context=context)
     return s
 
+def primary_suite():
+    """:rtype: Suite"""
+    return _primary_suite
+
 
 def primary_or_specific_suites():
     """:rtype: list[Suite]"""
@@ -9758,7 +9695,7 @@ def projects(opt_limit_to_suite=False, limit_to_primary=False):
     if opt_limit_to_suite:
         sortedProjects = _dependencies_opt_limit_to_suites(sortedProjects)
     if limit_to_primary:
-        sortedProjects = _dependencies_limited_to_suites(sortedProjects, [primary_suite().name])
+        sortedProjects = _dependencies_limited_to_suites(sortedProjects, [_primary_suite.name])
     return sortedProjects
 
 def projects_opt_limit_to_suites():
@@ -10302,15 +10239,6 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
     else:
         return [], args
 
-
-def _format_commands():
-    msg = '\navailable commands:\n'
-    commands = _mx_commands.commands()
-    sorted_commands = sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k])
-    msg += _mx_commands.list_commands(sorted_commands)
-    return msg + '\n'
-
-
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
     def format_help(self):
@@ -10332,7 +10260,7 @@ environment variables:
                            local cache. Hence, remote references will be synchronized occasionally. This
                            allows cloning without even contacting the git server.
                         The cache is located at `~/.mx/git-cache`.
-""" + _format_commands()
+""" +_format_commands()
 
 
     def __init__(self, parents=None):
@@ -10449,8 +10377,8 @@ environment variables:
             if opts.user_home is None or opts.user_home == '':
                 abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
 
-            if opts.primary and primary_suite():
-                opts.specific_suites.append(primary_suite().name)
+            if opts.primary and _primary_suite:
+                opts.specific_suites.append(_primary_suite.name)
 
             if opts.java_home is not None:
                 os.environ['JAVA_HOME'] = opts.java_home
@@ -10458,6 +10386,7 @@ environment variables:
                 os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
             os.environ['HOME'] = opts.user_home
 
+            global _primary_suite_path
             _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
             if _primary_suite_path:
                 _primary_suite_path = os.path.abspath(_primary_suite_path)
@@ -10486,6 +10415,10 @@ environment variables:
             self.parsed = True
             return commandAndArgs
 
+def _format_commands():
+    msg = '\navailable commands:\n'
+    msg += list_commands(sorted([k for k in _commands.iterkeys() if ':' not in k]) + sorted([k for k in _commands.iterkeys() if ':' in k]))
+    return msg + '\n'
 
 """
 A factory for creating JDKConfig objects.
@@ -12383,8 +12316,8 @@ def build(cmd_args, parser=None):
         args.force_deprecation_as_warning = True
         deprecation_as_error_args = parser.parse_args(cmd_args[:])
         deprecation_as_error_args.force_deprecation_as_warning = False
-        primary_java_projects = [p for p in primary_suite().projects if p.isJavaProject()]
-        primary_java_project_dists = [d for d in primary_suite().dists if any([p in d.deps for p in primary_java_projects])]
+        primary_java_projects = [p for p in _primary_suite.projects if p.isJavaProject()]
+        primary_java_project_dists = [d for d in _primary_suite.dists if any([p in d.deps for p in primary_java_projects])]
         deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
         logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
@@ -12760,7 +12693,7 @@ def eclipseformat(args):
                             fp.write(content)
 
                 if self.content != content:
-                    rpath = os.path.relpath(self.path, primary_suite().dir)
+                    rpath = os.path.relpath(self.path, _primary_suite.dir)
                     self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
                     if restore:
                         with open(self.path, 'w') as fp:
@@ -12831,7 +12764,7 @@ def eclipseformat(args):
     log('{0} files were modified'.format(len(modified)))
 
     if len(modified) != 0:
-        arcbase = primary_suite().dir
+        arcbase = _primary_suite.dir
         if args.backup:
             backup = os.path.abspath('eclipseformat.backup.zip')
             zf = zipfile.ZipFile(backup, 'w', zipfile.ZIP_DEFLATED)
@@ -12933,7 +12866,7 @@ def pylint(args):
     pyfiles = []
 
     # Process mxtool's own py files only if mx is the primary suite
-    if primary_suite() is _mx_suite:
+    if _primary_suite is _mx_suite:
         for root, _, files in os.walk(dirname(__file__)):
             for f in files:
                 if f.endswith('.py'):
@@ -13631,8 +13564,8 @@ Given a command name, print help for that command."""
         return
 
     name = args[0]
-    if name not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(name)]
+    if not _commands.has_key(name):
+        hits = [c for c in _commands.iterkeys() if c.startswith(name)]
         if len(hits) == 1:
             name = hits[0]
         elif len(hits) == 0:
@@ -13640,17 +13573,19 @@ Given a command name, print help for that command."""
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(name, ' '.join(hits)))
 
-    command = _mx_commands.commands()[name]
-    doc = command.command_function.__doc__
-    if command.has_documentation():
-        format_args = []
-        if command.usage_msg:
-            format_args.append(command.usage_msg)
-        if command.doc_function:
-            format_args.append(command.doc_function())
-
-        doc = doc.format(*format_args)
-    print 'mx {0} {1}\n\n{2}\n'.format(name, command.usage_msg, doc)
+    value = _commands[name]
+    (func, usage) = value[:2]
+    doc = func.__doc__
+    if len(value) > 2:
+        docArgs = value[2:]
+        fmtArgs = []
+        for d in docArgs:
+            if isinstance(d, Callable):
+                fmtArgs += [d()]
+            else:
+                fmtArgs += [str(d)]
+        doc = doc.format(*fmtArgs)
+    print 'mx {0} {1}\n\n{2}\n'.format(name, usage, doc)
 
 def _parse_multireleasejar_version(value):
     try:
@@ -14668,7 +14603,7 @@ def generate_eclipse_workingsets():
     if os.environ.has_key('WORKSPACE'):
         expected_wsroot = os.environ['WORKSPACE']
     else:
-        expected_wsroot = primary_suite().dir
+        expected_wsroot = _primary_suite.dir
 
     wsroot = _find_eclipse_wsroot(expected_wsroot)
     if wsroot is None:
@@ -15324,9 +15259,7 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
-@command('mx', 'intellijinit')
 def intellijinit_cli(args):
-    """(re)generate Intellij project configurations"""
     parser = ArgumentParser(prog='mx ideinit')
     parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
     parser.add_argument('--no-external-projects', action='store_false', dest='externalProjects', help='Do not generate external projects.')
@@ -15340,6 +15273,7 @@ def intellijinit_cli(args):
 
 def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules=True, java_modules=True,
                  generate_external_projects=True, native_projects=False):
+    """(re)generate Intellij project configurations"""
     # In a multiple suite context, the .idea directory in each suite
     # has to be complete and contain information that is repeated
     # in dependent suites.
@@ -16496,8 +16430,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
         links = ['-linkoffline', 'http://docs.oracle.com/javase/' + str(jdk.javaCompliance.value) + '/docs/api/', _mx_home + '/javadoc/jdk']
-        overviewFile = os.sep.join([primary_suite().dir, primary_suite().name, 'overview.html'])
-        out = join(primary_suite().dir, docDir)
+        overviewFile = os.sep.join([_primary_suite.dir, _primary_suite.name, 'overview.html'])
+        out = join(_primary_suite.dir, docDir)
         if args.base is not None:
             out = join(args.base, docDir)
         cp = classpath(classpath_deps, jdk=jdk)
@@ -17579,7 +17513,7 @@ def maven_install(args):
     args = parser.parse_args(args)
 
     _mvn.check()
-    s = primary_suite()
+    s = _primary_suite
     nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
     version = s.vc.parent(s.vc_dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
@@ -17776,6 +17710,44 @@ def add_argument(*args, **kwargs):
     assert _argParser is not None
     _argParser.add_argument(*args, **kwargs)
 
+def update_commands(suite, new_commands):
+    for key, value in new_commands.iteritems():
+        assert ':' not in key
+        old = _commands.get(key)
+        if old is not None:
+            oldSuite = _commandsToSuite.get(key)
+            if not oldSuite:
+                # Core mx command is overridden by first suite
+                # defining command of same name. The core mx
+                # command has its name prefixed with ':'.
+                _commands[':' + key] = old
+            else:
+                # Previously specified command from another suite
+                # is made available using a qualified name.
+                # The last (primary) suite (depth-first init) always defines the generic command
+                # N.B. Dynamically loaded suites loaded via Suite.import_suite register after the primary
+                # suite but they must not override the primary definition.
+                if oldSuite == _primary_suite:
+                    # ensure registered as qualified by the registering suite
+                    key = suite.name + ':' + key
+                else:
+                    qkey = oldSuite.name + ':' + key
+                    _commands[qkey] = old
+        _commands[key] = value
+        _commandsToSuite[key] = suite
+
+def command_function(name, fatalIfMissing=True):
+    """
+    Return the function for the (possibly overridden) command named `name`.
+    If no such command, abort if `fatalIsMissing` is True, else return None
+    """
+    if _commands.has_key(name):
+        return _commands[name][0]
+    else:
+        if fatalIfMissing:
+            abort('command ' + name + ' does not exist')
+        else:
+            return None
 
 def warn(msg, context=None):
     if _opts.warn:
@@ -17802,16 +17774,26 @@ def print_simple_help():
     print list_commands(_utilities_commands)
     print '\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command'
 
-
 def list_commands(l):
-    return _mx_commands.list_commands(l)
+    msg = ""
+    for cmd in l:
+        c, _ = _commands[cmd][:2]
+        doc = c.__doc__
+        if doc is None:
+            doc = ''
+        msg += ' {0:<20} {1}\n'.format(cmd, doc.split('\n', 1)[0])
+    return msg
 
 _build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
 _style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
 _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
-
-update_commands("mx", {
+# Table of commands in alphabetical order.
+# Keys are command names, value are lists: [<function>, <usage msg>, <format args to doc string of function>...]
+# If any of the format args are instances of Callable, then they are called with an 'env' are before being
+# used in the call to str.format().
+# Suite extensions should not update this table directly, but use update_commands
+_commands = {
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
@@ -17839,6 +17821,7 @@ update_commands("mx", {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
+    'intellijinit': [intellijinit_cli, ''],
     'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
@@ -17866,18 +17849,15 @@ update_commands("mx", {
     'supdate': [supdate, ''],
     'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
+    'unittest' : [mx_unittest.unittest, '[unittest options] [--] [VM options] [filters...]', mx_unittest.unittestHelpSuffix],
     'update': [update, ''],
     'unstrip': [_unstrip, '[options]'],
     'urlrewrite': [mx_urlrewrites.urlrewrite_cli, 'url'],
     'verifylibraryurls': [verify_library_urls, ''],
     'verifysourceinproject': [verifysourceinproject, ''],
     'version': [show_version, ''],
-})
-
-from mx_unittest import unittest
-_mx_commands.add_commands([
-    unittest,
-])
+}
+_commandsToSuite = {}
 
 _argParser = ArgParser()
 
@@ -18057,6 +18037,25 @@ def _remove_unsatisfied_deps():
         dep.getSuiteRegistry().remove(dep)
         dep.getGlobalRegistry().pop(dep.name)
     return res
+
+
+def _get_command_property(command, propertyName):
+    c = _commands.get(command)
+    if c and len(c) >= 4:
+        props = c[3]
+        if props and propertyName in props:
+            return props[propertyName]
+    return None
+
+
+def _init_primary_suite(s):
+    global _primary_suite
+    assert not _primary_suite
+    _primary_suite = s
+    _primary_suite.primary = True
+    os.environ['MX_PRIMARY_SUITE_PATH'] = s.dir
+    for deferrable in _primary_suite_deferrables:
+        deferrable()
 
 
 def _register_suite(s):
@@ -18589,7 +18588,7 @@ def main():
     else:
         primarySuiteMxDir = _findPrimarySuiteMxDir()
         if primarySuiteMxDir == _mx_suite.mxDir:
-            _primary_suite_init(_mx_suite)
+            _init_primary_suite(_mx_suite)
             _mx_suite.internal = False
             mx_benchmark.init_benchmark_suites()
         elif primarySuiteMxDir:
@@ -18608,7 +18607,7 @@ def main():
                 primary = _discover_suites(primarySuiteMxDir, load=should_load_suites)
             else:
                 primary = SourceSuite(primarySuiteMxDir, load=False, primary=True)
-            _primary_suite_init(primary)
+            _init_primary_suite(primary)
         else:
             if not is_optional_suite_context:
                 abort('no primary suite found for %s' % initial_command)
@@ -18659,11 +18658,10 @@ def main():
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
-    mx_gate._mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
-    if command not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(command)]
+    if command not in _commands:
+        hits = [c for c in _commands.iterkeys() if c.startswith(command)]
         if len(hits) == 1:
             command = hits[0]
         elif len(hits) == 0:
@@ -18671,10 +18669,10 @@ def main():
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
-    c = _mx_commands.commands()[command]
+    c, _ = _commands[command][:2]
 
     if primarySuiteMxDir and should_load_suites:
-        if not _mx_commands.get_command_property(command, "keepUnsatisfiedDependencies"):
+        if not _get_command_property(command, "keepUnsatisfiedDependencies"):
             global _removedDeps
             _removedDeps = _remove_unsatisfied_deps()
 
@@ -18707,7 +18705,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.9")  # GR-11954
+version = VersionSpec("5.190.10")  # GR-12187
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
