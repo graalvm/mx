@@ -11383,7 +11383,7 @@ class JDKConfig:
     A JDKConfig object encapsulates info about an installed or deployed JDK.
     """
     def __init__(self, home, tag=None):
-        home = realpath(os.path.abspath(home))
+        home = realpath(home)
         self.home = home
         self.tag = tag
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
@@ -15318,14 +15318,23 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
 
 def intellij_read_sdks():
     sdks = dict()
-    xmlSdks = sorted(glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")))
+    os_type = get_os()
+    if os_type == "linux" or os_type == "openbsd" or os_type == "solaris":
+        xmlSdks = glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
+    elif os_type == "darwin":
+        xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml"))
+    else:
+        warn("Location of IntelliJ SDK definitions on {} is unknown".format(os_type))
+        return sdks
     if len(xmlSdks) == 0:
         warn("IntelliJ SDK definitions not found")
         return sdks
-    jvVerRE = re.compile('''^java\s+version\s+"([^"]+)"$''')
-    pyVerRE = re.compile('''^Python\s+(.+)$''')
-    rbVerRE = re.compile('''^ver\.([^\s]+)\s+.*$''')
-    for sdk in etreeParse(xmlSdks[-1]).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
+    xmlSdk = sorted(xmlSdks)[-1]  # Pick the most recent IntelliJ version.
+    log("Using SDK definitions from {}".format(xmlSdk))
+    jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    pyVerRE = re.compile(r'^Python\s+(.+)$')
+    rbVerRE = re.compile(r'^ver\.([^\s]+)\s+.*$')
+    for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
         type = sdk.find("type").get("value")
         home = realpath(sdk.find("homePath").get("value"))
@@ -15356,7 +15365,7 @@ def intellij_get_python_sdk_name(sdks):
         sdk = sdks[exe]
         if sdk['type'] == intellij_python_sdk_type:
             return sdk['name']
-    return "Python {v[0]}.{v[1]}.{v[2]} ({exe})".format(v=sys.version_info, exe=exe)
+    return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
 
 def intellij_get_ruby_sdk_name(sdks):
     for path, sdk in sdks.iteritems():
