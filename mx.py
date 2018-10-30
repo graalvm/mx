@@ -15319,17 +15319,19 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
 def intellij_read_sdks():
     sdks = dict()
     os_type = get_os()
-    if os_type == "linux" or os_type == "openbsd" or os_type == "solaris":
-        xmlSdks = glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
+    if os_type == "linux" or os_type == "openbsd" or os_type == "solaris" or os_type == "windows":
+        xmlSdks = sorted(glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml"))) + \
+          sorted(glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")))
     elif os_type == "darwin":
-        xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml"))
+        xmlSdks = sorted(glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml"))) + \
+          sorted(glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml")))
     else:
         warn("Location of IntelliJ SDK definitions on {} is unknown".format(os_type))
         return sdks
     if len(xmlSdks) == 0:
         warn("IntelliJ SDK definitions not found")
         return sdks
-    xmlSdk = sorted(xmlSdks)[-1]  # Pick the most recent IntelliJ version.
+    xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
     log("Using SDK definitions from {}".format(xmlSdk))
     jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
     pyVerRE = re.compile(r'^Python\s+(.+)$')
