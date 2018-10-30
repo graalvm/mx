@@ -15386,17 +15386,24 @@ def intellij_read_sdks():
     sdks = dict()
     os_type = get_os()
     if os_type == "linux" or os_type == "openbsd" or os_type == "solaris" or os_type == "windows":
-        xmlSdks = sorted(glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml"))) + \
-          sorted(glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")))
+        xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
     elif os_type == "darwin":
-        xmlSdks = sorted(glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml"))) + \
-          sorted(glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml")))
+        xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
     else:
         warn("Location of IntelliJ SDK definitions on {} is unknown".format(os_type))
         return sdks
     if len(xmlSdks) == 0:
         warn("IntelliJ SDK definitions not found")
         return sdks
+
+    verRE = re.compile(r'^.*/\.?(IntelliJIdea|IdeaIC)([^/]+)/.*$')
+    def verSort(path):
+       match = verRE.match(path)
+       return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
+
+    xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
     log("Using SDK definitions from {}".format(xmlSdk))
     jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
@@ -15405,8 +15412,9 @@ def intellij_read_sdks():
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
         type = sdk.find("type").get("value")
-        home = realpath(sdk.find("homePath").get("value"))
+        home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
         rawVer = sdk.find("version").get("value")
+        version = rawVer
         if type == intellij_java_sdk_type:
             version = jvVerRE.match(rawVer)
         elif type == intellij_python_sdk_type:
@@ -15415,8 +15423,6 @@ def intellij_read_sdks():
             version = rbVerRE.match(rawVer)
         if version:
             version = version.group(1)
-        else:
-            version = rawVer
         sdks[home] = { 'name': name, 'type': type, 'version': version }
     return sdks
 
