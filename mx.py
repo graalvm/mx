@@ -15260,9 +15260,9 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 
 
 # IntelliJ SDK types.
-intellij_java_sdk_type   = 'JavaSDK'
+intellij_java_sdk_type = 'JavaSDK'
 intellij_python_sdk_type = 'Python SDK'
-intellij_ruby_sdk_type   = 'RUBY_SDK'
+intellij_ruby_sdk_type = 'RUBY_SDK'
 
 def intellijinit_cli(args):
     parser = ArgumentParser(prog='mx ideinit')
@@ -15334,8 +15334,8 @@ def intellij_read_sdks():
 
     verRE = re.compile(r'^.*/\.?(IntelliJIdea|IdeaIC)([^/]+)/.*$')
     def verSort(path):
-       match = verRE.match(path)
-       return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
+        match = verRE.match(path)
+        return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
 
     xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
@@ -15345,19 +15345,21 @@ def intellij_read_sdks():
     rbVerRE = re.compile(r'^ver\.([^\s]+)\s+.*$')
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
-        type = sdk.find("type").get("value")
+        kind = sdk.find("type").get("value")
         home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
         rawVer = sdk.find("version").get("value")
-        version = rawVer
-        if type == intellij_java_sdk_type:
+        version = None
+        if kind == intellij_java_sdk_type:
             version = jvVerRE.match(rawVer)
-        elif type == intellij_python_sdk_type:
+        elif kind == intellij_python_sdk_type:
             version = pyVerRE.match(rawVer)
-        elif type == intellij_ruby_sdk_type:
+        elif kind == intellij_ruby_sdk_type:
             version = rbVerRE.match(rawVer)
         if version:
             version = version.group(1)
-        sdks[home] = { 'name': name, 'type': type, 'version': version }
+        else:
+            version = rawVer
+        sdks[home] = {'name': name, 'type': kind, 'version': version}
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -15376,7 +15378,7 @@ def intellij_get_python_sdk_name(sdks):
     return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
 
 def intellij_get_ruby_sdk_name(sdks):
-    for path, sdk in sdks.iteritems():
+    for sdk in sdks.itervalues():
         if sdk['type'] == intellij_ruby_sdk_type:
             return sdk['name']
     return "truffleruby"
@@ -15636,8 +15638,6 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         if additionalOptionsOverrides:
             compilerXml.close('option')
             compilerXml.close('component')
-
-    python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
 
     if mx_python_modules:
         # mx.<suite> python module:
