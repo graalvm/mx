@@ -64,7 +64,10 @@ else:
     for candidate in parents:
         if len(get_parents(candidate)) > 1:
             if args.ancestor:
-                raise SystemExit('both parents of {} are merges: {} {}'.format(with_hash(args.descendant), candidate, with_hash(args.ancestor)))
+                raise SystemExit('Both parents of {} are merges ({} and {}). '.format(with_hash(args.descendant), candidate, with_hash(args.ancestor)) +
+                                 'This makes it impossible to determine which parent is the from the master branch. ' +
+                                 'Please ensure the tip of your pull request is not a merge commit. ' +
+                                 'The simplest solution is to edit history such that the commit with the version bump is the tip commit.')
             args.ancestor = candidate
     if not args.ancestor:
         raise SystemExit('{} is not a merge or has no parent that is a merge'.format(with_hash(args.descendant)))
