@@ -11041,8 +11041,10 @@ def _java_no_proxy(env_vars=None):
                 item = item.strip()
                 if item == '*':
                     java_items += [item]
+                elif item.startswith("."):
+                    java_items += ["*" + item]
                 else:
-                    java_items += [item, '*.' + item]
+                    java_items += [item]
     return '|'.join(java_items)
 
 def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None):
@@ -18779,7 +18781,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.191.0")  # GR-11954
+version = VersionSpec("5.191.1")  # GR-12305
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
