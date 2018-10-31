@@ -11383,7 +11383,7 @@ class JDKConfig:
     A JDKConfig object encapsulates info about an installed or deployed JDK.
     """
     def __init__(self, home, tag=None):
-        home = os.path.abspath(home)
+        home = realpath(home)
         self.home = home
         self.tag = tag
         self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
@@ -15259,6 +15259,11 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
     _zip_files(libFiles, suite.dir, configLibsZip)
 
 
+# IntelliJ SDK types.
+intellij_java_sdk_type = 'JavaSDK'
+intellij_python_sdk_type = 'Python SDK'
+intellij_ruby_sdk_type = 'RUBY_SDK'
+
 def intellijinit_cli(args):
     parser = ArgumentParser(prog='mx ideinit')
     parser.add_argument('--no-python-projects', action='store_false', dest='pythonProjects', help='Do not generate projects for the mx python projects.')
@@ -15279,8 +15284,9 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     # in dependent suites.
     declared_modules = set()
     referenced_modules = set()
+    sdks = intellij_read_sdks()
     for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
-        _intellij_suite(args, suite, declared_modules, referenced_modules, refreshOnly, mx_python_modules,
+        _intellij_suite(args, suite, declared_modules, referenced_modules, sdks, refreshOnly, mx_python_modules,
                         generate_external_projects, java_modules and not suite.isBinarySuite(), suite != primary_suite(),
                         generate_native_projects=native_projects)
 
@@ -15300,7 +15306,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
         if dirname(_mx_suite.get_output_root()) == _mx_suite.dir:
             moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + basename(_mx_suite.get_output_root())})
         moduleXml.close('content')
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)})
+        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         moduleXml.close('component')
         moduleXml.close('module')
@@ -15310,11 +15316,78 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     if doFsckProjects and not refreshOnly:
         fsckprojects([])
 
+def intellij_read_sdks():
+    sdks = dict()
+    os_type = get_os()
+    if os_type == "linux" or os_type == "openbsd" or os_type == "solaris" or os_type == "windows":
+        xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
+    elif os_type == "darwin":
+        xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
+    else:
+        warn("Location of IntelliJ SDK definitions on {} is unknown".format(os_type))
+        return sdks
+    if len(xmlSdks) == 0:
+        warn("IntelliJ SDK definitions not found")
+        return sdks
+
+    verRE = re.compile(r'^.*/\.?(IntelliJIdea|IdeaIC)([^/]+)/.*$')
+    def verSort(path):
+        match = verRE.match(path)
+        return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
+
+    xmlSdks.sort(key=verSort)
+    xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
+    log("Using SDK definitions from {}".format(xmlSdk))
+    jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    pyVerRE = re.compile(r'^Python\s+(.+)$')
+    rbVerRE = re.compile(r'^ver\.([^\s]+)\s+.*$')
+    for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
+        name = sdk.find("name").get("value")
+        kind = sdk.find("type").get("value")
+        home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
+        rawVer = sdk.find("version").get("value")
+        version = None
+        if kind == intellij_java_sdk_type:
+            version = jvVerRE.match(rawVer)
+        elif kind == intellij_python_sdk_type:
+            version = pyVerRE.match(rawVer)
+        elif kind == intellij_ruby_sdk_type:
+            version = rbVerRE.match(rawVer)
+        if version:
+            version = version.group(1)
+        else:
+            version = rawVer
+        sdks[home] = {'name': name, 'type': kind, 'version': version}
+    return sdks
+
+def intellij_get_java_sdk_name(sdks, jdk):
+    if jdk.home in sdks:
+        sdk = sdks[jdk.home]
+        if sdk['type'] == intellij_java_sdk_type:
+            return sdk['name']
+    return str(jdk.javaCompliance)
+
+def intellij_get_python_sdk_name(sdks):
+    exe = realpath(sys.executable)
+    if exe in sdks:
+        sdk = sdks[exe]
+        if sdk['type'] == intellij_python_sdk_type:
+            return sdk['name']
+    return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
+
+def intellij_get_ruby_sdk_name(sdks):
+    for sdk in sdks.itervalues():
+        if sdk['type'] == intellij_ruby_sdk_type:
+            return sdk['name']
+    return "truffleruby"
+
 def _intellij_library_file_name(library_name):
     return library_name.replace('.', '_').replace('-', '_') + '.xml'
 
 
-def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=False, mx_python_modules=False,
+def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refreshOnly=False, mx_python_modules=False,
                     generate_external_projects=True, java_modules=True, module_files_only=False, generate_native_projects=False):
     libraries = set()
     jdk_libraries = set()
@@ -15348,7 +15421,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             return 'JDK_' + str(min(compliance.value, 11))
         return 'JDK_1_' + str(compliance.value)
 
-    def _intellij_external_project(externalProjects, host):
+    def _intellij_external_project(externalProjects, sdks, host):
         if externalProjects:
             for project_name, project_definition in externalProjects.iteritems():
                 if not project_definition.get('path', None):
@@ -15386,10 +15459,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                 moduleXml.close('content')
 
                 if module_type == "ruby":
-                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'RUBY_SDK', 'jdkName': 'truffleruby'})
+                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_ruby_sdk_type, 'jdkName': intellij_get_ruby_sdk_name(sdks)})
                 elif module_type == "python":
-                    python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
-                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
+                    moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
                 elif module_type == "web":
                     # nothing to do
                     pass
@@ -15422,7 +15494,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
     if generate_external_projects:
         for p in s.projects_recursive() + _mx_suite.projects_recursive():
-            _intellij_external_project(getattr(p, 'externalProjects', None), p)
+            _intellij_external_project(getattr(p, 'externalProjects', None), sdks, p)
 
     max_checkstyle_version = None
     compilerXml = None
@@ -15506,7 +15578,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
             p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
-            moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'JavaSDK', 'jdkName': str(jdk.javaCompliance)})
+            moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_java_sdk_type, 'jdkName': intellij_get_java_sdk_name(sdks, jdk)})
 
             moduleXml.close('component')
 
@@ -15567,8 +15639,6 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             compilerXml.close('option')
             compilerXml.close('component')
 
-    python_sdk_name = "Python {v[0]}.{v[1]}.{v[2]} ({bin})".format(v=sys.version_info, bin=sys.executable)
-
     if mx_python_modules:
         # mx.<suite> python module:
         moduleXml = XMLDoc()
@@ -15582,7 +15652,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
             if isdir(directory) and dir_contains_files_recursively(directory, r".*\.java"):
                 moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
         moduleXml.close('content')
-        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': 'Python SDK', 'jdkName': python_sdk_name})
+        moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         processes_suites = {s.name}
 
@@ -15618,7 +15688,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
         _intellij_native_projects(s, module_files_only, declared_modules, modulesXml)
 
     if generate_external_projects:
-        _intellij_external_project(s.suiteDict.get('externalProjects', None), s)
+        _intellij_external_project(s.suiteDict.get('externalProjects', None), sdks, s)
 
     if not module_files_only:
         modulesXml.close('modules')
@@ -15733,11 +15803,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, refreshOnly=F
 
         if java_modules:
             mainJdk = get_jdk()
-            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': str(mainJdk.javaCompliance), 'project-jdk-type': 'JavaSDK'})
+            miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': intellij_get_java_sdk_name(sdks, mainJdk), 'project-jdk-type': intellij_java_sdk_type})
             miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
             miscXml.close('component')
         else:
-            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': python_sdk_name, 'project-jdk-type': 'Python SDK'})
+            miscXml.element('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'project-jdk-name': intellij_get_python_sdk_name(sdks), 'project-jdk-type': intellij_python_sdk_type})
 
         miscXml.close('project')
         miscFile = join(ideaProjectDirectory, 'misc.xml')
@@ -18705,7 +18775,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.190.10")  # GR-12187
+version = VersionSpec("5.190.11")  # GR-12256
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
