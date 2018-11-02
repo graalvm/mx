@@ -1771,7 +1771,7 @@ class BenchmarkExecutor(object):
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "--fork-count-file", default=None,
-            help="Path to the file that lists the number of re-executions for the targetted benchmarks, using the format: { [<name>: <count>]* }")
+            help="Path to the file that lists the number of re-executions for the targetted benchmarks, using the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
