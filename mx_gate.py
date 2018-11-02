@@ -374,10 +374,10 @@ def gate(args):
         global _command_level
         if _command_level is 0:
             all_commands.append((command.command, args, kwargs))
-            mx.log(mx.colorize('Running: mx' + shell_quoted_args(_mx_args) + ' ' + command.command + shell_quoted_args(args[0]), color='blue'))
+            mx.log(mx.colorize('Running: ' + command_in_gate_message(command.command, args, kwargs), color='blue'))
         _command_level = _command_level + 1
 
-    def mx_command_left(command, *args, **kwargs):
+    def mx_command_left(_, *__, **___):
         global _command_level
         assert _command_level >= 0
         _command_level = _command_level - 1
@@ -386,19 +386,25 @@ def gate(args):
         message_color = 'red'
         mx.log(mx.colorize('\nThe sequence of mx commands that were executed until the failure follows:\n', color=message_color))
         for command, command_args, kwargs in all_commands:
-            one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
-            kwargs_absent = len(kwargs) == 0
-            if one_list and kwargs_absent:  # gate command reproducible on the command line
-                quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
-                mx.log(mx.colorize('mx ' + command + ' ' + quoted_args, color=message_color))
-            else:
-                args_message = '(Programatically executed. '
-                if not one_list:
-                    args_message += 'Args: ' + str(command_args)
-                if not kwargs_absent:
-                    args_message += 'Kwargs: ' + str(kwargs)
-                args_message += ')'
-                mx.log(mx.colorize('mx' + shell_quoted_args(_mx_args) + ' ' + command + args_message, color=message_color))
+            message = command_in_gate_message(command, command_args, kwargs)
+
+            mx.log(mx.colorize(message, color=message_color))
+
+    def command_in_gate_message(command, command_args, kwargs):
+        one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
+        kwargs_absent = len(kwargs) == 0
+        if one_list and kwargs_absent:  # gate command reproducible on the command line
+            quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
+            message = 'mx ' + command + ' ' + quoted_args
+        else:
+            args_message = '(Programatically executed. '
+            if not one_list:
+                args_message += 'Args: ' + str(command_args)
+            if not kwargs_absent:
+                args_message += 'Kwargs: ' + str(kwargs)
+            args_message += ')'
+            message = 'mx' + shell_quoted_args(_mx_args) + ' ' + command + ' ' + args_message
+        return message
 
     try:
         mx._mx_commands.add_command_callback(mx_command_entered, mx_command_left)
