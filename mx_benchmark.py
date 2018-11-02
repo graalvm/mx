@@ -1779,6 +1779,9 @@ class BenchmarkExecutor(object):
 
         suite = None
         if mxBenchmarkArgs.benchmark:
+            # The suite will read the benchmark specifier,
+            # and therewith produce a list of benchmark sets to run in separate forks.
+            # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         if mxBenchmarkArgs.list:
@@ -1822,6 +1825,9 @@ class BenchmarkExecutor(object):
 
         results = []
 
+        # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
+        # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
+        # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
         fork_counts = None
         if mxBenchmarkArgs.fork_count_file:
             with open(mxBenchmarkArgs.fork_count_file) as file:
@@ -1836,7 +1842,7 @@ class BenchmarkExecutor(object):
                 if len(benchnames) == 1 and fork_counts:
                     fork_count = fork_counts.get(benchnames[0], 1)
                 elif fork_counts:
-                    mx.abort("The fork-count feature is only supported when invoking the suite with a single benchmark at a time.")
+                    mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
                 for i in range(0, fork_count):
                     try:
                         partialResults = self.execute(
