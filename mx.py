@@ -96,7 +96,7 @@ def update_commands(suite, new_commands):
     _length_of_command = 4
     for command_name, command_list in new_commands.iteritems():
         assert len(command_list) > 0 and command_list[0] is not None
-        args = [suite_name, command_name] + command_list[1:_length_of_command] + [True]
+        args = [suite_name, command_name] + command_list[1:_length_of_command]
         command_decorator = command(*args)
         # apply the decorator so all functions are tracked
         command_list[0] = command_decorator(command_list[0])
@@ -18781,7 +18781,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.191.1")  # GR-12305
+version = VersionSpec("5.191.2")  # GR-11954
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
