@@ -1839,7 +1839,7 @@ class BenchmarkExecutor(object):
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
                 fork_count = 1
-                if len(benchnames) == 1 and fork_counts:
+                if benchnames and len(benchnames) == 1 and fork_counts:
                     fork_count = fork_counts.get(benchnames[0], 1)
                 elif fork_counts:
                     mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
