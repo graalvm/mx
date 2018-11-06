@@ -1770,12 +1770,18 @@ class BenchmarkExecutor(object):
             "--list", default=None, action="store_true",
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
+            "--fork-count-file", default=None,
+            help="Path to the file that lists the number of re-executions for the targetted benchmarks, using the JSON format: { (<name>: <count>,)* }")
+        parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         suite = None
         if mxBenchmarkArgs.benchmark:
+            # The suite will read the benchmark specifier,
+            # and therewith produce a list of benchmark sets to run in separate forks.
+            # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
         if mxBenchmarkArgs.list:
@@ -1819,23 +1825,36 @@ class BenchmarkExecutor(object):
 
         results = []
 
+        # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
+        # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
+        # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
+        fork_counts = None
+        if mxBenchmarkArgs.fork_count_file:
+            with open(mxBenchmarkArgs.fork_count_file) as f:
+                fork_counts = json.load(f)
         failures_seen = False
         try:
             suite.before(bmSuiteArgs)
             start_time = time.time()
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
-                try:
-                    partialResults = self.execute(
-                        suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
-                    results.extend(partialResults)
-                except BenchmarkFailureError as error:
-                    results.extend(error.partialResults)
-                    failures_seen = True
-                    mx.log(traceback.format_exc())
-                except RuntimeError:
-                    failures_seen = True
-                    mx.log(traceback.format_exc())
+                fork_count = 1
+                if benchnames and len(benchnames) == 1 and fork_counts:
+                    fork_count = fork_counts.get(benchnames[0], 1)
+                elif fork_counts:
+                    mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
+                for _ in range(0, fork_count):
+                    try:
+                        partialResults = self.execute(
+                            suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+                        results.extend(partialResults)
+                    except BenchmarkFailureError as error:
+                        results.extend(error.partialResults)
+                        failures_seen = True
+                        mx.log(traceback.format_exc())
+                    except RuntimeError:
+                        failures_seen = True
+                        mx.log(traceback.format_exc())
             end_time = time.time()
         finally:
             try:
@@ -1891,7 +1910,7 @@ def splitArgs(args, separator):
 
 
 def benchmark(args):
-    """run benchmark suite with given name
+    """Run benchmark suite with given name.
 
     :Example:
 
