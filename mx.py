@@ -2213,10 +2213,10 @@ class LayoutDistribution(AbstractDistribution):
 
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
-        deps = []
+        deps = set()
         for _, source in LayoutDistribution._walk_static_layout(layout, distribution_name, context=suite):
             if 'dependency' in source:
-                deps.append(source['dependency'])
+                deps.add(source['dependency'])
         return sorted(deps)
 
     @staticmethod
@@ -18093,7 +18093,7 @@ def _remove_unsatisfied_deps():
                                                      and not dd.isJreLibrary()
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
-        elif isinstance(dep, NativeTARDistribution):
+        elif dep.isTARDistribution():
             prune(dep)
 
         if hasattr(dep, 'ignore'):
@@ -18123,6 +18123,17 @@ def _remove_unsatisfied_deps():
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
                     dist.deps.remove(distDep)
                     distRemovedDeps.append(distDep)
+
+            if isinstance(dist, LayoutDistribution) and distRemovedDeps:
+                removed_destinations = []
+                removed_deps = {d.qualifiedName() for d in distRemovedDeps} \
+                               | {d.name for d in distRemovedDeps if d.suite == dist.suite}
+                for dst, src in LayoutDistribution._walk_static_layout(dist.layout, dist.name, context=dist.suite):
+                    if src.get('dependency') in removed_deps:
+                        removed_destinations.append(dst)
+                for dst in removed_destinations:
+                    del dist.layout[dst]  # prune layout
+
             if discard(dist):
                 note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
                              details=[e.name for e in distRemovedDeps])
