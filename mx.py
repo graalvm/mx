@@ -96,7 +96,7 @@ def update_commands(suite, new_commands):
     _length_of_command = 4
     for command_name, command_list in new_commands.iteritems():
         assert len(command_list) > 0 and command_list[0] is not None
-        args = [suite_name, command_name] + command_list[1:_length_of_command] + [True]
+        args = [suite_name, command_name] + command_list[1:_length_of_command]
         command_decorator = command(*args)
         # apply the decorator so all functions are tracked
         command_list[0] = command_decorator(command_list[0])
@@ -2087,18 +2087,25 @@ class NativeTARDistribution(AbstractTARDistribution):
            directories of the constituent native projects' output directories
     :param str output: specifies where the content of the distribution should be copied upon creation
            or extracted after pull
+    :param bool auto_prefix: specifies if the names of tar file entries from constituent
+           platform dependent projects should be prefixed with `<os>-<arch>`
+
     Attributes:
         path: suite-local path to where the tar file will be placed
     """
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output, **kwArgs):
-        super(NativeTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs)
+
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, relpath, output,
+                 auto_prefix=False, **kwArgs):
+        super(NativeTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent,
+                                                    theLicense, output, **kwArgs)
+        assert not auto_prefix or relpath, "{}: 'auto_prefix' requires 'relpath'".format(name)
         self.relpath = relpath
         if self.output is not None:
             self.output = mx_subst.results_substitutions.substitute(self.output, dependency=self)
+        self.auto_prefix = auto_prefix
 
     def make_archive(self):
-        directory = dirname(self.path)
-        ensure_dir_exists(directory)
+        ensure_dirname_exists(self.path)
 
         if self.output:
             output_path = self.get_output()
@@ -2117,16 +2124,19 @@ class NativeTARDistribution(AbstractTARDistribution):
                 if self.output:
                     dest = join(self.get_output(), arcname)
                     # Make path separators consistent for string compare
-                    dest = os.path.normpath(dest)
-                    name = os.path.normpath(name)
+                    dest = normpath(dest)
+                    name = normpath(name)
                     if name != dest:
-                        ensure_dir_exists(os.path.dirname(dest))
+                        ensure_dirname_exists(dest)
                         shutil.copy2(name, dest)
 
             for d in self.archived_deps():
                 if d.isNativeProject() or d.isArchivableProject():
-                    for file_path, arcname in d.getArchivableResults(self.relpath):
-                        archive_and_copy(file_path, arcname)
+                    arc_prefix = ''
+                    if self.auto_prefix and d.isPlatformDependent():
+                        arc_prefix = self.platformName().replace('_', '-')
+                    for file_path, arc_name in d.getArchivableResults(self.relpath):
+                        archive_and_copy(file_path, join(arc_prefix, arc_name))
                 elif hasattr(d, 'getResults') and not d.getResults():
                     logv("[{}: ignoring dependency {} with no results]".format(self.name, d.name))
                 else:
@@ -18781,7 +18791,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.191.2")  # GR-12354
+version = VersionSpec("5.192.1")  # GR-12354
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
