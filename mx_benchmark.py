@@ -1830,8 +1830,8 @@ class BenchmarkExecutor(object):
         # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
         fork_counts = None
         if mxBenchmarkArgs.fork_count_file:
-            with open(mxBenchmarkArgs.fork_count_file) as file:
-                fork_counts = json.load(file)
+            with open(mxBenchmarkArgs.fork_count_file) as f:
+                fork_counts = json.load(f)
         failures_seen = False
         try:
             suite.before(bmSuiteArgs)
@@ -1843,7 +1843,7 @@ class BenchmarkExecutor(object):
                     fork_count = fork_counts.get(benchnames[0], 1)
                 elif fork_counts:
                     mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
-                for i in range(0, fork_count):
+                for _ in range(0, fork_count):
                     try:
                         partialResults = self.execute(
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
