@@ -59,10 +59,12 @@ suite = {
     },
 
     "SIGTEST" : {
-      "urls" : [
-        "http://hg.netbeans.org/binaries/A7674A6D78B7FEA58AF76B357DAE6EA5E3FDFBE9-apitest.jar",
-      ],
-      "sha1" : "a7674a6d78b7fea58af76b357dae6ea5e3fdfbe9",
+      "maven": {
+        "groupId": "org.netbeans.tools",
+        "artifactId": "sigtest-maven-plugin",
+        "version": "1.1",
+      },
+      "sha1": "3837cc19378e6e20202c99cdf47b1c7dc189388f",
     },
 
     "CODESNIPPET-DOCLET" : {
