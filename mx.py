@@ -18754,6 +18754,7 @@ def main():
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
+    mx_gate._mx_command_and_args = commandAndArgs
     mx_gate._mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
@@ -18802,7 +18803,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.5")  # GR-12393
+version = VersionSpec("5.192.6")  # GR-11954
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

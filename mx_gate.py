@@ -188,6 +188,7 @@ _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
 _mx_args = []
+_mx_command_and_args = []
 
 def add_gate_argument(*args, **kwargs):
     """
@@ -389,15 +390,17 @@ def gate(args):
             message = command_in_gate_message(command, command_args, kwargs)
 
             mx.log(mx.colorize(message, color=message_color))
+        mx.log(mx.colorize('\nIf the previous sequence is incomplete or some commands were executed programmatically use:\n', color=message_color))
+        mx.log(mx.colorize('mx' + shell_quoted_args(_mx_args + _mx_command_and_args) + '\n', color=message_color))
 
     def command_in_gate_message(command, command_args, kwargs):
         one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
         kwargs_absent = len(kwargs) == 0
         if one_list and kwargs_absent:  # gate command reproducible on the command line
             quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
-            message = 'mx ' + command + ' ' + quoted_args
+            message = 'mx' + shell_quoted_args(_mx_args) + ' ' + command + ' ' + quoted_args
         else:
-            args_message = '(Programatically executed. '
+            args_message = '(Programmatically executed. '
             if not one_list:
                 args_message += 'Args: ' + str(command_args)
             if not kwargs_absent:
