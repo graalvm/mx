@@ -312,7 +312,6 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             os.remove(testfile)
 
 unittestHelpSuffix = """
-
     To avoid conflicts with VM options '--' can be used as delimiter.
 
     If test filters are supplied, only tests whose fully qualified name
@@ -351,7 +350,7 @@ def is_strictly_positive(value):
 @mx.command(suite_name="mx",
             command_name='unittest',
             usage_msg='[unittest options] [--] [VM options] [filters...]',
-            doc_function=unittestHelpSuffix,
+            doc_function=lambda: unittestHelpSuffix,
             auto_add=False)
 def unittest(args):
     """run the JUnit tests"""

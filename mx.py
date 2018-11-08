@@ -13679,16 +13679,7 @@ Given a command name, print help for that command."""
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(name, ' '.join(hits)))
 
     command = _mx_commands.commands()[name]
-    doc = command.command_function.__doc__
-    if command.has_documentation():
-        format_args = []
-        if command.usage_msg:
-            format_args.append(command.usage_msg)
-        if command.doc_function:
-            format_args.append(command.doc_function())
-
-        doc = doc.format(*format_args)
-    print 'mx {0} {1}\n\n{2}\n'.format(name, command.usage_msg, doc)
+    print command.get_doc()
 
 def _parse_multireleasejar_version(value):
     try:
