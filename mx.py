@@ -15420,26 +15420,26 @@ def intellij_read_sdks():
     xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
     log("Using SDK definitions from {}".format(xmlSdk))
-    jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
-    pyVerRE = re.compile(r'^Python\s+(.+)$')
-    rbVerRE = re.compile(r'^ver\.([^\s]+)\s+.*$')
+
+    versionRegexes = {}
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
+    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
+
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
         kind = sdk.find("type").get("value")
         home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
-        rawVer = sdk.find("version").get("value")
-        version = None
-        if kind == intellij_java_sdk_type:
-            version = jvVerRE.match(rawVer)
-        elif kind == intellij_python_sdk_type:
-            version = pyVerRE.match(rawVer)
-        elif kind == intellij_ruby_sdk_type:
-            version = rbVerRE.match(rawVer)
-        if version:
-            version = version.group(1)
-        else:
-            version = rawVer
+        if home.find('$APPLICATION_HOME_DIR$') != -1:
+            # Don't know how to convert this into a real path so ignore it
+            continue
+        versionRE = versionRegexes.get(kind)
+        if not versionRE:
+            # ignore unknown kinds
+            continue
+        version = versionRE.match(sdk.find("version").get("value")).group(1)
         sdks[home] = {'name': name, 'type': kind, 'version': version}
+        logv("Found sdk {} with values {}".format(home, sdks[home]))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -18802,7 +18802,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.4")  # GR-12412
+version = VersionSpec("5.192.5")  # GR-12393
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
