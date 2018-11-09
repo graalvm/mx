@@ -10776,11 +10776,12 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         candidateJdks.append(os.environ.get('JAVA_HOME'))
         source = 'JAVA_HOME'
 
-    result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
-    if result:
-        if source == '--java-home' and os.environ.get('JAVA_HOME'):
-            os.environ['JAVA_HOME'] = _opts.java_home
-        return result
+    if candidateJdks:
+        result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=True, source=source)
+        if result:
+            if source == '--java-home' and os.environ.get('JAVA_HOME'):
+                os.environ['JAVA_HOME'] = _opts.java_home
+            return result[0]
 
     candidateJdks = []
     if _opts.extra_java_homes:
@@ -10790,7 +10791,21 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
         source = 'EXTRA_JAVA_HOMES'
 
-    return _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
+    result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
+    if result != candidateJdks and source:
+        # Update the source with the filtered result
+        if source == 'EXTRA_JAVA_HOMES':
+            os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(result)
+        elif source == '--extra-java-homes':
+            _opts.extra_java_homes = os.pathsep.join(result)
+            if os.environ.get('EXTRA_JAVA_HOMES'):
+                del os.environ['EXTRA_JAVA_HOMES']
+        else:
+            abort('Unknown source ' + source)
+
+    if result:
+        return result[0]
+    return None
 
 def _sorted_unique_jdk_configs(configs):
     path_seen = set()
@@ -10827,28 +10842,26 @@ def _probe_JDK(home):
         _probed_JDKs[home] = res
     return res
 
-def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source=None):
+def _filtered_jdk_configs(candidates, versionCheck, missingIsError=False, source=None):
     filtered = []
     for candidate in candidates:
         jdk = _probe_JDK(candidate)
         if isinstance(jdk, JDKConfigException):
-            if warnInvalidJDK and source:
+            if source:
                 message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
                 if get_os() == 'darwin':
                     candidate = join(candidate, 'Contents', 'Home')
                     if not isinstance(_probe_JDK(candidate), JDKConfigException):
                         message += '. Set ' + source + ' to ' + candidate + ' instead.'
-                warn(message)
+
+                if missingIsError:
+                    abort(message)
+                else:
+                    warn(message)
         else:
             if not versionCheck or versionCheck(jdk.version):
                 filtered.append(jdk)
     return filtered
-
-def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
-    filtered = _filtered_jdk_configs(candidates, versionCheck, warn, source)
-    if filtered:
-        return filtered[0]
-    return None
 
 def find_classpath_arg(vmArgs):
     """
@@ -18803,7 +18816,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.7")  # GR-11954
+version = VersionSpec("5.192.8")  # GR-12439
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
