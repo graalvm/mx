@@ -10792,12 +10792,13 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         source = 'EXTRA_JAVA_HOMES'
 
     result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
-    if result != candidateJdks and source:
+    result_paths = [x.home for x in result]
+    if result_paths != candidateJdks and source:
         # Update the source with the filtered result
         if source == 'EXTRA_JAVA_HOMES':
-            os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(result)
+            os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(result_paths)
         elif source == '--extra-java-homes':
-            _opts.extra_java_homes = os.pathsep.join(result)
+            _opts.extra_java_homes = os.pathsep.join(result_paths)
             if os.environ.get('EXTRA_JAVA_HOMES'):
                 del os.environ['EXTRA_JAVA_HOMES']
         else:
@@ -18816,7 +18817,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.8")  # GR-12439
+version = VersionSpec("5.192.9")  # GR-12468
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
