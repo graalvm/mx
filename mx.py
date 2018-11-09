@@ -15768,7 +15768,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         if not module_files_only:
             declared_modules.add(basename(s.mxDir))
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
-            modulesXml.element('module', attributes={'fileurl': 'file://$' + moduleFilePath, 'filepath': moduleFilePath})
+            modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
             declared_modules.add(basename(_mx_suite.dir))
             mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
