@@ -26,6 +26,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 import mx
 import os
 from os.path import exists
@@ -111,7 +113,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
         for pkg in mx._find_packages(p):
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
         out = OutputCapture()
-        print 'Checking ' + checktype + ' signature changes against ' + sigtestResults
+        print('Checking ' + checktype + ' signature changes against ' + sigtestResults)
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance), out=out, err=out)
         mx.ensure_dir_exists(p.get_output_root())
         with open(p.get_output_root() + os.path.sep + 'sigtest-junit.xml', 'w') as f:
@@ -119,7 +121,7 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
             f.write('<testsuite tests="1" name="' + p.name + '.sigtest.' + checktype + '">\n')
             f.write('<testcase classname="' + p.name + '" name="sigtest.' + checktype + '">\n')
             if exitcode != 95:
-                print out.data
+                print(out.data)
                 failed = sigtestResults
                 f.write('<failure type="SignatureCheck"><![CDATA[\n')
                 f.write(out.data)
@@ -133,5 +135,5 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
     if failed:
         mx.abort('Signature error in ' + failed)
     else:
-        print 'OK.'
+        print('OK.')
     return 0

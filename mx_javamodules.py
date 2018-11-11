@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import os
 import re
 import zipfile
@@ -144,30 +146,30 @@ class JavaModuleDescriptor(object):
         Gets this module descriptor expressed as the contents of a ``module-info.java`` file.
         """
         out = StringIO.StringIO()
-        print >> out, 'module ' + self.name + ' {'
+        print('module ' + self.name + ' {', file=out)
         for dependency, modifiers in sorted(self.requires.iteritems()):
             modifiers_string = (' '.join(sorted(modifiers)) + ' ') if len(modifiers) != 0 else ''
-            print >> out, '    requires ' + modifiers_string + dependency + ';'
+            print('    requires ' + modifiers_string + dependency + ';', file=out)
         for source, targets in sorted(self.exports.iteritems()):
             targets_string = (' to ' + ', '.join(sorted(targets))) if len(targets) != 0 else ''
-            print >> out, '    exports ' + source + targets_string + ';'
+            print('    exports ' + source + targets_string + ';', file=out)
         for use in sorted(self.uses):
-            print >> out, '    uses ' + use + ';'
+            print('    uses ' + use + ';', file=out)
         for service, providers in sorted(self.provides.iteritems()):
-            print >> out, '    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';'
+            print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
         for pkg in sorted(self.conceals):
-            print >> out, '    // conceals: ' + pkg
+            print('    // conceals: ' + pkg, file=out)
         if self.jarpath:
-            print >> out, '    // jarpath: ' + self.jarpath
+            print('    // jarpath: ' + self.jarpath, file=out)
         if self.dist:
-            print >> out, '    // dist: ' + self.dist.name
+            print('    // dist: ' + self.dist.name, file=out)
         if self.modulepath:
-            print >> out, '    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath])
+            print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
         if self.concealedRequires:
             for dependency, packages in sorted(self.concealedRequires.iteritems()):
                 for package in sorted(packages):
-                    print >> out, '    // concealed-requires: ' + dependency + '/' + package
-        print >> out, '}'
+                    print('    // concealed-requires: ' + dependency + '/' + package, file=out)
+        print('}', file=out)
         return out.getvalue()
 
 def lookup_package(modulepath, package, importer):
@@ -587,7 +589,7 @@ def make_java_module(dist, jdk):
             # Compile module-info.class
             module_info_java = join(dest_dir, 'module-info.java')
             with open(module_info_java, 'w') as fp:
-                print >> fp, jmd.as_module_info()
+                print(jmd.as_module_info(), file=fp)
             javacCmd = [jdk.javac, '-d', dest_dir]
             jdkModuleNames = [m.name for m in jdkModules]
             modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]

@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
@@ -86,9 +88,9 @@ def get_PATH_sep(shell):
 def get_shell_commands(args, jdk, extra_jdks):
     setvar_format = get_setvar_format(args.shell)
     shell_commands = StringIO.StringIO()
-    print >> shell_commands, setvar_format % ('JAVA_HOME', jdk)
+    print(setvar_format % ('JAVA_HOME', jdk), file=shell_commands)
     if extra_jdks:
-        print >> shell_commands, setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks))
+        print(setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks)), file=shell_commands)
     path = os.environ.get('PATH').split(os.pathsep)
     if path:
         jdk_bin = join(jdk, 'bin')
@@ -98,30 +100,30 @@ def get_shell_commands(args, jdk, extra_jdks):
             path = [e if e != replace else jdk_bin for e in path]
         else:
             path.append(jdk_bin)
-        print >> shell_commands, setvar_format % ('PATH', get_PATH_sep(args.shell).join(path))
+        print(setvar_format % ('PATH', get_PATH_sep(args.shell).join(path)), file=shell_commands)
     return shell_commands.getvalue().strip()
 
 def apply_selection(args, jdk, extra_jdks):
-    print 'JAVA_HOME=' + jdk
+    print('JAVA_HOME=' + jdk)
     if extra_jdks:
-        print 'EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks)
+        print('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks))
 
     if args.shell_file:
         with open(args.shell_file, 'w') as fp:
-            print >> fp, get_shell_commands(args, jdk, extra_jdks)
+            print(get_shell_commands(args, jdk, extra_jdks), file=fp)
     else:
         env = get_suite_env_file(args.suite_path)
         if env:
             with open(env, 'a') as fp:
-                print >> fp, 'JAVA_HOME=' + jdk
+                print('JAVA_HOME=' + jdk, file=fp)
                 if extra_jdks:
-                    print >> fp, 'EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks)
-            print 'Updated', env
+                    print('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks), file=fp)
+            print('Updated', env)
         else:
-            print
-            print 'To apply the above environment variable settings, eval the following in your shell:'
-            print
-            print get_shell_commands(args, jdk, extra_jdks)
+            print()
+            print('To apply the above environment variable settings, eval the following in your shell:')
+            print()
+            print(get_shell_commands(args, jdk, extra_jdks))
 
 if __name__ == '__main__':
     parser = ArgumentParser(prog='select_jdk', usage='%(prog)s [options] [<primary jdk> [<secondary jdk>...]]' + """
@@ -181,7 +183,7 @@ if __name__ == '__main__':
             raise SystemExit('Following JDKs appear to be invalid (java executable not found):\n' + '\n'.join(invalid_jdks))
         with open(jdk_cache_path, 'a') as fp:
             for jdk in args.jdks:
-                print >> fp, jdk
+                print(jdk, file=fp)
         apply_selection(args, args.jdks[0], args.jdks[1:])
     else:
         jdks = find_system_jdks()
@@ -190,20 +192,20 @@ if __name__ == '__main__':
                 jdks.update((line.strip() for line in fp.readlines() if is_valid_jdk(line.strip())))
 
         sorted_jdks = sorted(jdks)
-        print "Current JDK Settings:"
+        print("Current JDK Settings:")
         for name in ['JAVA_HOME', 'EXTRA_JAVA_HOMES']:
             jdk = os.environ.get(name, None)
             if jdk:
                 if jdk in sorted_jdks:
                     jdk = '{} [{}]'.format(jdk, sorted_jdks.index(jdk))
-                print '{}={}'.format(name, jdk)
+                print('{}={}'.format(name, jdk))
         choices = list(enumerate(sorted_jdks))
         if choices:
             _, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
             with open(tmp_cache_path, 'w') as fp:
                 for index, jdk in choices:
-                    print '[{}] {}'.format(index, jdk)
-                    print >> fp, jdk
+                    print('[{}] {}'.format(index, jdk))
+                    print(jdk, file=fp)
 
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}

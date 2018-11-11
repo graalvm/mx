@@ -26,6 +26,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 import mx
 import os
 import re
@@ -70,12 +72,12 @@ def _write_cached_testclasses(cachesDir, jar, jdk, testclasses, excludedclasses)
     try:
         with open(cache, 'w') as fp:
             for classname in testclasses:
-                print >> fp, classname
+                print(classname, file=fp)
         with open(exclusions, 'w') as fp:
             if excludedclasses:
                 mx.warn('Unsupported class files listed in ' + exclusions)
             for classname in excludedclasses:
-                print >> fp, classname[1:]
+                print(classname[1:], file=fp)
     except IOError as e:
         mx.warn('Error writing to ' + cache + ': ' + str(e))
 

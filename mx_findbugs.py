@@ -26,6 +26,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 import mx
 import os
 import tempfile
@@ -112,7 +114,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
             xmlDoc.close('Match')
         xmlDoc.close('FindBugsFilter')
         xml = xmlDoc.xml(indent='  ', newl='\n')
-        print >> fp, xml
+        print(xml, file=fp)
 
     outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in projectsToTest])
     javaCompliance = max([p.javaCompliance for p in projectsToTest])

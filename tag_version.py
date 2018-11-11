@@ -25,6 +25,9 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+
+from __future__ import print_function
+
 import subprocess, re
 from argparse import ArgumentParser
 from os.path import realpath, dirname
@@ -85,7 +88,7 @@ def version_to_ints(spec):
 if new_version and old_version:
     tag = new_version.group(1)
     old_tag = old_version.group(1)
-    print 'Found update of mx version from {} to {}'.format(old_tag, tag)
+    print('Found update of mx version from {} to {}'.format(old_tag, tag))
     old = version_to_ints(old_tag)
     new = version_to_ints(tag)
     if old >= new:
