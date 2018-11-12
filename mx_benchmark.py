@@ -939,12 +939,22 @@ class AveragingBenchmarkMixin(object):
             if warmupResults:
                 lastIteration = max((result["metric.iteration"] for result in warmupResults))
                 resultIterations = self.getExtraIterationCount(lastIteration + 1)
-                totalTimeForAverage = 0.0
-                for i in range(lastIteration - resultIterations + 1, lastIteration + 1):
-                    result = next(result for result in warmupResults if result["metric.iteration"] == i)
-                    totalTimeForAverage += result["metric.value"]
-                averageResult = next(result for result in warmupResults if result["metric.iteration"] == 0).copy()
-                averageResult["metric.value"] = totalTimeForAverage / resultIterations
+
+                warmupResultsToAverage = [result for result in warmupResults if result["metric.iteration"] >= lastIteration - resultIterations + 1]
+
+                if len(set([result["metric.iteration"] for result in warmupResults])) != len(warmupResults):
+                    mx.warn("Inconsistent number of iterations ! Duplicate iteration number found.")
+                    mx.warn("Iteration results : {}".format(warmupResults))
+
+                if len(warmupResultsToAverage) != resultIterations:
+                    mx.warn("Inconsistent number of iterations !")
+                    mx.warn("Expecting {} iterations, but got {} instead.".format(len(warmupResultsToAverage), resultIterations))
+                    mx.warn("Iteration results : {}".format(warmupResults))
+
+                scoresToAverage = [result["metric.value"] for result in warmupResultsToAverage]
+
+                averageResult = min(warmupResults, key=lambda result: result["metric.iteration"]).copy()
+                averageResult["metric.value"] = sum(scoresToAverage) / len(scoresToAverage)
                 averageResult["metric.name"] = "time"
                 averageResult["metric.average-over"] = resultIterations
                 results.append(averageResult)
@@ -1840,7 +1850,7 @@ class BenchmarkExecutor(object):
                 suite.validateEnvironment()
                 fork_count = 1
                 if benchnames and len(benchnames) == 1 and fork_counts:
-                    fork_count = fork_counts.get(benchnames[0], 1)
+                    fork_count = fork_counts.get("{}:{}".format(suite.name(), benchnames[0]), fork_counts.get(benchnames[0], 1))
                 elif fork_counts:
                     mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
                 for _ in range(0, fork_count):

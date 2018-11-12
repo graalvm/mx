@@ -10787,11 +10787,12 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         candidateJdks.append(os.environ.get('JAVA_HOME'))
         source = 'JAVA_HOME'
 
-    result = _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
-    if result:
-        if source == '--java-home' and os.environ.get('JAVA_HOME'):
-            os.environ['JAVA_HOME'] = _opts.java_home
-        return result
+    if candidateJdks:
+        result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=True, source=source)
+        if result:
+            if source == '--java-home' and os.environ.get('JAVA_HOME'):
+                os.environ['JAVA_HOME'] = _opts.java_home
+            return result[0]
 
     candidateJdks = []
     if _opts.extra_java_homes:
@@ -10801,7 +10802,22 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
         source = 'EXTRA_JAVA_HOMES'
 
-    return _find_jdk_in_candidates(candidateJdks, versionCheck, warn=True, source=source)
+    result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
+    result_paths = [x.home for x in result]
+    if result_paths != candidateJdks and source:
+        # Update the source with the filtered result
+        if source == 'EXTRA_JAVA_HOMES':
+            os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(result_paths)
+        elif source == '--extra-java-homes':
+            _opts.extra_java_homes = os.pathsep.join(result_paths)
+            if os.environ.get('EXTRA_JAVA_HOMES'):
+                del os.environ['EXTRA_JAVA_HOMES']
+        else:
+            abort('Unknown source ' + source)
+
+    if result:
+        return result[0]
+    return None
 
 def _sorted_unique_jdk_configs(configs):
     path_seen = set()
@@ -10838,28 +10854,26 @@ def _probe_JDK(home):
         _probed_JDKs[home] = res
     return res
 
-def _filtered_jdk_configs(candidates, versionCheck, warnInvalidJDK=False, source=None):
+def _filtered_jdk_configs(candidates, versionCheck, missingIsError=False, source=None):
     filtered = []
     for candidate in candidates:
         jdk = _probe_JDK(candidate)
         if isinstance(jdk, JDKConfigException):
-            if warnInvalidJDK and source:
+            if source:
                 message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
                 if get_os() == 'darwin':
                     candidate = join(candidate, 'Contents', 'Home')
                     if not isinstance(_probe_JDK(candidate), JDKConfigException):
                         message += '. Set ' + source + ' to ' + candidate + ' instead.'
-                warn(message)
+
+                if missingIsError:
+                    abort(message)
+                else:
+                    warn(message)
         else:
             if not versionCheck or versionCheck(jdk.version):
                 filtered.append(jdk)
     return filtered
-
-def _find_jdk_in_candidates(candidates, versionCheck, warn=False, source=None):
-    filtered = _filtered_jdk_configs(candidates, versionCheck, warn, source)
-    if filtered:
-        return filtered[0]
-    return None
 
 def find_classpath_arg(vmArgs):
     """
@@ -15431,26 +15445,26 @@ def intellij_read_sdks():
     xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
     log("Using SDK definitions from {}".format(xmlSdk))
-    jvVerRE = re.compile(r'^java\s+version\s+"([^"]+)"$')
-    pyVerRE = re.compile(r'^Python\s+(.+)$')
-    rbVerRE = re.compile(r'^ver\.([^\s]+)\s+.*$')
+
+    versionRegexes = {}
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
+    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
+
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
         kind = sdk.find("type").get("value")
         home = realpath(os.path.expanduser(sdk.find("homePath").get("value").replace('$USER_HOME$', '~')))
-        rawVer = sdk.find("version").get("value")
-        version = None
-        if kind == intellij_java_sdk_type:
-            version = jvVerRE.match(rawVer)
-        elif kind == intellij_python_sdk_type:
-            version = pyVerRE.match(rawVer)
-        elif kind == intellij_ruby_sdk_type:
-            version = rbVerRE.match(rawVer)
-        if version:
-            version = version.group(1)
-        else:
-            version = rawVer
+        if home.find('$APPLICATION_HOME_DIR$') != -1:
+            # Don't know how to convert this into a real path so ignore it
+            continue
+        versionRE = versionRegexes.get(kind)
+        if not versionRE:
+            # ignore unknown kinds
+            continue
+        version = versionRE.match(sdk.find("version").get("value")).group(1)
         sdks[home] = {'name': name, 'type': kind, 'version': version}
+        logv("Found sdk {} with values {}".format(home, sdks[home]))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -18768,6 +18782,7 @@ def main():
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
+    mx_gate._mx_command_and_args = commandAndArgs
     mx_gate._mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
@@ -18816,7 +18831,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.4")  # GR-12412
+version = VersionSpec("5.192.10")  # GR-12306
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
