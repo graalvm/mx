@@ -227,6 +227,17 @@ class DynamicVarScope(object):
 
 currently_loading_suite = DynamicVar(None)
 
+def relpath_or_absolute(path, start, prefix=""):
+    """
+    Finds a relative path and joins it to 'prefix', or otherwise tries to use 'path' as an absolute path.
+    If 'path' is not an absolute path, an error is thrown.
+    """
+    try:
+        return join(prefix, os.path.relpath(path, start))
+    except ValueError:
+        if not os.path.isabs(path):
+            raise ValueError('can not find a relative path to dependency and path is not absolute: ' + path)
+        return path
 
 # Support for Python 2.6
 def check_output(*popenargs, **kwargs):
@@ -15449,7 +15460,7 @@ def intellij_read_sdks():
         warn("IntelliJ SDK definitions not found")
         return sdks
 
-    verRE = re.compile(r'^.*/\.?(IntelliJIdea|IdeaIC)([^/]+)/.*$')
+    verRE = re.compile(r'^.*[/\\]\.?(IntelliJIdea|IdeaIC)([^/\\]+)[/\\].*$')
     def verSort(path):
         match = verRE.match(path)
         return match.group(2) + (".a" if match.group(1) == "IntellijIC" else ".b")
@@ -15819,21 +15830,24 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         ensure_dir_exists(librariesDirectory)
 
-        def make_library(name, path, source_path):
+        def make_library(name, path, source_path, suite_dir):
             libraryXml = XMLDoc()
 
             libraryXml.open('component', attributes={'name': 'libraryTable'})
             libraryXml.open('library', attributes={'name': name})
             libraryXml.open('CLASSES')
-            libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + path + '!/'})
+            pathX = relpath_or_absolute(path, suite_dir, prefix='$PROJECT_DIR$')
+            libraryXml.element('root', attributes={'url': 'jar://' + pathX + '!/'})
             libraryXml.close('CLASSES')
             libraryXml.element('JAVADOC')
             if sourcePath:
                 libraryXml.open('SOURCES')
                 if os.path.isdir(sourcePath):
-                    libraryXml.element('root', attributes={'url': 'file://$PROJECT_DIR$/' + sourcePath})
+                    sourcePathX = relpath_or_absolute(sourcePath, suite_dir, prefix='$PROJECT_DIR$')
+                    libraryXml.element('root', attributes={'url': 'file://' + sourcePathX})
                 else:
-                    libraryXml.element('root', attributes={'url': 'jar://$PROJECT_DIR$/' + source_path + '!/'})
+                    source_pathX = relpath_or_absolute(source_path, suite_dir, prefix='$PROJECT_DIR$')
+                    libraryXml.element('root', attributes={'url': 'jar://' + source_pathX + '!/'})
                 libraryXml.close('SOURCES')
             else:
                 libraryXml.element('SOURCES')
@@ -15847,25 +15861,25 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         for library in libraries:
             sourcePath = None
             if library.isLibrary():
-                path = os.path.relpath(library.get_path(True), s.dir)
+                path = library.get_path(True)
                 if library.sourcePath:
-                    sourcePath = os.path.relpath(library.get_source_path(True), s.dir)
+                    sourcePath = library.get_source_path(True)
             elif library.isMavenProject():
-                path = os.path.relpath(library.get_path(True), s.dir)
-                sourcePath = os.path.relpath(library.get_source_path(True), s.dir)
+                path = library.get_path(True)
+                sourcePath = library.get_source_path(True)
             elif library.isJARDistribution():
-                path = os.path.relpath(library.path, s.dir)
+                path = library.path
                 if library.sourcesPath:
-                    sourcePath = os.path.relpath(library.sourcesPath, s.dir)
+                    sourcePath = library.sourcesPath
             else:
                 abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
-            make_library(library.name, path, sourcePath)
+            make_library(library.name, path, sourcePath, s.dir)
 
         jdk = get_jdk()
         updated = False
         for library in jdk_libraries:
             if library.classpath_repr(jdk) is not None:
-                if make_library(library.name, os.path.relpath(library.classpath_repr(jdk), s.dir), os.path.relpath(library.get_source_path(jdk), s.dir)):
+                if make_library(library.name, library.classpath_repr(jdk), library.get_source_path(jdk), s.dir):
                     updated = True
         if jdk_libraries and updated:
             log("Setting up JDK libraries using {0}".format(jdk))
@@ -15896,9 +15910,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 for apDep in processors:
                     def processApDep(dep, edge):
                         if dep.isLibrary() or dep.isJARDistribution():
-                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.path, s.dir)})
+                            compilerXml.element('entry', attributes={'name': relpath_or_absolute(dep.path, s.dir, prefix='$PROJECT_DIR$')})
                         elif dep.isProject():
-                            compilerXml.element('entry', attributes={'name': '$PROJECT_DIR$/' + os.path.relpath(dep.output_dir(), s.dir)})
+                            compilerXml.element('entry', attributes={'name': relpath_or_absolute(dep.output_dir(), s.dir, prefix='$PROJECT_DIR$')})
                     apDep.walk_deps(visit=processApDep)
                 compilerXml.close('processorPath')
                 for module in modules:
@@ -18840,7 +18854,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.9")  # GR-12468
+version = VersionSpec("5.192.11")  # safe relpath
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
