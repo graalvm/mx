@@ -3059,10 +3059,10 @@ class JavaProject(Project, ClasspathDependency):
         if configZip.isOlderThan(join(self.dir, 'build.xml')):
             return False
 
-        if configZip.isOlderThan(join(self.dir, 'nbproject/project.xml')):
+        if configZip.isOlderThan(join(self.dir, 'nbproject', 'project.xml')):
             return False
 
-        if configZip.isOlderThan(join(self.dir, 'nbproject/project.properties')):
+        if configZip.isOlderThan(join(self.dir, 'nbproject', 'project.properties')):
             return False
 
         return True
