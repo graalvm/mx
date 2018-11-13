@@ -365,7 +365,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                     higher = entry['metric.better'] == 'higher'
                     result[benchmark] = {'scores': [score], 'higher': higher, 'name': name}
 
-        for _, entry in result.iteritems():
+        for _, entry in result.items():
             if last_n and len(entry['scores']) > abs(last_n):
                 if last_n < 0:
                     entry['trimmed_scores'] = entry['scores'][:-last_n]
@@ -379,7 +379,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
 
         # Compute a variance value.  This is a percentage variance relative to the average score
         # which is easier to interpret than a raw number.
-        for _, entry in result.iteritems():
+        for _, entry in result.items():
             variance = 0
             for score in entry['scores']:
                 variance = variance + (score - entry['score']) * (score - entry['score'])

@@ -148,7 +148,7 @@ class NinjaProject(mx.AbstractNativeProject):
             Ninja.binary = mx.join(dep.get_path(False), 'ninja')
 
         try:
-            import ninja_syntax  # pylint: disable=unused-variable
+            import ninja_syntax  # pylint: disable=unused-variable, unused-import
         except ImportError:
             def raise_(e):
                 raise e

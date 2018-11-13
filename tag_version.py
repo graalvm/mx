@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import subprocess
 import re
+from mx_portable import _check_output
 from argparse import ArgumentParser
 from os.path import realpath, dirname
 
@@ -49,11 +50,11 @@ new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTA
 
 
 def get_parents(commit):
-    return subprocess.check_output(['git', 'rev-parse', commit + '^@']).strip().split()
+    return _check_output(['git', 'rev-parse', commit + '^@']).strip().split()
 
 
 def with_hash(commit):
-    h = subprocess.check_output(['git', 'rev-parse', commit]).strip()
+    h = _check_output(['git', 'rev-parse', commit]).strip()
     if h == commit:
         return h
     return '{} ({})'.format(commit, h)
@@ -79,7 +80,7 @@ else:
     if not args.ancestor:
         raise SystemExit('{} is not a merge or has no parent that is a merge'.format(with_hash(args.descendant)))
 
-diff = subprocess.check_output(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
+diff = _check_output(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 

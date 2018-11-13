@@ -26,7 +26,7 @@
 
 from __future__ import print_function
 
-import sys, inspect, re, types, bisect
+import sys, inspect, re, bisect
 from collections import OrderedDict
 from os.path import join
 import mx
@@ -395,13 +395,13 @@ class MxCompatibility51951(MxCompatibility51950):  # pylint: disable=too-many-an
 
 def minVersion():
     _ensureCompatLoaded()
-    return _versionsMap.keys()[0]
+    return list(_versionsMap)[0]
 
 def getMxCompatibility(version):
     """:rtype: MxCompatibility500"""
     if version < minVersion():  # ensures compat loaded
         return None
-    keys = _versionsMap.keys()
+    keys = list(_versionsMap.keys())
     return _versionsMap[keys[bisect.bisect_right(keys, version)-1]]
 
 _versionsMap = OrderedDict()
@@ -411,12 +411,12 @@ def _ensureCompatLoaded():
 
         def flattenClassTree(tree):
             root = tree[0][0]
-            assert isinstance(root, types.TypeType), root
+            assert isinstance(root, type), root
             yield root
             if len(tree) > 1:
                 assert len(tree) == 2
                 rest = tree[1]
-                assert isinstance(rest, types.ListType), rest
+                assert isinstance(rest, list), rest
                 for c in flattenClassTree(rest):
                     yield c
 
