@@ -1509,9 +1509,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 if not participants__add__(arcname, contents):
                                     if versioned_meta_inf_re.match(arcname):
                                         warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
-                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(getmtime(source))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
+                                    info.external_attr = S_IMODE(stat(source).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
@@ -1526,9 +1526,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             with open(join(root, f), 'r') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
-                                                info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                                info = zipfile.ZipInfo(arcname, time.localtime(getmtime(join(root, f)))[:6])
                                                 info.compress_type = arc.zf.compression
-                                                info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                                info.external_attr = S_IMODE(stat(join(root, f)).st_mode) << 16
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
@@ -2329,7 +2329,7 @@ class LayoutDistribution(AbstractDistribution):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
                 add_symlink(src, link_target, absolute_destination, dst)
             elif isdir(src):
-                ensure_dir_exists(absolute_destination, os.lstat(src).st_mode)
+                ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
                     merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes)
             else:
@@ -3636,14 +3636,13 @@ class JavaBuildTask(ProjectBuildTask):
                 for fname in filenames:
                     output.append(os.path.join(root, fname))
             if output:
-                key = lambda x: os.path.getmtime(_safe_path(x))
-                self._newestOutput = TimeStampFile(max(output, key=key))
+                self._newestOutput = TimeStampFile(max(output, key=getmtime))
         # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
         if self.copyfiles:
             for src, dst in self.copyfiles:
                 ensure_dir_exists(dirname(dst))
-                if not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
+                if not exists(dst) or getmtime(dst) < getmtime(src):
                     shutil.copyfile(src, dst)
                     self._newestOutput = TimeStampFile(dst)
             logvv('Finished copying files from dependencies for {}'.format(self.subject.name))
@@ -4762,7 +4761,7 @@ class PackedResourceLibrary(ResourceLibrary):
             logvv("Destination does not exist")
             logvv("Destination: " + dst)
             return True
-        if os.path.getmtime(src) > os.path.getmtime(dst):
+        if getmtime(src) > getmtime(dst):
             logvv("Destination older than source")
             logvv("Destination: " + dst)
             logvv("Source:      " + src)
@@ -8985,7 +8984,7 @@ class Suite(object):
 
     def suite_py_mtime(self):
         if not hasattr(self, '_suite_py_mtime'):
-            self._suite_py_mtime = os.path.getmtime(self.suite_py())
+            self._suite_py_mtime = getmtime(self.suite_py())
         return self._suite_py_mtime
 
     def __abort_context__(self):
@@ -12781,7 +12780,7 @@ def eclipseformat(args):
             self.path = path
             with open(path) as fp:
                 self.content = fp.read()
-            self.times = (os.path.getatime(path), os.path.getmtime(path))
+            self.times = (os.path.getatime(path), getmtime(path))
 
         def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
@@ -12808,7 +12807,7 @@ def eclipseformat(args):
                         self.content = content
                     file_modified = True
 
-            if not file_updated and (os.path.getatime(self.path), os.path.getmtime(self.path)) != self.times:
+            if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
                 # reset access and modification time of file
                 os.utime(self.path, self.times)
             return file_modified
@@ -13366,11 +13365,11 @@ class TimeStampFile:
         self.path = path
         if exists(path):
             if followSymlinks == 'newest':
-                self.timestamp = max(os.path.getmtime(path), os.lstat(path).st_mtime)
+                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
             elif followSymlinks:
-                self.timestamp = os.path.getmtime(path)
+                self.timestamp = getmtime(path)
             else:
-                self.timestamp = os.lstat(path).st_mtime
+                self.timestamp = lstat(path).st_mtime
         else:
             self.timestamp = None
 
@@ -13404,7 +13403,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) > self.timestamp:
+            if getmtime(f) > self.timestamp:
                 return True
         return False
 
@@ -13423,7 +13422,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) < self.timestamp:
+            if getmtime(f) < self.timestamp:
                 return True
         return False
 
@@ -13443,7 +13442,7 @@ class TimeStampFile:
         else:
             ensure_dir_exists(dirname(self.path))
             file(self.path, 'a')
-        self.timestamp = os.path.getmtime(self.path)
+        self.timestamp = getmtime(self.path)
 
 def checkstyle(args):
     """run Checkstyle on the Java sources
@@ -13591,6 +13590,30 @@ def _safe_path(path):
             else:
                 path = '\\\\?\\' + path
     return path
+
+def getmtime(name):
+    """
+    Wrapper for os.path.getmtime function that handles long path names on Windows.
+    """
+    if get_os() == 'windows':
+        name = _safe_path(name)
+    return os.path.getmtime(name)
+
+def stat(name):
+    """
+    Wrapper for os.stat function that handles long path names on Windows.
+    """
+    if get_os() == 'windows':
+        name = _safe_path(name)
+    return os.stat(name)
+
+def lstat(name):
+    """
+    Wrapper for os.lstat function that handles long path names on Windows.
+    """
+    if get_os() == 'windows':
+        name = _safe_path(name)
+    return os.lstat(name)
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
@@ -18831,7 +18854,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.11")  # safe relpath
+version = VersionSpec("5.192.12")  # long windows paths
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
