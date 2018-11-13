@@ -13593,7 +13593,7 @@ def _safe_path(path):
 
 def getmtime(name):
     """
-    Wrapper for builtin open function that handles long path names on Windows.
+    Wrapper for os.path.getmtime function that handles long path names on Windows.
     """
     if get_os() == 'windows':
         name = _safe_path(name)
@@ -13601,7 +13601,7 @@ def getmtime(name):
 
 def stat(name):
     """
-    Wrapper for builtin open function that handles long path names on Windows.
+    Wrapper for os.stat function that handles long path names on Windows.
     """
     if get_os() == 'windows':
         name = _safe_path(name)
@@ -13609,7 +13609,7 @@ def stat(name):
 
 def lstat(name):
     """
-    Wrapper for builtin open function that handles long path names on Windows.
+    Wrapper for os.lstat function that handles long path names on Windows.
     """
     if get_os() == 'windows':
         name = _safe_path(name)
