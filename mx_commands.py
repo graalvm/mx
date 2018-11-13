@@ -125,6 +125,20 @@ class MxCommand(object):
     def command_function(self):
         return self._command_function
 
+    def get_doc(self):
+        doc = 'mx {0} {1}'
+        msg = '<no documentation>'
+        if self.command_function.__doc__ or self.doc_function or self.usage_msg:
+            msg = ''
+            if self.usage_msg:
+                msg += self.usage_msg
+            if self.command_function.__doc__:
+                msg += '\n\n' + self.command_function.__doc__
+            if self.doc_function:
+                msg += '\n' + self.doc_function()
+
+        return doc.format(self.command, msg)
+
     def __call__(self, *args, **kwargs):
         for callback in self._mx_commands.command_before_callbacks:
             callback(self, *args, **kwargs)
