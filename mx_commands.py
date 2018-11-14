@@ -26,6 +26,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 
 class MxCommands(object):
     def __init__(self, blessed_suite_name):

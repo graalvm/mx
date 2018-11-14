@@ -33,6 +33,7 @@ import os
 from os.path import exists
 from argparse import ArgumentParser
 
+
 def _should_test_project(p):
     if not p.isJavaProject():
         return False

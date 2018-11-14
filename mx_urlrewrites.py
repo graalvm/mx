@@ -30,7 +30,8 @@ import re
 import json
 import mx
 
-_urlrewrites = [] # list of URLRewrite objects
+_urlrewrites = []  # list of URLRewrite objects
+
 
 def register_urlrewrite(urlrewrite, onError=None):
     """
