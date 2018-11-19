@@ -664,6 +664,9 @@ class Dependency(SuiteConstituent):
     def defined_java_packages(self):
         return []
 
+    def mismatched_imports(self):
+        return {}
+
     def _extra_artifact_discriminant(self):
         """
         An extra string to help identify the current build configuration. It will be used in the generated path for the
@@ -1511,9 +1514,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 if not participants__add__(arcname, contents):
                                     if versioned_meta_inf_re.match(arcname):
                                         warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
-                                    info = zipfile.ZipInfo(arcname, time.localtime(getmtime(source))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(stat(source).st_mode) << 16
+                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
@@ -1528,9 +1531,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             with open(join(root, f), 'r') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
-                                                info = zipfile.ZipInfo(arcname, time.localtime(getmtime(join(root, f)))[:6])
+                                                info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
                                                 info.compress_type = arc.zf.compression
-                                                info.external_attr = S_IMODE(stat(join(root, f)).st_mode) << 16
+                                                info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
@@ -2331,7 +2334,7 @@ class LayoutDistribution(AbstractDistribution):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
                 add_symlink(src, link_target, absolute_destination, dst)
             elif isdir(src):
-                ensure_dir_exists(absolute_destination, lstat(src).st_mode)
+                ensure_dir_exists(absolute_destination, os.lstat(src).st_mode)
                 for name in os.listdir(src):
                     merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes)
             else:
@@ -2979,6 +2982,7 @@ class JavaProject(Project, ClasspathDependency):
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
+        self._mismatched_imports = None
 
     def resolveDeps(self):
         Project.resolveDeps(self)
@@ -3177,6 +3181,7 @@ class JavaProject(Project, ClasspathDependency):
                     depPackages.update(dep.defined_java_packages())
             self.walk_deps(visit=visit)
             imports = set()
+            mismatched_imports = {}
             # Assumes package name components start with lower case letter and
             # classes start with upper-case letter
             importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+\*?)\s*;\s*')
@@ -3185,30 +3190,37 @@ class JavaProject(Project, ClasspathDependency):
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
                     if len(javaSources) != 0:
-                        pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                        if not pkg in depPackages:
-                            packages.add(pkg)
+                        path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                        if path_package not in depPackages:
+                            packages.add(path_package)
                         else:
                             # A project extends a package already defined by one of it dependencies
-                            extendedPackages.add(pkg)
-                            imports.add(pkg)
+                            extendedPackages.add(path_package)
+                            imports.add(path_package)
 
                         for n in javaSources:
-                            with open(join(root, n)) as fp:
-                                lines = fp.readlines()
-                                for i in range(len(lines)):
-                                    m = importStatementRe.match(lines[i])
+                            java_package = None
+                            java_source = join(root, n)
+                            with open(java_source) as fp:
+                                for i, line in enumerate(fp):
+                                    m = importStatementRe.match(line)
                                     if m:
                                         imported = m.group(1)
                                         m = importedRe.match(imported)
                                         if not m:
                                             lineNo = i + 1
-                                            abort(join(root, n) + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + lines[i], self)
+                                            abort(java_source + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + line, self)
                                         package = m.group(1)
                                         imports.add(package)
+                                    m = _java_package_regex.match(line)
+                                    if m:
+                                        java_package = m.group('package')
+                            if java_package != path_package:
+                                mismatched_imports[java_source] = java_package
 
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
+            self._mismatched_imports = mismatched_imports
 
             importedPackagesFromProjects = set()
             compat = self.suite.getMxCompatibility()
@@ -3250,6 +3262,11 @@ class JavaProject(Project, ClasspathDependency):
         """
         self._init_packages_and_imports()
         return getattr(self, '.importedPackagesFromJavaProjects') if projectDepsOnly else getattr(self, '.importedPackages')
+
+    def mismatched_imports(self):
+        """Get a dictionary of source files whose package declaration does not match their source location"""
+        self._init_packages_and_imports()
+        return self._mismatched_imports
 
     def annotation_processors(self):
         """
@@ -3638,13 +3655,14 @@ class JavaBuildTask(ProjectBuildTask):
                 for fname in filenames:
                     output.append(os.path.join(root, fname))
             if output:
-                self._newestOutput = TimeStampFile(max(output, key=getmtime))
+                key = lambda x: os.path.getmtime(_safe_path(x))
+                self._newestOutput = TimeStampFile(max(output, key=key))
         # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
         if self.copyfiles:
             for src, dst in self.copyfiles:
                 ensure_dir_exists(dirname(dst))
-                if not exists(dst) or getmtime(dst) < getmtime(src):
+                if not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
                     shutil.copyfile(src, dst)
                     self._newestOutput = TimeStampFile(dst)
             logvv('Finished copying files from dependencies for {}'.format(self.subject.name))
@@ -4763,7 +4781,7 @@ class PackedResourceLibrary(ResourceLibrary):
             logvv("Destination does not exist")
             logvv("Destination: " + dst)
             return True
-        if getmtime(src) > getmtime(dst):
+        if os.path.getmtime(src) > os.path.getmtime(dst):
             logvv("Destination older than source")
             logvv("Destination: " + dst)
             logvv("Source:      " + src)
@@ -8986,7 +9004,7 @@ class Suite(object):
 
     def suite_py_mtime(self):
         if not hasattr(self, '_suite_py_mtime'):
-            self._suite_py_mtime = getmtime(self.suite_py())
+            self._suite_py_mtime = os.path.getmtime(self.suite_py())
         return self._suite_py_mtime
 
     def __abort_context__(self):
@@ -10804,18 +10822,6 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         source = 'EXTRA_JAVA_HOMES'
 
     result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
-    result_paths = [x.home for x in result]
-    if result_paths != candidateJdks and source:
-        # Update the source with the filtered result
-        if source == 'EXTRA_JAVA_HOMES':
-            os.environ['EXTRA_JAVA_HOMES'] = os.pathsep.join(result_paths)
-        elif source == '--extra-java-homes':
-            _opts.extra_java_homes = os.pathsep.join(result_paths)
-            if os.environ.get('EXTRA_JAVA_HOMES'):
-                del os.environ['EXTRA_JAVA_HOMES']
-        else:
-            abort('Unknown source ' + source)
-
     if result:
         return result[0]
     return None
@@ -12782,7 +12788,7 @@ def eclipseformat(args):
             self.path = path
             with open(path) as fp:
                 self.content = fp.read()
-            self.times = (os.path.getatime(path), getmtime(path))
+            self.times = (os.path.getatime(path), os.path.getmtime(path))
 
         def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
@@ -12809,7 +12815,7 @@ def eclipseformat(args):
                         self.content = content
                     file_modified = True
 
-            if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
+            if not file_updated and (os.path.getatime(self.path), os.path.getmtime(self.path)) != self.times:
                 # reset access and modification time of file
                 os.utime(self.path, self.times)
             return file_modified
@@ -13289,6 +13295,12 @@ def canonicalizeprojects(args):
     nonCanonical = []
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
+            if p.suite.getMxCompatibility().check_package_locations():
+                for source, package in p.mismatched_imports().items():
+                    if package:
+                        p.abort('{} declares a package that does not match its location: {}'.format(source, package))
+                    else:
+                        p.abort('{} does not declares a package to match its location'.format(source))
             if p.is_test_project():
                 continue
             if p.checkPackagePrefix:
@@ -13367,11 +13379,11 @@ class TimeStampFile:
         self.path = path
         if exists(path):
             if followSymlinks == 'newest':
-                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
+                self.timestamp = max(os.path.getmtime(path), os.lstat(path).st_mtime)
             elif followSymlinks:
-                self.timestamp = getmtime(path)
+                self.timestamp = os.path.getmtime(path)
             else:
-                self.timestamp = lstat(path).st_mtime
+                self.timestamp = os.lstat(path).st_mtime
         else:
             self.timestamp = None
 
@@ -13405,7 +13417,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if getmtime(f) > self.timestamp:
+            if os.path.getmtime(f) > self.timestamp:
                 return True
         return False
 
@@ -13424,7 +13436,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if getmtime(f) < self.timestamp:
+            if os.path.getmtime(f) < self.timestamp:
                 return True
         return False
 
@@ -13444,7 +13456,7 @@ class TimeStampFile:
         else:
             ensure_dir_exists(dirname(self.path))
             file(self.path, 'a')
-        self.timestamp = getmtime(self.path)
+        self.timestamp = os.path.getmtime(self.path)
 
 def checkstyle(args):
     """run Checkstyle on the Java sources
@@ -13592,30 +13604,6 @@ def _safe_path(path):
             else:
                 path = '\\\\?\\' + path
     return path
-
-def getmtime(name):
-    """
-    Wrapper for os.path.getmtime function that handles long path names on Windows.
-    """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.path.getmtime(name)
-
-def stat(name):
-    """
-    Wrapper for os.stat function that handles long path names on Windows.
-    """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.stat(name)
-
-def lstat(name):
-    """
-    Wrapper for os.lstat function that handles long path names on Windows.
-    """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.lstat(name)
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
@@ -17546,7 +17534,7 @@ def verify_library_urls(args):
         abort('Some libraries are not reachable')
 
 
-_java_package_regex = re.compile(r"^package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
+_java_package_regex = re.compile(r"^\s*package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
 
 
 def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, extension=".hocon"):
@@ -18847,7 +18835,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.192.13")  # help
+version = VersionSpec("5.194.0")  # packages
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

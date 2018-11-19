@@ -161,6 +161,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def check_package_locations(self):
+        """
+        Should `canonicalizeprojects` check whether the java package declarations and source location match.
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -354,6 +360,16 @@ class MxCompatibility5181(MxCompatibility51760):#pylint: disable=too-many-ancest
 
     def jarsUseJDKDiscriminant(self):
         return True
+
+
+class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.194.0")
+
+    def check_package_locations(self):
+        return True
+
 
 def minVersion():
     _ensureCompatLoaded()
