@@ -1,5 +1,5 @@
 # overlay version
-overlay = efb870b5529187bb070bcbfd3ff5c81c42f0a1c5
+overlay = 538c04768c6226090006e1328c0aa95d906b8907
 
 # These are used in the overlay
 java8 : {name : labsjdk, version : "8u192-jvmci-0.53", platformspecific: true}
@@ -85,9 +85,11 @@ nocache: {
 
 builds = [
   ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
+  ${gate} {capabilities : [windows, amd64], targets : [gate], name: "gate-windows-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
+  ${verifylibraryurls} {capabilities : [windows, amd64], targets : [gate], name: "verifylibraryurls-windows-amd64"}
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
   ${downstream-truffleruby-binary-truffle} ${nocache} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle-nocache"}
 
