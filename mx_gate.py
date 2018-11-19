@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import os, re, time, datetime
 import tempfile
 import pipes

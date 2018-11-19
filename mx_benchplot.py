@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import json
 from argparse import ArgumentParser, REMAINDER
 from argparse import RawTextHelpFormatter
@@ -319,7 +321,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
             plt.show()
 
     except ImportError as e:
-        print e
+        print(e)
         mx.abort('matplotlib must be available to use benchplot.  Install it using pip')
 
 

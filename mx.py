@@ -29,6 +29,8 @@ r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
 """
+from __future__ import print_function
+
 import sys
 from abc import ABCMeta, abstractmethod
 
@@ -358,9 +360,9 @@ def _debug_walk_deps_helper(dep, edge, ignoredEdges):
     global DEBUG_WALK_DEPS_LINE
     if DEBUG_WALK_DEPS:
         if edge:
-            print '{}:walk_deps:{}{}    # {}'.format(DEBUG_WALK_DEPS_LINE, '  ' * edge.path_len(), dep, edge.kind)
+            print('{}:walk_deps:{}{}    # {}'.format(DEBUG_WALK_DEPS_LINE, '  ' * edge.path_len(), dep, edge.kind))
         else:
-            print '{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep)
+            print('{}:walk_deps:{}'.format(DEBUG_WALK_DEPS_LINE, dep))
         DEBUG_WALK_DEPS_LINE += 1
 
 
@@ -849,7 +851,7 @@ class BuildTask(object):
             ensure_dir_exists(dirname(savedDepsFile))
             with open(savedDepsFile, 'w') as fp:
                 for dname in currentDeps:
-                    print >> fp, dname
+                    print(dname, file=fp)
 
         return outOfDate
 
@@ -3310,7 +3312,7 @@ class JavaProject(Project, ClasspathDependency):
             ensure_dir_exists(dirname(currentApsFile))
             with open(currentApsFile, 'w') as fp:
                 for ap in aps:
-                    print >> fp, ap
+                    print(ap, file=fp)
         else:
             if exists(currentApsFile):
                 os.remove(currentApsFile)
@@ -4389,7 +4391,7 @@ def sha1(args):
     if args.plain:
         sys.stdout.write(value)
     else:
-        print 'sha1 of ' + args.path + ': ' + value
+        print('sha1 of ' + args.path + ': ' + value)
 
 
 def sha1OfFile(path):
@@ -6040,7 +6042,7 @@ class GitConfig(VC):
     def git_command(self, vcdir, args, abortOnError=False, quiet=True):
         args = ['git', '--no-pager'] + args
         if not quiet:
-            print '{0}'.format(" ".join(args))
+            print('{0}'.format(" ".join(args)))
         out = OutputCapture()
         rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
         if rc == 0 or rc == 1:
@@ -9650,7 +9652,7 @@ class Timer():
         return self
     def __exit__(self, t, value, traceback):
         elapsed = time.time() - self.start
-        print '{} took {} seconds'.format(self.name, elapsed)
+        print('{} took {} seconds'.format(self.name, elapsed))
         return None
 
 def get_os():
@@ -10450,7 +10452,7 @@ environment variables:
                 deferrable()
 
             if opts.version:
-                print 'mx version ' + str(version)
+                print('mx version ' + str(version))
                 sys.exit(0)
 
             if opts.vm: self.unknown += ['--vm=' + opts.vm]
@@ -11196,7 +11198,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             # TODO: handle newlines in args once there's a use case
             if '\n' in arg:
                 abort('cannot handle new line in argument to run: "' + arg + '"')
-            print >> fp, arg
+            print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
     if _opts.verbose:
@@ -11944,7 +11946,7 @@ def log(msg=None):
     to redirect it.
     """
     if msg is None:
-        print
+        print()
     else:
         # https://docs.python.org/2/reference/simple_stmts.html#the-print-statement
         # > A '\n' character is written at the end, unless the print statement
@@ -11959,7 +11961,7 @@ def log(msg=None):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        print str(msg) + "\n",
+        print(str(msg), end='\n')
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
@@ -12000,9 +12002,9 @@ def log_error(msg=None):
     to redirect it.
     """
     if msg is None:
-        print >> sys.stderr
+        print(sys.stderr, file=sys.stderr)
     else:
-        print >> sys.stderr, colorize(str(msg), stream=sys.stderr)
+        print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
 def expand_project_in_class_path_arg(cpArg, jdk=None):
     """
@@ -13281,7 +13283,7 @@ def checkoverlap(args):
                     remove.append(d)
             ds = [d for d in ds if d not in remove]
             if len(ds) > 1:
-                print '{} is in more than one distribution: {}'.format(p, [d.name for d in ds])
+                print('{} is in more than one distribution: {}'.format(p, [d.name for d in ds]))
                 count += 1
     return count
 
@@ -13690,7 +13692,7 @@ Given a command name, print help for that command."""
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(name, ' '.join(hits)))
 
     command = _mx_commands.commands()[name]
-    print command.get_doc()
+    print(command.get_doc())
 
 def _parse_multireleasejar_version(value):
     try:
@@ -13734,11 +13736,11 @@ def flattenMultiReleaseSources(args):
         for flatten_map in maps:
             for src_dir, dst_dir in flatten_map.iteritems():
                 if not args.commands:
-                    print src_dir, dst_dir
+                    print(src_dir, dst_dir)
                 else:
                     if not exists(dst_dir):
-                        print 'mkdir -p {}'.format(dst_dir)
-                    print 'cp {}{}* {}'.format(src_dir, os.sep, dst_dir)
+                        print('mkdir -p {}'.format(dst_dir))
+                    print('cp {}{}* {}'.format(src_dir, os.sep, dst_dir))
 
 def projectgraph(args, suite=None):
     """create graph for project structure ("mx projectgraph | dot -Tpdf -oprojects.pdf" or "mx projectgraph --igv")"""
@@ -13773,15 +13775,15 @@ def projectgraph(args, suite=None):
         if attributes:
             edge_str += ' [' + ', '.join((k + '="' + v + '"' for k, v in attributes.items())) + ']'
         edge_str += ';'
-        print edge_str
+        print(edge_str)
 
-    print 'digraph projects {'
-    print 'rankdir=BT;'
-    print 'node [shape=rect];'
-    print 'splines=true;'
-    print 'ranksep=1;'
+    print('digraph projects {')
+    print('rankdir=BT;')
+    print('node [shape=rect];')
+    print('splines=true;')
+    print('ranksep=1;')
     if args.dist:
-        print 'compound=true;'
+        print('compound=true;')
         started_dists = set()
 
         used_libraries = set()
@@ -13799,7 +13801,7 @@ def projectgraph(args, suite=None):
 
         for l in used_libraries:
             if not should_ignore(l.name):
-                print '"' + l.name + '";'
+                print('"' + l.name + '";')
 
         def print_distribution(_d):
             if should_ignore(_d.name):
@@ -13808,10 +13810,10 @@ def projectgraph(args, suite=None):
                 warn("projectgraph does not support non-strictly nested distributions, result may be inaccurate around " + _d.name)
                 return
             started_dists.add(_d)
-            print 'subgraph "cluster_' + _d.name + '" {'
-            print 'label="' + _d.name + '";'
-            print 'color=blue;'
-            print '"' + _d.name + ':DUMMY" [shape=point, style=invis];'
+            print('subgraph "cluster_' + _d.name + '" {')
+            print('label="' + _d.name + '";')
+            print('color=blue;')
+            print('"' + _d.name + ':DUMMY" [shape=point, style=invis];')
 
             if _d.isDistribution():
                 overlapped_deps = set()
@@ -13822,9 +13824,9 @@ def projectgraph(args, suite=None):
                     if p.isProject() and p not in overlapped_deps:
                         if should_ignore(p.name):
                             continue
-                        print '"' + p.name + '";'
-                        print '"' + _d.name + ':DUMMY"->"' + p.name + '" [style="invis"];'
-            print '}'
+                        print('"' + p.name + '";')
+                        print('"' + _d.name + ':DUMMY"->"' + p.name + '" [style="invis"];')
+            print('}')
             for dep in _d.deps:
                 if dep.isDistribution():
                     print_edge(_d, dep)
@@ -13850,7 +13852,7 @@ def projectgraph(args, suite=None):
                 if should_ignore(apd.name):
                     continue
                 print_edge(p, apd, {"style": "dashed"})
-    print '}'
+    print('}')
 
 def _source_locator_memento(deps, jdk=None):
     slm = XMLDoc()
@@ -15217,7 +15219,7 @@ ${build.test.classes.dir}
 test.src.dir=./test
 """ + annotationProcessorSrcFolderRef + """
 source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
-    print >> out, content
+    print(content, file=out)
 
     # Workaround for NetBeans "too clever" behavior. If you want to be
     # able to press F6 or Ctrl-F5 in NetBeans and run/debug unit tests
@@ -15227,25 +15229,25 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     # that will be on the class path for most Truffle projects.
     # This can be overridden by defining a netbeans.project.properties
     # attribute for a project in suite.py (see below).
-    print >> out, "main.class=com.oracle.truffle.api.impl.Accessor"
+    print("main.class=com.oracle.truffle.api.impl.Accessor", file=out)
 
     # Add extra properties specified in suite.py for this project
     if hasattr(p, 'netbeans.project.properties'):
         properties = getattr(p, 'netbeans.project.properties')
         for prop in [properties] if isinstance(properties, str) else properties:
-            print >> out, prop
+            print(prop, file=out)
 
     mainSrc = True
     for src in p.srcDirs:
         srcDir = join(p.dir, src)
         ensure_dir_exists(srcDir)
         ref = 'file.reference.' + p.name + '-' + src
-        print >> out, ref + '=' + src
+        print(ref + '=' + src, file=out)
         if mainSrc:
-            print >> out, 'src.dir=${' + ref + '}'
+            print('src.dir=${' + ref + '}', file=out)
             mainSrc = False
         else:
-            print >> out, 'src.' + src + '.dir=${' + ref + '}'
+            print('src.' + src + '.dir=${' + ref + '}', file=out)
 
     javacClasspath = []
 
@@ -15281,20 +15283,20 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
                 ref = 'file.reference.' + dep.name + '-bin'
-                print >> out, ref + '=' + path
+                print(ref + '=' + path, file=out)
                 if libFiles:
                     libFiles.append(path)
             if sourcePath:
                 if os.sep == '\\':
                     sourcePath = sourcePath.replace('\\', '\\\\')
-                print >> out, 'source.reference.' + dep.name + '-bin=' + sourcePath
+                print('source.reference.' + dep.name + '-bin=' + sourcePath, file=out)
         elif dep.isMavenProject():
             path = dep.get_path(resolve=False)
             if path:
                 if os.sep == '\\':
                     path = path.replace('\\', '\\\\')
                 ref = 'file.reference.' + dep.name + '-bin'
-                print >> out, ref + '=' + path
+                print(ref + '=' + path, file=out)
         elif dep.isProject():
             n = dep.name.replace('.', '_')
             relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
@@ -15303,17 +15305,17 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
             else:
                 depBuildPath = 'dist/' + dep.name + '.jar'
             ref = 'reference.' + n + '.jar'
-            print >> out, 'project.' + n + '=' + relDepPath
-            print >> out, ref + '=${project.' + n + '}/' + depBuildPath
+            print('project.' + n + '=' + relDepPath, file=out)
+            print(ref + '=${project.' + n + '}/' + depBuildPath, file=out)
 
         if not dep in annotationProcessorOnlyDeps:
             javacClasspath.append('${' + ref + '}')
         else:
             annotationProcessorReferences.append('${' + ref + '}')
 
-    print >> out, 'javac.classpath=\\\n    ' + (os.pathsep + '\\\n    ').join(javacClasspath)
-    print >> out, 'javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences)
-    print >> out, 'javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences)
+    print('javac.classpath=\\\n    ' + (os.pathsep + '\\\n    ').join(javacClasspath), file=out)
+    print('javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences), file=out)
+    print('javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences), file=out)
 
     update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
     out.close()
@@ -15951,27 +15953,27 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 miscXml = XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
                 out = StringIO.StringIO()
-                print >> out, '# GENERATED -- DO NOT EDIT'
+                print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
-                    print >> out, '# Source:', source
+                    print('# Source:', source, file=out)
                     with open(source) as fileName:
                         for line in fileName:
                             if line.startswith('org.eclipse.jdt.core.formatter.'):
-                                print >> out, line.strip()
+                                print(line.strip(), file=out)
                 formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
                 update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
                     out = StringIO.StringIO()
-                    print >> out, '# GENERATED -- DO NOT EDIT'
+                    print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
-                        print >> out, '# Source:', source
+                        print('# Source:', source, file=out)
                         with open(source) as fileName:
                             for line in fileName:
                                 if line.startswith('org.eclipse.jdt.ui.importorder') \
                                         or line.startswith('org.eclipse.jdt.ui.ondemandthreshold') \
                                         or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
-                                    print >> out, line.strip()
+                                    print(line.strip(), file=out)
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
                     update_file(importConfigFile, out.getvalue())
                 miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
@@ -16534,7 +16536,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             delOverviewFile = False
             if not exists(overviewFile):
                 with open(overviewFile, 'w') as fp:
-                    print >> fp, '<html><body>Documentation for the <code>' + p.name + '</code> project.</body></html>'
+                    print('<html><body>Documentation for the <code>' + p.name + '</code> project.</body></html>', file=fp)
                 delOverviewFile = True
             nowarnAPI = []
             if not args.warnAPI:
@@ -16763,19 +16765,19 @@ def site(args):
             if idx != -1:
                 args.overview = join(tmpbase, 'overview_with_projects.html')
                 with open(args.overview, 'w') as fp2:
-                    print >> fp2, content[0:idx]
-                    print >> fp2, """<div class="contentContainer">
+                    print(content[0:idx], file=fp2)
+                    print("""<div class="contentContainer">, file=fp2
 <table class="overviewSummary" border="0" cellpadding="3" cellspacing="0" summary="Projects table">
 <caption><span>Projects</span><span class="tabEnd">&nbsp;</span></caption>
 <tr><th class="colFirst" scope="col">Project</th><th class="colLast" scope="col">&nbsp;</th></tr>
-<tbody>"""
+<tbody>""")
                     color = 'row'
                     for p in projects:
-                        print >> fp2, '<tr class="{1}Color"><td class="colFirst"><a href="../{0}/javadoc/index.html",target = "_top">{0}</a></td><td class="colLast">&nbsp;</td></tr>'.format(p.name, color)
+                        print('<tr class="{1}Color"><td class="colFirst"><a href="../{0}/javadoc/index.html",target = "_top">{0}</a></td><td class="colLast">&nbsp;</td></tr>'.format(p.name, color), file=fp2)
                         color = 'row' if color == 'alt' else 'alt'
 
-                    print >> fp2, '</tbody></table></div>'
-                    print >> fp2, content[idx:]
+                    print('</tbody></table></div>', file=fp2)
+                    print(content[idx:], file=fp2)
 
         title = args.title if args.title is not None else args.name
         javadoc(['--base', tmpbase,
@@ -16808,21 +16810,21 @@ def site(args):
             html = join(tmpbase, 'all', str(args.dot_output_base) + '.html')
             with open(dot, 'w') as fp:
                 dim = len(projects)
-                print >> fp, 'digraph projects {'
-                print >> fp, 'rankdir=BT;'
-                print >> fp, 'size = "' + str(dim) + ',' + str(dim) + '";'
-                print >> fp, 'node [shape=rect, fontcolor="blue"];'
-                # print >> fp, 'edge [color="green"];'
+                print('digraph projects {', file=fp)
+                print('rankdir=BT;', file=fp)
+                print('size = "' + str(dim) + ',' + str(dim) + '";', file=fp)
+                print('node [shape=rect, fontcolor="blue"];', file=fp)
+                # print('edge [color="green"];', file=fp)
                 for p in projects:
-                    print >> fp, '"' + p.name + '" [URL = "../' + p.name + '/javadoc/index.html", target = "_top"]'
+                    print('"' + p.name + '" [URL = "../' + p.name + '/javadoc/index.html", target = "_top"]', file=fp)
                     for dep in p.canonical_deps():
                         if dep in [proj.name for proj in projects]:
-                            print >> fp, '"' + p.name + '" -> "' + dep + '"'
+                            print('"' + p.name + '" -> "' + dep + '"', file=fp)
                 depths = dict()
                 for p in projects:
                     d = p.max_depth()
                     depths.setdefault(d, list()).append(p.name)
-                print >> fp, '}'
+                print('}', file=fp)
 
             run(['dot', '-Tsvg', '-o' + svg, '-Tjpg', '-o' + jpg, dot])
 
@@ -16837,7 +16839,7 @@ def site(args):
 
             # Create HTML that embeds the svg file in an <object> frame
             with open(html, 'w') as fp:
-                print >> fp, '<html><body><object data="{0}.svg" type="image/svg+xml"></object></body></html>'.format(args.dot_output_base)
+                print('<html><body><object data="{0}.svg" type="image/svg+xml"></object></body></html>'.format(args.dot_output_base), file=fp)
 
 
         if args.tmp:
@@ -16845,7 +16847,7 @@ def site(args):
         else:
             shutil.move(tmpbase, args.base)
 
-        print 'Created website - root is ' + join(args.base, 'all', 'index.html')
+        print('Created website - root is ' + join(args.base, 'all', 'index.html'))
 
     finally:
         if not args.tmp and exists(tmpbase):
@@ -16997,7 +16999,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
             msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
         abort(msg)
     if importedVersion != suite_import.version and suite_import.version is not None:
-        print 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
+        print('imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion))
         if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
             with open(importing_suite.suite_py()) as fp:
                 contents = fp.read()
@@ -17009,7 +17011,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
                 if bookmark_imports:
                     _sbookmark_visitor(importing_suite, suite_import)
             else:
-                print 'Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py())
+                print('Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py()))
 
 
 @no_suite_loading
@@ -17103,7 +17105,7 @@ def _sincoming(s, suite_import):
 
     output = s.vc.incoming(s.vc_dir)
     if output:
-        print output
+        print(output)
 
 
 @no_suite_loading
@@ -17126,7 +17128,7 @@ def _hg_command(s, suite_import, **extra_args):
 
     if isinstance(s.vc, HgConfig):
         out = s.vc.hg_command(s.vc_dir, extra_args['args'])
-        print out
+        print(out)
 
 
 @no_suite_loading
@@ -17144,7 +17146,7 @@ def _stip_import_visitor(s, suite_import, **extra_args):
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
-    print 'tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir)
+    print('tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir))
 
 
 @no_suite_loading
@@ -17183,9 +17185,9 @@ def sversions(args):
             return
         visited.add(s.dir)
         if s.vc == None:
-            print 'No version control info for suite ' + s.name
+            print('No version control info for suite ' + s.name)
         else:
-            print _sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir
+            print(_sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir)
         s.visit_imports(_sversions_import_visitor)
 
     if not isinstance(primary_suite(), MXSuite):
@@ -17355,7 +17357,7 @@ def exportlibs(args):
                         break
                     d.update(buf)
             with open(path + '.' + suffix, 'w') as fp:
-                print >> fp, d.hexdigest()
+                print(d.hexdigest(), file=fp)
             log('created ' + path + '.' + suffix)
 
     digest(args.sha1, path, hashlib.sha1, 'sha1')
@@ -17714,17 +17716,17 @@ def maven_install(args):
         if nolocalchanges:
             mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
         else:
-            print 'Local changes found, skipping install of ' + version + ' version'
+            print('Local changes found, skipping install of ' + version + ' version')
         mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
         for dist in arcdists:
             if nolocalchanges:
                 mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
             mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, releaseVersion, args.repo)
     else:
-        print 'jars to deploy manually for version: ' + version
-        print 'name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir)
+        print('jars to deploy manually for version: ' + version)
+        print('name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir))
         for dist in arcdists:
-            print 'name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir)
+            print('name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir))
 
 def _copy_eclipse_settings(p, files=None):
     processors = p.annotation_processors()
@@ -17734,11 +17736,11 @@ def _copy_eclipse_settings(p, files=None):
 
     for name, sources in p.eclipse_settings_sources().iteritems():
         out = StringIO.StringIO()
-        print >> out, '# GENERATED -- DO NOT EDIT'
+        print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
-            print >> out, '# Source:', source
+            print('# Source:', source, file=out)
             with open(source) as f:
-                print >> out, f.read()
+                print(f.read(), file=out)
         if p.javaCompliance:
             jc = p.javaCompliance if p.javaCompliance.value < _max_Eclipse_JavaExecutionEnvironment else JavaCompliance(_max_Eclipse_JavaExecutionEnvironment)
             content = out.getvalue().replace('${javaCompliance}', str(jc))
@@ -17820,7 +17822,7 @@ def show_envs(args):
 
     for key, value in os.environ.iteritems():
         if args.all or key.startswith('MX'):
-            print '{0}: {1}'.format(key, value)
+            print('{0}: {1}'.format(key, value))
 
 def show_version(args):
     """print mx version"""
@@ -17831,12 +17833,12 @@ def show_version(args):
     if args.oneline:
         vc = VC.get_vc(_mx_home, abortOnError=False)
         if vc == None:
-            print 'No version control info for mx %s' % version
+            print('No version control info for mx %s' % version)
         else:
-            print _sversions_rev(vc.parent(_mx_home), vc.isDirty(_mx_home), False) + ' mx %s' % version
+            print(_sversions_rev(vc.parent(_mx_home), vc.isDirty(_mx_home), False) + ' mx %s' % version)
         return
 
-    print version
+    print(version)
 
 @suite_context_free
 def update(args):
@@ -17848,11 +17850,11 @@ def update(args):
     vc = VC.get_vc(_mx_home, abortOnError=False)
     if isinstance(vc, GitConfig):
         if args.dry_run:
-            print vc.incoming(_mx_home)
+            print(vc.incoming(_mx_home))
         else:
-            print vc.pull(_mx_home, update=True)
+            print(vc.pull(_mx_home, update=True))
     else:
-        print 'Cannot update mx as git is unavailable'
+        print('Cannot update mx as git is unavailable')
 
 def remove_doubledash(args):
     if '--' in args:
@@ -17866,7 +17868,7 @@ def ask_question(question, options, default=None, answer=None):
         questionMark = questionMark.replace(default, default.upper())
     if answer:
         answer = str(answer)
-        print question + questionMark + answer
+        print(question + questionMark + answer)
     else:
         if is_interactive():
             answer = raw_input(question + questionMark) or default
@@ -17901,20 +17903,20 @@ def warn(msg, context=None):
             else:
                 contextMsg = str(context)
             msg = contextMsg + ":\n" + msg
-        print >> sys.stderr, colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr)
+        print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
 
 def print_simple_help():
-    print 'Welcome to Mx version ' + str(version)
-    print ArgumentParser.format_help(_argParser)
-    print 'Modify mx.<suite>/suite.py in the top level directory of a suite to change the project structure'
-    print 'Here are common Mx commands:'
-    print '\nBuilding and testing:'
-    print list_commands(_build_commands)
-    print 'Checking stylistic aspects:'
-    print list_commands(_style_check_commands)
-    print 'Useful utilities:'
-    print list_commands(_utilities_commands)
-    print '\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command'
+    print('Welcome to Mx version ' + str(version))
+    print(ArgumentParser.format_help(_argParser))
+    print('Modify mx.<suite>/suite.py in the top level directory of a suite to change the project structure')
+    print('Here are common Mx commands:')
+    print('\nBuilding and testing:')
+    print(list_commands(_build_commands))
+    print('Checking stylistic aspects:')
+    print(list_commands(_style_check_commands))
+    print('Useful utilities:')
+    print(list_commands(_utilities_commands))
+    print('\'mx help\' lists all commands. See \'mx help <command>\' to read about a specific command')
 
 
 def list_commands(l):
@@ -18833,7 +18835,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.194.0")  # packages
+version = VersionSpec("5.194.1")  # print
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

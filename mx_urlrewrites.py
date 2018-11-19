@@ -24,11 +24,14 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import re
 import json
 import mx
 
-_urlrewrites = [] # list of URLRewrite objects
+_urlrewrites = []  # list of URLRewrite objects
+
 
 def register_urlrewrite(urlrewrite, onError=None):
     """
@@ -127,7 +130,7 @@ def rewriteurl(url):
 def urlrewrite_cli(args):
     """rewrites the given URL using MX_URLREWRITES"""
     assert len(args) == 1
-    print rewriteurl(args[0])
+    print(rewriteurl(args[0]))
 
 class URLRewrite(object):
     """

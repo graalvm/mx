@@ -26,9 +26,12 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 import mx
 import os
 from os.path import join, exists
+
 
 def _should_test_project(p):
     if not p.isJavaProject():

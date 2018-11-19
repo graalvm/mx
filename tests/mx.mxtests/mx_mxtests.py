@@ -1,6 +1,8 @@
 # A collections of commands that exercise some mx functions in the context of a particular set of suites.
 # Incomplete
 
+from __future__ import print_function
+
 from argparse import ArgumentParser
 import os
 import urllib
@@ -18,10 +20,10 @@ def _cp(args):
     parser.add_argument('--ignoreSelf', action='store_true', help='ignoreSelf')
     args = parser.parse_args(args)
     result = mx.classpath(args.project, resolve=not args.noResolve, includeSelf=not args.ignoreSelf)
-    print 'classpath for: ', args.project
+    print('classpath for: ', args.project)
     comps = result.split(':')
     for comp in comps:
-        print comp
+        print(comp)
 
 def _ap(args):
     parser = ArgumentParser(prog='mx mxt-proj-ap-path')
@@ -29,10 +31,10 @@ def _ap(args):
     args = parser.parse_args(args)
     project = mx.project(args.project)
     result = project.annotation_processors_path()
-    print 'annotation_processors_path for: ', args.project
+    print('annotation_processors_path for: ', args.project)
     comps = result.split(':')
     for comp in comps:
-        print comp
+        print(comp)
 
 def _alldeps(args):
     parser = ArgumentParser(prog='mx mxt-alldeps')
@@ -53,9 +55,9 @@ def _alldeps(args):
 
     in_deps = []
     deps = entity.all_deps(in_deps, includeLibs=args.includeLibs, includeSelf=not args.ignoreSelf)
-    print 'alldeps:'
+    print('alldeps:')
     for d in deps:
-        print d.__class__.__name__, ":", d.name
+        print(d.__class__.__name__, ":", d.name)
 
 from HTMLParser import HTMLParser
 
@@ -63,11 +65,11 @@ class MyHTMLParser(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
     def handle_starttag(self, tag, attrs):
-        print "Start tag:", tag
+        print("Start tag:", tag)
         for attr in attrs:
-            print "     attr:", attr
+            print("     attr:", attr)
     def handle_endtag(self, tag):
-        print "End tag  :", tag
+        print("End tag  :", tag)
 
 class DirHTMLParser(HTMLParser):
     def __init__(self):
@@ -88,7 +90,7 @@ def _readurl(args):
     args = parser.parse_args(args)
     if 'file://' in args.url:
         for f in os.listdir(args.url.replace('file://', '')):
-            print f
+            print(f)
     else:
         f = urllib.urlopen(args.url)
         text = f.read()
@@ -96,7 +98,7 @@ def _readurl(args):
         parser.feed(text)
         if not args.print_tags:
             for f in parser.files:
-                print f
+                print(f)
 
 def _vc_clone(args):
     parser = ArgumentParser(prog='mx mxt-vc-clone')
@@ -108,7 +110,7 @@ def _vc_clone(args):
     args = parser.parse_args(args)
     vc = mx.vc_system(args.kind)
     rc = vc.clone(args.url, args.target, args.rev, args.log == 'True')
-    print rc
+    print(rc)
 
 def _vc_pull(args):
     parser = ArgumentParser(prog='mx mxt-vc-pull')
@@ -126,7 +128,7 @@ def _vc_tip(args):
     args = parser.parse_args(args)
     vc = mx.vc_system(args.kind)
     rc = vc.tip(args.dir)
-    print rc
+    print(rc)
 
 def _vc_locate(args):
     parser = ArgumentParser(prog='mx mxt-vc-locate')
@@ -137,7 +139,7 @@ def _vc_locate(args):
     vc = mx.vc_system(args.kind)
     lines = vc.locate(args.dir, patterns=args.patterns)
     for line in lines:
-        print line
+        print(line)
 
 def _command_info(args):
     parser = ArgumentParser(prog='mx mxt-command_function')

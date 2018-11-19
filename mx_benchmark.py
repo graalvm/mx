@@ -24,6 +24,8 @@
 #
 # ----------------------------------------------------------------------------------------------------
 
+from __future__ import print_function
+
 import json
 import os.path
 import platform
@@ -1796,11 +1798,11 @@ class BenchmarkExecutor(object):
 
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
-                print "The following benchmarks are available in suite {}:\n".format(suite.name())
+                print("The following benchmarks are available in suite {}:\n".format(suite.name()))
                 for name in suite.benchmarkList(bmSuiteArgs):
-                    print "  " + name
+                    print("  " + name)
                 if isinstance(suite.get_vm_registry(), VmBenchmarkSuite):
-                    print "\n{}".format(suite.get_vm_registry().get_available_vm_configs_help())
+                    print("\n{}".format(suite.get_vm_registry().get_available_vm_configs_help()))
             else:
                 vmregToSuites = {}
                 noVmRegSuites = []
@@ -1811,24 +1813,24 @@ class BenchmarkExecutor(object):
                     else:
                         noVmRegSuites.append(bm_suite_name)
                 for vmreg, bm_suite_names in vmregToSuites.iteritems():
-                    print "\nThe following {} benchmark suites are available:\n".format(vmreg.vm_type_name)
+                    print("\nThe following {} benchmark suites are available:\n".format(vmreg.vm_type_name))
                     for name in bm_suite_names:
-                        print "  " + name
-                    print "\n{}".format(vmreg.get_available_vm_configs_help())
+                        print("  " + name)
+                    print("\n{}".format(vmreg.get_available_vm_configs_help()))
                 if noVmRegSuites:
-                    print "\nThe following non-VM benchmark suites are available:\n"
+                    print("\nThe following non-VM benchmark suites are available:\n")
                     for name in noVmRegSuites:
-                        print "  " + name
+                        print("  " + name)
             return 0
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
             for key, entry in parsers.iteritems():
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
-                    print entry.description
+                    print(entry.description)
                     entry.parser.print_help()
             for vmreg in vm_registries():
-                print "\n{}".format(vmreg.get_available_vm_configs_help())
+                print("\n{}".format(vmreg.get_available_vm_configs_help()))
             return 0 if mxBenchmarkArgs.help else 1
 
         self.checkEnvironmentVars()

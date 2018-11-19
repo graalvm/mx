@@ -26,6 +26,8 @@
 # ----------------------------------------------------------------------------------------------------
 #
 
+from __future__ import print_function
+
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
 from urlparse import urlparse
