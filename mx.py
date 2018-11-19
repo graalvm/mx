@@ -662,6 +662,9 @@ class Dependency(SuiteConstituent):
     def defined_java_packages(self):
         return []
 
+    def mismatched_imports(self):
+        return {}
+
     def _extra_artifact_discriminant(self):
         """
         An extra string to help identify the current build configuration. It will be used in the generated path for the
@@ -2977,6 +2980,7 @@ class JavaProject(Project, ClasspathDependency):
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
+        self._mismatched_imports = None
 
     def resolveDeps(self):
         Project.resolveDeps(self)
@@ -3175,6 +3179,7 @@ class JavaProject(Project, ClasspathDependency):
                     depPackages.update(dep.defined_java_packages())
             self.walk_deps(visit=visit)
             imports = set()
+            mismatched_imports = {}
             # Assumes package name components start with lower case letter and
             # classes start with upper-case letter
             importStatementRe = re.compile(r'\s*import\s+(?:static\s+)?([a-zA-Z\d_$\.]+\*?)\s*;\s*')
@@ -3183,30 +3188,37 @@ class JavaProject(Project, ClasspathDependency):
                 for root, _, files in os.walk(sourceDir):
                     javaSources = [name for name in files if name.endswith('.java')]
                     if len(javaSources) != 0:
-                        pkg = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                        if not pkg in depPackages:
-                            packages.add(pkg)
+                        path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                        if path_package not in depPackages:
+                            packages.add(path_package)
                         else:
                             # A project extends a package already defined by one of it dependencies
-                            extendedPackages.add(pkg)
-                            imports.add(pkg)
+                            extendedPackages.add(path_package)
+                            imports.add(path_package)
 
                         for n in javaSources:
-                            with open(join(root, n)) as fp:
-                                lines = fp.readlines()
-                                for i in range(len(lines)):
-                                    m = importStatementRe.match(lines[i])
+                            java_package = None
+                            java_source = join(root, n)
+                            with open(java_source) as fp:
+                                for i, line in enumerate(fp):
+                                    m = importStatementRe.match(line)
                                     if m:
                                         imported = m.group(1)
                                         m = importedRe.match(imported)
                                         if not m:
                                             lineNo = i + 1
-                                            abort(join(root, n) + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + lines[i], self)
+                                            abort(java_source + ':' + str(lineNo) + ': import statement does not match expected pattern:\n' + line, self)
                                         package = m.group(1)
                                         imports.add(package)
+                                    m = _java_package_regex.match(line)
+                                    if m:
+                                        java_package = m.group('package')
+                            if java_package != path_package:
+                                mismatched_imports[java_source] = java_package
 
             self._defined_java_packages = frozenset(packages)
             self._extended_java_packages = frozenset(extendedPackages)
+            self._mismatched_imports = mismatched_imports
 
             importedPackagesFromProjects = set()
             compat = self.suite.getMxCompatibility()
@@ -3248,6 +3260,11 @@ class JavaProject(Project, ClasspathDependency):
         """
         self._init_packages_and_imports()
         return getattr(self, '.importedPackagesFromJavaProjects') if projectDepsOnly else getattr(self, '.importedPackages')
+
+    def mismatched_imports(self):
+        """Get a dictionary of source files whose package declaration does not match their source location"""
+        self._init_packages_and_imports()
+        return self._mismatched_imports
 
     def annotation_processors(self):
         """
@@ -13276,6 +13293,12 @@ def canonicalizeprojects(args):
     nonCanonical = []
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
+            if p.suite.getMxCompatibility().check_package_locations():
+                for source, package in p.mismatched_imports().items():
+                    if package:
+                        p.abort('{} declares a package that does not match its location: {}'.format(source, package))
+                    else:
+                        p.abort('{} does not declares a package to match its location'.format(source))
             if p.is_test_project():
                 continue
             if p.checkPackagePrefix:
@@ -17509,7 +17532,7 @@ def verify_library_urls(args):
         abort('Some libraries are not reachable')
 
 
-_java_package_regex = re.compile(r"^package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
+_java_package_regex = re.compile(r"^\s*package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
 
 
 def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, extension=".hocon"):
@@ -18810,7 +18833,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.193.0")  # GR-12571
+version = VersionSpec("5.194.0")  # packages
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
