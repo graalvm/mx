@@ -36,6 +36,7 @@ suite = {
         "artifactId" : "org.jacoco.report",
         "version" : "0.8.2",
       },
+      "defaultBuild" : False,
       "dependencies" : ["JACOCOCORE_0.8.2"],
       "licence": "EPL-1.0",
     },
