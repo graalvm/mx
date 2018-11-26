@@ -18174,7 +18174,7 @@ def _remove_unsatisfied_deps():
         logv('[' + reason + ']')
         removedDeps[dep] = reason if details is None else (reason, details)
 
-    walk_deps(visit=visit)
+    walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
 
     res = OrderedDict()
     for dep, reason in removedDeps.iteritems():
@@ -18835,7 +18835,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.194.3")  # GR-12454
+version = VersionSpec("5.194.4")  # GR-12711
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
