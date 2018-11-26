@@ -18174,7 +18174,7 @@ def _remove_unsatisfied_deps():
         logv('[' + reason + ']')
         removedDeps[dep] = reason if details is None else (reason, details)
 
-    walk_deps(visit=visit)
+    walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
 
     res = OrderedDict()
     for dep, reason in removedDeps.iteritems():
