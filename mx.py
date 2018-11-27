@@ -2473,7 +2473,7 @@ class LayoutDistribution(AbstractDistribution):
                             archiver.add(extracted_file, arcname, provenance)
                             if tarinfo.isdir():
                                 # use a safe mode while extracting, fix later
-                                os.chmod(extracted_file, 0700)
+                                os.chmod(extracted_file, int('0700', 8))
                                 directories.append(tarinfo)
 
                     # Reverse sort directories.
@@ -10993,7 +10993,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
         while True:
             try:
                 return os.waitpid(pid, os.WNOHANG)
-            except OSError, e:
+            except OSError as e:
                 if e.errno == errno.EINTR:
                     continue
                 raise
