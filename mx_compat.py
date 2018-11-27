@@ -373,13 +373,13 @@ class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ance
 
 def minVersion():
     _ensureCompatLoaded()
-    return _versionsMap.keys()[0]
+    return next(iter(_versionsMap.keys()))
 
 def getMxCompatibility(version):
     """:rtype: MxCompatibility500"""
     if version < minVersion():  # ensures compat loaded
         return None
-    keys = _versionsMap.keys()
+    keys = list(_versionsMap.keys())
     return _versionsMap[keys[bisect.bisect_right(keys, version)-1]]
 
 _versionsMap = OrderedDict()
