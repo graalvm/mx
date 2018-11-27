@@ -30,7 +30,7 @@ import os
 import re
 import zipfile
 import pickle
-import StringIO
+from mx_portable import StringIO
 import shutil
 import itertools
 from os.path import join, exists, dirname, basename
@@ -145,7 +145,7 @@ class JavaModuleDescriptor(object):
         """
         Gets this module descriptor expressed as the contents of a ``module-info.java`` file.
         """
-        out = StringIO.StringIO()
+        out = StringIO()
         print('module ' + self.name + ' {', file=out)
         for dependency, modifiers in sorted(self.requires.iteritems()):
             modifiers_string = (' '.join(sorted(modifiers)) + ' ') if len(modifiers) != 0 else ''

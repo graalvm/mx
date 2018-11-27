@@ -44,8 +44,8 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
-import os, errno, time, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
-import __builtin__
+import os, errno, time, subprocess, shlex, types, zipfile, signal, tempfile, platform
+from mx_portable import StringIO, builtins, urlopen, build_opener, install_opener, HTTPError, URLError, urlparse, urlsplit
 import textwrap
 import socket
 import tarfile, gzip
@@ -58,7 +58,6 @@ import shutil, re
 import pipes
 import difflib
 import glob
-import urllib2, urlparse
 import filecmp
 import json
 from collections import OrderedDict, namedtuple, deque
@@ -4429,7 +4428,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            o = urlparse.urlparse(url)
+            o = urlparse(url)
             if o.path == "/remotecontent" and o.query.startswith("filepath"):
                 path = o.query
             else:
@@ -4465,8 +4464,8 @@ def _urlopen(*args, **kwargs):
 
     while True:
         try:
-            return urllib2.urlopen(*args, **kwargs)
-        except (urllib2.HTTPError) as e:
+            return urlopen(*args, **kwargs)
+        except (HTTPError) as e:
             if e.code == 500:
                 if error500_attempts < error500_limit:
                     error500_attempts += 1
@@ -4475,12 +4474,12 @@ def _urlopen(*args, **kwargs):
                     time.sleep(0.2)
                     continue
             raise
-        except urllib2.URLError as e:
+        except URLError as e:
             if isinstance(e.reason, socket.error):
                 if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
                     warn("urlopen() failed with EINTR. Retrying without timeout.")
                     del kwargs['timeout']
-                    return urllib2.urlopen(*args, **kwargs)
+                    return urlopen(*args, **kwargs)
                 if e.reason.errno == errno.EINPROGRESS:
                     if on_timeout():
                         continue
@@ -6946,10 +6945,10 @@ class BinaryVC(VC):
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
-    hashFile = urllib2.urlopen(url)
+    hashFile = urlopen(url)
     try:
         return hashFile.read()
-    except urllib2.URLError as e:
+    except URLError as e:
         _suggest_http_proxy_error(e)
         abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
     finally:
@@ -7053,7 +7052,7 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.HTTPError as e:
+        except HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
@@ -7078,7 +7077,7 @@ class MavenRepo:
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
                         snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
-                    except urllib2.HTTPError as e:
+                    except HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
 
@@ -7089,7 +7088,7 @@ class MavenRepo:
                         break
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
-        except urllib2.URLError as e:
+        except URLError as e:
             abort('Error while retrieving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
         finally:
             if metadataFile:
@@ -7104,8 +7103,8 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.URLError as e:
-            if isinstance(e, urllib2.HTTPError) and e.code == 404:
+        except URLError as e:
+            if isinstance(e, HTTPError) and e.code == 404:
                 return None
             _suggest_http_proxy_error(e)
             abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
@@ -7954,7 +7953,7 @@ class SiblingSuiteModel(SuiteModel):
         for urlinfo in suite_import.urlinfos:
             if urlinfo.abs_kind() == 'source':
                 # 'https://github.com/graalvm/graal.git' -> 'graal'
-                base, _ = os.path.splitext(basename(urlparse.urlparse(urlinfo.url).path))
+                base, _ = os.path.splitext(basename(urlparse(urlinfo.url).path))
                 if base: break
         if base:
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), base)
@@ -8162,7 +8161,7 @@ class SuiteImport:
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
-    url = urlparse.urlsplit(urlstr)
+    url = urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
 
 class SCMMetadata(object):
@@ -12257,12 +12256,12 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-    except (IOError, socket.timeout, urllib2.HTTPError) as e:
+    except (IOError, socket.timeout, HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
         log_error("Error reading from " + url + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
-        if isinstance(e, urllib2.HTTPError) and e.code == 500:
+        if isinstance(e, HTTPError) and e.code == 500:
             return "retry"
     finally:
         if conn:
@@ -13128,7 +13127,7 @@ class Archiver(SafeFileCreation):
         tarinfo.name = archive_name
         tarinfo.size = len(data)
         tarinfo.mtime = calendar.timegm(datetime.now().utctimetuple())
-        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO.StringIO(data))
+        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO(data))
 
     def _add_link_tar(self, target, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
@@ -13611,7 +13610,7 @@ def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
     if get_os() == 'windows':
         name = _safe_path(name)
-    return __builtin__.open(name, mode=mode)
+    return builtins.open(name, mode=mode)
 
 def rmtree(dirPath):
     path = dirPath
@@ -15106,7 +15105,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
-    out = StringIO.StringIO()
+    out = StringIO()
     jdkPlatform = 'JDK_' + str(jdk.version)
 
     annotationProcessorEnabled = "false"
@@ -15952,7 +15951,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if corePrefsSources:
                 miscXml = XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
-                out = StringIO.StringIO()
+                out = StringIO()
                 print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
                     print('# Source:', source, file=out)
@@ -15964,7 +15963,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
-                    out = StringIO.StringIO()
+                    out = StringIO()
                     print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
                         print('# Source:', source, file=out)
@@ -17735,7 +17734,7 @@ def _copy_eclipse_settings(p, files=None):
     ensure_dir_exists(settingsDir)
 
     for name, sources in p.eclipse_settings_sources().iteritems():
-        out = StringIO.StringIO()
+        out = StringIO()
         print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
             print('# Source:', source, file=out)
@@ -18222,7 +18221,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             # Try use the URL first so that a big repo is cloned to a local
             # directory whose named is based on the repo instead of a suite
             # nested in the big repo.
-            root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
+            root, _ = os.path.splitext(basename(urlparse(url).path))
             if root:
                 import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
             else:
@@ -18619,8 +18618,8 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
     else:
         abort("Unknown Socks Proxy type {0}".format(proxytype))
 
-    opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
-    urllib2.install_opener(opener)
+    opener = build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    install_opener(opener)
 
 
 def main():

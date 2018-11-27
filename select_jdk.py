@@ -29,7 +29,7 @@ from __future__ import print_function
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-import StringIO
+from mx_portable import StringIO
 
 def is_valid_jdk(jdk):
     """
@@ -87,7 +87,7 @@ def get_PATH_sep(shell):
 
 def get_shell_commands(args, jdk, extra_jdks):
     setvar_format = get_setvar_format(args.shell)
-    shell_commands = StringIO.StringIO()
+    shell_commands = StringIO()
     print(setvar_format % ('JAVA_HOME', jdk), file=shell_commands)
     if extra_jdks:
         print(setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks)), file=shell_commands)
