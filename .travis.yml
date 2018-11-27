@@ -6,8 +6,7 @@ addons:
     packages:
       - oracle-java8-installer
 install:
-  - pip install astroid==1.1.0
-  - pip install pylint==1.1.0
+  - pip install pylint==1.9.3
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz

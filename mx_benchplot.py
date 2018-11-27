@@ -325,7 +325,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
         mx.abort('matplotlib must be available to use benchplot.  Install it using pip')
 
 
-def extract_results(files, names, last_n=None, selected_benchmarks=None):
+def extract_results(files, names, last_n=0, selected_benchmarks=None):
     if names:
         if len(names) != len(files):
             mx.abort('Wrong number of names specified: {} files but {} names.'.format(len(files), len(names)))
@@ -345,7 +345,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                 benchmark = entry['benchmark']
                 if benchmark not in benchmarks:
                     benchmarks.append(benchmark)
-                if bench_suite == None:
+                if bench_suite is None:
                     bench_suite = entry['bench-suite']
                 else:
                     if bench_suite != entry['bench-suite']:

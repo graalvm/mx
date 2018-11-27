@@ -74,7 +74,7 @@ class Task:
     def tag_matches(self, _tags):
         for t in _tags:
             assert isinstance(t, basestring), '{} is not a string and thus not a valid tag'.format(t)
-            if t in Task.tags:
+            if t in Task.tags: #pylint: disable=unsupported-membership-test
                 if t not in Task.tags_range:
                     # no range restriction
                     return True
@@ -120,12 +120,12 @@ class Task:
             elif Task.filters:
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
-                    self.skipped = any([f in t for t in titles for f in Task.filters])
+                    self.skipped = any([f in t for t in titles for f in Task.filters]) #pylint: disable=not-an-iterable
                 else:
-                    self.skipped = not any([f in t for t in titles for f in Task.filters])
+                    self.skipped = not any([f in t for t in titles for f in Task.filters]) #pylint: disable=not-an-iterable
             if Task.tags is not None:
                 if Task.tagsExclude:
-                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
+                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False #pylint: disable=unsupported-membership-test
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
@@ -334,7 +334,7 @@ def gate(args):
 
     if args.partial:
         partialArgs = args.partial.split('/')
-        if len(partialArgs) is not 2:
+        if len(partialArgs) != 2:
             mx.abort('invalid partial argument specified')
 
         selected = int(partialArgs[0]) - 1
@@ -358,7 +358,7 @@ def gate(args):
         Task.filtersExclude = False
 
         mx.log('Running gate with partial tasks ' + args.partial + ". " + str(len(partialTasks)) + " out of " + str(len(nonBuildTasks)) + " non-build tasks selected.")
-        if len(partialTasks) is 0:
+        if len(partialTasks) == 0:
             mx.log('No partial tasks left to run. Finishing gate early.')
             return
 
@@ -369,13 +369,13 @@ def gate(args):
 
     def shell_quoted_args(args):
         args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
-        if args_string is not '':
+        if args_string != '':
             args_string = ' ' + args_string
         return args_string
 
     def mx_command_entered(command, *args, **kwargs):
         global _command_level
-        if _command_level is 0:
+        if _command_level == 0:
             all_commands.append((command.command, args, kwargs))
             mx.log(mx.colorize('Running: ' + command_in_gate_message(command.command, args, kwargs), color='blue'))
         _command_level = _command_level + 1
@@ -501,7 +501,7 @@ def _run_gate(cleanArgs, args, tasks):
         with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
                 defaultBuildArgs = ['-p']
-                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
+                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags #pylint: disable=unsupported-membership-test
                 # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
                 if not args.no_warning_as_error and fullbuild:
                     defaultBuildArgs += ['--warning-as-error']

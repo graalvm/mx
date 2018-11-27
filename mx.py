@@ -420,7 +420,7 @@ class SuiteConstituent(object):
                 for t in tokenize.generate_tokens(fp.readline):
                     _, tval, (srow, _), _, _ = t
                     if candidate is None:
-                        if tval == '"' + self.name + '"' or tval == "'" + self.name + "'":
+                        if tval in ('"' + self.name + '"', "'" + self.name + "'"):
                             candidate = srow
                     else:
                         if tval == ':':
@@ -681,7 +681,7 @@ class Dependency(SuiteConstituent):
         by the strings. The 'deps' list is updated in place.
         """
         if deps:
-            assert all((isinstance(d, str) or isinstance(d, Dependency) for d in deps))
+            assert all((isinstance(d, (str, Dependency)) for d in deps))
             if isinstance(deps[0], str):
                 assert all((isinstance(d, str) for d in deps))
                 resolvedDeps = []
@@ -767,7 +767,7 @@ class ClasspathDependency(Dependency):
         nyi('classpath_repr', self)
 
     def isJar(self):
-        cp_repr = self.classpath_repr()
+        cp_repr = self.classpath_repr() #pylint: disable=assignment-from-no-return
         if cp_repr:
             return cp_repr.endswith('.jar') or cp_repr.endswith('.JAR') or '.jar_' in cp_repr
         return True
@@ -1660,7 +1660,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         a.__closing__()
 
                 # accumulate services
-                services_versions = sorted([v for v in services.keys() if isinstance(v, int)])
+                services_versions = sorted([v for v in services if isinstance(v, int)])
                 if services_versions:
                     acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, basestring)}
                     for v in services_versions:
@@ -1791,7 +1791,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return JARArchiveTask(args, self)
 
     def exists(self):
-        return exists(self.path) and not self.sourcesPath or exists(self.sourcesPath)
+        return not self.sourcesPath if exists(self.path) else exists(self.sourcesPath)
 
     def remoteExtension(self):
         return 'jar'
@@ -1865,7 +1865,7 @@ class JMHArchiveParticipant:
             'META-INF/CompilerHints': None,
         }
 
-    def __add__(self, arcname, contents):
+    def __add__(self, arcname, contents): #pylint: disable=unexpected-special-method-signature
         if arcname in self.meta_files.keys():
             if self.meta_files[arcname] is None:
                 self.meta_files[arcname] = contents
@@ -2376,7 +2376,7 @@ class LayoutDistribution(AbstractDistribution):
             if_stripped = source.get('if_stripped')
             if if_stripped is not None and d.isJARDistribution():
                 if if_stripped not in ('include', 'exclude'):
-                    abort("Could not understand `if_stripped` value ''. Valid values are 'include' and 'exclude'".format(if_stripped), context=self)
+                    abort("Could not understand `if_stripped` value '{}'. Valid values are 'include' and 'exclude'".format(if_stripped), context=self)
                 if (if_stripped == 'exclude' and d.is_stripped()) or (if_stripped == 'include' and not d.is_stripped()):
                     return
             if source.get('path') is None:
@@ -2413,8 +2413,7 @@ class LayoutDistribution(AbstractDistribution):
                           " - or '{type}:{dependency}/path/to/file/in/archive' as a source (i.e., extracting /path/to/file/in/archive from '{dependency}' to '{dest}')".format(
                             dest=destination,
                             dependency=d.name,
-                            type=source_type,
-                            context=self))
+                            type=source_type))
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
@@ -4005,7 +4004,7 @@ class CompilerDaemon(Daemon):
         preexec_fn, creationflags = _get_new_progress_group_args()
         if _opts.verbose:
             log(' '.join(map(pipes.quote, args)))
-        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags, stdout=subprocess.PIPE)
+        p = subprocess.Popen(args, preexec_fn=preexec_fn, creationflags=creationflags, stdout=subprocess.PIPE) #pylint: disable=subprocess-popen-preexec-fn
 
         # scan stdout to capture the port number
         pout = []
@@ -4518,11 +4517,11 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     sha1Check = sha1 and sha1 != 'NOCHECK'
     canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
 
-    if len(urls) is 0 and not sha1Check:
+    if len(urls) == 0 and not sha1Check:
         return path
 
     if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
-        if len(urls) is 0:
+        if len(urls) == 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
         if is_cache_path(path):
@@ -5358,8 +5357,8 @@ class VC(object):
         :return: True if release
         :rtype: bool
         """
-        _release_version = self.release_version_from_tags(vcdir=vcdir, prefix=prefix)
-        return True if _release_version and re.match(r'^[0-9]+[0-9.]+$', _release_version) else False
+        _release_version = self.release_version_from_tags(vcdir=vcdir, prefix=prefix) #pylint: disable=assignment-from-no-return
+        return _release_version and re.match(r'^[0-9]+[0-9.]+$', _release_version)
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
@@ -6384,7 +6383,7 @@ class GitConfig(VC):
     def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', 'log', '{0}origin/master{1}'.format(
-                '..', '' if incoming else '', '..')]
+                '..', '' if incoming else '')]
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
@@ -7968,7 +7967,7 @@ class SiblingSuiteModel(SuiteModel):
             args = []
         results = []
         # Ensure that all suites in the same repo import the same version of other suites
-        dirs = set([s.vc_dir for s in suites if s.dir != s.vc_dir])
+        dirs = {s.vc_dir for s in suites if s.dir != s.vc_dir}
         for vc_dir in dirs:
             imports = {}
             for suite_dir in [_is_suite_dir(join(vc_dir, x)) for x in os.listdir(vc_dir) if _is_suite_dir(join(vc_dir, x))]:
@@ -11047,7 +11046,7 @@ def waitOn(p):
     if get_os() == 'windows':
         # on windows use a poll loop, otherwise signal does not get handled
         retcode = None
-        while retcode == None:
+        while retcode is None:
             retcode = p.poll()
             time.sleep(0.05)
     else:
@@ -11233,7 +11232,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             stream.close()
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
-        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, **kwargs)
+        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
@@ -11920,7 +11919,7 @@ def get_env(key, default=None):
     return value
 
 def logv(msg=None):
-    if vars(_opts).get('verbose') == None:
+    if vars(_opts).get('verbose') is None:
         def _deferrable():
             logv(msg)
         _opts_parsed_deferrables.append(_deferrable)
@@ -11930,7 +11929,7 @@ def logv(msg=None):
         log(msg)
 
 def logvv(msg=None):
-    if vars(_opts).get('very_verbose') == None:
+    if vars(_opts).get('very_verbose') is None:
         def _deferrable():
             logvv(msg)
         _opts_parsed_deferrables.append(_deferrable)
@@ -12917,6 +12916,20 @@ def _processorjars_suite(s):
     build(['--dependencies', ",".join(names)])
     return [ap.path for ap in apDists]
 
+pylint_ver_map = {
+    (1, 1): {
+        'rcfile': '.pylintrc11',
+        'additional_options': []
+    },
+    (1, 9): {
+        'rcfile': '.pylintrc19',
+        'additional_options': ['--score=n']
+    },
+    (2, 2): {
+        'rcfile': '.pylintrc22',
+        'additional_options': ['--score=n']
+    }
+}
 
 @no_suite_loading
 def pylint(args):
@@ -12927,11 +12940,7 @@ def pylint(args):
     parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
     parser.add_argument('--all', action='store_true', help='check all files, not just files in the mx.* directory.')
     args = parser.parse_args(args)
-
-    rcfile = join(dirname(__file__), '.pylintrc')
-    if not exists(rcfile):
-        log_error('pylint configuration file does not exist: ' + rcfile)
-        return -1
+    ver = (-1, -1)
 
     try:
         output = subprocess.check_output(['pylint', '--version'], stderr=subprocess.STDOUT)
@@ -12940,12 +12949,20 @@ def pylint(args):
             log_error('could not determine pylint version from ' + output)
             return -1
         major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        if major != 1 or minor != 1:
-            log_error('require pylint version = 1.1.x (got {0}.{1}.{2})'.format(major, minor, micro))
+        ver = (major, minor)
+        if ver not in pylint_ver_map:
+            log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
             return -1
     except BaseException as e:
         log_error('pylint is not available: ' + str(e))
         return -1
+
+    rcfile = join(dirname(__file__), pylint_ver_map[ver]['rcfile'])
+    if not exists(rcfile):
+        log_error('pylint configuration file does not exist: ' + rcfile)
+        return -1
+
+    additional_options = pylint_ver_map[ver]['additional_options']
 
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
@@ -13000,7 +13017,7 @@ def pylint(args):
 
     for pyfile in pyfiles:
         log('Running pylint on ' + pyfile + '...')
-        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile], env=env)
+        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
 
     return 0
 
@@ -13018,7 +13035,7 @@ class TempDir(object):
 
 
 class TempDirCwd(TempDir):
-    def __init__(self, parent_dir=None):
+    def __init__(self, parent_dir=None): #pylint: disable=useless-super-delegation
         super(TempDirCwd, self).__init__(parent_dir)
 
     def __enter__(self):
@@ -13078,7 +13095,7 @@ class SafeFileCreation(object):
                     os.remove(tmpPath)
                 else:
                     # Correct the permissions on the temporary file which is created with restrictive permissions
-                    os.chmod(tmpPath, 0o666 & ~currentUmask)
+                    os.chmod(tmpPath, 0o666 & ~currentUmask) #pylint: disable=invalid-unary-operand-type
                     # Atomic if self.path does not already exist.
                     if get_os() == 'windows' and exists(path):
                         # Needed on Windows
@@ -13308,7 +13325,7 @@ def canonicalizeprojects(args):
                     if not pkg.startswith(p.name):
                         p.abort('package in {0} does not have prefix matching project name: {1}'.format(p, pkg))
 
-            ignoredDeps = set([d for d in p.deps if d.isJavaProject()])
+            ignoredDeps = {d for d in p.deps if d.isJavaProject()}
             for pkg in p.imported_java_packages():
                 for dep in p.deps:
                     if not dep.isJavaProject():
@@ -13405,7 +13422,7 @@ class TimeStampFile:
     def isOlderThan(self, arg):
         if not self.timestamp:
             return True
-        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+        if isinstance(arg, (types.IntType, types.LongType, types.FloatType)):
             return self.timestamp < arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
@@ -13424,7 +13441,7 @@ class TimeStampFile:
     def isNewerThan(self, arg):
         if not self.timestamp:
             return False
-        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+        if isinstance(arg, (types.IntType, types.LongType, types.FloatType)):
             return self.timestamp > arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
@@ -14532,7 +14549,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         dist.dir = projectDir
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
                                       relevantResources=relevantResources,
-                                      logToFile=True, refresh=True, async=False,
+                                      logToFile=True, refresh=True, isAsync=False,
                                       logToConsole=logToConsole, appendToLogFile=False,
                                       refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
         files = files + builders
@@ -14617,7 +14634,7 @@ RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
 IRESOURCE_FILE = 1
 IRESOURCE_FOLDER = 2
 
-def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, async=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
+def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, isAsync=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
     launchOut = XMLDoc()
     consoleOn = 'true' if logToConsole else 'false'
@@ -14646,7 +14663,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_BUILD_SCOPE', 'value': resources})
 
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_CONSOLE_OUTPUT_ON', 'value': consoleOn})
-    launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_LAUNCH_IN_BACKGROUND', 'value': 'true' if async else 'false'})
+    launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_LAUNCH_IN_BACKGROUND', 'value': 'true' if isAsync else 'false'})
     if logToFile:
         logFile = join(externalToolDir, name + '.log')
         launchOut.element('stringAttribute', {'key' : 'org.eclipse.debug.ui.ATTR_CAPTURE_IN_FILE', 'value': logFile})
@@ -15094,7 +15111,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
             out.element('target', data='jar')
             out.element('clean-target', data='clean')
             out.element('id', data='jar')
-            out.close('reference')
+            out.close('reference') #pylint: disable=too-many-function-args
     p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
 
     if firstDep:
@@ -15678,7 +15695,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     if jdk.javaCompliance < dep.jdkStandardizedSince:
                         moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                     else:
-                        logv("{} skipping {} for {}".format(p, dep, jdk))
+                        logv("skipping {} for {}".format(dep, jdk))
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
@@ -16067,7 +16084,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
 
             # 3) Make an artifact for every distribution
-            validArtifactNames = set([artifactFileName(dist) for dist in validDistributions])
+            validArtifactNames = {artifactFileName(dist) for dist in validDistributions}
             artifactsDir = join(ideaProjectDirectory, 'artifacts')
             ensure_dir_exists(artifactsDir)
             for fileName in os.listdir(artifactsDir):
@@ -16113,7 +16130,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         suites_for_vcs = suites() + ([_mx_suite] if mx_python_modules else [])
         sourceSuitesWithVCS = [vc_suite for vc_suite in suites_for_vcs if vc_suite.isSourceSuite() and vc_suite.vc is not None]
-        uniqueSuitesVCS = set([(vc_suite.vc_dir, vc_suite.vc.kind) for vc_suite in sourceSuitesWithVCS])
+        uniqueSuitesVCS = {(vc_suite.vc_dir, vc_suite.vc.kind) for vc_suite in sourceSuitesWithVCS}
         for vcs_dir, kind in uniqueSuitesVCS:
             vcsXml.element('mapping', attributes={'directory': vcs_dir, 'vcs': intellij_scm_name(kind)})
 
@@ -16293,7 +16310,7 @@ def verifysourceinproject(args):
     suiteWhitelists = {}
 
     def ignorePath(path, whitelist):
-        if whitelist == None:
+        if whitelist is None:
             return True
         for entry in whitelist:
             if fnmatch.fnmatch(path, entry):
@@ -16305,7 +16322,7 @@ def verifysourceinproject(args):
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
         suiteDirs.add(suite.dir)
         # all suites in the same repository must have the same setting for requiresSourceInProjects
-        if suiteVcDirs.get(suite.vc_dir) == None:
+        if suiteVcDirs.get(suite.vc_dir) is None:
             suiteVcDirs[suite.vc_dir] = suite.vc
             whitelistFile = join(suite.vc_dir, '.nonprojectsources')
             if exists(whitelistFile):
@@ -16379,7 +16396,7 @@ def verifysourceinproject(args):
         for vc_dir, sources in unmanagedSources.iteritems():
             for source in sources:
                 log(source)
-            if suiteWhitelists.get(vc_dir) != None:
+            if suiteWhitelists.get(vc_dir) is not None:
                 retcode += 1
                 log('Since {} has a .nonprojectsources file, all Java source files must be \n'\
                     'part of a project in a suite or the files must be listed in the .nonprojectsources.'.format(vc_dir))
@@ -16794,14 +16811,14 @@ def site(args):
         if args.dot_output_base is not None:
             dotErr = None
             try:
-                if not 'version' in subprocess.check_output(['dot', '-V'], stderr=subprocess.STDOUT):
+                if 'version' not in subprocess.check_output(['dot', '-V'], stderr=subprocess.STDOUT):
                     dotErr = 'dot -V does not print a string containing "version"'
             except subprocess.CalledProcessError as e:
                 dotErr = 'error calling "dot -V": {0}'.format(e)
             except OSError as e:
                 dotErr = 'error calling "dot -V": {0}'.format(e)
 
-            if dotErr != None:
+            if dotErr is not None:
                 abort('cannot generate dependency graph: ' + dotErr)
 
             dot = join(tmpbase, 'all', str(args.dot_output_base) + '.dot')
@@ -17184,7 +17201,7 @@ def sversions(args):
         if s.dir in visited:
             return
         visited.add(s.dir)
-        if s.vc == None:
+        if s.vc is None:
             print('No version control info for suite ' + s.name)
         else:
             print(_sversions_rev(s.vc.parent(s.vc_dir), s.vc.isDirty(s.vc_dir), with_color) + ' ' + s.name + ' ' + s.vc_dir)
@@ -17706,7 +17723,7 @@ def maven_install(args):
     for dist in s.dists:
         # ignore non-exported dists
         if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
-            if len(only) is 0 or dist.name in only:
+            if len(only) == 0 or dist.name in only:
                 arcdists.append(dist)
 
     mxMetaName = _mx_binary_distribution_root(s.name)
@@ -17832,7 +17849,7 @@ def show_version(args):
     args = parser.parse_args(args)
     if args.oneline:
         vc = VC.get_vc(_mx_home, abortOnError=False)
-        if vc == None:
+        if vc is None:
             print('No version control info for mx %s' % version)
         else:
             print(_sversions_rev(vc.parent(_mx_home), vc.isDirty(_mx_home), False) + ' mx %s' % version)
@@ -18448,7 +18465,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery("Ignoring {} -> {} because of version_from({}) = {} (fast-path)".format(_importer_name, _imported_suite.name, suite_with_from, from_suite))
                         return True
                     if from_suite not in ancestor_names:
-                        _log_discovery("Temporarily ignoring {} -> {} because of version_from({}) = {} ({} is not yet discovered)".format(_importer_name, _imported_suite.name, suite_with_from, from_suite, from_suite))
+                        _log_discovery("Temporarily ignoring {} -> {} because of version_from({}) = {f_suite} ({f_suite} is not yet discovered)".format(_importer_name, _imported_suite.name, suite_with_from, f_suite=from_suite))
                         return True
                     vc_from_suite_and_ancestors = {from_suite}
                     vc_from_suite_and_ancestors |= vc_suites & ancestor_names[from_suite]
@@ -18740,7 +18757,7 @@ def main():
             if not is_optional_suite_context:
                 abort('no primary suite found for %s' % initial_command)
 
-        for envVar in _loadedEnv.keys():
+        for envVar in _loadedEnv:
             value = _loadedEnv[envVar]
             if os.environ.get(envVar) != value:
                 logv('Setting environment variable %s=%s' % (envVar, value))

@@ -145,7 +145,7 @@ class MxCommand(object):
         for callback in self._mx_commands.command_before_callbacks:
             callback(self, *args, **kwargs)
         try:
-            return self.command_function(*args, **kwargs)
+            return self.command_function(*args, **kwargs) #pylint: disable=not-callable
         finally:
             for callback in self._mx_commands.command_after_callbacks:
                 callback(self, *args, **kwargs)
