@@ -44,7 +44,7 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
-import os, errno, time, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
+import os, errno, time, subprocess, shlex, StringIO, zipfile, signal, tempfile, platform
 import __builtin__
 import textwrap
 import socket
@@ -93,7 +93,7 @@ def update_commands(suite, new_commands):
         if any of the format args are instances of callable, then they are called with an 'env' are before being
         used in the call to str.format().
     """
-    suite_name = suite if isinstance(suite, basestring) else suite.name
+    suite_name = suite if isinstance(suite, str) else suite.name
 
     _length_of_command = 4
     for command_name, command_list in new_commands.iteritems():
@@ -1160,7 +1160,7 @@ class Distribution(Dependency):
            it will be used instead of the usual platform suffix (provided by platformName()).
     """
     def maven_artifact_id(self, platform=None):
-        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, dict):
             artifact_id = self.maven.get('artifactId', None)
             if artifact_id:
                 return artifact_id
@@ -1170,7 +1170,7 @@ class Distribution(Dependency):
     Provide maven groupId string for distribution.
     """
     def maven_group_id(self):
-        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, dict):
             group_id = self.maven.get('groupId', None)
             if group_id:
                 return group_id
@@ -1662,7 +1662,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                 # accumulate services
                 services_versions = sorted([v for v in services.keys() if isinstance(v, int)])
                 if services_versions:
-                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, basestring)}
+                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, str)}
                     for v in services_versions:
                         for service, providers in services[v].items():
                             providers_set = frozenset(providers)
@@ -2237,7 +2237,7 @@ class LayoutDistribution(AbstractDistribution):
 
     @staticmethod
     def _as_source_dict(source, distribution_name, destination, path_substitutions=None, string_substitutions=None, distribution_object=None, context=None):
-        if isinstance(source, basestring):
+        if isinstance(source, str):
             if ':' not in source:
                 abort("Invalid source '{}' in layout for '{}': should be of the form '<type>:<specification>'\n"
                       "Type could be `file`, `string`, `link`, `dependency` or `extracted-dependency`.".format(source, distribution_name), context=context)
@@ -2277,7 +2277,7 @@ class LayoutDistribution(AbstractDistribution):
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
         if 'exclude' in source_dict:
-            if isinstance(source_dict['exclude'], basestring):
+            if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
         if path_substitutions and source_dict.get("path"):
             source_dict["path"] = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
@@ -2531,14 +2531,14 @@ class LayoutDistribution(AbstractDistribution):
     def _verify_layout(self):
         output = realpath(self.get_output())
         for destination, sources in self.layout.items():
-            if not isinstance(destination, basestring):
+            if not isinstance(destination, str):
                 abort("Destination (layout keys) should be a string", context=self)
             if not isinstance(sources, list):
                 sources = [sources]
             if not destination:
                 abort("Destination (layout keys) can not be empty", context=self)
             for source in sources:
-                if not isinstance(source, (basestring, dict)):
+                if not isinstance(source, (str, dict)):
                     abort("Error in '{}': sources should be strings or dicts".format(destination), context=self)
             if isabs(destination):
                 abort("Invalid destination: '{}': destination should not be absolute".format(destination), context=self)
@@ -7210,7 +7210,7 @@ def _mavenGroupId(suite):
             return group_id
         name = suite.name
     else:
-        assert isinstance(suite, types.StringTypes)
+        assert isinstance(suite, str)
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
@@ -8303,17 +8303,17 @@ class Suite(object):
         del sys.path[0]
 
         def expand(value, context):
-            if isinstance(value, types.DictionaryType):
+            if isinstance(value, dict):
                 for n, v in value.iteritems():
                     value[n] = expand(v, context + [n])
-            elif isinstance(value, types.ListType):
+            elif isinstance(value, list):
                 for i in range(len(value)):
                     value[i] = expand(value[i], context + [str(i)])
-            elif isinstance(value, types.StringTypes):
+            elif isinstance(value, str):
                 value = expandvars(value)
                 if '$' in value or '%' in value:
                     abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
-            elif isinstance(value, types.BooleanType):
+            elif isinstance(value, bool):
                 pass
             else:
                 abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
@@ -8755,7 +8755,7 @@ class Suite(object):
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
             assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
-            if isinstance(maven, types.DictType) and maven.get('version', None):
+            if isinstance(maven, dict) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
             if attrs.pop('buildDependencies', None):
                 abort("'buildDependencies' is not supported for JAR distributions")
@@ -8806,9 +8806,9 @@ class Suite(object):
                 if k in attrs:
                     other = attrs[k]
                     key_path = path + '.' + str(k)
-                    if isinstance(v, types.DictType) and isinstance(other, types.DictType):
+                    if isinstance(v, dict) and isinstance(other, dict):
                         Suite._merge_os_arch_attrs(other, v, context, key_path)
-                    elif isinstance(v, types.ListType) and isinstance(other, types.ListType):
+                    elif isinstance(v, list) and isinstance(other, list):
                         attrs[k] = v + other
                     else:
                         abort("OS/Arch attribute must not override non-OS/Arch attribute '{}' in {}".format(key_path, context))
@@ -9900,11 +9900,11 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
         abort('Missing parameters while instantiating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=t)
 
     def _patch(v):
-        if isinstance(v, types.StringType):
+        if isinstance(v, str):
             return _patchTemplateString(v, args, context)
-        elif isinstance(v, types.DictType):
+        elif isinstance(v, dict):
             return {kk: _patch(vv) for kk, vv in v.items()}
-        elif isinstance(v, types.ListType):
+        elif isinstance(v, list):
             return [_patch(e) for e in v]
         else:
             return v
@@ -10050,7 +10050,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
     if names is None:
         roots = set(dependencies())
     else:
-        if isinstance(names, types.StringTypes):
+        if isinstance(names, str):
             names = [names]
         elif isinstance(names, Dependency):
             names = [names]
@@ -10065,7 +10065,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
     if excludes is None:
         excludes = []
     else:
-        if isinstance(excludes, types.StringTypes):
+        if isinstance(excludes, str):
             excludes = [excludes]
         elif isinstance(excludes, Dependency):
             excludes = [excludes]
@@ -10654,7 +10654,7 @@ def _is_supported_by_jdt(jdk):
     :type jdk: :class:`mx.JDKConfig` or string
     :rtype: bool
     """
-    if isinstance(jdk, basestring):
+    if isinstance(jdk, str):
         jdk = get_jdk(tag=jdk)
     else:
         assert isinstance(jdk, JDKConfig)
@@ -10698,7 +10698,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         defaultJdk = kwargs['defaultJdk']
 
     # interpret string and compliance as compliance check
-    if isinstance(versionCheck, types.StringTypes):
+    if isinstance(versionCheck, str):
         versionCheck = JavaCompliance(versionCheck)
     if isinstance(versionCheck, JavaCompliance):
         versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
@@ -11131,7 +11131,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     commands = [sys.executable, '-u', mxpy, '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
-        if isinstance(suite, basestring):
+        if isinstance(suite, str):
             commands += ['-p', suite]
             cwd = suite
         else:
@@ -11171,9 +11171,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     out and err if they are callable objects.
     """
 
-    assert isinstance(args, types.ListType), "'args' must be a list: " + str(args)
+    assert isinstance(args, list), "'args' must be a list: " + str(args)
     for arg in args:
-        assert isinstance(arg, types.StringTypes), 'argument is not a string: ' + str(arg)
+        assert isinstance(arg, str), 'argument is not a string: ' + str(arg)
 
     if env is None:
         env = os.environ.copy()
@@ -11418,7 +11418,7 @@ class JavaCompliance:
         return str(self) + '..' + str(self._upper_bound)
 
     def __cmp__(self, other):
-        if isinstance(other, types.StringType):
+        if isinstance(other, str):
             other = JavaCompliance(other)
         r = cmp(self.value, other.value)
         if r == 0:
@@ -13405,14 +13405,14 @@ class TimeStampFile:
     def isOlderThan(self, arg):
         if not self.timestamp:
             return True
-        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+        if isinstance(arg, int) or isinstance(arg, int) or isinstance(arg, float):
             return self.timestamp < arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
                 return False
             else:
                 return arg.timestamp > self.timestamp
-        elif isinstance(arg, types.ListType):
+        elif isinstance(arg, list):
             files = arg
         else:
             files = [arg]
@@ -13424,14 +13424,14 @@ class TimeStampFile:
     def isNewerThan(self, arg):
         if not self.timestamp:
             return False
-        if isinstance(arg, types.IntType) or isinstance(arg, types.LongType) or isinstance(arg, types.FloatType):
+        if isinstance(arg, int) or isinstance(arg, int) or isinstance(arg, float):
             return self.timestamp > arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
                 return False
             else:
                 return arg.timestamp < self.timestamp
-        elif isinstance(arg, types.ListType):
+        elif isinstance(arg, list):
             files = arg
         else:
             files = [arg]
@@ -18134,7 +18134,7 @@ def _remove_unsatisfied_deps():
                 if reasonAttr:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
             else:
-                assert isinstance(reasonAttr, basestring)
+                assert isinstance(reasonAttr, str)
                 strippedReason = reasonAttr.strip()
                 if len(strippedReason) != 0:
                     if not strippedReason == "false":
