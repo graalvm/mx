@@ -96,7 +96,7 @@ def update_commands(suite, new_commands):
     suite_name = suite if isinstance(suite, basestring) else suite.name
 
     _length_of_command = 4
-    for command_name, command_list in new_commands.iteritems():
+    for command_name, command_list in new_commands.items():
         assert len(command_list) > 0 and command_list[0] is not None
         args = [suite_name, command_name] + command_list[1:_length_of_command]
         command_decorator = command(*args)
@@ -1678,10 +1678,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
-                for service_or_version, providers in services.iteritems():
+                for service_or_version, providers in services.items():
                     if isinstance(service_or_version, int):
                         services_version = service_or_version
-                        for service, providers_ in providers.iteritems():
+                        for service, providers_ in providers.items():
                             add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
                     else:
                         add_service_providers(service_or_version, providers)
@@ -1878,7 +1878,7 @@ class JMHArchiveParticipant:
         return False
 
     def __closing__(self):
-        for filename, content in self.meta_files.iteritems():
+        for filename, content in self.meta_files.items():
             if content is not None:
                 self.arc.zf.writestr(filename, content)
 
@@ -2786,7 +2786,7 @@ class Project(Dependency):
         distances = dict()
         result = set()
         self._compute_max_dep_distances(self, distances, 0)
-        for n, d in distances.iteritems():
+        for n, d in distances.items():
             assert d > 0 or n is self
             if d == 1:
                 result.add(n)
@@ -3050,14 +3050,14 @@ class JavaProject(Project, ClasspathDependency):
         return self._javac_lint_overrides
 
     def eclipse_config_up_to_date(self, configZip):
-        for _, sources in self.eclipse_settings_sources().iteritems():
+        for _, sources in self.eclipse_settings_sources().items():
             for source in sources:
                 if configZip.isOlderThan(source):
                     return False
         return True
 
     def netbeans_config_up_to_date(self, configZip):
-        for _, sources in self.netbeans_settings_sources().iteritems():
+        for _, sources in self.netbeans_settings_sources().items():
             for source in sources:
                 if configZip.isOlderThan(source):
                     return False
@@ -3408,7 +3408,7 @@ class JavaProject(Project, ClasspathDependency):
                 def visit(dep, edge):
                     if dep is not self and dep.isJavaProject():
                         dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
-                        for module, packages in dep_concealed.iteritems():
+                        for module, packages in dep_concealed.items():
                             concealed.setdefault(module, set()).update(packages)
                 self.walk_deps(visit=visit)
 
@@ -3883,7 +3883,7 @@ class JavacCompiler(JavacLikeCompiler):
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
                 :param observable_modules: only consider modules in this set if not None
                 """
-                for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
+                for module, packages in dep.get_concealed_imported_packages(jdk).items():
                     if observable_modules is not None and module not in observable_modules:
                         continue
                     if module in jdk_modules_overridden_on_classpath:
@@ -3907,7 +3907,7 @@ class JavacCompiler(JavacLikeCompiler):
                    have been added to `javacArgs`
                 """
                 if exports:
-                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.iterkeys()))
+                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.keys()))
 
             if compliance >= '9':
                 exports = {}
@@ -8304,7 +8304,7 @@ class Suite(object):
 
         def expand(value, context):
             if isinstance(value, types.DictionaryType):
-                for n, v in value.iteritems():
+                for n, v in value.items():
                     value[n] = expand(v, context + [n])
             elif isinstance(value, types.ListType):
                 for i in range(len(value)):
@@ -8458,8 +8458,8 @@ class Suite(object):
         unknown = set(d.keys()) - frozenset(supported)
 
         suiteExtensionAttributePrefix = self.name + ':'
-        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
-        for n, v in suiteSpecific.iteritems():
+        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.keys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
+        for n, v in suiteSpecific.items():
             if hasattr(self, n):
                 abort('Cannot override built-in suite attribute "' + n + '"', context=self)
             setattr(self, n, v)
@@ -8564,7 +8564,7 @@ class Suite(object):
             url = scmDict.pop('url', read)
             self.scm = SCMMetadata(url, read, write)
 
-        for name, attrs in sorted(jreLibsMap.iteritems()):
+        for name, attrs in sorted(jreLibsMap.items()):
             jar = attrs.pop('jar')
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
@@ -8572,7 +8572,7 @@ class Suite(object):
             l = JreLibrary(self, name, jar, optional, theLicense, **attrs)
             self.jreLibs.append(l)
 
-        for name, attrs in sorted(jdkLibsMap.iteritems()):
+        for name, attrs in sorted(jdkLibsMap.items()):
             path = attrs.pop('path')
             deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
@@ -8584,7 +8584,7 @@ class Suite(object):
             l = JdkLibrary(self, name, path, deps, optional, theLicense, jdkStandardizedSince=jdkStandardizedSince, **attrs)
             self.jdkLibs.append(l)
 
-        for name, attrs in sorted(importsMap.iteritems()):
+        for name, attrs in sorted(importsMap.items()):
             if name == 'suites':
                 pass
             elif name == 'libraries':
@@ -8709,7 +8709,7 @@ class Suite(object):
         self._init_imports()
 
     def _load_distributions(self, distsMap):
-        for name, attrs in sorted(distsMap.iteritems()):
+        for name, attrs in sorted(distsMap.items()):
             if '<' in name:
                 parameters = re.findall(r'<(.+?)>', name)
                 self.distTemplates.append(DistributionTemplate(self, name, attrs, parameters))
@@ -8802,7 +8802,7 @@ class Suite(object):
     @staticmethod
     def _merge_os_arch_attrs(attrs, os_arch_attrs, context, path=''):
         if os_arch_attrs:
-            for k, v in os_arch_attrs.iteritems():
+            for k, v in os_arch_attrs.items():
                 if k in attrs:
                     other = attrs[k]
                     key_path = path + '.' + str(k)
@@ -8816,7 +8816,7 @@ class Suite(object):
                     attrs[k] = v
 
     def _load_libraries(self, libsMap):
-        for name, attrs in sorted(libsMap.iteritems()):
+        for name, attrs in sorted(libsMap.items()):
             context = 'library ' + name
             attrs.pop('native', False)  # TODO use to make non-classpath libraries
             os_arch = Suite._pop_os_arch(attrs, context)
@@ -9191,7 +9191,7 @@ class SourceSuite(Suite):
         """projects are unique to source suites"""
         projsMap = self._check_suiteDict('projects')
 
-        for name, attrs in sorted(projsMap.iteritems()):
+        for name, attrs in sorted(projsMap.items()):
             try:
                 context = 'project ' + name
                 className = attrs.pop('class', None)
@@ -9794,7 +9794,7 @@ def projects(opt_limit_to_suite=False, limit_to_primary=False):
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by primary suite if limit_to_primary == True
     """
 
-    sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
+    sortedProjects = sorted((p for p in _projects.values() if not p.suite.internal))
     if opt_limit_to_suite:
         sortedProjects = _dependencies_opt_limit_to_suites(sortedProjects)
     if limit_to_primary:
@@ -10238,7 +10238,7 @@ def dependencies(opt_limit_to_suite=False):
     dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
     None, only dependencies of a type in 'types
     """
-    it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
+    it = itertools.chain(_projects.values(), _libs.values(), _dists.values(), _jdkLibs.values(), _jreLibs.values())
     if opt_limit_to_suite and _opts.specific_suites:
         it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
     itertools.ifilter(lambda d: not d.suite.internal, it)
@@ -10301,7 +10301,7 @@ def sorted_dists():
             if not dist in dists:
                 dists.append(dist)
 
-    for d in _dists.itervalues():
+    for d in _dists.values():
         add_dist(d)
     return dists
 
@@ -10346,7 +10346,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 def _format_commands():
     msg = '\navailable commands:\n'
     commands = _mx_commands.commands()
-    sorted_commands = sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k])
+    sorted_commands = sorted([k for k in commands.keys() if ':' not in k]) + sorted([k for k in commands.keys() if ':' in k])
     msg += _mx_commands.list_commands(sorted_commands)
     return msg + '\n'
 
@@ -10579,7 +10579,7 @@ def _getJDKFactory(tag, versionCheck):
     if tag not in _jdkFactories:
         return None
     complianceMap = _jdkFactories[tag]
-    for compliance in sorted(complianceMap.iterkeys(), reverse=True):
+    for compliance in sorted(complianceMap.keys(), reverse=True):
         if not versionCheck or versionCheck(VersionSpec(str(compliance))):
             return complianceMap[compliance]
     return None
@@ -10634,7 +10634,7 @@ def get_jdk_option():
                 if len(_jdkFactories) == 0:
                     abort("No JDK providers available")
                 available = []
-                for t, m in _jdkFactories.iteritems():
+                for t, m in _jdkFactories.items():
                     for c in m:
                         available.append('{}:{}'.format(t, c))
                 abort("No provider for '{}:{}' JDK (available: {})".format(jdktag, jdkCompliance if jdkCompliance else '*', ', '.join(available)))
@@ -11850,7 +11850,7 @@ class JDKConfig:
         for mod in modules:
             # no java.se => add all java.*
             if not mod.name.startswith('java.') or not has_java_dot_se:
-                if any((len(to) == 0 for _, to in mod.exports.iteritems())):
+                if any((len(to) == 0 for _, to in mod.exports.items())):
                     result.append(mod)
         return result
 
@@ -11985,7 +11985,7 @@ def colorize(msg, color='red', bright=True, stream=sys.stderr):
         return None
     code = _ansi_color_table.get(color, None)
     if code is None:
-        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.iterkeys()))
+        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.keys()))
     if bright:
         code += ';1'
     color_on = '\033[' + code + 'm'
@@ -12181,12 +12181,12 @@ def _suggest_http_proxy_error(e):
     Displays a message related to http proxies that may explain the reason for the exception `e`.
     """
     proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
-    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.iterkeys()}
+    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.keys()}
     if not proxyDefs:
         warn('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
             '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
     else:
-        defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
+        defs = [i[0] + '=' + i[1] for i in proxyDefs.items()]
         warn('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
 
 def _suggest_tlsv1_error(e):
@@ -12314,7 +12314,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     if abortOnError:
         msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
         if verifyOnly:
-            for url, e in verify_errors.iteritems():
+            for url, e in verify_errors.items():
                 msg += '\n  ' + url + ': ' + str(e)
         abort(msg)
     else:
@@ -12476,7 +12476,7 @@ def build(cmd_args, parser=None):
         # ... and the dependencies that *will not* be built
         if _removedDeps:
             log('Dependencies removed from build:')
-            for _, reason in _removedDeps.iteritems():
+            for _, reason in _removedDeps.items():
                 if isinstance(reason, tuple):
                     reason, _ = reason
                 log(' {}'.format(reason))
@@ -12637,7 +12637,7 @@ def build(cmd_args, parser=None):
         if len(failed):
             for t in failed:
                 log_error('{0} failed'.format(t))
-            for daemon in daemons.itervalues():
+            for daemon in daemons.values():
                 daemon.shutdown()
             abort('{0} build tasks failed'.format(len(failed)))
 
@@ -12646,7 +12646,7 @@ def build(cmd_args, parser=None):
             t.prepare(daemons)
             t.execute()
 
-    for daemon in daemons.itervalues():
+    for daemon in daemons.values():
         daemon.shutdown()
 
     # TODO check for distributions overlap (while loading suites?)
@@ -12849,7 +12849,7 @@ def eclipseformat(args):
 
     log("we have: " + str(len(batches)) + " batches")
     batch_num = 0
-    for batch, javafiles in batches.iteritems():
+    for batch, javafiles in batches.items():
         batch_num += 1
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
@@ -13550,7 +13550,7 @@ def checkstyle(args):
 
             batch.sources.extend(javafilelist)
 
-    for key, batch in batches.iteritems():
+    for key, batch in batches.items():
         if len(batch.sources) == 0:
             continue
         config, checkstyleVersion = key
@@ -13683,7 +13683,7 @@ Given a command name, print help for that command."""
 
     name = args[0]
     if name not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(name)]
+        hits = [c for c in _mx_commands.commands().keys() if c.startswith(name)]
         if len(hits) == 1:
             name = hits[0]
         elif len(hits) == 0:
@@ -13734,7 +13734,7 @@ def flattenMultiReleaseSources(args):
     # multi-release jars are resolved.
     for version, maps in sorted(versions.items()):
         for flatten_map in maps:
-            for src_dir, dst_dir in flatten_map.iteritems():
+            for src_dir, dst_dir in flatten_map.items():
                 if not args.commands:
                     print(src_dir, dst_dir)
                 else:
@@ -14267,7 +14267,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             # Ignore modules (such as jdk.internal.vm.compiler) that define packages
             # that are also defined by project deps as the latter will have the most
             # recent API.
-            exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
+            exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.items() if allProjectPackages.isdisjoint(pkgs)])
             if exports:
                 addExportsValue = []
                 exported_modules = []
@@ -14407,11 +14407,11 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 if dep.isJavaProject():
                     concealed = dep.get_concealed_imported_packages(jdk)
                     if concealed:
-                        for module, pkgs in concealed.iteritems():
+                        for module, pkgs in concealed.items():
                             concealedAPDeps.setdefault(module, []).extend(pkgs)
             if concealedAPDeps:
                 exports = []
-                for module, pkgs in concealedAPDeps.iteritems():
+                for module, pkgs in concealedAPDeps.items():
                     for pkg in pkgs:
                         exports.append('--add-exports=' + module + '/' + pkg + '=ALL-UNNAMED')
                 warn('Annotation processor(s) for ' + p.name +' uses non-exported module packages, requiring ' +
@@ -14449,7 +14449,7 @@ def _get_ide_envvars():
         'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home,
         'EXTRA_JAVA_HOMES' : get_env('EXTRA_JAVA_HOMES'),
     }
-    for name, value in _ide_envvars.iteritems():
+    for name, value in _ide_envvars.items():
         if value is None:
             value = get_env(name)
         if value is not None:
@@ -14461,7 +14461,7 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Changes to these values should cause regeneration of the project files.
     settings = 'logToConsole=%s\n' % logToConsole
     settings = settings + 'absolutePaths=%s\n' % absolutePaths
-    for name, value in _get_ide_envvars().iteritems():
+    for name, value in _get_ide_envvars().items():
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
@@ -14624,7 +14624,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    for key, value in _get_ide_envvars().iteritems():
+    for key, value in _get_ide_envvars().items():
         launchOut.element('mapEntry', {'key' : key, 'value' : value})
     launchOut.close('mapAttribute')
 
@@ -15487,7 +15487,7 @@ def intellij_get_python_sdk_name(sdks):
     return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
 
 def intellij_get_ruby_sdk_name(sdks):
-    for sdk in sdks.itervalues():
+    for sdk in sdks.values():
         if sdk['type'] == intellij_ruby_sdk_type:
             return sdk['name']
     return "truffleruby"
@@ -15532,7 +15532,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     def _intellij_external_project(externalProjects, sdks, host):
         if externalProjects:
-            for project_name, project_definition in externalProjects.iteritems():
+            for project_name, project_definition in externalProjects.items():
                 if not project_definition.get('path', None):
                     abort("external project {} is missing path attribute".format(project_name))
                 if not project_definition.get('type', None):
@@ -15694,7 +15694,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if compilerXml and jdk.javaCompliance >= '9':
                 moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
                 if moduleDeps:
-                    exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.iteritems() if dependencies_project_packages.isdisjoint(pkgs)])
+                    exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.items() if dependencies_project_packages.isdisjoint(pkgs)])
                     if exports:
                         args = []
                         exported_modules = set()
@@ -15878,7 +15878,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         compilerXml.close('wildcardResourcePatterns')
         if annotationProcessorProfiles:
             compilerXml.open('annotationProcessing')
-            for t, modules in sorted(annotationProcessorProfiles.iteritems()):
+            for t, modules in sorted(annotationProcessorProfiles.items()):
                 source_gen_dir = t[0]
                 processors = t[1:]
                 compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]) + "-" + source_gen_dir, 'enabled': 'true'})
@@ -16198,7 +16198,7 @@ def ideclean(args):
         except:
             log_error("Error removing {0}".format(p.name + '.jar'))
 
-    for d in _dists.itervalues():
+    for d in _dists.values():
         if not d.isJARDistribution():
             continue
         if d.get_ide_project_dir():
@@ -16354,7 +16354,7 @@ def verifysourceinproject(args):
                     unmanagedSources.setdefault(suite.vc_dir, []).extend(javaSourcesInVC)
 
     # also check for files that are outside of suites
-    for vcDir, vc in suiteVcDirs.iteritems():
+    for vcDir, vc in suiteVcDirs.items():
         for dirpath, dirnames, files in os.walk(vcDir):
             if dirpath in suiteDirs:
                 # skip known suites
@@ -16376,7 +16376,7 @@ def verifysourceinproject(args):
     retcode = 0
     if len(unmanagedSources) > 0:
         log('The following files are managed but not in any project:')
-        for vc_dir, sources in unmanagedSources.iteritems():
+        for vc_dir, sources in unmanagedSources.items():
             for source in sources:
                 log(source)
             if suiteWhitelists.get(vc_dir) != None:
@@ -16641,7 +16641,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                 groups[g] = set()
             groups[g].add(p)
         groupargs = list()
-        for k, v in groups.iteritems():
+        for k, v in groups.items():
             if len(v) == 0:
                 continue
             groupargs.append('-group')
@@ -17286,18 +17286,18 @@ def exportlibs(args):
 
         libsToExport = set()
         if args.include_all:
-            for lib in _libs.itervalues():
+            for lib in _libs.values():
                 libsToExport.add(lib)
         else:
             def isValidLibrary(dep):
-                if dep in _libs.iterkeys():
+                if dep in _libs.keys():
                     lib = _libs[dep]
                     if len(lib.urls) != 0 or args.include_system_libs:
                         return lib
                 return None
 
             # iterate over all project dependencies and find used libraries
-            for p in _projects.itervalues():
+            for p in _projects.values():
                 for dep in p.deps:
                     r = isValidLibrary(dep)
                     if r:
@@ -17734,7 +17734,7 @@ def _copy_eclipse_settings(p, files=None):
     settingsDir = join(p.dir, ".settings")
     ensure_dir_exists(settingsDir)
 
-    for name, sources in p.eclipse_settings_sources().iteritems():
+    for name, sources in p.eclipse_settings_sources().items():
         out = StringIO.StringIO()
         print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
@@ -17820,7 +17820,7 @@ def show_envs(args):
     parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
 
-    for key, value in os.environ.iteritems():
+    for key, value in os.environ.items():
         if args.all or key.startswith('MX'):
             print('{0}: {1}'.format(key, value))
 
@@ -18177,7 +18177,7 @@ def _remove_unsatisfied_deps():
     walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
 
     res = OrderedDict()
-    for dep, reason in removedDeps.iteritems():
+    for dep, reason in removedDeps.items():
         if not isinstance(reason, str):
             assert isinstance(reason, tuple)
         res[dep.name] = reason
@@ -18791,7 +18791,7 @@ def main():
     command_args = commandAndArgs[1:]
 
     if command not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(command)]
+        hits = [c for c in _mx_commands.commands().keys() if c.startswith(command)]
         if len(hits) == 1:
             command = hits[0]
         elif len(hits) == 0:

@@ -377,7 +377,7 @@ def bm_suite_valid_keys():
 
 def vm_registries():
     res = set()
-    for bm_suite in _bm_suites.itervalues():
+    for bm_suite in _bm_suites.values():
         if isinstance(bm_suite, VmBenchmarkSuite):
             res.add(bm_suite.get_vm_registry())
     return res
@@ -471,7 +471,7 @@ class BaseRule(Rule):
         varpat = re.compile(r"\$([a-zA-Z_][0-9a-zA-Z_]*)")
         for iteration, m in enumerate(self.parseResults(text)):
             datapoint = {}
-            for key, value in self.replacement.iteritems():
+            for key, value in self.replacement.items():
                 inst = value
                 if isinstance(inst, tuple):
                     v, vtype = inst
@@ -680,9 +680,9 @@ class JMHJsonRule(Rule):
 
                 if "params" in result:
                     # add all parameter as a single string
-                    d["extra.jmh.params"] = ", ".join(["=".join(kv) for kv in result["params"].iteritems()])
+                    d["extra.jmh.params"] = ", ".join(["=".join(kv) for kv in result["params"].items()])
                     # and also the individual values
-                    for k, v in result["params"].iteritems():
+                    for k, v in result["params"].items():
                         d["extra.jmh.param." + k] = str(v)
 
                 for k in self.getExtraJmhKeys():
@@ -1370,7 +1370,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-
 
     def benchmarkList(self, bmSuiteArgs):
         """Return all different JMH versions found."""
-        return list(JMHRunnerBenchmarkSuite.get_jmh_projects_dict().iterkeys())
+        return list(JMHRunnerBenchmarkSuite.get_jmh_projects_dict().keys())
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         if benchmarks is None:
@@ -1394,7 +1394,7 @@ class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-
         jmhProjects = {}
         projects = mx.projects_opt_limit_to_suites()
         if mx.primary_suite() == mx._mx_suite:
-            projects = [p for p in mx._projects.itervalues() if p.suite == mx._mx_suite]
+            projects = [p for p in mx._projects.values() if p.suite == mx._mx_suite]
         for p in projects:
             for x in p.deps:
                 if x.name.startswith('JMH'):
@@ -1812,7 +1812,7 @@ class BenchmarkExecutor(object):
                         vmregToSuites.setdefault(vmreg, []).append(bm_suite_name)
                     else:
                         noVmRegSuites.append(bm_suite_name)
-                for vmreg, bm_suite_names in vmregToSuites.iteritems():
+                for vmreg, bm_suite_names in vmregToSuites.items():
                     print("\nThe following {} benchmark suites are available:\n".format(vmreg.vm_type_name))
                     for name in bm_suite_names:
                         print("  " + name)
@@ -1825,7 +1825,7 @@ class BenchmarkExecutor(object):
 
         if mxBenchmarkArgs.help or mxBenchmarkArgs.benchmark is None:
             parser.print_help()
-            for key, entry in parsers.iteritems():
+            for key, entry in parsers.items():
                 if mxBenchmarkArgs.benchmark is None or key in suite.parserNames():
                     print(entry.description)
                     entry.parser.print_help()

@@ -62,7 +62,7 @@ def register_urlrewrite(urlrewrite, onError=None):
         return
     if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
         onError('A URL rewrite rule must be a dict with a single entry')
-    for pattern, attrs in urlrewrite.iteritems():
+    for pattern, attrs in urlrewrite.items():
         replacement = attrs.pop('replacement', None)
         if replacement is None:
             raise Exception('URL rewrite for pattern "' + pattern + '" is missing "replacement" entry')

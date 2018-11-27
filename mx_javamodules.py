@@ -147,15 +147,15 @@ class JavaModuleDescriptor(object):
         """
         out = StringIO.StringIO()
         print('module ' + self.name + ' {', file=out)
-        for dependency, modifiers in sorted(self.requires.iteritems()):
+        for dependency, modifiers in sorted(self.requires.items()):
             modifiers_string = (' '.join(sorted(modifiers)) + ' ') if len(modifiers) != 0 else ''
             print('    requires ' + modifiers_string + dependency + ';', file=out)
-        for source, targets in sorted(self.exports.iteritems()):
+        for source, targets in sorted(self.exports.items()):
             targets_string = (' to ' + ', '.join(sorted(targets))) if len(targets) != 0 else ''
             print('    exports ' + source + targets_string + ';', file=out)
         for use in sorted(self.uses):
             print('    uses ' + use + ';', file=out)
-        for service, providers in sorted(self.provides.iteritems()):
+        for service, providers in sorted(self.provides.items()):
             print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
         for pkg in sorted(self.conceals):
             print('    // conceals: ' + pkg, file=out)
@@ -166,7 +166,7 @@ class JavaModuleDescriptor(object):
         if self.modulepath:
             print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
         if self.concealedRequires:
-            for dependency, packages in sorted(self.concealedRequires.iteritems()):
+            for dependency, packages in sorted(self.concealedRequires.items()):
                 for package in sorted(packages):
                     print('    // concealed-requires: ' + dependency + '/' + package, file=out)
         print('}', file=out)
@@ -603,7 +603,7 @@ def make_java_module(dist, jdk):
                 javacCmd.append('--upgrade-module-path')
                 javacCmd.append(os.pathsep.join(upgrademodulepathJars))
             if concealedRequires:
-                for module, packages_ in concealedRequires.iteritems():
+                for module, packages_ in concealedRequires.items():
                     for package in packages_:
                         javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
             # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
@@ -659,7 +659,7 @@ def get_transitive_closure(roots, observable_modules):
     def add_transitive(mod):
         if mod not in transitive_closure:
             transitive_closure.add(mod)
-            for name in mod.requires.iterkeys():
+            for name in mod.requires.keys():
                 add_transitive(lookup_module(name))
     for root in roots:
         if isinstance(root, basestring):

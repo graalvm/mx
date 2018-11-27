@@ -187,14 +187,14 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 mx.abort("Method specification is class#method: " + tests[0])
             t, method = words
 
-            for c, p in candidates.iteritems():
+            for c, p in candidates.items():
                 # prefer exact matches first
                 if t == c:
                     found = True
                     classes.append(c)
                     depsContainingTests.add(p)
             if not found:
-                for c, p in candidates.iteritems():
+                for c, p in candidates.items():
                     if t in c:
                         found = True
                         classes.append(c)
@@ -209,7 +209,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
             for t in tests:
                 if '#' in t:
                     mx.abort('Method specifications can only be used in a single test: ' + t)
-                for c, p in candidates.iteritems():
+                for c, p in candidates.items():
                     if t in c:
                         found = True
                         classes.append(c)
