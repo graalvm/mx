@@ -268,7 +268,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
             for b in benchmarks:
                 ax = plt.subplot(rows, cols, index)
                 plt.title(b)
-                for resultname, result in zip(names, results):
+                for resultname, result, color in zip(names, results, args.colors):
                     scores = []
                     xs = []
                     # missing results won't be plotted
@@ -278,7 +278,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
                         if args.samples:
                             scores = scores[0:args.samples]
                             xs = xs[0:args.samples]
-                    plt.plot(xs, scores, label=resultname)
+                    plt.plot(xs, scores, label=resultname, color=color)
                 handles, labels = ax.get_legend_handles_labels()
                 ax.legend(handles, labels, loc='upper right', fontsize='small', ncol=2)
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
