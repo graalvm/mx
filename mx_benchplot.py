@@ -351,10 +351,17 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                     if bench_suite != entry['bench-suite']:
                         mx.abort("File '{}' contains bench-suite '{}' but expected '{}'.".format(filename, entry['bench-suite'], bench_suite))
                 score = entry['metric.value']
+                iteration = entry['metric.iteration']
                 scores = result.get(benchmark)
                 if scores:
-                    scores['scores'].append(score)
+                    if entry['metric.name'] == 'warmup':
+                        score_list = scores['scores']
+                        while len(score_list) <= iteration + 1:
+                            score_list.insert(-1, None)
+                        score_list[iteration] = score
                 else:
+                    if entry['metric.name'] != 'final-time':
+                        mx.abort('Unexpected data order final-time')
                     higher = entry['metric.better'] == 'higher'
                     result[benchmark] = {'scores': [score], 'higher': higher, 'name': name}
 
