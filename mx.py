@@ -3377,7 +3377,7 @@ class JavaProject(Project, ClasspathDependency):
                 if exists(self_package_src_dir):
                     assert len(base.source_dirs()) != 0, '{} has no source directories!'.format(base)
                     for base_package_src_dir in [join(s, relative_package_src_dir) for s in base.source_dirs()]:
-                        if exists(base_package_src_dir) or not flatten_map.has_key(self_package_src_dir):
+                        if exists(base_package_src_dir) or self_package_src_dir not in flatten_map:
                             flatten_map[self_package_src_dir] = base_package_src_dir
         assert len(self_packages) == len(flatten_map), 'could not find sources for all packages in ' + self.name
         return flatten_map
@@ -7944,7 +7944,7 @@ class SiblingSuiteModel(SuiteModel):
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
-        if self.suitenamemap.has_key(suitename):
+        if suitename in self.suitenamemap:
             suitename = self.suitenamemap[suitename]
 
         # Try use the URL first so that a big repo is cloned to a local
@@ -8017,7 +8017,7 @@ class NestedImportsSuiteModel(SuiteModel):
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
-        if self.suitenamemap.has_key(suitename):
+        if suitename in self.suitenamemap:
             suitename = self.suitenamemap[suitename]
         if basename(importer_dir) == basename(self._primaryDir):
             # primary is importer
@@ -9362,7 +9362,7 @@ class SourceSuite(Suite):
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
-        if visitmap.has_key(imported_suite.name):
+        if imported_suite.name in visitmap:
             return
         projects += imported_suite.projects
         visitmap[imported_suite.name] = True
@@ -14707,7 +14707,7 @@ def generate_eclipse_workingsets():
     # identify the location where to look for workingsets.xml
     wsfilename = 'workingsets.xml'
     wsloc = '.metadata/.plugins/org.eclipse.ui.workbench'
-    if os.environ.has_key('WORKSPACE'):
+    if 'WORKSPACE' in os.environ:
         expected_wsroot = os.environ['WORKSPACE']
     else:
         expected_wsroot = primary_suite().dir
@@ -14724,7 +14724,7 @@ def generate_eclipse_workingsets():
     wspath = join(wsdir, wsfilename)
 
     def _add_to_working_set(key, value):
-        if not workingSets.has_key(key):
+        if key not in workingSets:
             workingSets[key] = [value]
         else:
             workingSets[key].append(value)
@@ -14793,12 +14793,12 @@ def _copy_workingset_xml(wspath, workingSets):
     # parsing logic
     def _ws_start(name, attributes):
         if name == 'workingSet':
-            if attributes.has_key('name'):
+            if 'name' in attributes:
                 ps.current_ws_name = attributes['name']
-                if attributes.has_key('aggregate') and attributes['aggregate'] == 'true':
+                if 'aggregate' in attributes and attributes['aggregate'] == 'true':
                     ps.aggregate_ws = True
                     ps.current_ws = None
-                elif workingSets.has_key(ps.current_ws_name):
+                elif ps.current_ws_name in workingSets:
                     ps.current_ws = workingSets[ps.current_ws_name]
                     ps.seen_ws.append(ps.current_ws_name)
                     ps.seen_projects = list()
@@ -14838,7 +14838,7 @@ def _copy_workingset_xml(wspath, workingSets):
         if name == 'item':
             if ps.current_ws is None:
                 target.element(name, attributes)
-            elif not attributes.has_key('elementID') and attributes.has_key('factoryID') and attributes.has_key('path') and attributes.has_key('type'):
+            elif not 'elementID' in attributes and 'factoryID' in attributes and 'path' in attributes and 'type' in attributes:
                 target.element(name, attributes)
                 p_name = attributes['path'][1:]  # strip off the leading '/'
                 ps.seen_projects.append(p_name)
@@ -16637,7 +16637,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             g = find_group(p)
             if g is None:
                 continue
-            if not groups.has_key(g):
+            if g not in groups:
                 groups[g] = set()
             groups[g].add(p)
         groupargs = list()
@@ -17275,7 +17275,7 @@ def exportlibs(args):
         entries = {}
         def add(path, arcname):
             apath = os.path.abspath(path)
-            if not entries.has_key(arcname):
+            if arcname not in entries:
                 entries[arcname] = apath
                 logv('[adding ' + path + ']')
                 addMethod(path, arcname=arcname)
