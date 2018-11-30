@@ -268,7 +268,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
             for b in benchmarks:
                 ax = plt.subplot(rows, cols, index)
                 plt.title(b)
-                for resultname, result in zip(names, results):
+                for resultname, result, color in zip(names, results, args.colors):
                     scores = []
                     xs = []
                     # missing results won't be plotted
@@ -278,7 +278,7 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
                         if args.samples:
                             scores = scores[0:args.samples]
                             xs = xs[0:args.samples]
-                    plt.plot(xs, scores, label=resultname)
+                    plt.plot(xs, scores, label=resultname, color=color)
                 handles, labels = ax.get_legend_handles_labels()
                 ax.legend(handles, labels, loc='upper right', fontsize='small', ncol=2)
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -351,10 +351,17 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                     if bench_suite != entry['bench-suite']:
                         mx.abort("File '{}' contains bench-suite '{}' but expected '{}'.".format(filename, entry['bench-suite'], bench_suite))
                 score = entry['metric.value']
+                iteration = entry['metric.iteration']
                 scores = result.get(benchmark)
                 if scores:
-                    scores['scores'].append(score)
+                    if entry['metric.name'] == 'warmup':
+                        score_list = scores['scores']
+                        while len(score_list) <= iteration + 1:
+                            score_list.insert(-1, None)
+                        score_list[iteration] = score
                 else:
+                    if entry['metric.name'] != 'final-time':
+                        mx.abort('Unexpected data order final-time')
                     higher = entry['metric.better'] == 'higher'
                     result[benchmark] = {'scores': [score], 'higher': higher, 'name': name}
 
