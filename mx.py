@@ -15484,9 +15484,16 @@ def intellij_read_sdks():
     log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$')
-    versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
-    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
+    versionRegexes[intellij_java_sdk_type] = [
+        re.compile(r'^java\s+version\s+"([^"]+)"$'),
+        re.compile(r'^([\d.]+)$'),
+    ]
+    versionRegexes[intellij_python_sdk_type] = [
+        re.compile(r'^Python\s+(.+)$'),
+    ]
+    versionRegexes[intellij_ruby_sdk_type] = [
+        re.compile(r'^ver\.([^\s]+)\s+.*$'),
+    ]
 
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
@@ -15495,13 +15502,17 @@ def intellij_read_sdks():
         if home.find('$APPLICATION_HOME_DIR$') != -1:
             # Don't know how to convert this into a real path so ignore it
             continue
-        versionRE = versionRegexes.get(kind)
-        if not versionRE:
-            # ignore unknown kinds
-            continue
-        version = versionRE.match(sdk.find("version").get("value")).group(1)
-        sdks[home] = {'name': name, 'type': kind, 'version': version}
-        logv("Found sdk {} with values {}".format(home, sdks[home]))
+        for versionRE in versionRegexes.get(kind):
+            if not versionRE:
+                # ignore unknown kinds
+                continue
+
+            match = versionRE.match(sdk.find("version").get("value"))
+            if match:
+                version = match.group(1)
+                sdks[home] = {'name': name, 'type': kind, 'version': version}
+                logv("Found sdk {} with values {}".format(home, sdks[home]))
+
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
