@@ -7317,8 +7317,14 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 pom.element('groupId', data=mavenMetaData['groupId'])
                 pom.element('artifactId', data=mavenMetaData['artifactId'])
                 pom.element('version', data=mavenMetaData['version'])
-                if 'suffix' in mavenMetaData:
-                    pom.element('classifier', data=mavenMetaData['suffix'])
+                if dist.suite.getMxCompatibility().mavenSupportsClassifier():
+                    if 'suffix' in mavenMetaData:
+                        l.abort('The use of "suffix" as maven metadata is not supported in this version. Use "classifier" instead.')
+                    if 'classifier' in mavenMetaData:
+                        pom.element('classifier', data=mavenMetaData['classifier'])
+                else:
+                    if 'suffix' in mavenMetaData:
+                        pom.element('classifier', data=mavenMetaData['suffix'])
                 pom.close('dependency')
             elif validateMetadata != 'none':
                 if 'library-coordinates' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
@@ -8832,8 +8838,14 @@ class Suite(object):
                 maven_attrs = ['groupId', 'artifactId', 'version']
                 if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
+                if self.getMxCompatibility().mavenSupportsClassifier():
+                    if 'suffix' in maven:
+                        abort('The use of "suffix" as maven metadata is not supported in this version of mx. Use "classifier" instead.', context)
+                elif 'suffix' in maven:
+                    maven['classifier'] = maven['suffix']
+                    del maven['suffix']
 
-            def _maven_download_urls(groupId, artifactId, version, suffix=None, baseURL=None):
+            def _maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
                 if baseURL is None:
                     baseURLs = _mavenRepoBaseURLs
                 else:
@@ -8842,9 +8854,9 @@ class Suite(object):
                     'groupId': groupId.replace('.', '/'),
                     'artifactId': artifactId,
                     'version': version,
-                    'suffix' : '-{0}'.format(suffix) if suffix else ''
+                    'classifier' : '-{0}'.format(classifier) if classifier else ''
                 }
-                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(base=base, **args) for base in baseURLs]
+                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
 
             if not urls and maven is not None:
                 _check_maven(maven)
@@ -8864,9 +8876,9 @@ class Suite(object):
                     # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
                     if maven is not None:
                         _check_maven(maven)
-                        if 'suffix' in maven:
-                            abort('Cannot download sources for "maven" library with "suffix" attribute', context)
-                        sourceUrls = _maven_download_urls(suffix='sources', **maven)
+                        if 'classifier' in maven:
+                            abort('Cannot download sources for "maven" library with "classifier" attribute', context)
+                        sourceUrls = _maven_download_urls(classifier='sources', **maven)
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
@@ -18835,7 +18847,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.194.5")  # benchplot-fixes
+version = VersionSpec("5.195.0")  # GR-12180
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

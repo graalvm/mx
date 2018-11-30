@@ -21,7 +21,7 @@ suite = {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.agent",
         "version" : "0.7.9",
-        "suffix" : "runtime",
+        "classifier" : "runtime",
       },
       "licence": "EPL-1.0",
     },
