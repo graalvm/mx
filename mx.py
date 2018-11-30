@@ -2859,6 +2859,9 @@ class Project(Dependency):
     def is_test_project(self):
         return self.testProject
 
+    def get_checkstyle_config(self, resolve_checkstyle_library=True):
+        # Workaround for GR-12809
+        return (None, None, None)
 
 class ProjectBuildTask(BuildTask):
     __metaclass__ = ABCMeta
@@ -3113,6 +3116,32 @@ class JavaProject(Project, ClasspathDependency):
                 nbdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
 
         return nbdict
+
+    def get_checkstyle_config(self, resolve_checkstyle_library=True):
+        """
+        Gets a tuple of the path to a Checkstyle configuration file, a Checkstyle version
+        and the project supplying the Checkstyle configuration file. Returns
+        (None, None, None) if this project has no Checkstyle configuration.
+        """
+        checkstyleProj = self if self.checkstyleProj == self.name else project(self.checkstyleProj, context=self)
+        config = join(checkstyleProj.dir, '.checkstyle_checks.xml')
+        if not exists(config):
+            compat = self.suite.getMxCompatibility()
+            should_abort = compat.check_checkstyle_config()
+            if checkstyleProj != self:
+                abort_or_warn('Project {} has no Checkstyle configuration'.format(checkstyleProj), should_abort, context=self)
+            else:
+                if hasattr(self, 'checkstyleVersion'):
+                    abort_or_warn('Cannot specify "checkstyleVersion" attribute for project with non-existent Checkstyle configuration', should_abort, context=self)
+            return None, None, None
+
+        if hasattr(checkstyleProj, 'checkstyleVersion'):
+            checkstyleVersion = checkstyleProj.checkstyleVersion
+            if resolve_checkstyle_library:
+                library('CHECKSTYLE_' + checkstyleVersion, context=checkstyleProj)
+        else:
+            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
+        return config, checkstyleVersion, checkstyleProj
 
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False, includeGenSrc=False):
         """
@@ -9249,6 +9278,10 @@ class SourceSuite(Suite):
                             abort('javaCompliance property required for non-native project ' + name)
                         p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, testProject=testProject, **attrs)
                         p.checkstyleProj = attrs.pop('checkstyle', name)
+                        if p.checkstyleProj != name and 'checkstyleVersion' in attrs:
+                            compat = self.getMxCompatibility()
+                            should_abort = compat.check_checkstyle_config()
+                            abort_or_warn('Cannot specify both "checkstyle and "checkstyleVersion" attribute', should_abort, context=p)
                         p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                         ap = Suite._pop_list(attrs, 'annotationProcessors', context)
                         if ap:
@@ -13501,26 +13534,14 @@ def checkstyle(args):
             continue
         sourceDirs = p.source_dirs()
 
-        checkstyleProj = project(p.checkstyleProj)
-        config = join(checkstyleProj.dir, '.checkstyle_checks.xml')
-        if not exists(config):
+        config, checkstyleVersion, _ = p.get_checkstyle_config()
+        if not config:
             logv('[No Checkstyle configuration found for {0} - skipping]'.format(p))
             continue
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
         jdk = get_jdk(p.javaCompliance)
         assert jdk
-
-        if hasattr(p, 'checkstyleVersion'):
-            checkstyleVersion = p.checkstyleVersion
-            # Resolve the library here to get a contextual error message
-            library('CHECKSTYLE_' + checkstyleVersion, context=p)
-        elif hasattr(checkstyleProj, 'checkstyleVersion'):
-            checkstyleVersion = checkstyleProj.checkstyleVersion
-            # Resolve the library here to get a contextual error message
-            library('CHECKSTYLE_' + checkstyleVersion, context=checkstyleProj)
-        else:
-            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
 
         key = (config, checkstyleVersion)
         batch = batches.setdefault(key, Batch(config, p.suite))
@@ -14310,12 +14331,12 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if files:
         files.append(classpathFile)
 
-    csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-    if exists(csConfig):
+    csConfig, _, checkstyleProj = p.get_checkstyle_config()
+    if csConfig:
         out = XMLDoc()
 
         dotCheckstyle = join(p.dir, ".checkstyle")
-        checkstyleConfigPath = '/' + p.checkstyleProj + '/.checkstyle_checks.xml'
+        checkstyleConfigPath = '/' + checkstyleProj.name + '/.checkstyle_checks.xml'
         out.open('fileset-config', {'file-format-version' : '1.2.0', 'simple-config' : 'false'})
         out.open('local-check-config', {'name' : 'Checks', 'location' : checkstyleConfigPath, 'type' : 'project', 'description' : ''})
         out.element('additional-data', {'name' : 'protect-config-file', 'value' : 'false'})
@@ -14360,7 +14381,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.element('name', data='org.eclipse.jdt.core.javabuilder')
     out.element('arguments', data='')
     out.close('buildCommand')
-    if exists(csConfig):
+    if csConfig:
         out.open('buildCommand')
         out.element('name', data='net.sf.eclipsecs.core.CheckstyleBuilder')
         out.element('arguments', data='')
@@ -14375,7 +14396,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.close('buildSpec')
     out.open('natures')
     out.element('nature', data='org.eclipse.jdt.core.javanature')
-    if exists(csConfig):
+    if csConfig:
         out.element('nature', data='net.sf.eclipsecs.core.CheckstyleNature')
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('nature', data='org.eclipse.pde.PluginNature')
@@ -15727,23 +15748,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         compilerXml.element('module', {'name': p.name, 'options': ' '.join(args)})
 
             # Checkstyle
-            checkstyleProj = project(p.checkstyleProj, context=p)
-            csConfig = join(checkstyleProj.dir, '.checkstyle_checks.xml')
-            if exists(csConfig):
-                if hasattr(p, 'checkstyleVersion'):
-                    checkstyleVersion = p.checkstyleVersion
-                elif hasattr(checkstyleProj, 'checkstyleVersion'):
-                    checkstyleVersion = checkstyleProj.checkstyleVersion
-                else:
-                    checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
-
+            csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
+            if csConfig:
                 max_checkstyle_version = max(max_checkstyle_version, VersionSpec(checkstyleVersion)) if max_checkstyle_version else VersionSpec(checkstyleVersion)
 
                 moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
                 moduleXml.open('option', attributes={'name': 'configuration'})
                 moduleXml.open('map')
                 moduleXml.element('entry', attributes={'key': "checkstyle-version", 'value': checkstyleVersion})
-                moduleXml.element('entry', attributes={'key': "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+                moduleXml.element('entry', attributes={'key': "active-configuration", 'value': "PROJECT_RELATIVE:" + join(checkstyleProj.dir, ".checkstyle_checks.xml") + ":" + checkstyleProj.name})
                 moduleXml.close('map')
                 moduleXml.close('option')
                 moduleXml.close('component')
@@ -16025,15 +16038,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 checkstyleXml.element('entry', attributes={'key': "checkstyle-version", 'value': str(max_checkstyle_version)})
 
             # Initialize an entry for each style that is used
-            checkstyleProjects = set([])
+            checkstyleConfigs = set([])
             for p in s.projects_recursive():
                 if not p.isJavaProject():
                     continue
-                csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-                if p.checkstyleProj in checkstyleProjects or not exists(csConfig):
+                csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
+                if not csConfig or csConfig in checkstyleConfigs:
                     continue
-                checkstyleProjects.add(p.checkstyleProj)
-                checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleProjects)), 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+                checkstyleConfigs.add(csConfig)
+                checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleConfigs)), 'value': "PROJECT_RELATIVE:" + join(checkstyleProj.dir, ".checkstyle_checks.xml") + ":" + checkstyleProj.name})
 
             checkstyleXml.close('map')
             checkstyleXml.close('option')
@@ -18847,7 +18860,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.195.0")  # GR-12180
+version = VersionSpec("5.195.1")  # GR-12799
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

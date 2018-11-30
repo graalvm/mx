@@ -170,6 +170,11 @@ class MxCompatibility500(object):
         """
         return False
 
+    def check_checkstyle_config(self):
+        """
+        Should sanity check Checkstyle configuration for a project.
+        """
+        return False
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -372,12 +377,20 @@ class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ance
     def check_package_locations(self):
         return True
 
-class MxCompatibility5195(MxCompatibility5194):#pylint: disable=too-many-ancestors
+class MxCompatibility51950(MxCompatibility5194):  # pylint: disable=too-many-ancestors
     @staticmethod
     def version():
         return mx.VersionSpec("5.195.0")
 
     def mavenSupportsClassifier(self):
+        return True
+
+class MxCompatibility51951(MxCompatibility51950):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.195.1")
+
+    def check_checkstyle_config(self):
         return True
 
 def minVersion():

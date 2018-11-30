@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2017, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -64,10 +64,12 @@ public class JacocoReport {
     public JacocoReport(List<String> excludes) {
         executionDataStore = new ExecutionDataStore();
         sessionInfoStore = new SessionInfoStore();
-        this.excludes = excludes.stream() //
-                        .map(s -> s.endsWith(".*") ? s.substring(0, s.length() - 2) : s) //
-                        .map(s -> s.replace('.', '/')) //
+        // @formatter:off
+        this.excludes = excludes.stream()
+                        .map(s -> s.endsWith(".*") ? s.substring(0, s.length() - 2) : s)
+                        .map(s -> s.replace('.', '/'))
                         .collect(Collectors.toList());
+        // @formatter:on
     }
 
     /**
@@ -158,7 +160,7 @@ public class JacocoReport {
         final IBundleCoverage bundle;
         final File[] srcDirs;
 
-        public BundleAndProject(IBundleCoverage bundle, File[] srcDirs) {
+        BundleAndProject(IBundleCoverage bundle, File[] srcDirs) {
             this.bundle = bundle;
             this.srcDirs = srcDirs;
         }
@@ -177,6 +179,7 @@ public class JacocoReport {
         executionDataReader.setSessionInfoVisitor(sessionInfoStore);
 
         while (executionDataReader.read()) {
+            // Read all data
         }
 
         fis.close();
@@ -226,7 +229,7 @@ public class JacocoReport {
 
     private class JaCoCoAnalyzer extends Analyzer {
 
-        public JaCoCoAnalyzer(ExecutionDataStore executionData, ICoverageVisitor coverageVisitor) {
+        JaCoCoAnalyzer(ExecutionDataStore executionData, ICoverageVisitor coverageVisitor) {
             super(executionData, coverageVisitor);
         }
 
