@@ -2859,6 +2859,9 @@ class Project(Dependency):
     def is_test_project(self):
         return self.testProject
 
+    def get_checkstyle_config(self, resolve_checkstyle_library=True):
+        # Workaround for GR-12809
+        return (None, None, None)
 
 class ProjectBuildTask(BuildTask):
     __metaclass__ = ABCMeta
