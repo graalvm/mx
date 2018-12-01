@@ -15506,7 +15506,7 @@ def intellij_read_sdks():
             sdks[home] = {'name': name, 'type': kind, 'version': version}
             logv("Found SDK {} with values {}".format(home, sdks[home]))
         else:
-            warn("Could not findd matching SDK {} definition in {}".format(home, xmlSdk))
+            warn("Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
