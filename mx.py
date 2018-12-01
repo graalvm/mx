@@ -15484,16 +15484,9 @@ def intellij_read_sdks():
     log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = [
-        re.compile(r'^java\s+version\s+"([^"]+)"$'),
-        re.compile(r'^([\d.]+)$'),
-    ]
-    versionRegexes[intellij_python_sdk_type] = [
-        re.compile(r'^Python\s+(.+)$'),
-    ]
-    versionRegexes[intellij_ruby_sdk_type] = [
-        re.compile(r'^ver\.([^\s]+)\s+.*$'),
-    ]
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^([\d._]+)$')
+    versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
+    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
 
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
@@ -15502,17 +15495,18 @@ def intellij_read_sdks():
         if home.find('$APPLICATION_HOME_DIR$') != -1:
             # Don't know how to convert this into a real path so ignore it
             continue
-        for versionRE in versionRegexes.get(kind):
-            if not versionRE:
-                # ignore unknown kinds
-                continue
+        versionRE = versionRegexes.get(kind)
+        if not versionRE:
+            # ignore unknown kinds
+            continue
 
-            match = versionRE.match(sdk.find("version").get("value"))
-            if match:
-                version = match.group(1)
-                sdks[home] = {'name': name, 'type': kind, 'version': version}
-                logv("Found sdk {} with values {}".format(home, sdks[home]))
-
+        match = versionRE.match(sdk.find("version").get("value"))
+        if match:
+            version = match.group(1)
+            sdks[home] = {'name': name, 'type': kind, 'version': version}
+            logv("Found SDK {} with values {}".format(home, sdks[home]))
+        else:
+            warn("Could not findd matching SDK {} definition in {}".format(home, xmlSdk))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -18871,7 +18865,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.195.1")  # GR-12799
+version = VersionSpec("5.195.2")  # GR-12808
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
