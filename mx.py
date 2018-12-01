@@ -15484,7 +15484,7 @@ def intellij_read_sdks():
     log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^([\d._]+)$')
     versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
     versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
 
@@ -15499,9 +15499,14 @@ def intellij_read_sdks():
         if not versionRE:
             # ignore unknown kinds
             continue
-        version = versionRE.match(sdk.find("version").get("value")).group(1)
-        sdks[home] = {'name': name, 'type': kind, 'version': version}
-        logv("Found sdk {} with values {}".format(home, sdks[home]))
+
+        match = versionRE.match(sdk.find("version").get("value"))
+        if match:
+            version = match.group(1)
+            sdks[home] = {'name': name, 'type': kind, 'version': version}
+            logv("Found SDK {} with values {}".format(home, sdks[home]))
+        else:
+            warn("Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -18860,7 +18865,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.195.1")  # GR-12799
+version = VersionSpec("5.195.2")  # GR-12808
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
