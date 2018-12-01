@@ -13593,6 +13593,7 @@ def _safe_path(path):
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        path = path.replace("/", "\\")
         if isabs(path):
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
