@@ -11956,13 +11956,15 @@ def check_get_env(key):
         abort('Required environment variable ' + key + ' must be set')
     return value
 
-def get_env(key, default=None):
+def get_env(key, default=None, is_path=False):
     """
     Gets an environment variable.
     :param default: default values if the environment variable is not set.
     :type default: str | None
     """
     value = os.getenv(key, default)
+    if is_path:
+        value = _safe_path(value)
     return value
 
 def logv(msg=None):
@@ -13627,6 +13629,7 @@ def _safe_path(path):
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        path = path.replace("/", "\\")
         if isabs(path):
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):

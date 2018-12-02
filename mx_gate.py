@@ -527,7 +527,7 @@ def _run_gate(cleanArgs, args, tasks):
 
     with Task('CodeFormatCheck', tasks, tags=[Tags.style]) as t:
         if t:
-            eclipse_exe = mx.get_env('ECLIPSE_EXE')
+            eclipse_exe = mx.get_env('ECLIPSE_EXE', is_path=True)
             if eclipse_exe is not None:
                 if mx.command_function('eclipseformat')(['-e', eclipse_exe, '--primary']) != 0:
                     t.abort('Formatter modified files - run "mx eclipseformat", check in changes and repush')
