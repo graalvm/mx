@@ -6,7 +6,7 @@ install:
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz
       wget http://archive.eclipse.org/eclipse/downloads/drops4/R-4.5.2-201602121500/eclipse-SDK-4.5.2-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
       tar -C $TRAVIS_BUILD_DIR/.. -xf $ECLIPSE_TAR
-      export ECLIPSE_EXE=$TRAVIS_BUILD_DIR/../eclipse/eclipse
+      export ECLIPSE_EXE=$TRAVIS_BUILD_DIR/../eclipse/eclipse$EXE_SUFFIX
       export JDT=$TRAVIS_BUILD_DIR/ecj.jar
       wget http://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
 
@@ -21,7 +21,6 @@ jobs:
         apt:
           packages:
             - oracle-java8-installer
-
       script: ./mx --strict-compliance gate --strict-mode
     - name: Windows
       os: windows
@@ -35,4 +34,5 @@ jobs:
             export JAVA_HOME=/c/jdk
             export PATH=$PATH:$JAVA_HOME/bin
         - export POWERSHELL=powershell
+      env: EXE_SUFFIX=.exe
       script: powershell .\\mx.cmd --strict-compliance gate --strict-mode
