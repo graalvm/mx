@@ -498,7 +498,7 @@ class BaseRule(Rule):
                         inst = vtype(v)
                     else:
                         raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
-                if isinstance(inst, (str, int, long, float, bool)):
+                if not isinstance(inst, (str, int, long, float, bool)):
                     raise RuntimeError("Object '{0}' has unknown type: {1}".format(inst, type(inst)))
                 datapoint[key] = inst
             datapoints.append(datapoint)
