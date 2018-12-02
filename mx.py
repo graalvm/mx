@@ -45,7 +45,7 @@ except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 
 import os, errno, time, subprocess, shlex, types, zipfile, signal, tempfile, platform
-from mx_portable import StringIO, builtins, urllib2, urlparse
+from mx_portable import StringIO, builtins, urllib_request, urllib_error, urllib_parse
 import textwrap
 import socket
 import tarfile, gzip
@@ -4428,7 +4428,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            o = urlparse.urlparse(url)
+            o = urllib_parse.urlparse(url)
             if o.path == "/remotecontent" and o.query.startswith("filepath"):
                 path = o.query
             else:
@@ -4464,8 +4464,8 @@ def _urlopen(*args, **kwargs):
 
     while True:
         try:
-            return urllib2.urlopen(*args, **kwargs)
-        except (urllib2.HTTPError) as e:
+            return urllib_request.urlopen(*args, **kwargs)
+        except (urllib_error.HTTPError) as e:
             if e.code == 500:
                 if error500_attempts < error500_limit:
                     error500_attempts += 1
@@ -4474,12 +4474,12 @@ def _urlopen(*args, **kwargs):
                     time.sleep(0.2)
                     continue
             raise
-        except urllib2.URLError as e:
+        except urllib_error.HTTPError as e:
             if isinstance(e.reason, socket.error):
                 if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
                     warn("urlopen() failed with EINTR. Retrying without timeout.")
                     del kwargs['timeout']
-                    return urllib2.urlopen(*args, **kwargs)
+                    return urllib_request.urlopen(*args, **kwargs)
                 if e.reason.errno == errno.EINPROGRESS:
                     if on_timeout():
                         continue
@@ -6945,10 +6945,10 @@ class BinaryVC(VC):
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
-    hashFile = urllib2.urlopen(url)
+    hashFile = urllib_request.urlopen(url)
     try:
         return hashFile.read()
-    except urllib2.URLError as e:
+    except urllib_error.HTTPError as e:
         _suggest_http_proxy_error(e)
         abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
     finally:
@@ -7052,7 +7052,7 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.HTTPError as e:
+        except urllib_error.HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
@@ -7077,7 +7077,7 @@ class MavenRepo:
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
                         snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
-                    except urllib2.HTTPError as e:
+                    except urllib_error.HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
 
@@ -7088,7 +7088,7 @@ class MavenRepo:
                         break
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
-        except urllib2.URLError as e:
+        except urllib_error.HTTPError as e:
             abort('Error while retrieving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
         finally:
             if metadataFile:
@@ -7103,8 +7103,8 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.URLError as e:
-            if isinstance(e, urllib2.HTTPError) and e.code == 404:
+        except urllib_error.HTTPError as e:
+            if isinstance(e, urllib_error.HTTPError) and e.code == 404:
                 return None
             _suggest_http_proxy_error(e)
             abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
@@ -7953,7 +7953,7 @@ class SiblingSuiteModel(SuiteModel):
         for urlinfo in suite_import.urlinfos:
             if urlinfo.abs_kind() == 'source':
                 # 'https://github.com/graalvm/graal.git' -> 'graal'
-                base, _ = os.path.splitext(basename(urlparse.urlparse(urlinfo.url).path))
+                base, _ = os.path.splitext(basename(urllib_parse.urlparse(urlinfo.url).path))
                 if base: break
         if base:
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), base)
@@ -8161,7 +8161,7 @@ class SuiteImport:
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
-    url = urlparse.urlsplit(urlstr)
+    url = urllib_parse.urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
 
 class SCMMetadata(object):
@@ -12256,12 +12256,12 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-    except (IOError, socket.timeout, urllib2.HTTPError) as e:
+    except (IOError, socket.timeout, urllib_error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
         log_error("Error reading from " + url + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
-        if isinstance(e, urllib2.HTTPError) and e.code == 500:
+        if isinstance(e, urllib_error.HTTPError) and e.code == 500:
             return "retry"
     finally:
         if conn:
@@ -18221,7 +18221,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             # Try use the URL first so that a big repo is cloned to a local
             # directory whose named is based on the repo instead of a suite
             # nested in the big repo.
-            root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
+            root, _ = os.path.splitext(basename(urllib_parse.urlparse(url).path))
             if root:
                 import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
             else:
@@ -18618,8 +18618,8 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
     else:
         abort("Unknown Socks Proxy type {0}".format(proxytype))
 
-    opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
-    urllib2.install_opener(opener)
+    opener = urllib_request.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    urllib_request.install_opener(opener)
 
 
 def main():

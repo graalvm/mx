@@ -30,7 +30,7 @@ from __future__ import print_function
 
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
-from mx_portable import urlparse
+from mx_portable import urllib_parse
 import shutil
 import os
 import mx
@@ -118,7 +118,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     targetDir = None
     for repoUrl in repoUrls:
         # Deduce a target name from the target URL
-        url = urlparse(repoUrl)
+        url = urllib_parse.urlparse(repoUrl)
         targetName = url.path
         if targetName.rfind('/') != -1:
             targetName = targetName[targetName.rfind('/') + 1:]
