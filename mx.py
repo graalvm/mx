@@ -280,7 +280,8 @@ _licenses = dict()
 _repositories = dict()
 _mavenRepoBaseURLs = [
     "https://repo1.maven.org/maven2/",
-    "https://search.maven.org/remotecontent?filepath="
+    "https://search.maven.org/remotecontent?filepath=",
+    "http://repo1.maven.org/maven2/" #fall back to http
 ]
 
 
