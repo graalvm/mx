@@ -12949,6 +12949,7 @@ def pylint(args):
             log_error('could not determine pylint version from ' + output)
             return -1
         major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        log("Detected pylint version: {0}.{1}.{2}".format(major, minor, micro))
         ver = (major, minor)
         if ver not in pylint_ver_map:
             log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
