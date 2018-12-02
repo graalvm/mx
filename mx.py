@@ -16009,7 +16009,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
                 miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                custom_eclipse_exe = get_env('ECLIPSE_EXE')
+                custom_eclipse_exe = get_env('ECLIPSE_EXE', is_path=True)
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
                     if get_os() == 'darwin':
