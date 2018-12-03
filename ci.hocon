@@ -19,13 +19,22 @@ gate : {
     JDT : {name: ecj, version: "4.5.1", platformspecific: false}
     ECLIPSE : {name: eclipse, version: "4.5.2", platformspecific: true}
   }
-  environment : {
-    ECLIPSE_EXE : "$ECLIPSE/eclipse"
-  }
   run : [
     ["./mx", "--strict-compliance", "gate", "--strict-mode"]
   ]
   timelimit : "10:00"
+}
+
+gate-unix : ${gate} {
+  environment : {
+    ECLIPSE_EXE : "$ECLIPSE/eclipse"
+  }
+}
+
+gate-windows : ${gate} {
+  environment : {
+    ECLIPSE_EXE : "$ECLIPSE\eclipse.exe"
+  }
 }
 
 bench-test : {
@@ -84,8 +93,8 @@ nocache: {
 }
 
 builds = [
-  ${gate} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
-  ${gate} {capabilities : [windows, amd64], targets : [gate], name: "gate-windows-amd64"}
+  ${gate-unix} {capabilities : [linux, amd64], targets : [gate], name: "gate-linux-amd64"}
+  ${gate-windows} {capabilities : [windows, amd64], targets : [gate], name: "gate-windows-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
   ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
