@@ -71,7 +71,7 @@ import fnmatch
 import operator
 import calendar
 import multiprocessing
-from stat import S_IMODE
+from stat import S_IMODE, S_IWRITE
 from mx_commands import MxCommands, MxCommand
 _mx_commands = MxCommands("mx")
 
@@ -12343,9 +12343,9 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
     The downloaded content is written to the file indicated by `path`.
     """
-    ensure_dirname_exists(path)
-
-    assert not path.endswith(os.sep)
+    if not verifyOnly:
+        ensure_dirname_exists(path)
+        assert not path.endswith(os.sep)
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
@@ -13645,10 +13645,11 @@ def _safe_path(path):
     """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
-    This is works around the MAX_PATH limit on Windows:
+    This works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        path = normpath(path)
         if isabs(path):
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
@@ -13659,25 +13660,38 @@ def _safe_path(path):
                     path = '\\\\?\\UNC' + path
             else:
                 path = '\\\\?\\' + path
+        path = unicode(path)
     return path
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return __builtin__.open(name, mode=mode)
+    return __builtin__.open(_safe_path(name), mode=mode)
+
+def copytree(src, dst, symlinks=False, ignore=None):
+    shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
 
 def rmtree(dirPath):
-    path = dirPath
+    path = _safe_path(dirPath)
     if get_os() == 'windows':
         # normpath needed to fix mixed path separators or rmtree fails
-        path = unicode(_safe_path(os.path.normpath(dirPath)))
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+        def on_error(func, path, exc_info):
+            os.chmod(path, S_IWRITE)
+            if isdir(path):
+                os.rmdir(path)
+            else:
+                os.unlink(path)
     else:
-        os.remove(path)
+        def on_error(*args):
+            raise
+    if isdir(path):
+        shutil.rmtree(path, onerror=on_error)
+    else:
+        try:
+            os.remove(path)
+        except os.error:
+            on_error(os.remove, path, sys.exc_info())
 
 def clean(args, parser=None):
     """remove all class files, images, and executables
@@ -16896,7 +16910,7 @@ def site(args):
 
 
         if args.tmp:
-            shutil.copytree(tmpbase, args.base)
+            copytree(tmpbase, args.base)
         else:
             shutil.move(tmpbase, args.base)
 
@@ -16904,7 +16918,7 @@ def site(args):
 
     finally:
         if not args.tmp and exists(tmpbase):
-            shutil.rmtree(tmpbase)
+            rmtree(tmpbase)
 
 def _kwArg(kwargs):
     if len(kwargs) > 0:
@@ -17578,9 +17592,13 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
+    if get_os() == 'windows':
+        dev_null = 'NUL'
+    else:
+        dev_null = '/dev/null'
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('/dev/null', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(dev_null, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
