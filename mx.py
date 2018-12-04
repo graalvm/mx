@@ -13648,6 +13648,10 @@ def _safe_path(path):
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        if _opts.verbose and '/' in path:
+            warn("Forward slash in path on windows: {}".format(path))
+            import traceback
+            traceback.print_stack()
         path = normpath(path)
         if isabs(path):
             if path.startswith('\\\\'):
