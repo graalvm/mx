@@ -18877,7 +18877,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.195.2")  # GR-12808
+version = VersionSpec("5.196.0")  # Ninja
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
