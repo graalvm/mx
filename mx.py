@@ -8893,11 +8893,15 @@ class Suite(object):
                 }
                 return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
 
+            optional = attrs.pop('optional', False)
             if not urls and maven is not None:
                 _check_maven(maven)
                 urls = _maven_download_urls(**maven)
+
             if path is None:
                 if not urls:
+                    if optional:
+                        continue
                     abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
@@ -8919,7 +8923,6 @@ class Suite(object):
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
                     sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
             packedResource = attrs.pop('packedResource', False)
             if packedResource:
@@ -18877,7 +18880,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.196.0")  # Ninja
+version = VersionSpec("5.196.1")  # GR-12911
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
