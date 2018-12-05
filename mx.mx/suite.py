@@ -255,6 +255,7 @@ suite = {
 
     "NINJA" : {
       "packedResource" : True,
+      "optional" : True,
       "version" : "1.8.2",
       "os_arch" : {
         "linux" : {
