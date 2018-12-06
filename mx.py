@@ -9278,7 +9278,7 @@ class SourceSuite(Suite):
                     testProject = attrs.pop('testProject', old_test_project)
 
                     if native:
-                        if isinstance(native, bool):
+                        if isinstance(native, bool) or native.lower() == "true":
                             output = attrs.pop('output', None)
                             results = Suite._pop_list(attrs, 'results', context)
                             p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
