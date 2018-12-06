@@ -33,8 +33,11 @@ gate-unix : ${gate} {
 
 gate-windows : ${gate} {
   environment : {
-    ECLIPSE_EXE : "$ECLIPSE\eclipse.exe"
+    ECLIPSE_EXE : "$ECLIPSE\\eclipse.exe"
   }
+  run : [
+    ["./mx", "--strict-compliance", "gate", "--strict-mode", "--tags", "fullbuild"]
+  ]
 }
 
 bench-test : {
@@ -55,14 +58,6 @@ jmh-test : {
   run: [
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"]
   ]
-}
-
-verifylibraryurls : {
-  downloads : ${downloads.java}
-  run : [
-    ["./mx", "--strict-compliance", "-v", "verifylibraryurls"]
-  ]
-  timelimit : "10:00"
 }
 
 downstream-truffleruby-binary-truffle: {
@@ -97,8 +92,6 @@ builds = [
   ${gate-windows} {capabilities : [windows, amd64], targets : [gate], name: "gate-windows-amd64"}
   ${bench-test} {capabilities : [linux, amd64], targets : [gate], name: "bench-linux-amd64"}
   ${jmh-test} {capabilities : [linux, amd64], targets : [gate], name: "test-jmh-linux-amd64"}
-  ${verifylibraryurls} {capabilities : [linux, amd64], targets : [gate], name: "verifylibraryurls-linux-amd64"}
-  ${verifylibraryurls} {capabilities : [windows, amd64], targets : [gate], name: "verifylibraryurls-windows-amd64"}
   ${downstream-truffleruby-binary-truffle} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle"}
   ${downstream-truffleruby-binary-truffle} ${nocache} {capabilities : [linux, amd64], targets : [gate], name: "downstream-truffleruby-binary-truffle-nocache"}
 
