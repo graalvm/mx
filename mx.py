@@ -9278,7 +9278,7 @@ class SourceSuite(Suite):
                     testProject = attrs.pop('testProject', old_test_project)
 
                     if native:
-                        if isinstance(native, bool):
+                        if isinstance(native, bool) or native.lower() == "true":
                             output = attrs.pop('output', None)
                             results = Suite._pop_list(attrs, 'results', context)
                             p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
@@ -18880,7 +18880,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.196.1")  # GR-12911
+version = VersionSpec("5.196.2")  # GR-12928
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
