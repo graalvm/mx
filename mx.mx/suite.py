@@ -255,13 +255,15 @@ suite = {
 
     "NINJA" : {
       "packedResource" : True,
-      "optional" : True,
       "version" : "1.8.2",
       "os_arch" : {
         "linux" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip"],
             "sha1" : "987234c4ce45505c21302e097c24efef4873325c"
+          },
+          "<others>" : {
+            "optional" : True
           }
         },
         "darwin" : {
@@ -274,6 +276,11 @@ suite = {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
             "sha1" : "637cc6e144f5cc7c6388a30f3c32ad81b2e0442e"
+          }
+        },
+        "solaris" : {
+          "<others>" : {
+            "optional" : True
           }
         }
       }
