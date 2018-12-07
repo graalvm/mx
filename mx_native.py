@@ -227,7 +227,11 @@ class NinjaBuildTask(mx.AbstractNativeBuildTask):
 
     def clean(self, forBuild=False):
         if not forBuild:
-            mx.rmtree(self.subject.out_dir)
+            try:
+                mx.rmtree(self.subject.out_dir)
+            except OSError as e:
+                if e.errno != errno.ENOENT:
+                    raise
 
 
 class NinjaManifestGenerator(object):
