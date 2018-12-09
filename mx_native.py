@@ -119,12 +119,19 @@ class NinjaProject(mx.AbstractNativeProject):
 
     Subclasses are expected to generate an appropriate build manifest using the
     NinjaManifestGenerator.
+
+    Attributes
+        cflags : list of str, optional
+            Flags used during compilation step.
+        ldflags : list of str, optional
+            Flags used during linking step.
     """
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, **kwargs):
         context = 'project ' + name
         self.buildDependencies = mx.Suite._pop_list(kwargs, 'buildDependencies', context) + self._ninja_deps
-        self.cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
+        self._cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
+        self._ldflags = mx.Suite._pop_list(kwargs, 'ldflags', context)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
                                            **kwargs)
         self.out_dir = self.get_output_root()
@@ -158,6 +165,14 @@ class NinjaProject(mx.AbstractNativeProject):
     @abc.abstractmethod
     def generate_manifest(self, path):
         """Generates a Ninja manifest used to build this project."""
+
+    @property
+    def cflags(self):
+        return self._cflags
+
+    @property
+    def ldflags(self):
+        return self._ldflags
 
     @property
     def source_tree(self):
@@ -308,6 +323,19 @@ class NinjaManifestGenerator(object):
 
         return lambda archive, members: self.n.build(archive, 'ar', members)[0]
 
+    def link_rule(self):
+        if mx.get_os() == 'windows':
+            command = 'link -nologo $ldflags -out:$out $in'
+        else:
+            command = 'gcc $ldflags -o $out $in'
+
+        self.n.rule('link',
+                    command=command,
+                    description='LINK $out')
+        self.newline()
+
+        return lambda program, files: self.n.build(program, 'link', files)[0]
+
     def close(self):
         self.n.close()
 
@@ -347,12 +375,37 @@ class NinjaManifestGenerator(object):
 
 
 class DefaultNativeProject(NinjaProject):
+    """A NinjaProject that makes many assumptions when generating a build manifest.
+
+    It is assumed that:
+        #. Directory layout is fixed:
+            - `include` is a flat subdir containing public headers, and
+            - `src` subdir contains sources and private headers.
+
+        #. There is only one deliverable:
+            - Kind is the value of the `native` attribute, and
+            - Name is derived from the `name` of the project.
+
+        #. All source files are supported and necessary to build the deliverable.
+
+        #. The deliverable and the public headers are intended for distribution.
+
+    Attributes
+        native : {'static_lib', 'shared_lib'}
+            Kind of the deliverable.
+
+            Depending on the value, the necessary flags will be prepended to `cflags`
+            and `ldflags` automatically.
+    """
     include = 'include'
     src = 'src'
 
     _kinds = dict(
         static_lib=dict(
             target=lambda name: mx.add_lib_prefix(name) + ('.lib' if mx.get_os() == 'windows' else '.a'),
+        ),
+        shared_lib=dict(
+            target=lambda name: mx.add_lib_suffix(mx.add_lib_prefix(name)),
         ),
     )
 
@@ -375,6 +428,27 @@ class DefaultNativeProject(NinjaProject):
         return self._kind['target'](self._deliverable)
 
     @property
+    def cflags(self):
+        default_cflags = []
+        if self._kind == self._kinds['shared_lib']:
+            default_cflags += dict(
+                windows=['-MD'],
+            ).get(mx.get_os(), ['-fPIC'])
+
+        return default_cflags + super(DefaultNativeProject, self).cflags
+
+    @property
+    def ldflags(self):
+        default_ldflags = []
+        if self._kind == self._kinds['shared_lib']:
+            default_ldflags += dict(
+                darwin=['-dynamiclib', '-undefined', 'dynamic_lookup'],
+                windows=['-DLL'],
+            ).get(mx.get_os(), ['-shared', '-fPIC'])
+
+        return default_ldflags + super(DefaultNativeProject, self).ldflags
+
+    @property
     def c_files(self):
         return self._source['files']['.c']
 
@@ -383,16 +457,21 @@ class DefaultNativeProject(NinjaProject):
         return self._source['files']['.h']
 
     def generate_manifest(self, path):
-        unsupported_files = list(self._source['files'].viewkeys() - {'.c', '.h'})
-        if unsupported_files:
-            mx.abort('{} files are not supported by default native projects'.format(unsupported_files))
+        unsupported_source_files = list(self._source['files'].viewkeys() - {'.c', '.h'})
+        if unsupported_source_files:
+            mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
             gen.comment('Project rules')
             cc = gen.cc_rule()
-            ar = gen.ar_rule()
 
-            gen.variables(cflags=self.cflags)
+            ar = link = None
+            if self._kind == self._kinds['static_lib']:
+                ar = gen.ar_rule()
+            else:
+                link = gen.link_rule()
+
+            gen.variables(cflags=self.cflags, ldflags=self.ldflags if link else None)
             gen.include(collections.OrderedDict.fromkeys([mx.dirname(h_file) for h_file in self.h_files]).keys())
 
             gen.comment('Compiled project sources')
@@ -400,7 +479,10 @@ class DefaultNativeProject(NinjaProject):
             gen.newline()
 
             gen.comment('Project deliverable')
-            ar(self._target, object_files)
+            if self._kind == self._kinds['static_lib']:
+                ar(self._target, object_files)
+            else:
+                link(self._target, object_files)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         def result(base_dir, file_path):
