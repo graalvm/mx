@@ -4057,7 +4057,11 @@ class CompilerDaemon(Daemon):
             returncode = p.poll()
             if returncode is not None:
                 raise RuntimeError('Error starting ' + self.name() + ': returncode=' + str(returncode) + '\n' + ''.join(pout))
-            if retries > 300:
+            if retries == 299:
+                warn('Killing ' + self.name() + ' after failing to see port number after nearly 30 seconds')
+                os.kill(p.pid, signal.SIGKILL)
+                time.sleep(1.0)
+            elif retries > 300:
                 raise RuntimeError('Error starting ' + self.name() + ': No port number was found in output after 30 seconds\n' + ''.join(pout))
             else:
                 time.sleep(0.1)
@@ -18880,7 +18884,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.196.3")  # GR-7938
+version = VersionSpec("5.196.4")  # GR-12070
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
