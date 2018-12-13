@@ -4833,8 +4833,6 @@ class PackedResourceLibrary(ResourceLibrary):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = super(PackedResourceLibrary, self).get_path(resolve)
         if resolve and self._check_extract_needed(extract_path, download_path):
-            # clean destination
-            shutil.rmtree(extract_path, ignore_errors=True)
             extract_path_tmp = tempfile.mkdtemp(suffix=basename(extract_path), dir=dirname(extract_path))
             try:
                 # extract archive
@@ -4842,18 +4840,24 @@ class PackedResourceLibrary(ResourceLibrary):
                 # ensure modification time is up to date
                 os.utime(extract_path_tmp, None)
                 # create version file for non-default locations
-                versionFile = self._version_file(extract_path_tmp)
-                with open(versionFile, 'a'):
-                    os.utime(versionFile, None)
+                version_file = self._version_file(extract_path_tmp)
+                with open(version_file, 'a'):
+                    os.utime(version_file, None)
                 logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
-                os.rename(extract_path_tmp, extract_path)
+                try:
+                    # attempt atomic overwrite
+                    os.rename(extract_path_tmp, extract_path)
+                except OSError:
+                    # clean destination & re-try for cases where atomic overwrite doesn't work
+                    rmtree(extract_path, ignore_errors=True)
+                    os.rename(extract_path_tmp, extract_path)
             except OSError as ose:
                 # Rename failed. Race with other process?
                 if self._check_extract_needed(extract_path, download_path):
                     # ok something really went wrong
                     abort("Extracting {} failed!".format(download_path), context=ose)
             finally:
-                shutil.rmtree(extract_path_tmp, ignore_errors=True)
+                rmtree(extract_path_tmp, ignore_errors=True)
 
         return extract_path
 
@@ -13699,16 +13703,19 @@ def open(name, mode='r'): # pylint: disable=redefined-builtin
 def copytree(src, dst, symlinks=False, ignore=None):
     shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
 
-def rmtree(dirPath):
-    path = _safe_path(dirPath)
-    if get_os() == 'windows':
+def rmtree(path, ignore_errors=False):
+    path = _safe_path(path)
+    if ignore_errors:
+        def on_error(*args):
+            pass
+    elif get_os() == 'windows':
         # normpath needed to fix mixed path separators or rmtree fails
-        def on_error(func, path, exc_info):
-            os.chmod(path, S_IWRITE)
-            if isdir(path):
-                os.rmdir(path)
+        def on_error(func, _path, exc_info):
+            os.chmod(_path, S_IWRITE)
+            if isdir(_path):
+                os.rmdir(_path)
             else:
-                os.unlink(path)
+                os.unlink(_path)
     else:
         def on_error(*args):
             raise
