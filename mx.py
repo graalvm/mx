@@ -4811,9 +4811,6 @@ class PackedResourceLibrary(ResourceLibrary):
             self.extract_path = self.path
             self.path = archive_path
 
-    def _version_file(self, dst):
-        return os.path.join(dst, "_".join([self.name, self.sha1]))
-
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
             logvv("Destination does not exist")
@@ -4823,9 +4820,6 @@ class PackedResourceLibrary(ResourceLibrary):
             logvv("Destination older than source")
             logvv("Destination: " + dst)
             logvv("Source:      " + src)
-            return True
-        if not os.path.exists(self._version_file(dst)):
-            logvv("Version file does not exist: " + self._version_file(dst))
             return True
         return False
 
@@ -4839,10 +4833,6 @@ class PackedResourceLibrary(ResourceLibrary):
                 Extractor.create(download_path).extract(extract_path_tmp)
                 # ensure modification time is up to date
                 os.utime(extract_path_tmp, None)
-                # create version file for non-default locations
-                version_file = self._version_file(extract_path_tmp)
-                with open(version_file, 'a'):
-                    os.utime(version_file, None)
                 logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
                 try:
                     # attempt atomic overwrite
