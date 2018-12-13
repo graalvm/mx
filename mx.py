@@ -11554,6 +11554,19 @@ class JDKConfigException(Exception):
         Exception.__init__(self, value)
 
 
+def java_debug_args():
+    debug_args = []
+    attach = None
+    if _opts.attach is not None:
+        attach = 'server=n,address=' + _opts.attach
+    else:
+        if _opts.java_dbg_port is not None:
+            attach = 'server=y,address=' + str(_opts.java_dbg_port)
+    if attach is not None:
+        debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+    return debug_args
+
+
 class JDKConfig:
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
@@ -11627,16 +11640,7 @@ class JDKConfig:
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
-        self.debug_args = []
-        attach = None
-        if _opts.attach is not None:
-            attach = 'server=n,address=' + _opts.attach
-        else:
-            if _opts.java_dbg_port is not None:
-                attach = 'server=y,address=' + str(_opts.java_dbg_port)
-
-        if attach is not None:
-            self.debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+        self.debug_args = java_debug_args()
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
@@ -18884,7 +18888,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.196.5")  # GR-12609
+version = VersionSpec("5.197.0")  # outsource java_debug_args
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
