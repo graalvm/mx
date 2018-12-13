@@ -105,7 +105,7 @@ suite = {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.agent",
         "version" : "0.7.9",
-        "suffix" : "runtime",
+        "classifier" : "runtime",
       },
       "licence": "EPL-1.0",
     },
@@ -336,6 +336,46 @@ suite = {
         "version" : "6.0.3",
       }
     },
+
+    "NINJA" : {
+      "packedResource" : True,
+      "version" : "1.8.2",
+      "os_arch" : {
+        "linux" : {
+          "amd64" : {
+            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip"],
+            "sha1" : "987234c4ce45505c21302e097c24efef4873325c"
+          },
+          "<others>" : {
+            "optional" : True
+          }
+        },
+        "darwin" : {
+          "amd64" : {
+            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
+            "sha1" : "8142c497f7dfbdb052a1e31960fdfe2c6f9a5ca2"
+          }
+        },
+        "windows" : {
+          "amd64" : {
+            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
+            "sha1" : "637cc6e144f5cc7c6388a30f3c32ad81b2e0442e"
+          }
+        },
+        "solaris" : {
+          "<others>" : {
+            "optional" : True
+          }
+        }
+      }
+    },
+
+    "NINJA_SYNTAX" : {
+      "packedResource" : True,
+      "version" : "1.7.2",
+      "urls" : ["https://pypi.org/packages/source/n/ninja_syntax/ninja_syntax-{version}.tar.gz"],
+      "sha1" : "702ca2d0ae93841c5ab75e4d119b29780ec0b7d9"
+    }
   },
 
   "licenses" : {
@@ -377,6 +417,7 @@ suite = {
       "dependencies" : [
         "JMH_1_21",
       ],
+      "checkstyle" : "com.oracle.mxtool.junit",
       "javaCompliance" : "1.8+",
       "annotationProcessors" : ["JMH_1_21"],
       "findbugsIgnoresGenerated" : True,
@@ -396,19 +437,21 @@ suite = {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.7+", # jdk7 or later
-      "checkstyleVersion" : "8.8",
+      "checkstyle" : "com.oracle.mxtool.junit",
     },
 
     "com.oracle.mxtool.checkcopy" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8+",
+      "checkstyle" : "com.oracle.mxtool.junit",
     },
 
     "com.oracle.mxtool.jacoco" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
       "javaCompliance" : "1.8+",
+      "checkstyle" : "com.oracle.mxtool.junit",
       "dependencies" : [
         "JACOCOREPORT_0.8.2",
         "JOPTSIMPLE_4_6",

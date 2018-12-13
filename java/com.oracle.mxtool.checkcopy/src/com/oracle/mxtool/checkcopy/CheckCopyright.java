@@ -90,7 +90,7 @@ public class CheckCopyright {
         }
     }
 
-    private static abstract class CopyrightHandler {
+    private abstract static class CopyrightHandler {
         enum CommentType {
             STAR,
             HASH
@@ -113,7 +113,7 @@ public class CheckCopyright {
         }
 
         /**
-         * Add @code extension to files handled by this {@code CopyrightKind}
+         * Add @code extension to files handled by this {@code CopyrightKind}.
          */
         protected void updateMap(String extension) {
             copyrightMap.put(extension, this);
@@ -193,8 +193,8 @@ public class CheckCopyright {
     }
 
     private static class DefaultCopyrightHandler extends CopyrightHandler {
-        private static String ORACLE_COPYRIGHT = "oracle.copyright";
-        private static String ORACLE_COPYRIGHT_REGEX = "oracle.copyright.regex";
+        private static final String ORACLE_COPYRIGHT = "oracle.copyright";
+        private static final String ORACLE_COPYRIGHT_REGEX = "oracle.copyright.regex";
 
         private String copyrightRegex;
         private String copyright;
@@ -435,26 +435,26 @@ public class CheckCopyright {
         }
     }
 
-    private static int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-    private static Options options = new Options();
-    private static Option<Boolean> help = Options.newBooleanOption("help", false, "Show help message and exit.");
-    private static Option<String> COPYRIGHT_DIR = Options.newStringOption("copyright-dir", null, "override default location of copyright files");
-    private static Option<List<String>> FILES_TO_CHECK = Options.newStringListOption("files", null, "list of files to check");
-    private static Option<String> FILE_LIST = Options.newStringOption("file-list", null, "file containing list of files to check");
-    private static Option<Boolean> DIR_WALK = Options.newBooleanOption("list-dir", false, "check all files in directory tree requiring a copyright (ls -R)");
-    private static Option<Boolean> VC_ALL = Options.newBooleanOption("all", false, "check all vc managed files requiring a copyright");
-    private static Option<Boolean> VC_MODIFIED = Options.newBooleanOption("modified", false, "check all modified vc managed files requiring a copyright");
-    private static Option<Boolean> VC_EXHAUSTIVE = Options.newBooleanOption("vc", false, "check all vc managed files, irrespective of type");
-    private static Option<List<String>> PROJECT = Options.newStringListOption("projects", null, "filter files to specific projects");
-    private static Option<Boolean> FIX = Options.newBooleanOption("fix", false, "fix all possible copyright errors");
-    private static Option<String> FILE_PATTERN = Options.newStringOption("file-pattern", null, "append additional file patterns for copyright checks");
-    private static Option<Boolean> REPORT_ERRORS = Options.newBooleanOption("report-errors", false, "report non-fatal errors");
-    private static Option<Boolean> HALT_ON_ERROR = Options.newBooleanOption("halt-on-error", false, "continue after normally fatal error");
-    private static Option<Boolean> VERBOSE = Options.newBooleanOption("verbose", false, "verbose output");
-    private static Option<Boolean> VERY_VERBOSE = Options.newBooleanOption("very-verbose", false, "very verbose output");
-    private static Option<String> CUSTOM_COPYRIGHT_DIR = Options.newStringOption("custom-copyright-dir", null, "file containing filenames with custom copyrights");
+    private static final int currentYear = Calendar.getInstance().get(Calendar.YEAR);
+    private static final Options options = new Options();
+    private static final Option<Boolean> help = Options.newBooleanOption("help", false, "Show help message and exit.");
+    private static final Option<String> COPYRIGHT_DIR = Options.newStringOption("copyright-dir", null, "override default location of copyright files");
+    private static final Option<List<String>> FILES_TO_CHECK = Options.newStringListOption("files", null, "list of files to check");
+    private static final Option<String> FILE_LIST = Options.newStringOption("file-list", null, "file containing list of files to check");
+    private static final Option<Boolean> DIR_WALK = Options.newBooleanOption("list-dir", false, "check all files in directory tree requiring a copyright (ls -R)");
+    private static final Option<Boolean> VC_ALL = Options.newBooleanOption("all", false, "check all vc managed files requiring a copyright");
+    private static final Option<Boolean> VC_MODIFIED = Options.newBooleanOption("modified", false, "check all modified vc managed files requiring a copyright");
+    private static final Option<Boolean> VC_EXHAUSTIVE = Options.newBooleanOption("vc", false, "check all vc managed files, irrespective of type");
+    private static final Option<List<String>> PROJECT = Options.newStringListOption("projects", null, "filter files to specific projects");
+    private static final Option<Boolean> FIX = Options.newBooleanOption("fix", false, "fix all possible copyright errors");
+    private static final Option<String> FILE_PATTERN = Options.newStringOption("file-pattern", null, "append additional file patterns for copyright checks");
+    private static final Option<Boolean> REPORT_ERRORS = Options.newBooleanOption("report-errors", false, "report non-fatal errors");
+    private static final Option<Boolean> HALT_ON_ERROR = Options.newBooleanOption("halt-on-error", false, "continue after normally fatal error");
+    private static final Option<Boolean> VERBOSE = Options.newBooleanOption("verbose", false, "verbose output");
+    private static final Option<Boolean> VERY_VERBOSE = Options.newBooleanOption("very-verbose", false, "very verbose output");
+    private static final Option<String> CUSTOM_COPYRIGHT_DIR = Options.newStringOption("custom-copyright-dir", null, "file containing filenames with custom copyrights");
 
-    private static String CANNOT_FOLLOW_FILE = "abort: cannot follow";
+    private static final String CANNOT_FOLLOW_FILE = "abort: cannot follow";
     private static boolean error;
     private static boolean verbose;
     private static boolean veryVerbose;
@@ -917,7 +917,8 @@ public class CheckCopyright {
         }
 
         void parseArguments(String[] args) {
-            for (int i = 0; i < args.length; i++) {
+            int i = 0;
+            while (i < args.length) {
                 final String arg = args[i];
                 if (arg.startsWith("--")) {
                     Option<?> option = optionMap.get(arg);
@@ -933,6 +934,7 @@ public class CheckCopyright {
                         option.setValue(true);
                     }
                 }
+                i++;
             }
         }
 
