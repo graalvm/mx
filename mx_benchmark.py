@@ -1515,6 +1515,15 @@ def build_number():
         return -1
 
 
+def build_name():
+    """
+    Get the current build name from the BUILD_NAME environment variable, or an empty string otherwise.
+
+    :return: the build name
+    :rtype: basestring
+    """
+    return mx.get_env("BUILD_NAME", default="")
+
 def builder_url():
     """
     Get the builders url from the BUILD_URL environment variable, or an empty string otherwise.
@@ -1595,6 +1604,9 @@ class BenchmarkExecutor(object):
     def buildNumber(self):
         return build_number()
 
+    def buildName(self):
+        return build_name()
+
     def extras(self, mxBenchmarkArgs):
         extras = {}
         if mxBenchmarkArgs.extras:
@@ -1640,6 +1652,7 @@ class BenchmarkExecutor(object):
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
+          "build.name": self.buildName(),
           "metric.score-function": "id",
           "warnings": "",
         }
