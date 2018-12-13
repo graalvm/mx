@@ -75,7 +75,7 @@ public class FindClassesByAnnotatedMethods {
             System.out.print(jarFilePath);
             while (e.hasMoreElements()) {
                 JarEntry je = e.nextElement();
-                if (je.isDirectory() || !je.getName().endsWith(".class")) {
+                if (je.isDirectory() || !je.getName().endsWith(".class") || je.getName().equals("module-info.class")) {
                     continue;
                 }
                 Set<String> methodAnnotationTypes = new HashSet<>();
@@ -86,6 +86,8 @@ public class FindClassesByAnnotatedMethods {
                 } catch (UnsupportedClassVersionError ucve) {
                     isSupported = false;
                     unsupportedClasses++;
+                } catch (Throwable t) {
+                    throw new InternalError("Error while parsing class from " + je + " in " + jarFilePath, t);
                 }
                 String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
                 if (!isSupported) {

@@ -18888,7 +18888,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.197.0")  # outsource java_debug_args
+version = VersionSpec("5.198.0")  # GR-11427
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
