@@ -18,12 +18,12 @@ suite = {
 
     "JACOCOAGENT_0.8.2" : {
       "sha1" : "4806883004063feb978b8811f00d5ea2138750bb",
-      # Cannot download sources for "maven" library with "suffix" attribute
+      # Cannot download sources for "maven" library with "classifier" attribute
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.agent",
         "version" : "0.8.2",
-        "suffix" : "runtime",
+        "classifier" : "runtime",
       },
       "licence": "EPL-1.0",
     },
