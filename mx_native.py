@@ -145,7 +145,10 @@ class NinjaProject(mx.AbstractNativeProject):
         except ImportError:
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep.qualifiedName())
-            sys.path.append(mx.join(dep.get_path(False), 'ninja_syntax-{}'.format(dep.version)))
+            module_path = mx.join(dep.get_path(False), 'ninja_syntax-{}'.format(dep.version))
+            # module_path might not exist yet, so we need to ensure that file system will be used
+            sys.path_importer_cache[module_path] = None
+            sys.path.append(module_path)
 
         return deps
 
