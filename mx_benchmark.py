@@ -1652,7 +1652,7 @@ class BenchmarkExecutor(object):
           "branch": self.branch(),
           "build.url": self.buildUrl(),
           "build.number": self.buildNumber(),
-          "build.name": self.buildName(),
+          "build.job-name": self.buildName(),
           "metric.score-function": "id",
           "warnings": "",
         }
