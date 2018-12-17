@@ -150,11 +150,14 @@ class NinjaProject(mx.AbstractNativeProject):
         try:
             import ninja_syntax  # pylint: disable=unused-variable
         except ImportError:
+            def raise_(e):
+                raise e
+
             dep = mx.library('NINJA_SYNTAX')
             deps.append(dep.qualifiedName())
             module_path = mx.join(dep.get_path(False), 'ninja_syntax-{}'.format(dep.version))
             # module_path might not exist yet, so we need to ensure that file system will be used
-            sys.path_importer_cache[module_path] = None
+            sys.path_hooks.append(lambda path: None if path == module_path else raise_(ImportError))
             sys.path.append(module_path)
 
         return deps
