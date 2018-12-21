@@ -13664,25 +13664,19 @@ def getmtime(name):
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.path.getmtime(name)
+    return os.path.getmtime(_safe_path(name))
 
 def stat(name):
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.stat(name)
+    return os.stat(_safe_path(name))
 
 def lstat(name):
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return os.lstat(name)
+    return os.lstat(_safe_path(name))
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
@@ -13699,7 +13693,6 @@ def rmtree(path, ignore_errors=False):
         def on_error(*args):
             pass
     elif get_os() == 'windows':
-        # normpath needed to fix mixed path separators or rmtree fails
         def on_error(func, _path, exc_info):
             os.chmod(_path, S_IWRITE)
             if isdir(_path):
@@ -13714,7 +13707,7 @@ def rmtree(path, ignore_errors=False):
     else:
         try:
             os.remove(path)
-        except os.error:
+        except OSError:
             on_error(os.remove, path, sys.exc_info())
 
 def clean(args, parser=None):
