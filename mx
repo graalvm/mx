@@ -45,29 +45,27 @@ if [ ! -f "$dir/mx.py" ]; then
     exit 1
 fi
 
-# Not all systems (e.g. Mac OS X) have 'python2' on the path.
-type python2.7 >/dev/null 2>&1
-if [ $? -eq 0 ]; then
-    python_exe=python2.7
+if [ -n "${MX_PYTHON_VERSION}" ]; then
+    python_exe=python${MX_PYTHON_VERSION}
 else
-    type python2 > /dev/null 2>&1
+    # Not all systems (e.g. Mac OS X) have 'python2' on the path.
+    type python2.7 >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        python_exe=python2
+        python_exe=python2.7
     else
-        python_exe=python
+        type python2 > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            python_exe=python2
+        else
+            python_exe=python
+        fi
     fi
 fi
 
-$python_exe <<END
-import sys
-major, minor, micro, _, _ = sys.version_info
-if major != 2 or minor != 7:
-    raise SystemExit('The mx.py script requires Python 2.7, not {0}.{1}.{2}'.format(major, minor, micro))
-END
-if [ $? -eq 0 ]; then
-    exec $python_exe -u "$dir/mx.py" "$@"
-else
-  exit 1
+type ${python_exe} >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "Cannot find ${python_exe} on PATH"
+    exit 1
 fi
 
-#end of file
+exec $python_exe -u "$dir/mx.py" "$@"

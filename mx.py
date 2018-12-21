@@ -32,6 +32,11 @@ mx is a command line tool for managing the development of Java code organized as
 from __future__ import print_function
 
 import sys
+
+if sys.version_info < (2, 7):
+    major, minor, micro, _, _ = sys.version_info
+    raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
+
 from abc import ABCMeta, abstractmethod
 
 if __name__ == '__main__':
