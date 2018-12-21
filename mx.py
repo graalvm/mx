@@ -71,7 +71,7 @@ import fnmatch
 import operator
 import calendar
 import multiprocessing
-from stat import S_IMODE
+from stat import S_IMODE, S_IWRITE
 from mx_commands import MxCommands, MxCommand
 _mx_commands = MxCommands("mx")
 
@@ -1514,9 +1514,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 if not participants__add__(arcname, contents):
                                     if versioned_meta_inf_re.match(arcname):
                                         warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
-                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(getmtime(source))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
+                                    info.external_attr = S_IMODE(stat(source).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
@@ -1531,9 +1531,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             with open(join(root, f), 'r') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
-                                                info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                                info = zipfile.ZipInfo(arcname, time.localtime(getmtime(join(root, f)))[:6])
                                                 info.compress_type = arc.zf.compression
-                                                info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                                info.external_attr = S_IMODE(stat(join(root, f)).st_mode) << 16
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
@@ -2334,7 +2334,7 @@ class LayoutDistribution(AbstractDistribution):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
                 add_symlink(src, link_target, absolute_destination, dst)
             elif isdir(src):
-                ensure_dir_exists(absolute_destination, os.lstat(src).st_mode)
+                ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
                     merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes)
             else:
@@ -3684,14 +3684,13 @@ class JavaBuildTask(ProjectBuildTask):
                 for fname in filenames:
                     output.append(os.path.join(root, fname))
             if output:
-                key = lambda x: os.path.getmtime(_safe_path(x))
-                self._newestOutput = TimeStampFile(max(output, key=key))
+                self._newestOutput = TimeStampFile(max(output, key=getmtime))
         # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
         if self.copyfiles:
             for src, dst in self.copyfiles:
                 ensure_dir_exists(dirname(dst))
-                if not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
+                if not exists(dst) or getmtime(dst) < getmtime(src):
                     shutil.copyfile(src, dst)
                     self._newestOutput = TimeStampFile(dst)
             logvv('Finished copying files from dependencies for {}'.format(self.subject.name))
@@ -4812,21 +4811,15 @@ class PackedResourceLibrary(ResourceLibrary):
             self.extract_path = self.path
             self.path = archive_path
 
-    def _version_file(self, dst):
-        return os.path.join(dst, "_".join([self.name, self.sha1]))
-
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
             logvv("Destination does not exist")
             logvv("Destination: " + dst)
             return True
-        if os.path.getmtime(src) > os.path.getmtime(dst):
+        if getmtime(src) > getmtime(dst):
             logvv("Destination older than source")
             logvv("Destination: " + dst)
             logvv("Source:      " + src)
-            return True
-        if not os.path.exists(self._version_file(dst)):
-            logvv("Version file does not exist: " + self._version_file(dst))
             return True
         return False
 
@@ -4834,27 +4827,27 @@ class PackedResourceLibrary(ResourceLibrary):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = super(PackedResourceLibrary, self).get_path(resolve)
         if resolve and self._check_extract_needed(extract_path, download_path):
-            # clean destination
-            shutil.rmtree(extract_path, ignore_errors=True)
             extract_path_tmp = tempfile.mkdtemp(suffix=basename(extract_path), dir=dirname(extract_path))
             try:
                 # extract archive
                 Extractor.create(download_path).extract(extract_path_tmp)
                 # ensure modification time is up to date
                 os.utime(extract_path_tmp, None)
-                # create version file for non-default locations
-                versionFile = self._version_file(extract_path_tmp)
-                with open(versionFile, 'a'):
-                    os.utime(versionFile, None)
                 logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
-                os.rename(extract_path_tmp, extract_path)
+                try:
+                    # attempt atomic overwrite
+                    os.rename(extract_path_tmp, extract_path)
+                except OSError:
+                    # clean destination & re-try for cases where atomic overwrite doesn't work
+                    rmtree(extract_path, ignore_errors=True)
+                    os.rename(extract_path_tmp, extract_path)
             except OSError as ose:
                 # Rename failed. Race with other process?
                 if self._check_extract_needed(extract_path, download_path):
                     # ok something really went wrong
                     abort("Extracting {} failed!".format(download_path), context=ose)
             finally:
-                shutil.rmtree(extract_path_tmp, ignore_errors=True)
+                rmtree(extract_path_tmp, ignore_errors=True)
 
         return extract_path
 
@@ -9058,7 +9051,7 @@ class Suite(object):
 
     def suite_py_mtime(self):
         if not hasattr(self, '_suite_py_mtime'):
-            self._suite_py_mtime = os.path.getmtime(self.suite_py())
+            self._suite_py_mtime = getmtime(self.suite_py())
         return self._suite_py_mtime
 
     def __abort_context__(self):
@@ -12343,9 +12336,9 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
     The downloaded content is written to the file indicated by `path`.
     """
-    ensure_dirname_exists(path)
-
-    assert not path.endswith(os.sep)
+    if not verifyOnly:
+        ensure_dirname_exists(path)
+        assert not path.endswith(os.sep)
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
@@ -12856,7 +12849,7 @@ def eclipseformat(args):
             self.path = path
             with open(path) as fp:
                 self.content = fp.read()
-            self.times = (os.path.getatime(path), os.path.getmtime(path))
+            self.times = (os.path.getatime(path), getmtime(path))
 
         def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
@@ -12883,7 +12876,7 @@ def eclipseformat(args):
                         self.content = content
                     file_modified = True
 
-            if not file_updated and (os.path.getatime(self.path), os.path.getmtime(self.path)) != self.times:
+            if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
                 # reset access and modification time of file
                 os.utime(self.path, self.times)
             return file_modified
@@ -13447,11 +13440,11 @@ class TimeStampFile:
         self.path = path
         if exists(path):
             if followSymlinks == 'newest':
-                self.timestamp = max(os.path.getmtime(path), os.lstat(path).st_mtime)
+                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
             elif followSymlinks:
-                self.timestamp = os.path.getmtime(path)
+                self.timestamp = getmtime(path)
             else:
-                self.timestamp = os.lstat(path).st_mtime
+                self.timestamp = lstat(path).st_mtime
         else:
             self.timestamp = None
 
@@ -13485,7 +13478,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) > self.timestamp:
+            if getmtime(f) > self.timestamp:
                 return True
         return False
 
@@ -13504,7 +13497,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) < self.timestamp:
+            if getmtime(f) < self.timestamp:
                 return True
         return False
 
@@ -13524,7 +13517,7 @@ class TimeStampFile:
         else:
             ensure_dir_exists(dirname(self.path))
             file(self.path, 'a')
-        self.timestamp = os.path.getmtime(self.path)
+        self.timestamp = getmtime(self.path)
 
 def checkstyle(args):
     """run Checkstyle on the Java sources
@@ -13645,10 +13638,15 @@ def _safe_path(path):
     """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
-    This is works around the MAX_PATH limit on Windows:
+    This works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        if _opts.verbose and '/' in path:
+            warn("Forward slash in path on windows: {}".format(path))
+            import traceback
+            traceback.print_stack()
+        path = normpath(path)
         if isabs(path):
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
@@ -13659,25 +13657,58 @@ def _safe_path(path):
                     path = '\\\\?\\UNC' + path
             else:
                 path = '\\\\?\\' + path
+        path = unicode(path)
     return path
+
+def getmtime(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.path.getmtime(_safe_path(name))
+
+def stat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.stat(_safe_path(name))
+
+def lstat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.lstat(_safe_path(name))
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return __builtin__.open(name, mode=mode)
+    return __builtin__.open(_safe_path(name), mode=mode)
 
-def rmtree(dirPath):
-    path = dirPath
-    if get_os() == 'windows':
-        # normpath needed to fix mixed path separators or rmtree fails
-        path = unicode(_safe_path(os.path.normpath(dirPath)))
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+def copytree(src, dst, symlinks=False, ignore=None):
+    shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
+
+def rmtree(path, ignore_errors=False):
+    path = _safe_path(path)
+    if ignore_errors:
+        def on_error(*args):
+            pass
+    elif get_os() == 'windows':
+        def on_error(func, _path, exc_info):
+            os.chmod(_path, S_IWRITE)
+            if isdir(_path):
+                os.rmdir(_path)
+            else:
+                os.unlink(_path)
     else:
-        os.remove(path)
+        def on_error(*args):
+            raise
+    if isdir(path):
+        shutil.rmtree(path, onerror=on_error)
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            on_error(os.remove, path, sys.exc_info())
 
 def clean(args, parser=None):
     """remove all class files, images, and executables
@@ -16896,7 +16927,7 @@ def site(args):
 
 
         if args.tmp:
-            shutil.copytree(tmpbase, args.base)
+            copytree(tmpbase, args.base)
         else:
             shutil.move(tmpbase, args.base)
 
@@ -16904,7 +16935,7 @@ def site(args):
 
     finally:
         if not args.tmp and exists(tmpbase):
-            shutil.rmtree(tmpbase)
+            rmtree(tmpbase)
 
 def _kwArg(kwargs):
     if len(kwargs) > 0:
@@ -17578,9 +17609,13 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
+    if get_os() == 'windows':
+        dev_null = 'NUL'
+    else:
+        dev_null = '/dev/null'
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('/dev/null', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(dev_null, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -18888,7 +18923,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.199.0")  # GR-12908
+version = VersionSpec("5.199.1")  # Windows
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

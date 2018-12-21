@@ -28,7 +28,8 @@
 
 from __future__ import print_function
 
-import subprocess, re
+import subprocess
+import re
 from argparse import ArgumentParser
 from os.path import realpath, dirname
 
@@ -46,14 +47,17 @@ mx_home = realpath(dirname(__file__))
 old_version_re = re.compile(r'.*\-version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 
+
 def get_parents(commit):
-    return subprocess.check_output(['git', 'show', '--summary', '--format=%P', commit]).strip().split()
+    return subprocess.check_output(['git', 'rev-parse', commit + '^@']).strip().split()
+
 
 def with_hash(commit):
-    h = subprocess.check_output(['git', 'show', '--no-patch', '--format=%H', commit]).strip()
+    h = subprocess.check_output(['git', 'rev-parse', commit]).strip()
     if h == commit:
         return h
     return '{} ({})'.format(commit, h)
+
 
 parents = get_parents(args.descendant)
 if args.ancestor:
@@ -79,11 +83,13 @@ diff = subprocess.check_output(['git', 'diff', args.ancestor, args.descendant, '
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 
+
 def version_to_ints(spec):
     try:
         return [int(e) for e in spec.split('.')]
     except ValueError as e:
         raise SystemExit('{} is not a valid mx version string: {}'.format(spec, str(e)))
+
 
 if new_version and old_version:
     tag = new_version.group(1)

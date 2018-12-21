@@ -160,7 +160,7 @@ class JavaModuleDescriptor(object):
         for pkg in sorted(self.conceals):
             print('    // conceals: ' + pkg, file=out)
         if self.jarpath:
-            print('    // jarpath: ' + self.jarpath, file=out)
+            print('    // jarpath: ' + self.jarpath.replace('\\', '\\\\'), file=out)
         if self.dist:
             print('    // dist: ' + self.dist.name, file=out)
         if self.modulepath:
