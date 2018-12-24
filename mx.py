@@ -71,7 +71,7 @@ import fnmatch
 import operator
 import calendar
 import multiprocessing
-from stat import S_IMODE
+from stat import S_IMODE, S_IWRITE
 from mx_commands import MxCommands, MxCommand
 _mx_commands = MxCommands("mx")
 
@@ -517,7 +517,7 @@ class Dependency(SuiteConstituent):
         return isinstance(self, JavaProject)
 
     def isNativeProject(self):
-        return isinstance(self, NativeProject)
+        return isinstance(self, AbstractNativeProject)
 
     def isArchivableProject(self):
         return isinstance(self, ArchivableProject)
@@ -1514,9 +1514,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                 if not participants__add__(arcname, contents):
                                     if versioned_meta_inf_re.match(arcname):
                                         warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
-                                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(_safe_path(source)))[:6])
+                                    info = zipfile.ZipInfo(arcname, time.localtime(getmtime(source))[:6])
                                     info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(os.stat(_safe_path(source)).st_mode) << 16
+                                    info.external_attr = S_IMODE(stat(source).st_mode) << 16
                                     arc.zf.writestr(info, contents)
 
                 def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
@@ -1531,9 +1531,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             with open(join(root, f), 'r') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
-                                                info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(join(root, f)))[:6])
+                                                info = zipfile.ZipInfo(arcname, time.localtime(getmtime(join(root, f)))[:6])
                                                 info.compress_type = arc.zf.compression
-                                                info.external_attr = S_IMODE(os.stat(join(root, f)).st_mode) << 16
+                                                info.external_attr = S_IMODE(stat(join(root, f)).st_mode) << 16
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
@@ -2334,7 +2334,7 @@ class LayoutDistribution(AbstractDistribution):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
                 add_symlink(src, link_target, absolute_destination, dst)
             elif isdir(src):
-                ensure_dir_exists(absolute_destination, os.lstat(src).st_mode)
+                ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
                     merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes)
             else:
@@ -2859,6 +2859,9 @@ class Project(Dependency):
     def is_test_project(self):
         return self.testProject
 
+    def get_checkstyle_config(self, resolve_checkstyle_library=True):
+        # Workaround for GR-12809
+        return (None, None, None)
 
 class ProjectBuildTask(BuildTask):
     __metaclass__ = ABCMeta
@@ -3113,6 +3116,32 @@ class JavaProject(Project, ClasspathDependency):
                 nbdict.setdefault(name, []).append(os.path.abspath(join(projectSettingsDir, name)))
 
         return nbdict
+
+    def get_checkstyle_config(self, resolve_checkstyle_library=True):
+        """
+        Gets a tuple of the path to a Checkstyle configuration file, a Checkstyle version
+        and the project supplying the Checkstyle configuration file. Returns
+        (None, None, None) if this project has no Checkstyle configuration.
+        """
+        checkstyleProj = self if self.checkstyleProj == self.name else project(self.checkstyleProj, context=self)
+        config = join(checkstyleProj.dir, '.checkstyle_checks.xml')
+        if not exists(config):
+            compat = self.suite.getMxCompatibility()
+            should_abort = compat.check_checkstyle_config()
+            if checkstyleProj != self:
+                abort_or_warn('Project {} has no Checkstyle configuration'.format(checkstyleProj), should_abort, context=self)
+            else:
+                if hasattr(self, 'checkstyleVersion'):
+                    abort_or_warn('Cannot specify "checkstyleVersion" attribute for project with non-existent Checkstyle configuration', should_abort, context=self)
+            return None, None, None
+
+        if hasattr(checkstyleProj, 'checkstyleVersion'):
+            checkstyleVersion = checkstyleProj.checkstyleVersion
+            if resolve_checkstyle_library:
+                library('CHECKSTYLE_' + checkstyleVersion, context=checkstyleProj)
+        else:
+            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
+        return config, checkstyleVersion, checkstyleProj
 
     def find_classes_with_annotations(self, pkgRoot, annotations, includeInnerClasses=False, includeGenSrc=False):
         """
@@ -3655,14 +3684,13 @@ class JavaBuildTask(ProjectBuildTask):
                 for fname in filenames:
                     output.append(os.path.join(root, fname))
             if output:
-                key = lambda x: os.path.getmtime(_safe_path(x))
-                self._newestOutput = TimeStampFile(max(output, key=key))
+                self._newestOutput = TimeStampFile(max(output, key=getmtime))
         # Record current annotation processor config
         self.subject.update_current_annotation_processors_file()
         if self.copyfiles:
             for src, dst in self.copyfiles:
                 ensure_dir_exists(dirname(dst))
-                if not exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
+                if not exists(dst) or getmtime(dst) < getmtime(src):
                     shutil.copyfile(src, dst)
                     self._newestOutput = TimeStampFile(dst)
             logvv('Finished copying files from dependencies for {}'.format(self.subject.name))
@@ -4028,7 +4056,11 @@ class CompilerDaemon(Daemon):
             returncode = p.poll()
             if returncode is not None:
                 raise RuntimeError('Error starting ' + self.name() + ': returncode=' + str(returncode) + '\n' + ''.join(pout))
-            if retries > 300:
+            if retries == 299:
+                warn('Killing ' + self.name() + ' after failing to see port number after nearly 30 seconds')
+                os.kill(p.pid, signal.SIGKILL)
+                time.sleep(1.0)
+            elif retries > 300:
                 raise RuntimeError('Error starting ' + self.name() + ': No port number was found in output after 30 seconds\n' + ''.join(pout))
             else:
                 time.sleep(0.1)
@@ -4196,29 +4228,32 @@ def _merge_file_contents(input_files, output_file):
             shutil.copyfileobj(input_file, output_file)
         output_file.flush()
 
-"""
-A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
-to a classpath containing all JavaProject dependencies.
-Additional attributes:
-  results: a list of result file names that will be packaged if the project is part of a distribution
-  headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
-  output: the directory where the Makefile puts the `results`
-  vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
-         if `False` or undefined, make will be executed from the source directory
-  buildEnv: a dictionary of custom environment variables that are passed to the `make` process
-"""
-class NativeProject(Project):
+
+class AbstractNativeProject(Project):
+    def isPlatformDependent(self):
+        return True
+
+
+class NativeProject(AbstractNativeProject):
+    """
+    A NativeProject is a Project containing native code. It is built using `make`. The `MX_CLASSPATH` variable will be set
+    to a classpath containing all JavaProject dependencies.
+    Additional attributes:
+      results: a list of result file names that will be packaged if the project is part of a distribution
+      headers: a list of source file names (typically header files) that will be packaged if the project is part of a distribution
+      output: the directory where the Makefile puts the `results`
+      vpath: if `True`, make will be executed from the output root, with the `VPATH` environment variable set to the source directory
+             if `False` or undefined, make will be executed from the source directory
+      buildEnv: a dictionary of custom environment variables that are passed to the `make` process
+    """
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
-        Project.__init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
+        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath
 
     def getBuildTask(self, args):
         return NativeBuildTask(args, self)
-
-    def isPlatformDependent(self):
-        return True
 
     def getOutput(self, replaceVar=mx_subst.results_substitutions):
         if self.output:
@@ -4267,20 +4302,36 @@ class NativeProject(Project):
                 yield os.path.join(srcdir, h), filename
 
 
-class NativeBuildTask(ProjectBuildTask):
+class AbstractNativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
-        if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
-            jobs = 1
-        elif hasattr(project, 'max_jobs'):
+        if hasattr(project, 'max_jobs'):
             jobs = min(int(project.max_jobs), cpu_count())
+        else:
+            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
+            # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
+            # how much parallelism the build machine supports.
+            jobs = min(8, cpu_count())
+        super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
+
+    def buildForbidden(self):
+        if not self.args.native:
+            return True
+        return super(AbstractNativeBuildTask, self).buildForbidden()
+
+    def cleanForbidden(self):
+        if not self.args.native:
+            return True
+        return super(AbstractNativeBuildTask, self).cleanForbidden()
+
+
+class NativeBuildTask(AbstractNativeBuildTask):
+    def __init__(self, args, project):
+        super(NativeBuildTask, self).__init__(args, project)
+        if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
+            self.parallelism = 1
         elif get_os() == 'darwin' and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
-            jobs = 1
-        else:
-            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the "max_jobs" attribute.
-            # Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter how much parallelism the build machine supports.
-            jobs = min(8, cpu_count())
-        ProjectBuildTask.__init__(self, args, jobs, project)
+            self.parallelism = 1
         self._newestOutput = None
 
     def __str__(self):
@@ -4335,19 +4386,6 @@ class NativeBuildTask(ProjectBuildTask):
         if ret_code != 0:
             return (True, "rebuild needed by GNU Make")
         return (False, "up to date according to GNU Make")
-
-    def buildForbidden(self):
-        if ProjectBuildTask.buildForbidden(self):
-            return True
-        if not self.args.native:
-            return True
-
-    def cleanForbidden(self):
-        if ProjectBuildTask.cleanForbidden(self):
-            return True
-        if not self.args.native:
-            return True
-        return False
 
     def newestOutput(self):
         if self._newestOutput is None:
@@ -4773,21 +4811,15 @@ class PackedResourceLibrary(ResourceLibrary):
             self.extract_path = self.path
             self.path = archive_path
 
-    def _version_file(self, dst):
-        return os.path.join(dst, "_".join([self.name, self.sha1]))
-
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
             logvv("Destination does not exist")
             logvv("Destination: " + dst)
             return True
-        if os.path.getmtime(src) > os.path.getmtime(dst):
+        if getmtime(src) > getmtime(dst):
             logvv("Destination older than source")
             logvv("Destination: " + dst)
             logvv("Source:      " + src)
-            return True
-        if not os.path.exists(self._version_file(dst)):
-            logvv("Version file does not exist: " + self._version_file(dst))
             return True
         return False
 
@@ -4795,27 +4827,27 @@ class PackedResourceLibrary(ResourceLibrary):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = super(PackedResourceLibrary, self).get_path(resolve)
         if resolve and self._check_extract_needed(extract_path, download_path):
-            # clean destination
-            shutil.rmtree(extract_path, ignore_errors=True)
             extract_path_tmp = tempfile.mkdtemp(suffix=basename(extract_path), dir=dirname(extract_path))
             try:
                 # extract archive
                 Extractor.create(download_path).extract(extract_path_tmp)
                 # ensure modification time is up to date
                 os.utime(extract_path_tmp, None)
-                # create version file for non-default locations
-                versionFile = self._version_file(extract_path_tmp)
-                with open(versionFile, 'a'):
-                    os.utime(versionFile, None)
                 logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
-                os.rename(extract_path_tmp, extract_path)
+                try:
+                    # attempt atomic overwrite
+                    os.rename(extract_path_tmp, extract_path)
+                except OSError:
+                    # clean destination & re-try for cases where atomic overwrite doesn't work
+                    rmtree(extract_path, ignore_errors=True)
+                    os.rename(extract_path_tmp, extract_path)
             except OSError as ose:
                 # Rename failed. Race with other process?
                 if self._check_extract_needed(extract_path, download_path):
                     # ok something really went wrong
                     abort("Extracting {} failed!".format(download_path), context=ose)
             finally:
-                shutil.rmtree(extract_path_tmp, ignore_errors=True)
+                rmtree(extract_path_tmp, ignore_errors=True)
 
         return extract_path
 
@@ -7317,8 +7349,14 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                 pom.element('groupId', data=mavenMetaData['groupId'])
                 pom.element('artifactId', data=mavenMetaData['artifactId'])
                 pom.element('version', data=mavenMetaData['version'])
-                if 'suffix' in mavenMetaData:
-                    pom.element('classifier', data=mavenMetaData['suffix'])
+                if dist.suite.getMxCompatibility().mavenSupportsClassifier():
+                    if 'suffix' in mavenMetaData:
+                        l.abort('The use of "suffix" as maven metadata is not supported in this version. Use "classifier" instead.')
+                    if 'classifier' in mavenMetaData:
+                        pom.element('classifier', data=mavenMetaData['classifier'])
+                else:
+                    if 'suffix' in mavenMetaData:
+                        pom.element('classifier', data=mavenMetaData['suffix'])
                 pom.close('dependency')
             elif validateMetadata != 'none':
                 if 'library-coordinates' in dist.suite.getMxCompatibility().supportedMavenMetadata() or validateMetadata == 'full':
@@ -8832,8 +8870,14 @@ class Suite(object):
                 maven_attrs = ['groupId', 'artifactId', 'version']
                 if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
                     abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
+                if self.getMxCompatibility().mavenSupportsClassifier():
+                    if 'suffix' in maven:
+                        abort('The use of "suffix" as maven metadata is not supported in this version of mx. Use "classifier" instead.', context)
+                elif 'suffix' in maven:
+                    maven['classifier'] = maven['suffix']
+                    del maven['suffix']
 
-            def _maven_download_urls(groupId, artifactId, version, suffix=None, baseURL=None):
+            def _maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
                 if baseURL is None:
                     baseURLs = _mavenRepoBaseURLs
                 else:
@@ -8842,15 +8886,19 @@ class Suite(object):
                     'groupId': groupId.replace('.', '/'),
                     'artifactId': artifactId,
                     'version': version,
-                    'suffix' : '-{0}'.format(suffix) if suffix else ''
+                    'classifier' : '-{0}'.format(classifier) if classifier else ''
                 }
-                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{suffix}.jar".format(base=base, **args) for base in baseURLs]
+                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
 
+            optional = attrs.pop('optional', False)
             if not urls and maven is not None:
                 _check_maven(maven)
                 urls = _maven_download_urls(**maven)
+
             if path is None:
                 if not urls:
+                    if optional:
+                        continue
                     abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
@@ -8864,15 +8912,14 @@ class Suite(object):
                     # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
                     if maven is not None:
                         _check_maven(maven)
-                        if 'suffix' in maven:
-                            abort('Cannot download sources for "maven" library with "suffix" attribute', context)
-                        sourceUrls = _maven_download_urls(suffix='sources', **maven)
+                        if 'classifier' in maven:
+                            abort('Cannot download sources for "maven" library with "classifier" attribute', context)
+                        sourceUrls = _maven_download_urls(classifier='sources', **maven)
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
                     sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
-            optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
             packedResource = attrs.pop('packedResource', False)
             if packedResource:
@@ -9004,7 +9051,7 @@ class Suite(object):
 
     def suite_py_mtime(self):
         if not hasattr(self, '_suite_py_mtime'):
-            self._suite_py_mtime = os.path.getmtime(self.suite_py())
+            self._suite_py_mtime = getmtime(self.suite_py())
         return self._suite_py_mtime
 
     def __abort_context__(self):
@@ -9228,15 +9275,25 @@ class SourceSuite(Suite):
                     testProject = attrs.pop('testProject', old_test_project)
 
                     if native:
-                        output = attrs.pop('output', None)
-                        results = Suite._pop_list(attrs, 'results', context)
-                        p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=theLicense, testProject=testProject, **attrs)
+                        if isinstance(native, bool) or native.lower() == "true":
+                            output = attrs.pop('output', None)
+                            results = Suite._pop_list(attrs, 'results', context)
+                            p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
+                                              theLicense=theLicense, testProject=testProject, **attrs)
+                        else:
+                            from mx_native import DefaultNativeProject
+                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, theLicense,
+                                                     kind=native, testProject=testProject, **attrs)
                     else:
                         javaCompliance = attrs.pop('javaCompliance', None)
                         if javaCompliance is None:
                             abort('javaCompliance property required for non-native project ' + name)
                         p = JavaProject(self, name, subDir, srcDirs, deps, javaCompliance, workingSets, d, theLicense=theLicense, testProject=testProject, **attrs)
                         p.checkstyleProj = attrs.pop('checkstyle', name)
+                        if p.checkstyleProj != name and 'checkstyleVersion' in attrs:
+                            compat = self.getMxCompatibility()
+                            should_abort = compat.check_checkstyle_config()
+                            abort_or_warn('Cannot specify both "checkstyle and "checkstyleVersion" attribute', should_abort, context=p)
                         p.checkPackagePrefix = attrs.pop('checkPackagePrefix', 'true') == 'true'
                         ap = Suite._pop_list(attrs, 'annotationProcessors', context)
                         if ap:
@@ -11490,6 +11547,19 @@ class JDKConfigException(Exception):
         Exception.__init__(self, value)
 
 
+def java_debug_args():
+    debug_args = []
+    attach = None
+    if _opts.attach is not None:
+        attach = 'server=n,address=' + _opts.attach
+    else:
+        if _opts.java_dbg_port is not None:
+            attach = 'server=y,address=' + str(_opts.java_dbg_port)
+    if attach is not None:
+        debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+    return debug_args
+
+
 class JDKConfig:
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
@@ -11563,16 +11633,7 @@ class JDKConfig:
         self.version = VersionSpec(version.split()[2].strip('"'))
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
-        self.debug_args = []
-        attach = None
-        if _opts.attach is not None:
-            attach = 'server=n,address=' + _opts.attach
-        else:
-            if _opts.java_dbg_port is not None:
-                attach = 'server=y,address=' + str(_opts.java_dbg_port)
-
-        if attach is not None:
-            self.debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+        self.debug_args = java_debug_args()
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
@@ -12275,9 +12336,9 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     If the content cannot be retrieved from any URL, the program is aborted, unless abortOnError=False.
     The downloaded content is written to the file indicated by `path`.
     """
-    ensure_dirname_exists(path)
-
-    assert not path.endswith(os.sep)
+    if not verifyOnly:
+        ensure_dirname_exists(path)
+        assert not path.endswith(os.sep)
 
     # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
@@ -12481,14 +12542,14 @@ def build(cmd_args, parser=None):
                     reason, _ = reason
                 log(' {}'.format(reason))
 
-        # Omit Libraries so that only the ones required to build other
-        # dependencies are downloaded
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
             log('Non-default dependencies removed from build (use mx build --all to build them):')
             for d in removed:
                 log(' {}'.format(d))
-        roots = [d for d in deps if not d.isLibrary()]
+
+        # Omit all libraries so that only the ones required to build other dependencies are downloaded
+        roots = [d for d in deps if not d.isBaseLibrary()]
 
         if roots:
             roots = _dependencies_opt_limit_to_suites(roots)
@@ -12788,7 +12849,7 @@ def eclipseformat(args):
             self.path = path
             with open(path) as fp:
                 self.content = fp.read()
-            self.times = (os.path.getatime(path), os.path.getmtime(path))
+            self.times = (os.path.getatime(path), getmtime(path))
 
         def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
@@ -12815,7 +12876,7 @@ def eclipseformat(args):
                         self.content = content
                     file_modified = True
 
-            if not file_updated and (os.path.getatime(self.path), os.path.getmtime(self.path)) != self.times:
+            if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
                 # reset access and modification time of file
                 os.utime(self.path, self.times)
             return file_modified
@@ -13394,11 +13455,11 @@ class TimeStampFile:
         self.path = path
         if exists(path):
             if followSymlinks == 'newest':
-                self.timestamp = max(os.path.getmtime(path), os.lstat(path).st_mtime)
+                self.timestamp = max(getmtime(path), lstat(path).st_mtime)
             elif followSymlinks:
-                self.timestamp = os.path.getmtime(path)
+                self.timestamp = getmtime(path)
             else:
-                self.timestamp = os.lstat(path).st_mtime
+                self.timestamp = lstat(path).st_mtime
         else:
             self.timestamp = None
 
@@ -13432,7 +13493,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) > self.timestamp:
+            if getmtime(f) > self.timestamp:
                 return True
         return False
 
@@ -13451,7 +13512,7 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
-            if os.path.getmtime(f) < self.timestamp:
+            if getmtime(f) < self.timestamp:
                 return True
         return False
 
@@ -13471,7 +13532,7 @@ class TimeStampFile:
         else:
             ensure_dir_exists(dirname(self.path))
             file(self.path, 'a')
-        self.timestamp = os.path.getmtime(self.path)
+        self.timestamp = getmtime(self.path)
 
 def checkstyle(args):
     """run Checkstyle on the Java sources
@@ -13504,26 +13565,14 @@ def checkstyle(args):
             continue
         sourceDirs = p.source_dirs()
 
-        checkstyleProj = project(p.checkstyleProj)
-        config = join(checkstyleProj.dir, '.checkstyle_checks.xml')
-        if not exists(config):
+        config, checkstyleVersion, _ = p.get_checkstyle_config()
+        if not config:
             logv('[No Checkstyle configuration found for {0} - skipping]'.format(p))
             continue
 
         # skip checking this Java project if its Java compliance level is "higher" than the configured JDK
         jdk = get_jdk(p.javaCompliance)
         assert jdk
-
-        if hasattr(p, 'checkstyleVersion'):
-            checkstyleVersion = p.checkstyleVersion
-            # Resolve the library here to get a contextual error message
-            library('CHECKSTYLE_' + checkstyleVersion, context=p)
-        elif hasattr(checkstyleProj, 'checkstyleVersion'):
-            checkstyleVersion = checkstyleProj.checkstyleVersion
-            # Resolve the library here to get a contextual error message
-            library('CHECKSTYLE_' + checkstyleVersion, context=checkstyleProj)
-        else:
-            checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
 
         key = (config, checkstyleVersion)
         batch = batches.setdefault(key, Batch(config, p.suite))
@@ -13604,10 +13653,15 @@ def _safe_path(path):
     """
     If not on Windows, this function returns `path`.
     Otherwise, it return a potentially transformed path that is safe for file operations.
-    This is works around the MAX_PATH limit on Windows:
+    This works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
     if get_os() == 'windows':
+        if _opts.verbose and '/' in path:
+            warn("Forward slash in path on windows: {}".format(path))
+            import traceback
+            traceback.print_stack()
+        path = normpath(path)
         if isabs(path):
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
@@ -13618,25 +13672,58 @@ def _safe_path(path):
                     path = '\\\\?\\UNC' + path
             else:
                 path = '\\\\?\\' + path
+        path = unicode(path)
     return path
+
+def getmtime(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.path.getmtime(_safe_path(name))
+
+def stat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.stat(_safe_path(name))
+
+def lstat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.lstat(_safe_path(name))
 
 def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    if get_os() == 'windows':
-        name = _safe_path(name)
-    return __builtin__.open(name, mode=mode)
+    return __builtin__.open(_safe_path(name), mode=mode)
 
-def rmtree(dirPath):
-    path = dirPath
-    if get_os() == 'windows':
-        # normpath needed to fix mixed path separators or rmtree fails
-        path = unicode(_safe_path(os.path.normpath(dirPath)))
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+def copytree(src, dst, symlinks=False, ignore=None):
+    shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
+
+def rmtree(path, ignore_errors=False):
+    path = _safe_path(path)
+    if ignore_errors:
+        def on_error(*args):
+            pass
+    elif get_os() == 'windows':
+        def on_error(func, _path, exc_info):
+            os.chmod(_path, S_IWRITE)
+            if isdir(_path):
+                os.rmdir(_path)
+            else:
+                os.unlink(_path)
     else:
-        os.remove(path)
+        def on_error(*args):
+            raise
+    if isdir(path):
+        shutil.rmtree(path, onerror=on_error)
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            on_error(os.remove, path, sys.exc_info())
 
 def clean(args, parser=None):
     """remove all class files, images, and executables
@@ -14313,12 +14400,12 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if files:
         files.append(classpathFile)
 
-    csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-    if exists(csConfig):
+    csConfig, _, checkstyleProj = p.get_checkstyle_config()
+    if csConfig:
         out = XMLDoc()
 
         dotCheckstyle = join(p.dir, ".checkstyle")
-        checkstyleConfigPath = '/' + p.checkstyleProj + '/.checkstyle_checks.xml'
+        checkstyleConfigPath = '/' + checkstyleProj.name + '/.checkstyle_checks.xml'
         out.open('fileset-config', {'file-format-version' : '1.2.0', 'simple-config' : 'false'})
         out.open('local-check-config', {'name' : 'Checks', 'location' : checkstyleConfigPath, 'type' : 'project', 'description' : ''})
         out.element('additional-data', {'name' : 'protect-config-file', 'value' : 'false'})
@@ -14363,7 +14450,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.element('name', data='org.eclipse.jdt.core.javabuilder')
     out.element('arguments', data='')
     out.close('buildCommand')
-    if exists(csConfig):
+    if csConfig:
         out.open('buildCommand')
         out.element('name', data='net.sf.eclipsecs.core.CheckstyleBuilder')
         out.element('arguments', data='')
@@ -14378,7 +14465,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.close('buildSpec')
     out.open('natures')
     out.element('nature', data='org.eclipse.jdt.core.javanature')
-    if exists(csConfig):
+    if csConfig:
         out.element('nature', data='net.sf.eclipsecs.core.CheckstyleNature')
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('nature', data='org.eclipse.pde.PluginNature')
@@ -15466,7 +15553,7 @@ def intellij_read_sdks():
     log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
-    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$')
+    versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^([\d._]+)$')
     versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
     versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
 
@@ -15481,9 +15568,14 @@ def intellij_read_sdks():
         if not versionRE:
             # ignore unknown kinds
             continue
-        version = versionRE.match(sdk.find("version").get("value")).group(1)
-        sdks[home] = {'name': name, 'type': kind, 'version': version}
-        logv("Found sdk {} with values {}".format(home, sdks[home]))
+
+        match = versionRE.match(sdk.find("version").get("value"))
+        if match:
+            version = match.group(1)
+            sdks[home] = {'name': name, 'type': kind, 'version': version}
+            logv("Found SDK {} with values {}".format(home, sdks[home]))
+        else:
+            warn("Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -15730,23 +15822,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         compilerXml.element('module', {'name': p.name, 'options': ' '.join(args)})
 
             # Checkstyle
-            checkstyleProj = project(p.checkstyleProj, context=p)
-            csConfig = join(checkstyleProj.dir, '.checkstyle_checks.xml')
-            if exists(csConfig):
-                if hasattr(p, 'checkstyleVersion'):
-                    checkstyleVersion = p.checkstyleVersion
-                elif hasattr(checkstyleProj, 'checkstyleVersion'):
-                    checkstyleVersion = checkstyleProj.checkstyleVersion
-                else:
-                    checkstyleVersion = checkstyleProj.suite.getMxCompatibility().checkstyleVersion()
-
+            csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
+            if csConfig:
                 max_checkstyle_version = max(max_checkstyle_version, VersionSpec(checkstyleVersion)) if max_checkstyle_version else VersionSpec(checkstyleVersion)
 
                 moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
                 moduleXml.open('option', attributes={'name': 'configuration'})
                 moduleXml.open('map')
                 moduleXml.element('entry', attributes={'key': "checkstyle-version", 'value': checkstyleVersion})
-                moduleXml.element('entry', attributes={'key': "active-configuration", 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+                moduleXml.element('entry', attributes={'key': "active-configuration", 'value': "PROJECT_RELATIVE:" + join(checkstyleProj.dir, ".checkstyle_checks.xml") + ":" + checkstyleProj.name})
                 moduleXml.close('map')
                 moduleXml.close('option')
                 moduleXml.close('component')
@@ -16028,15 +16112,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 checkstyleXml.element('entry', attributes={'key': "checkstyle-version", 'value': str(max_checkstyle_version)})
 
             # Initialize an entry for each style that is used
-            checkstyleProjects = set([])
+            checkstyleConfigs = set([])
             for p in s.projects_recursive():
                 if not p.isJavaProject():
                     continue
-                csConfig = join(project(p.checkstyleProj, context=p).dir, '.checkstyle_checks.xml')
-                if p.checkstyleProj in checkstyleProjects or not exists(csConfig):
+                csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
+                if not csConfig or csConfig in checkstyleConfigs:
                     continue
-                checkstyleProjects.add(p.checkstyleProj)
-                checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleProjects)), 'value': "PROJECT_RELATIVE:" + join(project(p.checkstyleProj).dir, ".checkstyle_checks.xml") + ":" + p.checkstyleProj})
+                checkstyleConfigs.add(csConfig)
+                checkstyleXml.element('entry', attributes={'key' : "location-" + str(len(checkstyleConfigs)), 'value': "PROJECT_RELATIVE:" + join(checkstyleProj.dir, ".checkstyle_checks.xml") + ":" + checkstyleProj.name})
 
             checkstyleXml.close('map')
             checkstyleXml.close('option')
@@ -16858,7 +16942,7 @@ def site(args):
 
 
         if args.tmp:
-            shutil.copytree(tmpbase, args.base)
+            copytree(tmpbase, args.base)
         else:
             shutil.move(tmpbase, args.base)
 
@@ -16866,7 +16950,7 @@ def site(args):
 
     finally:
         if not args.tmp and exists(tmpbase):
-            shutil.rmtree(tmpbase)
+            rmtree(tmpbase)
 
 def _kwArg(kwargs):
     if len(kwargs) > 0:
@@ -17540,9 +17624,13 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
+    if get_os() == 'windows':
+        dev_null = 'NUL'
+    else:
+        dev_null = '/dev/null'
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download('/dev/null', lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(dev_null, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -18850,7 +18938,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.194.4")  # GR-12711
+version = VersionSpec("5.199.1")  # Windows
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

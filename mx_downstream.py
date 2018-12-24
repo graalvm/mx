@@ -31,7 +31,6 @@ from __future__ import print_function
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
 from urlparse import urlparse
-import shutil
 import os
 import mx
 import mx_urlrewrites
@@ -103,9 +102,9 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
         else:
             mirror = join(workDir, suite_in_repo.name)
         if exists(mirror):
-            shutil.rmtree(mirror)
+            mx.rmtree(mirror)
 
-        output_root = suite_in_repo.get_output_root()
+        output_root = mx._safe_path(suite_in_repo.get_output_root())
 
         def ignore_output_root(d, names):
             mx.log('Copying ' + d)
@@ -113,7 +112,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                 mx.log('Omitting ' + output_root)
                 return [os.path.basename(output_root)]
             return []
-        shutil.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root, symlinks=True)
+        mx.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root, symlinks=True)
 
     targetDir = None
     for repoUrl in repoUrls:
