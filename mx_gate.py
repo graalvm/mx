@@ -74,7 +74,7 @@ class Task:
     def tag_matches(self, _tags):
         for t in _tags:
             assert isinstance(t, basestring), '{} is not a string and thus not a valid tag'.format(t)
-            if t in Task.tags: #pylint: disable=unsupported-membership-test
+            if t in Task.tags:
                 if t not in Task.tags_range:
                     # no range restriction
                     return True
@@ -120,12 +120,12 @@ class Task:
             elif Task.filters:
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
-                    self.skipped = any([f in t for t in titles for f in Task.filters]) #pylint: disable=not-an-iterable
+                    self.skipped = any([f in t for t in titles for f in Task.filters])
                 else:
-                    self.skipped = not any([f in t for t in titles for f in Task.filters]) #pylint: disable=not-an-iterable
+                    self.skipped = not any([f in t for t in titles for f in Task.filters])
             if Task.tags is not None:
                 if Task.tagsExclude:
-                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False #pylint: disable=unsupported-membership-test
+                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
@@ -501,7 +501,7 @@ def _run_gate(cleanArgs, args, tasks):
         with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
                 defaultBuildArgs = ['-p']
-                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags #pylint: disable=unsupported-membership-test
+                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
                 # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
                 if not args.no_warning_as_error and fullbuild:
                     defaultBuildArgs += ['--warning-as-error']

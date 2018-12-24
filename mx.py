@@ -1791,7 +1791,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         return JARArchiveTask(args, self)
 
     def exists(self):
-        return not self.sourcesPath if exists(self.path) else exists(self.sourcesPath)
+        return exists(self.path) and not self.sourcesPath or exists(self.sourcesPath) #pylint: disable=consider-using-ternary
 
     def remoteExtension(self):
         return 'jar'
@@ -2413,7 +2413,8 @@ class LayoutDistribution(AbstractDistribution):
                           " - or '{type}:{dependency}/path/to/file/in/archive' as a source (i.e., extracting /path/to/file/in/archive from '{dependency}' to '{dest}')".format(
                             dest=destination,
                             dependency=d.name,
-                            type=source_type))
+                            type=source_type),
+                        context=self)
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
@@ -6383,7 +6384,7 @@ class GitConfig(VC):
     def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
         cmd = ['git', 'log', '{0}origin/master{1}'.format(
-                '..', '' if incoming else '')]
+                '..', '' if incoming else '..')]
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
@@ -12924,10 +12925,6 @@ pylint_ver_map = {
     (1, 9): {
         'rcfile': '.pylintrc19',
         'additional_options': ['--score=n']
-    },
-    (2, 2): {
-        'rcfile': '.pylintrc22',
-        'additional_options': ['--score=n']
     }
 }
 
@@ -13096,7 +13093,7 @@ class SafeFileCreation(object):
                     os.remove(tmpPath)
                 else:
                     # Correct the permissions on the temporary file which is created with restrictive permissions
-                    os.chmod(tmpPath, 0o666 & ~currentUmask) #pylint: disable=invalid-unary-operand-type
+                    os.chmod(tmpPath, 0o666 & ~currentUmask)
                     # Atomic if self.path does not already exist.
                     if get_os() == 'windows' and exists(path):
                         # Needed on Windows
