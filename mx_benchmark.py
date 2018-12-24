@@ -766,7 +766,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message, partialResults)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -1040,7 +1040,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return vm.config_name() if host_vm else "default"
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
 
         if extraRules is None:
             extraRules = []
