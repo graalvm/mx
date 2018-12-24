@@ -15785,7 +15785,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     if jdk.javaCompliance < dep.jdkStandardizedSince:
                         moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                     else:
-                        logv("skipping {} for {}".format(dep, jdk))
+                        logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
