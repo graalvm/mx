@@ -13716,7 +13716,7 @@ def rmtree(path, ignore_errors=False):
                 os.unlink(_path)
     else:
         def on_error(*args):
-            raise
+            raise #pylint: disable=misplaced-bare-raise
     if isdir(path):
         shutil.rmtree(path, onerror=on_error)
     else:
