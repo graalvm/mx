@@ -45,7 +45,11 @@ disable=attribute-defined-outside-init,arguments-differ,
         too-many-locals,too-few-public-methods,too-many-instance-attributes,
         too-many-arguments,too-many-branches,too-many-public-methods, too-many-return-statements,
         multiple-statements,abstract-method,F0401,no-member,non-parent-init-called,
-        maybe-no-member,abstract-class-little-used
+        maybe-no-member,abstract-class-little-used,bad-option-value,bad-continuation,
+        wrong-import-position,len-as-condition,wrong-import-order,ungrouped-imports,
+        multiple-imports,no-else-return,cell-var-from-loop,inconsistent-return-statements,
+        too-many-nested-blocks,consider-using-enumerate,
+        invalid-unary-operand-type,not-callable,unsubscriptable-object
 
 # F0401: http://www.logilab.org/ticket/9386
 

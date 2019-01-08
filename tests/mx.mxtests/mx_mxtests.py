@@ -160,4 +160,3 @@ mx.update_commands(_suite, {
     "mxt-vc-locate" : [_vc_locate, '[options]'],
     'mxt-command-info' : [_command_info, '[options]'],
 })
-

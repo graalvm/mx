@@ -498,7 +498,7 @@ class BaseRule(Rule):
                         inst = vtype(v)
                     else:
                         raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
-                if type(inst) not in [str, int, long, float, bool]:
+                if not isinstance(inst, (str, int, long, float, bool)):
                     raise RuntimeError("Object '{0}' has unknown type: {1}".format(inst, type(inst)))
                 datapoint[key] = inst
             datapoints.append(datapoint)
@@ -766,7 +766,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         raise BenchmarkFailureError(message, partialResults)
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
         """Validate out against the parse rules and create data points.
 
         The dimensions from the `dims` dict are added to each datapoint parsed from the
@@ -780,7 +780,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             extraRules = []
 
         def compiled(pat):
-            if type(pat) is str:
+            if isinstance(pat, str):
                 return re.compile(pat)
             return pat
 
@@ -829,7 +829,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         return datapoints
 
     def validateReturnCode(self, retcode):
-        return retcode is 0
+        return retcode == 0
 
     def flakySuccessPatterns(self):
         """List of regex pattern that can override matched failure and success patterns.
@@ -935,7 +935,7 @@ class AveragingBenchmarkMixin(object):
     def addAverageAcrossLatestResults(self, results):
         # Postprocess results to compute the resulting time by taking the average of last N runs,
         # where N is 20% of the maximum number of iterations, at least 5 and at most 10.
-        benchmarkNames = set([r["benchmark"] for r in results])
+        benchmarkNames = {r["benchmark"] for r in results}
         for benchmark in benchmarkNames:
             warmupResults = [result for result in results if result["metric.name"] == "warmup" and result["benchmark"] == benchmark]
             if warmupResults:
@@ -944,7 +944,7 @@ class AveragingBenchmarkMixin(object):
 
                 warmupResultsToAverage = [result for result in warmupResults if result["metric.iteration"] >= lastIteration - resultIterations + 1]
 
-                if len(set([result["metric.iteration"] for result in warmupResults])) != len(warmupResults):
+                if len({result["metric.iteration"] for result in warmupResults}) != len(warmupResults):
                     mx.warn("Inconsistent number of iterations ! Duplicate iteration number found.")
                     mx.warn("Iteration results : {}".format(warmupResults))
 
@@ -1040,7 +1040,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         return vm.config_name() if host_vm else "default"
 
     def validateStdoutWithDimensions(
-        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None, *args, **kwargs):
+        self, out, benchmarks, bmSuiteArgs, retcode=None, dims=None, extraRules=None):
 
         if extraRules is None:
             extraRules = []
@@ -1595,7 +1595,7 @@ class BenchmarkExecutor(object):
 
     def branch(self):
         mxsuite = mx.primary_suite()
-        name = mxsuite.vc and mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) or "<unknown>"
+        name = mxsuite.vc.active_branch(mxsuite.dir, abortOnError=False) if mxsuite.vc else '<unknown>'
         return name
 
     def buildUrl(self):
@@ -1702,7 +1702,7 @@ class BenchmarkExecutor(object):
         suite = _bm_suites.get(suitename)
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
-        if benchspec is "*":
+        if benchspec == "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec.startswith("*[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
@@ -1712,7 +1712,7 @@ class BenchmarkExecutor(object):
                 plural = "" if len(difference) == 1 else "s"
                 mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
             return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
-        elif benchspec is "":
+        elif benchspec == "":
             return (suite, [None])
         else:
             benchspec = benchspec.split(",")
@@ -1733,7 +1733,7 @@ class BenchmarkExecutor(object):
             if "metric.value" in datapoint:
                 metric_value = datapoint["metric.value"]
             # Apply the score function to the metric value.
-            if function is "id":
+            if function == "id":
                 datapoint["metric.score-value"] = metric_value
             elif function.startswith("multiply(") and function.endswith(")"):
                 factor = function[len("multiply("):-1]

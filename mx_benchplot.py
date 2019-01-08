@@ -345,7 +345,7 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                 benchmark = entry['benchmark']
                 if benchmark not in benchmarks:
                     benchmarks.append(benchmark)
-                if bench_suite == None:
+                if bench_suite is None:
                     bench_suite = entry['bench-suite']
                 else:
                     if bench_suite != entry['bench-suite']:

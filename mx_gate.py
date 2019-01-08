@@ -334,7 +334,7 @@ def gate(args):
 
     if args.partial:
         partialArgs = args.partial.split('/')
-        if len(partialArgs) is not 2:
+        if len(partialArgs) != 2:
             mx.abort('invalid partial argument specified')
 
         selected = int(partialArgs[0]) - 1
@@ -358,7 +358,7 @@ def gate(args):
         Task.filtersExclude = False
 
         mx.log('Running gate with partial tasks ' + args.partial + ". " + str(len(partialTasks)) + " out of " + str(len(nonBuildTasks)) + " non-build tasks selected.")
-        if len(partialTasks) is 0:
+        if len(partialTasks) == 0:
             mx.log('No partial tasks left to run. Finishing gate early.')
             return
 
@@ -369,13 +369,13 @@ def gate(args):
 
     def shell_quoted_args(args):
         args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
-        if args_string is not '':
+        if args_string != '':
             args_string = ' ' + args_string
         return args_string
 
     def mx_command_entered(command, *args, **kwargs):
         global _command_level
-        if _command_level is 0:
+        if _command_level == 0:
             all_commands.append((command.command, args, kwargs))
             mx.log(mx.colorize('Running: ' + command_in_gate_message(command.command, args, kwargs), color='blue'))
         _command_level = _command_level + 1
