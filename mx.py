@@ -6415,8 +6415,10 @@ class GitConfig(VC):
 
     def _log_changes(self, vcdir, path=None, incoming=True, abortOnError=True):
         out = OutputCapture()
-        cmd = ['git', 'log', '{0}origin/master{1}'.format(
-                '..', '' if incoming else '..')]
+        if incoming:
+            cmd = ['git', 'log', '..origin/master']
+        else:
+            cmd = ['git', 'log', 'origin/master..']
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
@@ -18938,7 +18940,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.199.1")  # Windows
+version = VersionSpec("5.200.0")  # GR-13143: Allow newer pylint versions
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
