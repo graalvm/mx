@@ -204,6 +204,8 @@ try:
 except ImportError:
     pass
 
+# Support for comparing objects given removal of `cmp` function in Python 3.
+# https://portingguide.readthedocs.io/en/latest/comparisons.html
 class Comparable(object):
     def _checked_cmp(self, other, f):
         compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
