@@ -7805,11 +7805,17 @@ def maven_deploy(args):
     if not has_deployed_dist:
         abort("No distribution was deployed!")
 
+def maven_url(args):
+    _artifact_url(args, 'mx maven-url', 'mx maven-deploy', lambda s: s.release_version('SNAPSHOT'))
 
 def binary_url(args):
-    parser = ArgumentParser(prog='mx binary-url')
+    _artifact_url(args, 'mx binary-url', 'mx deploy-binary', lambda s: '{0}-SNAPSHOT'.format(s.vc.parent(s.vc_dir)))
+
+def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
+    parser = ArgumentParser(prog=prog)
     parser.add_argument('repository_id', action='store', help='Repository name')
     parser.add_argument('dist_name', action='store', help='Distribution name')
+    parser.add_argument('--no-sha1', action='store_false', dest='sha1', help='Do not display the URL of the .sha1 file')
     args = parser.parse_args(args)
 
     repo = repository(args.repository_id)
@@ -7817,19 +7823,21 @@ def binary_url(args):
 
     group_id = dist.maven_group_id()
     artifact_id = dist.maven_artifact_id()
-    snapshot_version = '{0}-SNAPSHOT'.format(dist.suite.vc.parent(dist.suite.vc_dir))
+    snapshot_version = snapshot_version_fun(dist.suite)
     extension = dist.remoteExtension()
 
     maven_repo = MavenRepo(repo.get_url(snapshot_version))
     snapshot = maven_repo.getSnapshot(group_id, artifact_id, snapshot_version)
+
     if not snapshot:
         url = maven_repo.getSnapshotUrl(group_id, artifact_id, snapshot_version)
-        abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `mx deploy-binary`'.format(snapshot_version, group_id, artifact_id, url))
+        abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `{}`'.format(snapshot_version, group_id, artifact_id, url, deploy_prog))
     build = snapshot.getCurrentSnapshotBuild()
     try:
         url, sha1_url = build.getSubArtifact(extension)
         log(url)
-        log(sha1_url)
+        if args.sha1:
+            log(sha1_url)
     except MavenSnapshotArtifact.NonUniqueSubArtifactException:
         abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, dist.remoteName(), build.version, maven_repo.repourl))
 
@@ -18037,7 +18045,7 @@ update_commands("mx", {
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
     'benchplot': [mx_benchplot.benchplot, '[options]'],
-    'binary-url': [binary_url, '<distribution name>'],
+    'binary-url': [binary_url, '<repository id> <distribution name>'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -18067,6 +18075,7 @@ update_commands("mx", {
     'javap': [javap, '[options] <class name patterns>'],
     'maven-deploy' : [maven_deploy, ''],
     'maven-install' : [maven_install, ''],
+    'maven-url': [maven_url, '<repository id> <distribution name>'],
     'minheap' : [run_java_min_heap, ''],
     'netbeansinit': [netbeansinit, ''],
     'projectgraph': [projectgraph, ''],
@@ -18940,7 +18949,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.200.0")  # GR-13143: Allow newer pylint versions
+version = VersionSpec("5.201.0")  # GR-13290: URL of maven-deployed artifacts
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
