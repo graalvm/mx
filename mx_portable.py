@@ -52,12 +52,12 @@ if sys.version_info[0] < 3:
     _long = long                                    #pylint: disable=undefined-variable
     _basestring = basestring                        #pylint: disable=undefined-variable
 
-    def _py3_decode(x):
+    def bytes_to_str(x):
         return x
-    def _py3_encode(x):
+    def str_to_bytes(x):
         return x
 
-    def _func_code(f):
+    def function_code(f):
         return f.func_code
 
     def _viewkeys(dictionary):
@@ -78,16 +78,16 @@ else:
     _long = int
     _basestring = str
 
-    def _py3_decode(x):
+    def bytes_to_str(x):
         return x.decode()
-    def _py3_encode(x):
+    def str_to_bytes(x):
         return x.encode()
 
-    def _func_code(f):
+    def function_code(f):
         return f.__code__
 
     def _viewkeys(dictionary):
         return dictionary.keys()
 
-def _check_output(*args, **kwargs):
-    return _py3_decode(subprocess.check_output(*args, **kwargs))
+def check_output_str(*args, **kwargs):
+    return bytes_to_str(subprocess.check_output(*args, **kwargs))
