@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # ----------------------------------------------------------------------------------------------------
 #
 # Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
