@@ -10310,7 +10310,6 @@ def dependencies(opt_limit_to_suite=False):
     it = itertools.chain(_projects.values(), _libs.values(), _dists.values(), _jdkLibs.values(), _jreLibs.values())
     if opt_limit_to_suite and _opts.specific_suites:
         it = _filter(lambda d: d.suite.name in _opts.specific_suites, it)
-    _filter(lambda d: not d.suite.internal, it)
     return it
 
 def defaultDependencies(opt_limit_to_suite=False):
