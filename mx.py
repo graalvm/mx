@@ -8697,10 +8697,14 @@ class Suite(object):
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
             with currently_loading_suite.set_scoped(self):
+                # Catch and prevent loading private mx_portable module
+                portable_mod = sys.modules.pop('mx_portable')
                 mod = __import__(extensionsName)
+                if 'mx_portable' in sys.modules:
+                    abort('suite ' + self.name + ' suite must not import private module mx_portable')
+                sys.modules['mx_portable'] = portable_mod
 
-                self.extensions = sys.modules.pop(extensionsName)
-                sys.modules[extensionsName] = self.extensions
+                self.extensions = sys.modules[extensionsName]
 
                 # revert the Python path
                 del sys.path[0]
