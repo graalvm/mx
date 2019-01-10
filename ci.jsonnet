@@ -13,6 +13,11 @@ gate = java + {
   downloads+: {
     JDT: {name: 'ecj', version: "4.5.1", platformspecific: false},
   },
+  environment+: {
+    # Required to keep pylint happy on Darwin
+    # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
+    LC_ALL: "en_US.UTF-8",
+  },
   run: [
     ["./mx", "--strict-compliance", "gate", "--strict-mode"],
   ],
