@@ -12,6 +12,7 @@ gate = java + {
   },
   downloads+: {
     JDT: {name: 'ecj', version: "4.5.1", platformspecific: false},
+    ECLIPSE: {name: 'eclipse', version: "4.5.2", platformspecific: true},
   },
   environment+: {
     # Required to keep pylint happy on Darwin
@@ -23,18 +24,17 @@ gate = java + {
   ],
   timelimit: "10:00",
 },
-gate_linux = gate + {
-  downloads+: {
-    ECLIPSE: {name: 'eclipse', version: "4.5.2", platformspecific: true},
-  },
+gate_unix = gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/eclipse",
   }
 },
+gate_darwin = gate + {
+  environment+: {
+    ECLIPSE_EXE: "$ECLIPSE/Contents/MacOS/eclipse",
+  }
+},
 gate_windows = gate + {
-  downloads+: {
-    ECLIPSE: {name: 'eclipse', version: "4.5.2", platformspecific: true},
-  },
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE\\eclipse.exe",
   },
@@ -104,9 +104,9 @@ python3 = {
   overlay: '77252e5678acc8ddeafe7ef6a34f4bf44518b64d',
 
   builds: [
-    gate_linux +   {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
-    gate_linux +   {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
-    gate +         {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
+    gate_darwin +  {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
