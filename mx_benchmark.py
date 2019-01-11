@@ -39,7 +39,7 @@ from argparse import RawTextHelpFormatter
 from collections import OrderedDict
 
 import mx
-from mx_portable import _long
+from _mx_portable import _long
 
 _bm_suites = {}
 _benchmark_executor = None

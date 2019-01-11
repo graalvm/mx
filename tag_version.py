@@ -30,7 +30,7 @@ from __future__ import print_function
 
 import subprocess
 import re
-from mx_portable import check_output_str
+from _mx_portable import check_output_str
 from argparse import ArgumentParser
 from os.path import realpath, dirname
 

@@ -30,7 +30,7 @@ import os
 import re
 import zipfile
 import pickle
-from mx_portable import StringIO, _cmp, _viewkeys
+from _mx_portable import StringIO, _cmp, _viewkeys
 import shutil
 import itertools
 from os.path import join, exists, dirname, basename
@@ -39,7 +39,7 @@ from tempfile import mkdtemp
 from zipfile import ZipFile
 
 import mx
-from mx_portable import _basestring
+from _mx_portable import _basestring
 
 
 class JavaModuleDescriptor(object):

@@ -29,7 +29,7 @@ from __future__ import print_function
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-from mx_portable import StringIO, _raw_input
+from _mx_portable import StringIO, _raw_input
 
 def is_valid_jdk(jdk):
     """

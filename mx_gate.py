@@ -36,7 +36,7 @@ from argparse import ArgumentParser
 import mx
 import sys
 
-from mx_portable import _basestring
+from _mx_portable import _basestring
 
 """
 Predefined Task tags.

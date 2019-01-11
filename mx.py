@@ -48,8 +48,8 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 import os, errno, time, subprocess, shlex, zipfile, signal, tempfile, platform
-from mx_portable import StringIO, builtins, urllib_request, urllib_error, urllib_parse
-from mx_portable import _raw_input, _cmp, _unicode, _long, _basestring, _filter, str_to_bytes, bytes_to_str, function_code, check_output_str
+from _mx_portable import StringIO, builtins, urllib_request, urllib_error, urllib_parse
+from _mx_portable import _raw_input, _cmp, _unicode, _long, _basestring, _filter, str_to_bytes, bytes_to_str, function_code, check_output_str
 import textwrap
 import socket
 import tarfile, gzip
@@ -8696,12 +8696,12 @@ class Suite(object):
             # temporarily extend the Python path
             sys.path.insert(0, self.mxDir)
             with currently_loading_suite.set_scoped(self):
-                # Catch and prevent loading private mx_portable module
-                portable_mod = sys.modules.pop('mx_portable')
+                # Catch and prevent loading private _mx_portable module
+                portable_mod = sys.modules.pop('_mx_portable')
                 mod = __import__(extensionsName)
-                if 'mx_portable' in sys.modules:
-                    abort('suite ' + self.name + ' suite must not import private module mx_portable')
-                sys.modules['mx_portable'] = portable_mod
+                if '_mx_portable' in sys.modules:
+                    abort('suite ' + self.name + ' suite must not import private module _mx_portable')
+                sys.modules['_mx_portable'] = portable_mod
 
                 self.extensions = sys.modules[extensionsName]
 
@@ -18947,7 +18947,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.202.0")  # GR-13161: Python3 support
+version = VersionSpec("5.201.0")  # GR-13161: Python3 support
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -29,7 +29,7 @@ from __future__ import print_function
 
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
-from mx_portable import urllib_parse
+from _mx_portable import urllib_parse
 import os
 import mx
 import mx_urlrewrites
