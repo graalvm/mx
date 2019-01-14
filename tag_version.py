@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -47,13 +47,14 @@ mx_home = realpath(dirname(__file__))
 old_version_re = re.compile(r'.*\-version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 new_version_re = re.compile(r'.*\+version = VersionSpec\("([^"]+)"\).*', re.DOTALL)
 
+def _check_output_str(*args, **kwargs):
+    return subprocess.check_output(*args, **kwargs).decode()
 
 def get_parents(commit):
-    return subprocess.check_output(['git', 'rev-parse', commit + '^@']).strip().split()
-
+    return subprocess.check_output(['git', 'rev-parse', commit + '^@']).decode().strip().split()
 
 def with_hash(commit):
-    h = subprocess.check_output(['git', 'rev-parse', commit]).strip()
+    h = _check_output_str(['git', 'rev-parse', commit]).strip()
     if h == commit:
         return h
     return '{} ({})'.format(commit, h)
@@ -79,7 +80,7 @@ else:
     if not args.ancestor:
         raise SystemExit('{} is not a merge or has no parent that is a merge'.format(with_hash(args.descendant)))
 
-diff = subprocess.check_output(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
+diff = _check_output_str(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
 new_version = new_version_re.match(diff)
 old_version = old_version_re.match(diff)
 

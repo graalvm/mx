@@ -30,7 +30,6 @@ import os
 import re
 import zipfile
 import pickle
-import StringIO
 import shutil
 import itertools
 from os.path import join, exists, dirname, basename
@@ -40,6 +39,12 @@ from zipfile import ZipFile
 
 import mx
 
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+import sys
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 class JavaModuleDescriptor(object):
     """
@@ -66,7 +71,7 @@ class JavaModuleDescriptor(object):
         self.concealedRequires = concealedRequires if concealedRequires else {}
         self.uses = frozenset(uses)
         self.provides = provides
-        exportedPackages = frozenset(exports.viewkeys())
+        exportedPackages = frozenset(exports.keys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
         assert len(exports) == 0 or exportedPackages.issubset(self.packages), exportedPackages - self.packages
         self.conceals = self.packages - exportedPackages
@@ -83,7 +88,7 @@ class JavaModuleDescriptor(object):
 
     def __cmp__(self, other):
         assert isinstance(other, JavaModuleDescriptor)
-        return cmp(self.name, other.name)
+        return (self.name > other.name) - (self.name < other.name)
 
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
@@ -145,17 +150,17 @@ class JavaModuleDescriptor(object):
         """
         Gets this module descriptor expressed as the contents of a ``module-info.java`` file.
         """
-        out = StringIO.StringIO()
+        out = StringIO()
         print('module ' + self.name + ' {', file=out)
-        for dependency, modifiers in sorted(self.requires.iteritems()):
+        for dependency, modifiers in sorted(self.requires.items()):
             modifiers_string = (' '.join(sorted(modifiers)) + ' ') if len(modifiers) != 0 else ''
             print('    requires ' + modifiers_string + dependency + ';', file=out)
-        for source, targets in sorted(self.exports.iteritems()):
+        for source, targets in sorted(self.exports.items()):
             targets_string = (' to ' + ', '.join(sorted(targets))) if len(targets) != 0 else ''
             print('    exports ' + source + targets_string + ';', file=out)
         for use in sorted(self.uses):
             print('    uses ' + use + ';', file=out)
-        for service, providers in sorted(self.provides.iteritems()):
+        for service, providers in sorted(self.provides.items()):
             print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
         for pkg in sorted(self.conceals):
             print('    // conceals: ' + pkg, file=out)
@@ -166,7 +171,7 @@ class JavaModuleDescriptor(object):
         if self.modulepath:
             print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
         if self.concealedRequires:
-            for dependency, packages in sorted(self.concealedRequires.iteritems()):
+            for dependency, packages in sorted(self.concealedRequires.items()):
                 for package in sorted(packages):
                     print('    // concealed-requires: ' + dependency + '/' + package, file=out)
         print('}', file=out)
@@ -365,7 +370,7 @@ def get_library_as_module(dep, jdk):
             provides.setdefault(service, []).extend(providers)
         else:
             mx.abort('Cannot parse module descriptor line: ' + str(parts))
-    packages.update(exports.viewkeys())
+    packages.update(exports.keys())
 
     if save:
         try:
@@ -603,7 +608,7 @@ def make_java_module(dist, jdk):
                 javacCmd.append('--upgrade-module-path')
                 javacCmd.append(os.pathsep.join(upgrademodulepathJars))
             if concealedRequires:
-                for module, packages_ in concealedRequires.iteritems():
+                for module, packages_ in concealedRequires.items():
                     for package in packages_:
                         javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
             # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
@@ -659,10 +664,10 @@ def get_transitive_closure(roots, observable_modules):
     def add_transitive(mod):
         if mod not in transitive_closure:
             transitive_closure.add(mod)
-            for name in mod.requires.iterkeys():
+            for name in mod.requires.keys():
                 add_transitive(lookup_module(name))
     for root in roots:
-        if isinstance(root, basestring):
+        if isinstance(root, str):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure

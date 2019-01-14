@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # ----------------------------------------------------------------------------------------------------
 #
 # Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
@@ -29,7 +29,15 @@ from __future__ import print_function
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-import StringIO
+
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+import sys
+if sys.version_info[0] < 3:
+    def input(prompt=None):                    # pylint: disable=redefined-builtin
+        return raw_input(prompt)
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 def is_valid_jdk(jdk):
     """
@@ -87,7 +95,7 @@ def get_PATH_sep(shell):
 
 def get_shell_commands(args, jdk, extra_jdks):
     setvar_format = get_setvar_format(args.shell)
-    shell_commands = StringIO.StringIO()
+    shell_commands = StringIO()
     print(setvar_format % ('JAVA_HOME', jdk), file=shell_commands)
     if extra_jdks:
         print(setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks)), file=shell_commands)
@@ -209,6 +217,6 @@ if __name__ == '__main__':
 
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}
-            jdks = [choices[n] for n in raw_input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
+            jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
             if jdks:
                 apply_selection(args, jdks[0], jdks[1:])

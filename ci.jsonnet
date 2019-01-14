@@ -14,6 +14,11 @@ gate = java + {
     JDT: {name: 'ecj', version: "4.5.1", platformspecific: false},
     ECLIPSE: {name: 'eclipse', version: "4.5.2", platformspecific: true},
   },
+  environment+: {
+    # Required to keep pylint happy on Darwin
+    # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
+    LC_ALL: "en_US.UTF-8",
+  },
   run: [
     ["./mx", "--strict-compliance", "gate", "--strict-mode"],
   ],
@@ -22,6 +27,11 @@ gate = java + {
 gate_unix = gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/eclipse",
+  }
+},
+gate_darwin = gate + {
+  environment+: {
+    ECLIPSE_EXE: "$ECLIPSE/Contents/MacOS/eclipse",
   }
 },
 gate_windows = gate + {
@@ -74,6 +84,16 @@ nocache = {
   teardown: [
     ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
   ],
+},
+python2 = {
+  environment+: {
+    MX_PYTHON_VERSION: "2",
+  },
+},
+python3 = {
+  environment+: {
+    MX_PYTHON_VERSION: "3",
+  },
 }
 ;
 
@@ -84,7 +104,9 @@ nocache = {
   overlay: '77252e5678acc8ddeafe7ef6a34f4bf44518b64d',
 
   builds: [
-    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64"},
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
+    gate_darwin +  {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},

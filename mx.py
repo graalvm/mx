@@ -1,8 +1,7 @@
-#!/usr/bin/env python2.7
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2018, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2019, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -32,6 +31,11 @@ mx is a command line tool for managing the development of Java code organized as
 from __future__ import print_function
 
 import sys
+
+if sys.version_info < (2, 7):
+    major, minor, micro, _, _ = sys.version_info
+    raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
+
 from abc import ABCMeta, abstractmethod
 
 if __name__ == '__main__':
@@ -43,14 +47,13 @@ try:
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
-
-import os, errno, time, subprocess, shlex, types, StringIO, zipfile, signal, tempfile, platform
-import __builtin__
+import os, errno, time, subprocess, shlex, zipfile, signal, tempfile, platform
 import textwrap
 import socket
 import tarfile, gzip
 import hashlib
 import itertools
+from functools import cmp_to_key
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
 from xml.dom.minidom import parseString as minidomParseString
@@ -58,7 +61,6 @@ import shutil, re
 import pipes
 import difflib
 import glob
-import urllib2, urlparse
 import filecmp
 import json
 from collections import OrderedDict, namedtuple, deque
@@ -74,6 +76,46 @@ import multiprocessing
 from stat import S_IMODE, S_IWRITE
 from mx_commands import MxCommands, MxCommand
 _mx_commands = MxCommands("mx")
+
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+if sys.version_info[0] < 3:
+    filter = itertools.ifilter                 # pylint: disable=redefined-builtin,invalid-name
+    def input(prompt=None):                    # pylint: disable=redefined-builtin
+        return raw_input(prompt)
+
+    from StringIO import StringIO
+    import __builtin__ as builtins
+    import urllib2                             #pylint: disable=unused-import
+    _urllib_request = urllib2
+    _urllib_error = urllib2
+    del urllib2
+    import urlparse as _urllib_parse
+    def _decode(x):
+        return x
+    def _encode(x):
+        return x
+    _unicode = unicode
+else:
+    from io import StringIO
+    import builtins                            #pylint: disable=unused-import,no-name-in-module
+    import urllib.request as _urllib_request   #pylint: disable=unused-import,no-name-in-module
+    import urllib.error as _urllib_error       #pylint: disable=unused-import,no-name-in-module
+    import urllib.parse as _urllib_parse       #pylint: disable=unused-import,no-name-in-module
+    def _decode(x):
+        return x.decode()
+    def _encode(x):
+        return x.encode()
+    _unicode = str
+
+def _function_code(f):
+    if hasattr(f, 'func_code'):
+        # Python 2
+        return f.func_code
+    # Python 3
+    return f.__code__
+
+def _check_output_str(*args, **kwargs):
+    return _decode(subprocess.check_output(*args, **kwargs))
 
 
 def command_function(name, fatalIfMissing=True):
@@ -93,10 +135,10 @@ def update_commands(suite, new_commands):
         if any of the format args are instances of callable, then they are called with an 'env' are before being
         used in the call to str.format().
     """
-    suite_name = suite if isinstance(suite, basestring) else suite.name
+    suite_name = suite if isinstance(suite, str) else suite.name
 
     _length_of_command = 4
-    for command_name, command_list in new_commands.iteritems():
+    for command_name, command_list in new_commands.items():
         assert len(command_list) > 0 and command_list[0] is not None
         args = [suite_name, command_name] + command_list[1:_length_of_command]
         command_decorator = command(*args)
@@ -199,6 +241,31 @@ try:
 except ImportError:
     pass
 
+# Support for comparing objects given removal of `cmp` function in Python 3.
+# https://portingguide.readthedocs.io/en/latest/comparisons.html
+def compare(a, b):
+    return (a > b) - (a < b)
+
+class Comparable(object):
+    def _checked_cmp(self, other, f):
+        compar = self.__cmp__(other) #pylint: disable=assignment-from-no-return
+        return f(compar, 0) if compar is not NotImplemented else compare(id(self), id(other))
+
+    def __lt__(self, other):
+        return self._checked_cmp(other, lambda a, b: a < b)
+    def __gt__(self, other):
+        return self._checked_cmp(other, lambda a, b: a > b)
+    def __eq__(self, other):
+        return self._checked_cmp(other, lambda a, b: a == b)
+    def __le__(self, other):
+        return self._checked_cmp(other, lambda a, b: a <= b)
+    def __ge__(self, other):
+        return self._checked_cmp(other, lambda a, b: a >= b)
+    def __ne__(self, other):
+        return self._checked_cmp(other, lambda a, b: a != b)
+
+    def __cmp__(self, other): # to override
+        raise TypeError("No override for compare")
 
 class DynamicVar(object):
     def __init__(self, initial_value):
@@ -241,29 +308,12 @@ def relpath_or_absolute(path, start, prefix=""):
             raise ValueError('can not find a relative path to dependency and path is not absolute: ' + path)
         return path
 
-# Support for Python 2.6
-def check_output(*popenargs, **kwargs):
-    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-    output, _ = process.communicate()
-    retcode = process.poll()
-    if retcode:
-        cmd = kwargs.get("args")
-        if cmd is None:
-            cmd = popenargs[0]
-        error = subprocess.CalledProcessError(retcode, cmd)
-        error.output = output
-        raise error
-    return output
-
 def cpu_count():
     cpus = multiprocessing.cpu_count()
     if _opts.cpu_count:
         return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
     else:
         return cpus
-
-try: subprocess.check_output
-except: subprocess.check_output = check_output
 
 try: zipfile.ZipFile.__enter__
 except:
@@ -393,7 +443,7 @@ class DepEdge:
         return 1 + self.prev.path_len() if self.prev else 0
 
 
-class SuiteConstituent(object):
+class SuiteConstituent(Comparable):
     __metaclass__ = ABCMeta
 
     def __init__(self, suite, name):
@@ -445,7 +495,7 @@ class SuiteConstituent(object):
     def __cmp__(self, other):
         if not isinstance(other, self.__class__):
             return NotImplemented
-        return cmp(self._comparison_key(), other._comparison_key())
+        return compare(self._comparison_key(), other._comparison_key())
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
@@ -1160,7 +1210,7 @@ class Distribution(Dependency):
            it will be used instead of the usual platform suffix (provided by platformName()).
     """
     def maven_artifact_id(self, platform=None):
-        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, dict):
             artifact_id = self.maven.get('artifactId', None)
             if artifact_id:
                 return artifact_id
@@ -1170,7 +1220,7 @@ class Distribution(Dependency):
     Provide maven groupId string for distribution.
     """
     def maven_group_id(self):
-        if hasattr(self, 'maven') and isinstance(self.maven, types.DictType):
+        if hasattr(self, 'maven') and isinstance(self.maven, dict):
             group_id = self.maven.get('groupId', None)
             if group_id:
                 return group_id
@@ -1475,7 +1525,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                 service = arcname[len('META-INF/services/'):]
                                 assert '/' not in service
-                                services.setdefault(service, []).extend(source_zf.read(arcname).splitlines())
+                                services.setdefault(service, []).extend(_decode(source_zf.read(arcname)).splitlines())
                             else:
                                 with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, jarPath + '!' + arcname, source_zf=source_zf) as guard:
                                     if guard:
@@ -1662,7 +1712,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                 # accumulate services
                 services_versions = sorted([v for v in services if isinstance(v, int)])
                 if services_versions:
-                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, basestring)}
+                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, str)}
                     for v in services_versions:
                         for service, providers in services[v].items():
                             providers_set = frozenset(providers)
@@ -1678,10 +1728,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                     # Convert providers to a set before printing to remove duplicates
                     arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
 
-                for service_or_version, providers in services.iteritems():
+                for service_or_version, providers in services.items():
                     if isinstance(service_or_version, int):
                         services_version = service_or_version
-                        for service, providers_ in providers.iteritems():
+                        for service, providers_ in providers.items():
                             add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
                     else:
                         add_service_providers(service_or_version, providers)
@@ -1866,7 +1916,7 @@ class JMHArchiveParticipant:
         }
 
     def __add__(self, arcname, contents): #pylint: disable=unexpected-special-method-signature
-        if arcname in self.meta_files.keys():
+        if arcname in self.meta_files:
             if self.meta_files[arcname] is None:
                 self.meta_files[arcname] = contents
             else:
@@ -1878,7 +1928,7 @@ class JMHArchiveParticipant:
         return False
 
     def __closing__(self):
-        for filename, content in self.meta_files.iteritems():
+        for filename, content in self.meta_files.items():
             if content is not None:
                 self.arc.zf.writestr(filename, content)
 
@@ -2237,7 +2287,7 @@ class LayoutDistribution(AbstractDistribution):
 
     @staticmethod
     def _as_source_dict(source, distribution_name, destination, path_substitutions=None, string_substitutions=None, distribution_object=None, context=None):
-        if isinstance(source, basestring):
+        if isinstance(source, str):
             if ':' not in source:
                 abort("Invalid source '{}' in layout for '{}': should be of the form '<type>:<specification>'\n"
                       "Type could be `file`, `string`, `link`, `dependency` or `extracted-dependency`.".format(source, distribution_name), context=context)
@@ -2277,7 +2327,7 @@ class LayoutDistribution(AbstractDistribution):
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
         if 'exclude' in source_dict:
-            if isinstance(source_dict['exclude'], basestring):
+            if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
         if path_substitutions and source_dict.get("path"):
             source_dict["path"] = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
@@ -2473,7 +2523,7 @@ class LayoutDistribution(AbstractDistribution):
                             archiver.add(extracted_file, arcname, provenance)
                             if tarinfo.isdir():
                                 # use a safe mode while extracting, fix later
-                                os.chmod(extracted_file, 0700)
+                                os.chmod(extracted_file, 0o700)
                                 directories.append(tarinfo)
 
                     # Reverse sort directories.
@@ -2531,14 +2581,14 @@ class LayoutDistribution(AbstractDistribution):
     def _verify_layout(self):
         output = realpath(self.get_output())
         for destination, sources in self.layout.items():
-            if not isinstance(destination, basestring):
+            if not isinstance(destination, str):
                 abort("Destination (layout keys) should be a string", context=self)
             if not isinstance(sources, list):
                 sources = [sources]
             if not destination:
                 abort("Destination (layout keys) can not be empty", context=self)
             for source in sources:
-                if not isinstance(source, (basestring, dict)):
+                if not isinstance(source, (str, dict)):
                     abort("Error in '{}': sources should be strings or dicts".format(destination), context=self)
             if isabs(destination):
                 abort("Invalid destination: '{}': destination should not be absolute".format(destination), context=self)
@@ -2662,11 +2712,11 @@ class LayoutDistribution(AbstractDistribution):
         return self._source_location_cache[source]
 
 
-class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
+class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution): #pylint: disable=too-many-ancestors
     pass
 
 
-class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution):
+class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylint: disable=too-many-ancestors
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
@@ -2738,7 +2788,8 @@ class Project(Dependency):
 
         # Create directories for projects that don't yet exist
         ensure_dir_exists(d)
-        map(ensure_dir_exists, self.source_dirs())
+        for s in self.source_dirs():
+            ensure_dir_exists(s)
 
     def resolveDeps(self):
         """
@@ -2786,7 +2837,7 @@ class Project(Dependency):
         distances = dict()
         result = set()
         self._compute_max_dep_distances(self, distances, 0)
-        for n, d in distances.iteritems():
+        for n, d in distances.items():
             assert d > 0 or n is self
             if d == 1:
                 result.add(n)
@@ -3053,14 +3104,14 @@ class JavaProject(Project, ClasspathDependency):
         return self._javac_lint_overrides
 
     def eclipse_config_up_to_date(self, configZip):
-        for _, sources in self.eclipse_settings_sources().iteritems():
+        for _, sources in self.eclipse_settings_sources().items():
             for source in sources:
                 if configZip.isOlderThan(source):
                     return False
         return True
 
     def netbeans_config_up_to_date(self, configZip):
-        for _, sources in self.netbeans_settings_sources().iteritems():
+        for _, sources in self.netbeans_settings_sources().items():
             for source in sources:
                 if configZip.isOlderThan(source):
                     return False
@@ -3068,10 +3119,10 @@ class JavaProject(Project, ClasspathDependency):
         if configZip.isOlderThan(join(self.dir, 'build.xml')):
             return False
 
-        if configZip.isOlderThan(join(self.dir, 'nbproject/project.xml')):
+        if configZip.isOlderThan(join(self.dir, 'nbproject', 'project.xml')):
             return False
 
-        if configZip.isOlderThan(join(self.dir, 'nbproject/project.properties')):
+        if configZip.isOlderThan(join(self.dir, 'nbproject', 'project.properties')):
             return False
 
         return True
@@ -3406,7 +3457,7 @@ class JavaProject(Project, ClasspathDependency):
                 if exists(self_package_src_dir):
                     assert len(base.source_dirs()) != 0, '{} has no source directories!'.format(base)
                     for base_package_src_dir in [join(s, relative_package_src_dir) for s in base.source_dirs()]:
-                        if exists(base_package_src_dir) or not flatten_map.has_key(self_package_src_dir):
+                        if exists(base_package_src_dir) or self_package_src_dir not in flatten_map:
                             flatten_map[self_package_src_dir] = base_package_src_dir
         assert len(self_packages) == len(flatten_map), 'could not find sources for all packages in ' + self.name
         return flatten_map
@@ -3437,7 +3488,7 @@ class JavaProject(Project, ClasspathDependency):
                 def visit(dep, edge):
                     if dep is not self and dep.isJavaProject():
                         dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
-                        for module, packages in dep_concealed.iteritems():
+                        for module, packages in dep_concealed.items():
                             concealed.setdefault(module, set()).update(packages)
                 self.walk_deps(visit=visit)
 
@@ -3484,11 +3535,11 @@ class JavaBuildTask(ProjectBuildTask):
 
     def pushSharedMemoryState(self):
         ProjectBuildTask.pushSharedMemoryState(self)
-        self._newestBox.value = self._newestOutput.path if self._newestOutput else ''
+        self._newestBox.value = _encode(self._newestOutput.path if self._newestOutput else '')
 
     def pullSharedMemoryState(self):
         ProjectBuildTask.pullSharedMemoryState(self)
-        self._newestOutput = TimeStampFile(self._newestBox.value) if self._newestBox.value else None
+        self._newestOutput = TimeStampFile(_decode(self._newestBox.value)) if self._newestBox.value else None
 
     def cleanSharedMemoryState(self):
         ProjectBuildTask.cleanSharedMemoryState(self)
@@ -3911,7 +3962,7 @@ class JavacCompiler(JavacLikeCompiler):
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
                 :param observable_modules: only consider modules in this set if not None
                 """
-                for module, packages in dep.get_concealed_imported_packages(jdk).iteritems():
+                for module, packages in dep.get_concealed_imported_packages(jdk).items():
                     if observable_modules is not None and module not in observable_modules:
                         continue
                     if module in jdk_modules_overridden_on_classpath:
@@ -3935,7 +3986,7 @@ class JavacCompiler(JavacLikeCompiler):
                    have been added to `javacArgs`
                 """
                 if exports:
-                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.iterkeys()))
+                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.keys()))
 
             if compliance >= '9':
                 exports = {}
@@ -4038,7 +4089,8 @@ class CompilerDaemon(Daemon):
         # scan stdout to capture the port number
         pout = []
         def redirect(stream):
-            for line in iter(stream.readline, ''):
+            for line in iter(stream.readline, b''):
+                line = _decode(line)
                 pout.append(line)
                 self._noticePort(line)
             stream.close()
@@ -4088,7 +4140,7 @@ class CompilerDaemon(Daemon):
         commandLine = u'\x00'.join(compilerArgs)
         s.send((commandLine + '\n').encode('utf-8'))
         f = s.makefile()
-        response = f.readline().decode('utf-8')
+        response = _unicode(f.readline())
         if response == '':
             # Compiler server process probably crashed
             logv('[Compiler daemon process appears to have crashed]')
@@ -4467,7 +4519,7 @@ def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False)
     if ext is None:
         for url in urls:
             # Use extension of first URL whose path component ends with a non-empty extension
-            o = urlparse.urlparse(url)
+            o = _urllib_parse.urlparse(url)
             if o.path == "/remotecontent" and o.query.startswith("filepath"):
                 path = o.query
             else:
@@ -4503,8 +4555,8 @@ def _urlopen(*args, **kwargs):
 
     while True:
         try:
-            return urllib2.urlopen(*args, **kwargs)
-        except (urllib2.HTTPError) as e:
+            return _urllib_request.urlopen(*args, **kwargs)
+        except (_urllib_error.HTTPError) as e:
             if e.code == 500:
                 if error500_attempts < error500_limit:
                     error500_attempts += 1
@@ -4513,12 +4565,12 @@ def _urlopen(*args, **kwargs):
                     time.sleep(0.2)
                     continue
             raise
-        except urllib2.URLError as e:
+        except _urllib_error.URLError as e:
             if isinstance(e.reason, socket.error):
                 if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
                     warn("urlopen() failed with EINTR. Retrying without timeout.")
                     del kwargs['timeout']
-                    return urllib2.urlopen(*args, **kwargs)
+                    return _urllib_request.urlopen(*args, **kwargs)
                 if e.reason.errno == errno.EINPROGRESS:
                     if on_timeout():
                         continue
@@ -5706,7 +5758,7 @@ class HgConfig(VC):
     def check_for_hg(self, abortOnError=True):
         if HgConfig.has_hg is None:
             try:
-                subprocess.check_output(['hg'])
+                _check_output_str(['hg'])
                 HgConfig.has_hg = True
             except OSError:
                 HgConfig.has_hg = False
@@ -5755,7 +5807,7 @@ class HgConfig(VC):
         self.check_for_hg()
         # We don't use run because this can be called very early before _opts is set
         try:
-            return subprocess.check_output(['hg', 'tip', '-R', vcdir, '--template', '{node}'])
+            return _check_output_str(['hg', 'tip', '-R', vcdir, '--template', '{node}'])
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('hg tip failed')
@@ -5766,7 +5818,7 @@ class HgConfig(VC):
         self.check_for_hg()
         # We don't use run because this can be called very early before _opts is set
         try:
-            out = subprocess.check_output(['hg', '-R', vcdir, 'parents', '--template', '{node}\n'])
+            out = _check_output_str(['hg', '-R', vcdir, 'parents', '--template', '{node}\n'])
             parents = out.rstrip('\n').split('\n')
             if len(parents) != 1:
                 if abortOnError:
@@ -5793,9 +5845,9 @@ class HgConfig(VC):
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         prefix = prefix + '-'
         try:
-            tagged_ids_out = subprocess.check_output(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag()', '--template', '{tags},{rev}\n'])
+            tagged_ids_out = _check_output_str(['hg', '-R', vcdir, 'log', '--rev', 'ancestors(.) and tag()', '--template', '{tags},{rev}\n'])
             tagged_ids = [x.split(',') for x in tagged_ids_out.split('\n') if x]
-            current_id = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
+            current_id = _check_output_str(['hg', '-R', vcdir, 'log', '--template', '{rev}\n', '--rev', '.']).strip()
         except subprocess.CalledProcessError as e:
             if abortOnError:
                 abort('hg tags or hg tip failed: ' + str(e))
@@ -5820,7 +5872,7 @@ class HgConfig(VC):
 
     def parent_tags(self, vcdir):
         try:
-            _tags = subprocess.check_output(['hg', '-R', vcdir, 'log', '--template', '{tags}', '--rev', '.']).strip().split(' ')
+            _tags = _check_output_str(['hg', '-R', vcdir, 'log', '--template', '{tags}', '--rev', '.']).strip().split(' ')
             return [tag for tag in _tags if tag != 'tip']
         except subprocess.CalledProcessError as e:
             abort('hg log failed: ' + str(e))
@@ -5960,7 +6012,7 @@ class HgConfig(VC):
     def isDirty(self, vcdir, abortOnError=True):
         self.check_for_hg()
         try:
-            return len(subprocess.check_output(['hg', 'status', '-q', '-R', vcdir])) > 0
+            return len(_check_output_str(['hg', 'status', '-q', '-R', vcdir])) > 0
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('failed to get status')
@@ -5984,7 +6036,7 @@ class HgConfig(VC):
             revs = [rev1, rev2]
             revsetIntersectAncestors = ' or '.join(('ancestors({})'.format(rev) for rev in revs))
             revset = 'heads({})'.format(revsetIntersectAncestors)
-            out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
+            out = _check_output_str(['hg', '-R', vcdir, 'log', '-r', revset, '--template', '{node}\n'])
             parents = out.rstrip('\n').split('\n')
             if len(parents) != 1:
                 if abortOnError:
@@ -6001,7 +6053,7 @@ class HgConfig(VC):
         self.check_for_hg()
         try:
             sentinel = 'exists'
-            out = subprocess.check_output(['hg', '-R', vcdir, 'log', '-r', 'present({})'.format(rev), '--template', sentinel])
+            out = _check_output_str(['hg', '-R', vcdir, 'log', '-r', 'present({})'.format(rev), '--template', sentinel])
             return sentinel in out
         except subprocess.CalledProcessError:
             abort('exists failed')
@@ -6010,7 +6062,7 @@ class HgConfig(VC):
         metadata = VC._find_metadata_dir(directory, '.hg')
         if metadata:
             try:
-                out = subprocess.check_output(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
+                out = _check_output_str(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
                 return out.strip()
             except subprocess.CalledProcessError:
                 if abortOnError:
@@ -6043,7 +6095,7 @@ class GitConfig(VC):
     def check_for_git(self, abortOnError=True):
         if GitConfig.has_git is None:
             try:
-                subprocess.check_output(['git', '--version'])
+                _check_output_str(['git', '--version'])
                 GitConfig.has_git = True
             except OSError:
                 GitConfig.has_git = False
@@ -6105,7 +6157,7 @@ class GitConfig(VC):
         self.check_for_git()
         # We don't use run because this can be called very early before _opts is set
         try:
-            return subprocess.check_output(['git', 'rev-list', 'HEAD', '-1'], cwd=vcdir)
+            return _check_output_str(['git', 'rev-list', 'HEAD', '-1'], cwd=vcdir)
         except subprocess.CalledProcessError:
             if abortOnError:
                 abort('git rev-list HEAD failed')
@@ -6129,7 +6181,7 @@ class GitConfig(VC):
                 abort('More than one parent exist during merge')
             return None
         try:
-            out = subprocess.check_output(['git', 'show', '--pretty=format:%H', "-s", 'HEAD'], cwd=vcdir)
+            out = _check_output_str(['git', 'show', '--pretty=format:%H', "-s", 'HEAD'], cwd=vcdir)
             return out.strip()
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -6159,7 +6211,7 @@ class GitConfig(VC):
         """
         _tags_prefix = 'tag: '
         try:
-            tags_out = subprocess.check_output(['git', 'log', '--simplify-by-decoration', '--pretty=format:%d', 'HEAD'], cwd=vcdir)
+            tags_out = _check_output_str(['git', 'log', '--simplify-by-decoration', '--pretty=format:%d', 'HEAD'], cwd=vcdir)
             tags_out = tags_out.strip()
             tags = []
             for line in tags_out.split('\n'):
@@ -6190,7 +6242,7 @@ class GitConfig(VC):
         try:
             if not commitish.endswith('^{commit}'):
                 commitish += '^{commit}'
-            rev = subprocess.check_output(['git', 'show', '-s', '--format=%H', commitish], cwd=vcdir)
+            rev = _check_output_str(['git', 'show', '-s', '--format=%H', commitish], cwd=vcdir)
             res = rev.strip()
             assert re.match(r'[0-9a-f]{40}', res) is not None, 'output is not a commit hash: ' + res
             return res
@@ -6232,7 +6284,7 @@ class GitConfig(VC):
 
     def parent_tags(self, vcdir):
         try:
-            return subprocess.check_output(['git', 'tag', '--list', '--points-at', 'HEAD'], cwd=vcdir).strip().split('\r\n')
+            return _check_output_str(['git', 'tag', '--list', '--points-at', 'HEAD'], cwd=vcdir).strip().split('\r\n')
         except subprocess.CalledProcessError as e:
             abort('git tag failed: ' + str(e))
 
@@ -6278,7 +6330,7 @@ class GitConfig(VC):
         result = dict()
         try:
             head_ref_prefix_length = len(cls._head_to_ref(''))
-            for line in subprocess.check_output(command).splitlines():
+            for line in _check_output_str(command).splitlines():
                 commit_id, branch_name = line.split('\t')
                 result[branch_name[head_ref_prefix_length:]] = commit_id
         except subprocess.CalledProcessError:
@@ -6320,7 +6372,7 @@ class GitConfig(VC):
         return cmd
 
     def _clone(self, url, dest=None, branch=None, rev=None, abortOnError=True, **extra_args):
-        hashed_url = hashlib.sha1(url).hexdigest()
+        hashed_url = hashlib.sha1(_encode(url)).hexdigest()
         cmd = ['git', 'clone']
         if rev and self.object_cache_mode == 'refcache' and GitConfig._is_hash(rev):
             cache = self._local_cache_repo()
@@ -6677,7 +6729,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            output = subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=vcdir)
+            output = _check_output_str(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=vcdir)
             return len(output.strip()) > 0
         except subprocess.CalledProcessError:
             if abortOnError:
@@ -6723,7 +6775,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            out = subprocess.check_output(['git', 'rev-list', '-n', '1', '--date-order', rev1, rev2], cwd=vcdir)
+            out = _check_output_str(['git', 'rev-list', '-n', '1', '--date-order', rev1, rev2], cwd=vcdir)
             changesets = out.strip().split('\n')
             if len(changesets) != 1:
                 if abortOnError:
@@ -6747,7 +6799,7 @@ class GitConfig(VC):
         """
         self.check_for_git()
         try:
-            subprocess.check_output(['git', 'cat-file', '-e', rev], cwd=vcdir)
+            _check_output_str(['git', 'cat-file', '-e', rev], cwd=vcdir)
             return True
         except subprocess.CalledProcessError:
             return False
@@ -6756,7 +6808,7 @@ class GitConfig(VC):
         if VC._find_metadata_dir(directory, '.git'):
             if self.check_for_git(abortOnError=abortOnError):
                 try:
-                    out = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
+                    out = _check_output_str(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
                     return out.strip()
                 except subprocess.CalledProcessError:
                     if abortOnError:
@@ -6980,10 +7032,10 @@ class BinaryVC(VC):
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
-    hashFile = urllib2.urlopen(url)
+    hashFile = _urllib_request.urlopen(url)
     try:
         return hashFile.read()
-    except urllib2.URLError as e:
+    except _urllib_error.URLError as e:
         _suggest_http_proxy_error(e)
         abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
     finally:
@@ -7087,7 +7139,7 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.HTTPError as e:
+        except _urllib_error.HTTPError as e:
             _suggest_http_proxy_error(e)
             abort('Error while retrieving metadata for {}:{}: {}'.format(groupId, artifactId, str(e)))
         try:
@@ -7112,7 +7164,7 @@ class MavenRepo:
                     snapshot_metadataUrl = self.getSnapshotUrl(groupId, artifactId, version_str)
                     try:
                         snapshot_metadataFile = _urlopen(snapshot_metadataUrl, timeout=10)
-                    except urllib2.HTTPError as e:
+                    except _urllib_error.HTTPError as e:
                         logv('Version {0} not accessible. Try previous snapshot.'.format(metadataUrl))
                         snapshot_metadataFile = None
 
@@ -7123,7 +7175,7 @@ class MavenRepo:
                         break
 
             return MavenArtifactVersions(latestVersionString, releaseVersionString, versionStrings)
-        except urllib2.URLError as e:
+        except _urllib_error.URLError as e:
             abort('Error while retrieving versions for {0}:{1}: {2}'.format(groupId, artifactId, str(e)))
         finally:
             if metadataFile:
@@ -7138,8 +7190,8 @@ class MavenRepo:
         logv('Retrieving and parsing {0}'.format(metadataUrl))
         try:
             metadataFile = _urlopen(metadataUrl, timeout=10)
-        except urllib2.URLError as e:
-            if isinstance(e, urllib2.HTTPError) and e.code == 404:
+        except _urllib_error.URLError as e:
+            if isinstance(e, _urllib_error.HTTPError) and e.code == 404:
                 return None
             _suggest_http_proxy_error(e)
             abort('Error while retrieving snapshot for {}:{}:{}: {}'.format(groupId, artifactId, version, str(e)))
@@ -7244,7 +7296,7 @@ def _mavenGroupId(suite):
             return group_id
         name = suite.name
     else:
-        assert isinstance(suite, types.StringTypes)
+        assert isinstance(suite, str)
         name = suite
     return 'com.oracle.' + _map_to_maven_dist_name(name)
 
@@ -7762,7 +7814,7 @@ def maven_deploy(args):
             return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
             return False
-        return getattr(d, 'maven', False) and not dist.is_test_distribution()
+        return getattr(d, 'maven', False) and not dist.is_test_distribution() #pylint: disable=undefined-variable
 
     has_deployed_dist = False
     for s in _suites:
@@ -7805,17 +7857,11 @@ def maven_deploy(args):
     if not has_deployed_dist:
         abort("No distribution was deployed!")
 
-def maven_url(args):
-    _artifact_url(args, 'mx maven-url', 'mx maven-deploy', lambda s: s.release_version('SNAPSHOT'))
 
 def binary_url(args):
-    _artifact_url(args, 'mx binary-url', 'mx deploy-binary', lambda s: '{0}-SNAPSHOT'.format(s.vc.parent(s.vc_dir)))
-
-def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
-    parser = ArgumentParser(prog=prog)
+    parser = ArgumentParser(prog='mx binary-url')
     parser.add_argument('repository_id', action='store', help='Repository name')
     parser.add_argument('dist_name', action='store', help='Distribution name')
-    parser.add_argument('--no-sha1', action='store_false', dest='sha1', help='Do not display the URL of the .sha1 file')
     args = parser.parse_args(args)
 
     repo = repository(args.repository_id)
@@ -7823,21 +7869,19 @@ def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
 
     group_id = dist.maven_group_id()
     artifact_id = dist.maven_artifact_id()
-    snapshot_version = snapshot_version_fun(dist.suite)
+    snapshot_version = '{0}-SNAPSHOT'.format(dist.suite.vc.parent(dist.suite.vc_dir))
     extension = dist.remoteExtension()
 
     maven_repo = MavenRepo(repo.get_url(snapshot_version))
     snapshot = maven_repo.getSnapshot(group_id, artifact_id, snapshot_version)
-
     if not snapshot:
         url = maven_repo.getSnapshotUrl(group_id, artifact_id, snapshot_version)
-        abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `{}`'.format(snapshot_version, group_id, artifact_id, url, deploy_prog))
+        abort('Version {} not found for {}:{} ({})\nNote that the binary must have been deployed with `mx deploy-binary`'.format(snapshot_version, group_id, artifact_id, url))
     build = snapshot.getCurrentSnapshotBuild()
     try:
         url, sha1_url = build.getSubArtifact(extension)
         log(url)
-        if args.sha1:
-            log(sha1_url)
+        log(sha1_url)
     except MavenSnapshotArtifact.NonUniqueSubArtifactException:
         abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, dist.remoteName(), build.version, maven_repo.repourl))
 
@@ -7992,7 +8036,7 @@ class SiblingSuiteModel(SuiteModel):
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
-        if self.suitenamemap.has_key(suitename):
+        if suitename in self.suitenamemap:
             suitename = self.suitenamemap[suitename]
 
         # Try use the URL first so that a big repo is cloned to a local
@@ -8002,7 +8046,7 @@ class SiblingSuiteModel(SuiteModel):
         for urlinfo in suite_import.urlinfos:
             if urlinfo.abs_kind() == 'source':
                 # 'https://github.com/graalvm/graal.git' -> 'graal'
-                base, _ = os.path.splitext(basename(urlparse.urlparse(urlinfo.url).path))
+                base, _ = os.path.splitext(basename(_urllib_parse.urlparse(urlinfo.url).path))
                 if base: break
         if base:
             path = join(SiblingSuiteModel.siblings_dir(importer_dir), base)
@@ -8065,7 +8109,7 @@ class NestedImportsSuiteModel(SuiteModel):
 
     def importee_dir(self, importer_dir, suite_import, check_alternate=True):
         suitename = suite_import.name
-        if self.suitenamemap.has_key(suitename):
+        if suitename in self.suitenamemap:
             suitename = self.suitenamemap[suitename]
         if basename(importer_dir) == basename(self._primaryDir):
             # primary is importer
@@ -8210,7 +8254,7 @@ class SuiteImport:
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
-    url = urlparse.urlsplit(urlstr)
+    url = _urllib_parse.urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
 
 class SCMMetadata(object):
@@ -8351,17 +8395,17 @@ class Suite(object):
         del sys.path[0]
 
         def expand(value, context):
-            if isinstance(value, types.DictionaryType):
-                for n, v in value.iteritems():
+            if isinstance(value, dict):
+                for n, v in value.items():
                     value[n] = expand(v, context + [n])
-            elif isinstance(value, types.ListType):
+            elif isinstance(value, list):
                 for i in range(len(value)):
                     value[i] = expand(value[i], context + [str(i)])
-            elif isinstance(value, types.StringTypes):
+            elif isinstance(value, str):
                 value = expandvars(value)
                 if '$' in value or '%' in value:
                     abort('value of ' + '.'.join(context) + ' contains an undefined environment variable: ' + value)
-            elif isinstance(value, types.BooleanType):
+            elif isinstance(value, bool):
                 pass
             else:
                 abort('value of ' + '.'.join(context) + ' is of unexpected type ' + str(type(value)))
@@ -8506,8 +8550,8 @@ class Suite(object):
         unknown = set(d.keys()) - frozenset(supported)
 
         suiteExtensionAttributePrefix = self.name + ':'
-        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.iterkeys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
-        for n, v in suiteSpecific.iteritems():
+        suiteSpecific = {n[len(suiteExtensionAttributePrefix):]: d[n] for n in d.keys() if n.startswith(suiteExtensionAttributePrefix) and n != suiteExtensionAttributePrefix}
+        for n, v in suiteSpecific.items():
             if hasattr(self, n):
                 abort('Cannot override built-in suite attribute "' + n + '"', context=self)
             setattr(self, n, v)
@@ -8612,7 +8656,7 @@ class Suite(object):
             url = scmDict.pop('url', read)
             self.scm = SCMMetadata(url, read, write)
 
-        for name, attrs in sorted(jreLibsMap.iteritems()):
+        for name, attrs in sorted(jreLibsMap.items()):
             jar = attrs.pop('jar')
             # JRE libraries are optional by default
             optional = attrs.pop('optional', 'true') != 'false'
@@ -8620,7 +8664,7 @@ class Suite(object):
             l = JreLibrary(self, name, jar, optional, theLicense, **attrs)
             self.jreLibs.append(l)
 
-        for name, attrs in sorted(jdkLibsMap.iteritems()):
+        for name, attrs in sorted(jdkLibsMap.items()):
             path = attrs.pop('path')
             deps = Suite._pop_list(attrs, 'dependencies', context='jdklibrary ' + name)
             # JRE libraries are optional by default
@@ -8632,7 +8676,7 @@ class Suite(object):
             l = JdkLibrary(self, name, path, deps, optional, theLicense, jdkStandardizedSince=jdkStandardizedSince, **attrs)
             self.jdkLibs.append(l)
 
-        for name, attrs in sorted(importsMap.iteritems()):
+        for name, attrs in sorted(importsMap.items()):
             if name == 'suites':
                 pass
             elif name == 'libraries':
@@ -8696,8 +8740,7 @@ class Suite(object):
             with currently_loading_suite.set_scoped(self):
                 mod = __import__(extensionsName)
 
-                self.extensions = sys.modules.pop(extensionsName)
-                sys.modules[extensionsName] = self.extensions
+                self.extensions = sys.modules[extensionsName]
 
                 # revert the Python path
                 del sys.path[0]
@@ -8757,7 +8800,7 @@ class Suite(object):
         self._init_imports()
 
     def _load_distributions(self, distsMap):
-        for name, attrs in sorted(distsMap.iteritems()):
+        for name, attrs in sorted(distsMap.items()):
             if '<' in name:
                 parameters = re.findall(r'<(.+?)>', name)
                 self.distTemplates.append(DistributionTemplate(self, name, attrs, parameters))
@@ -8803,7 +8846,7 @@ class Suite(object):
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
             assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
-            if isinstance(maven, types.DictType) and maven.get('version', None):
+            if isinstance(maven, dict) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
             if attrs.pop('buildDependencies', None):
                 abort("'buildDependencies' is not supported for JAR distributions")
@@ -8850,13 +8893,13 @@ class Suite(object):
     @staticmethod
     def _merge_os_arch_attrs(attrs, os_arch_attrs, context, path=''):
         if os_arch_attrs:
-            for k, v in os_arch_attrs.iteritems():
+            for k, v in os_arch_attrs.items():
                 if k in attrs:
                     other = attrs[k]
                     key_path = path + '.' + str(k)
-                    if isinstance(v, types.DictType) and isinstance(other, types.DictType):
+                    if isinstance(v, dict) and isinstance(other, dict):
                         Suite._merge_os_arch_attrs(other, v, context, key_path)
-                    elif isinstance(v, types.ListType) and isinstance(other, types.ListType):
+                    elif isinstance(v, list) and isinstance(other, list):
                         attrs[k] = v + other
                     else:
                         abort("OS/Arch attribute must not override non-OS/Arch attribute '{}' in {}".format(key_path, context))
@@ -8864,7 +8907,7 @@ class Suite(object):
                     attrs[k] = v
 
     def _load_libraries(self, libsMap):
-        for name, attrs in sorted(libsMap.iteritems()):
+        for name, attrs in sorted(libsMap.items()):
             context = 'library ' + name
             attrs.pop('native', False)  # TODO use to make non-classpath libraries
             os_arch = Suite._pop_os_arch(attrs, context)
@@ -9248,7 +9291,7 @@ class SourceSuite(Suite):
         """projects are unique to source suites"""
         projsMap = self._check_suiteDict('projects')
 
-        for name, attrs in sorted(projsMap.iteritems()):
+        for name, attrs in sorted(projsMap.items()):
             try:
                 context = 'project ' + name
                 className = attrs.pop('class', None)
@@ -9429,7 +9472,7 @@ class SourceSuite(Suite):
 
     @staticmethod
     def _projects_recursive(importing_suite, imported_suite, projects, visitmap):
-        if visitmap.has_key(imported_suite.name):
+        if imported_suite.name in visitmap:
             return
         projects += imported_suite.projects
         visitmap[imported_suite.name] = True
@@ -9635,8 +9678,7 @@ class XMLElement(xml.dom.minidom.Element):
         writer.write(indent + "<" + self.tagName)
 
         attrs = self._get_attributes()
-        a_names = attrs.keys()
-        a_names.sort()
+        a_names = sorted(attrs.keys())
 
         for a_name in a_names:
             writer.write(" %s=\"" % a_name)
@@ -9697,7 +9739,7 @@ class XMLDoc(xml.dom.minidom.Document):
 
     def xml(self, indent='', newl='', escape=False, standalone=None):
         assert self.current == self
-        result = self.toprettyxml(indent, newl, encoding="UTF-8")
+        result = _decode(self.toprettyxml(indent, newl, encoding="UTF-8"))
         if not result.startswith('<?xml'):
             # include xml tag if it's not already included
             result = '<?xml version="1.0" encoding="UTF-8"?>\n' + result
@@ -9750,7 +9792,7 @@ def _cygpathU2W(p):
     """
     if p is None or get_os() != "cygwin":
         return p
-    return subprocess.check_output(['cygpath', '-a', '-w', p]).strip()
+    return _check_output_str(['cygpath', '-a', '-w', p]).strip()
 
 def _cygpathW2U(p):
     """
@@ -9759,7 +9801,7 @@ def _cygpathW2U(p):
     """
     if p is None or get_os() != "cygwin":
         return p
-    return subprocess.check_output(['cygpath', '-a', '-u', p]).strip()
+    return _check_output_str(['cygpath', '-a', '-u', p]).strip()
 
 def _separatedCygpathU2W(p):
     """
@@ -9792,7 +9834,7 @@ def get_arch():
     if machine == 'i386' and get_os() == 'darwin':
         try:
             # Support for Snow Leopard and earlier version of MacOSX
-            if subprocess.check_output(['sysctl', '-n', 'hw.cpu64bit_capable']).strip() == '1':
+            if _check_output_str(['sysctl', '-n', 'hw.cpu64bit_capable']).strip() == '1':
                 return 'amd64'
         except OSError:
             # sysctl is not available
@@ -9861,7 +9903,7 @@ def projects(opt_limit_to_suite=False, limit_to_primary=False):
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by primary suite if limit_to_primary == True
     """
 
-    sortedProjects = sorted((p for p in _projects.itervalues() if not p.suite.internal))
+    sortedProjects = sorted((p for p in _projects.values() if not p.suite.internal))
     if opt_limit_to_suite:
         sortedProjects = _dependencies_opt_limit_to_suites(sortedProjects)
     if limit_to_primary:
@@ -9967,11 +10009,11 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
         abort('Missing parameters while instantiating distribution template ' + t.name + ': ' + ', '.join(missingParams), context=t)
 
     def _patch(v):
-        if isinstance(v, types.StringType):
+        if isinstance(v, str):
             return _patchTemplateString(v, args, context)
-        elif isinstance(v, types.DictType):
+        elif isinstance(v, dict):
             return {kk: _patch(vv) for kk, vv in v.items()}
-        elif isinstance(v, types.ListType):
+        elif isinstance(v, list):
             return [_patch(e) for e in v]
         else:
             return v
@@ -10117,7 +10159,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
     if names is None:
         roots = set(dependencies())
     else:
-        if isinstance(names, types.StringTypes):
+        if isinstance(names, str):
             names = [names]
         elif isinstance(names, Dependency):
             names = [names]
@@ -10132,7 +10174,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
     if excludes is None:
         excludes = []
     else:
-        if isinstance(excludes, types.StringTypes):
+        if isinstance(excludes, str):
             excludes = [excludes]
         elif isinstance(excludes, Dependency):
             excludes = [excludes]
@@ -10305,10 +10347,9 @@ def dependencies(opt_limit_to_suite=False):
     dependencies during iteration, the behavior of the iterator is undefined. If 'types' is not
     None, only dependencies of a type in 'types
     """
-    it = itertools.chain(_projects.itervalues(), _libs.itervalues(), _dists.itervalues(), _jdkLibs.itervalues(), _jreLibs.itervalues())
+    it = itertools.chain(_projects.values(), _libs.values(), _dists.values(), _jdkLibs.values(), _jreLibs.values())
     if opt_limit_to_suite and _opts.specific_suites:
-        it = itertools.ifilter(lambda d: d.suite.name in _opts.specific_suites, it)
-    itertools.ifilter(lambda d: not d.suite.internal, it)
+        it = filter(lambda d: d.suite.name in _opts.specific_suites, it)
     return it
 
 def defaultDependencies(opt_limit_to_suite=False):
@@ -10368,7 +10409,7 @@ def sorted_dists():
             if not dist in dists:
                 dists.append(dist)
 
-    for d in _dists.itervalues():
+    for d in _dists.values():
         add_dist(d)
     return dists
 
@@ -10413,7 +10454,7 @@ def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllV
 def _format_commands():
     msg = '\navailable commands:\n'
     commands = _mx_commands.commands()
-    sorted_commands = sorted([k for k in commands.iterkeys() if ':' not in k]) + sorted([k for k in commands.iterkeys() if ':' in k])
+    sorted_commands = sorted([k for k in commands.keys() if ':' not in k]) + sorted([k for k in commands.keys() if ':' in k])
     msg += _mx_commands.list_commands(sorted_commands)
     return msg + '\n'
 
@@ -10598,7 +10639,7 @@ environment variables:
 """
 A factory for creating JDKConfig objects.
 """
-class JDKFactory(object):
+class JDKFactory:
     def getJDKConfig(self):
         nyi('getJDKConfig', self)
 
@@ -10646,7 +10687,7 @@ def _getJDKFactory(tag, versionCheck):
     if tag not in _jdkFactories:
         return None
     complianceMap = _jdkFactories[tag]
-    for compliance in sorted(complianceMap.iterkeys(), reverse=True):
+    for compliance in sorted(complianceMap.keys(), reverse=True):
         if not versionCheck or versionCheck(VersionSpec(str(compliance))):
             return complianceMap[compliance]
     return None
@@ -10701,7 +10742,7 @@ def get_jdk_option():
                 if len(_jdkFactories) == 0:
                     abort("No JDK providers available")
                 available = []
-                for t, m in _jdkFactories.iteritems():
+                for t, m in _jdkFactories.items():
                     for c in m:
                         available.append('{}:{}'.format(t, c))
                 abort("No provider for '{}:{}' JDK (available: {})".format(jdktag, jdkCompliance if jdkCompliance else '*', ', '.join(available)))
@@ -10721,7 +10762,7 @@ def _is_supported_by_jdt(jdk):
     :type jdk: :class:`mx.JDKConfig` or string
     :rtype: bool
     """
-    if isinstance(jdk, basestring):
+    if isinstance(jdk, str):
         jdk = get_jdk(tag=jdk)
     else:
         assert isinstance(jdk, JDKConfig)
@@ -10765,7 +10806,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         defaultJdk = kwargs['defaultJdk']
 
     # interpret string and compliance as compliance check
-    if isinstance(versionCheck, types.StringTypes):
+    if isinstance(versionCheck, str):
         versionCheck = JavaCompliance(versionCheck)
     if isinstance(versionCheck, JavaCompliance):
         versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
@@ -10909,7 +10950,7 @@ def _sorted_unique_jdk_configs(configs):
         elif c2 in _extra_java_homes:
             return -1
         return VersionSpec.__cmp__(c1.version, c2.version)
-    return sorted(unique_configs, cmp=_compare_configs, reverse=True)
+    return sorted(unique_configs, key=cmp_to_key(_compare_configs), reverse=True)
 
 def is_interactive():
     if get_env('CONTINUOUS_INTEGRATION'):
@@ -11060,7 +11101,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
         while True:
             try:
                 return os.waitpid(pid, os.WNOHANG)
-            except OSError, e:
+            except OSError as e:
                 if e.errno == errno.EINTR:
                     continue
                 raise
@@ -11198,7 +11239,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     commands = [sys.executable, '-u', mxpy, '--java-home=' + get_jdk().home]
     cwd = None
     if suite:
-        if isinstance(suite, basestring):
+        if isinstance(suite, str):
             commands += ['-p', suite]
             cwd = suite
         else:
@@ -11238,9 +11279,12 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     out and err if they are callable objects.
     """
 
-    assert isinstance(args, types.ListType), "'args' must be a list: " + str(args)
+    assert isinstance(args, list), "'args' must be a list: " + str(args)
+    idx = 0
     for arg in args:
-        assert isinstance(arg, types.StringTypes), 'argument is not a string: ' + str(arg)
+        if not isinstance(arg, str):
+            abort('Type of argument {} is not str but {}: {}\nArguments: {}'.format(idx, type(arg).__name__, arg, args))
+        idx = idx + 1
 
     if env is None:
         env = os.environ.copy()
@@ -11278,7 +11322,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             if cwd is not None and cwd != _original_directory:
                 log('Directory: ' + cwd)
             if env is not None:
-                env_diff = env.viewitems() - _original_environ.viewitems()
+                env_diff = [(k, env[k]) for k in env if k not in _original_environ]
                 if len(env_diff):
                     log('env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\')
             log(' '.join(map(pipes.quote, args)))
@@ -11295,8 +11339,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             preexec_fn, creationflags = (None, 0)
 
         def redirect(stream, f):
-            for line in iter(stream.readline, ''):
-                f(line)
+            for line in iter(stream.readline, b''):
+                f(_decode(line))
             stream.close()
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
@@ -11455,7 +11499,7 @@ class DuplicateSuppressingStream:
 """
 A JavaCompliance simplifies comparing Java compliance values extracted from a JDK version string.
 """
-class JavaCompliance:
+class JavaCompliance(Comparable):
     def __init__(self, ver):
         ver = str(ver)
         pattern = r'(?:1\.)?(\d+)(.*)'
@@ -11485,15 +11529,15 @@ class JavaCompliance:
         return str(self) + '..' + str(self._upper_bound)
 
     def __cmp__(self, other):
-        if isinstance(other, types.StringType):
+        if isinstance(other, str):
             other = JavaCompliance(other)
-        r = cmp(self.value, other.value)
+        r = compare(self.value, other.value)
         if r == 0:
             if self._upper_bound is None:
                 return 0 if other._upper_bound is None else 1
             if other._upper_bound is None:
                 return -1
-            r = cmp(self._upper_bound, other._upper_bound)
+            r = compare(self._upper_bound, other._upper_bound)
         return r
 
     def __hash__(self):
@@ -11521,7 +11565,7 @@ class JavaCompliance:
 """
 A version specification as defined in JSR-56
 """
-class VersionSpec:
+class VersionSpec(Comparable):
     def __init__(self, versionString):
         validChar = r'[\x21-\x25\x27-\x29\x2c\x2f-\x5e\x60-\x7f]'
         separator = r'[.\-_]'
@@ -11538,7 +11582,7 @@ class VersionSpec:
         return self.versionString
 
     def __cmp__(self, other):
-        return cmp(self.strippedParts, other.strippedParts)
+        return compare(self.strippedParts, other.strippedParts)
 
     def __hash__(self):
         return self.parts.__hash__()
@@ -11570,7 +11614,7 @@ def java_debug_args():
     return debug_args
 
 
-class JDKConfig:
+class JDKConfig(Comparable):
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
     """
@@ -11609,13 +11653,13 @@ class JDKConfig:
 
         # Prepend the -d64 VM option only if the java command supports it
         try:
-            output = subprocess.check_output([self.java, '-d64', '-version'], stderr=subprocess.STDOUT)
+            output = _check_output_str([self.java, '-d64', '-version'], stderr=subprocess.STDOUT)
             self.java_args = ['-d64'] + self.java_args
         except OSError as e:
             raise JDKConfigException('{}: {}'.format(e.errno, e.strerror))
         except subprocess.CalledProcessError as e:
             try:
-                output = subprocess.check_output([self.java, '-version'], stderr=subprocess.STDOUT)
+                output = _check_output_str([self.java, '-version'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 raise JDKConfigException('{}: {}'.format(e.returncode, e.output))
 
@@ -11649,7 +11693,7 @@ class JDKConfig:
         if not self._classpaths_initialized:
             _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
             if self.javaCompliance <= JavaCompliance('1.8'):
-                self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in subprocess.check_output([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+                self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in _check_output_str([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
                     warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
@@ -11676,13 +11720,13 @@ class JDKConfig:
         if other is None:
             return False
         if isinstance(other, JDKConfig):
-            compilanceCmp = cmp(self.javaCompliance, other.javaCompliance)
+            compilanceCmp = compare(self.javaCompliance, other.javaCompliance)
             if compilanceCmp:
                 return compilanceCmp
-            versionCmp = cmp(self.version, other.version)
+            versionCmp = compare(self.version, other.version)
             if versionCmp:
                 return versionCmp
-            return cmp(self.home, other.home)
+            return compare(self.home, other.home)
         raise TypeError()
 
     def processArgs(self, args, addDefaultArgs=True):
@@ -11774,7 +11818,7 @@ class JDKConfig:
         """
         if self._knownJavacLints is None:
             try:
-                out = subprocess.check_output([self.javac, '-X'], stderr=subprocess.STDOUT)
+                out = _check_output_str([self.javac, '-X'], stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 if e.output:
                     log(e.output)
@@ -11921,7 +11965,7 @@ class JDKConfig:
         for mod in modules:
             # no java.se => add all java.*
             if not mod.name.startswith('java.') or not has_java_dot_se:
-                if any((len(to) == 0 for _, to in mod.exports.iteritems())):
+                if any((len(to) == 0 for _, to in mod.exports.items())):
                     result.append(mod)
         return result
 
@@ -12056,7 +12100,7 @@ def colorize(msg, color='red', bright=True, stream=sys.stderr):
         return None
     code = _ansi_color_table.get(color, None)
     if code is None:
-        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.iterkeys()))
+        abort('Unsupported color: ' + color + '.\nSupported colors are: ' + ', '.join(_ansi_color_table.keys()))
     if bright:
         code += ';1'
     color_on = '\033[' + code + 'm'
@@ -12138,7 +12182,7 @@ def gmake_cmd():
     if _gmake_cmd == '<uninitialized>':
         for a in ['make', 'gmake', 'gnumake']:
             try:
-                output = subprocess.check_output([a, '--version'], stderr=subprocess.STDOUT)
+                output = _check_output_str([a, '--version'], stderr=subprocess.STDOUT)
                 if 'GNU' in output:
                     _gmake_cmd = a
                     break
@@ -12252,12 +12296,12 @@ def _suggest_http_proxy_error(e):
     Displays a message related to http proxies that may explain the reason for the exception `e`.
     """
     proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
-    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.iterkeys()}
+    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.keys()}
     if not proxyDefs:
         warn('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
             '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
     else:
-        defs = [i[0] + '=' + i[1] for i in proxyDefs.iteritems()]
+        defs = [i[0] + '=' + i[1] for i in proxyDefs.items()]
         warn('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
 
 def _suggest_tlsv1_error(e):
@@ -12328,12 +12372,12 @@ def _attempt_download(url, path, jarEntryName=None):
 
             return True
 
-    except (IOError, socket.timeout, urllib2.HTTPError) as e:
+    except (IOError, socket.timeout, _urllib_error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
         log_error("Error reading from " + url + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
-        if isinstance(e, urllib2.HTTPError) and e.code == 500:
+        if isinstance(e, _urllib_error.HTTPError) and e.code == 500:
             return "retry"
     finally:
         if conn:
@@ -12385,7 +12429,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     if abortOnError:
         msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
         if verifyOnly:
-            for url, e in verify_errors.iteritems():
+            for url, e in verify_errors.items():
                 msg += '\n  ' + url + ': ' + str(e)
         abort(msg)
     else:
@@ -12400,7 +12444,7 @@ def update_file(path, content, showDiff=False):
     try:
         old = None
         if existed:
-            with open(path, 'rb') as f:
+            with open(path, 'r') as f:
                 old = f.read()
 
         if old == content:
@@ -12409,7 +12453,7 @@ def update_file(path, content, showDiff=False):
         if existed and _opts.backup_modified:
             shutil.move(path, path + '.orig')
 
-        with open(path, 'wb') as f:
+        with open(path, 'w') as f:
             f.write(content)
 
         if existed:
@@ -12419,7 +12463,6 @@ def update_file(path, content, showDiff=False):
             if showDiff:
                 log('diff: ' + path)
                 log(''.join(difflib.unified_diff(old.splitlines(1), content.splitlines(1))))
-
         else:
             log('created ' + path)
         return True
@@ -12547,7 +12590,7 @@ def build(cmd_args, parser=None):
         # ... and the dependencies that *will not* be built
         if _removedDeps:
             log('Dependencies removed from build:')
-            for _, reason in _removedDeps.iteritems():
+            for _, reason in _removedDeps.items():
                 if isinstance(reason, tuple):
                     reason, _ = reason
                 log(' {}'.format(reason))
@@ -12637,14 +12680,10 @@ def build(cmd_args, parser=None):
                     task._d = max([remainingDepsDepth(t) for t in incompleteDeps]) + 1
             return task._d
 
-        def compareTasks(t1, t2):
-            d = remainingDepsDepth(t1) - remainingDepsDepth(t2)
-            return d
-
         def sortWorklist(tasks):
             for t in tasks:
                 t._d = None
-            return sorted(tasks, compareTasks)
+            return sorted(tasks, key=remainingDepsDepth)
 
         cpus = cpu_count()
         worklist = sortWorklist(sortedTasks)
@@ -12708,7 +12747,7 @@ def build(cmd_args, parser=None):
         if len(failed):
             for t in failed:
                 log_error('{0} failed'.format(t))
-            for daemon in daemons.itervalues():
+            for daemon in daemons.values():
                 daemon.shutdown()
             abort('{0} build tasks failed'.format(len(failed)))
 
@@ -12717,7 +12756,7 @@ def build(cmd_args, parser=None):
             t.prepare(daemons)
             t.execute()
 
-    for daemon in daemons.itervalues():
+    for daemon in daemons.values():
         daemon.shutdown()
 
     # TODO check for distributions overlap (while loading suites?)
@@ -12920,7 +12959,7 @@ def eclipseformat(args):
 
     log("we have: " + str(len(batches)) + " batches")
     batch_num = 0
-    for batch, javafiles in batches.iteritems():
+    for batch, javafiles in batches.items():
         batch_num += 1
         log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
@@ -13011,7 +13050,7 @@ def pylint(args):
     ver = (-1, -1)
 
     try:
-        output = subprocess.check_output(['pylint', '--version'], stderr=subprocess.STDOUT)
+        output = _check_output_str(['pylint', '--version'], stderr=subprocess.STDOUT)
         m = re.match(r'.*pylint (\d+)\.(\d+)\.(\d+).*', output, re.DOTALL)
         if not m:
             log_error('could not determine pylint version from ' + output)
@@ -13214,7 +13253,7 @@ class Archiver(SafeFileCreation):
         tarinfo.name = archive_name
         tarinfo.size = len(data)
         tarinfo.mtime = calendar.timegm(datetime.now().utctimetuple())
-        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO.StringIO(data))
+        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO(data))
 
     def _add_link_tar(self, target, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
@@ -13462,6 +13501,7 @@ class TimeStampFile:
         :type path: str
         :type followSymlinks: bool | str
         """
+        assert isinstance(path, str), path + ' # type=' + str(type(path))
         self.path = path
         if exists(path):
             if followSymlinks == 'newest':
@@ -13491,14 +13531,14 @@ class TimeStampFile:
     def isOlderThan(self, arg):
         if not self.timestamp:
             return True
-        if isinstance(arg, (types.IntType, types.LongType, types.FloatType)):
+        if isinstance(arg, (int, float)):
             return self.timestamp < arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
                 return False
             else:
                 return arg.timestamp > self.timestamp
-        elif isinstance(arg, types.ListType):
+        elif isinstance(arg, list):
             files = arg
         else:
             files = [arg]
@@ -13510,14 +13550,14 @@ class TimeStampFile:
     def isNewerThan(self, arg):
         if not self.timestamp:
             return False
-        if isinstance(arg, (types.IntType, types.LongType, types.FloatType)):
+        if isinstance(arg, (int, float)):
             return self.timestamp > arg
         if isinstance(arg, TimeStampFile):
             if arg.timestamp is None:
                 return False
             else:
                 return arg.timestamp < self.timestamp
-        elif isinstance(arg, types.ListType):
+        elif isinstance(arg, list):
             files = arg
         else:
             files = [arg]
@@ -13541,7 +13581,7 @@ class TimeStampFile:
             os.utime(self.path, None)
         else:
             ensure_dir_exists(dirname(self.path))
-            file(self.path, 'a')
+            open(self.path, 'a')
         self.timestamp = getmtime(self.path)
 
 def checkstyle(args):
@@ -13624,7 +13664,7 @@ def checkstyle(args):
 
             batch.sources.extend(javafilelist)
 
-    for key, batch in batches.iteritems():
+    for key, batch in batches.items():
         if len(batch.sources) == 0:
             continue
         config, checkstyleVersion = key
@@ -13647,7 +13687,7 @@ def checkstyle(args):
 
                         xp = xml.parsers.expat.ParserCreate()
                         xp.StartElementHandler = start_element
-                        with open(auditfileName) as fp:
+                        with open(auditfileName, 'rb') as fp:
                             xp.ParseFile(fp)
                         if len(errors) != 0:
                             map(log_error, errors)
@@ -13682,7 +13722,7 @@ def _safe_path(path):
                     path = '\\\\?\\UNC' + path
             else:
                 path = '\\\\?\\' + path
-        path = unicode(path)
+        path = _unicode(path)
     return path
 
 def getmtime(name):
@@ -13707,7 +13747,7 @@ def open(name, mode='r'): # pylint: disable=redefined-builtin
     """
     Wrapper for builtin open function that handles long path names on Windows.
     """
-    return __builtin__.open(_safe_path(name), mode=mode)
+    return builtins.open(_safe_path(name), mode=mode)
 
 def copytree(src, dst, symlinks=False, ignore=None):
     shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
@@ -13795,7 +13835,7 @@ Given a command name, print help for that command."""
 
     name = args[0]
     if name not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(name)]
+        hits = [c for c in _mx_commands.commands().keys() if c.startswith(name)]
         if len(hits) == 1:
             name = hits[0]
         elif len(hits) == 0:
@@ -13846,7 +13886,7 @@ def flattenMultiReleaseSources(args):
     # multi-release jars are resolved.
     for version, maps in sorted(versions.items()):
         for flatten_map in maps:
-            for src_dir, dst_dir in flatten_map.iteritems():
+            for src_dir, dst_dir in flatten_map.items():
                 if not args.commands:
                     print(src_dir, dst_dir)
                 else:
@@ -14379,7 +14419,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             # Ignore modules (such as jdk.internal.vm.compiler) that define packages
             # that are also defined by project deps as the latter will have the most
             # recent API.
-            exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.iteritems() if allProjectPackages.isdisjoint(pkgs)])
+            exports = sorted([(module, pkgs) for module, pkgs in moduleDeps.items() if allProjectPackages.isdisjoint(pkgs)])
             if exports:
                 addExportsValue = []
                 exported_modules = []
@@ -14519,11 +14559,11 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 if dep.isJavaProject():
                     concealed = dep.get_concealed_imported_packages(jdk)
                     if concealed:
-                        for module, pkgs in concealed.iteritems():
+                        for module, pkgs in concealed.items():
                             concealedAPDeps.setdefault(module, []).extend(pkgs)
             if concealedAPDeps:
                 exports = []
-                for module, pkgs in concealedAPDeps.iteritems():
+                for module, pkgs in concealedAPDeps.items():
                     for pkg in pkgs:
                         exports.append('--add-exports=' + module + '/' + pkg + '=ALL-UNNAMED')
                 warn('Annotation processor(s) for ' + p.name +' uses non-exported module packages, requiring ' +
@@ -14561,7 +14601,7 @@ def _get_ide_envvars():
         'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home,
         'EXTRA_JAVA_HOMES' : get_env('EXTRA_JAVA_HOMES'),
     }
-    for name, value in _ide_envvars.iteritems():
+    for name, value in _ide_envvars.items():
         if value is None:
             value = get_env(name)
         if value is not None:
@@ -14573,7 +14613,7 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Changes to these values should cause regeneration of the project files.
     settings = 'logToConsole=%s\n' % logToConsole
     settings = settings + 'absolutePaths=%s\n' % absolutePaths
-    for name, value in _get_ide_envvars().iteritems():
+    for name, value in _get_ide_envvars().items():
         settings = settings + '%s=%s\n' % (name, value)
     return settings
 
@@ -14601,7 +14641,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         files += _processorjars_suite(s)
 
     for p in s.projects:
-        code = p._eclipseinit.func_code
+        code = _function_code(p._eclipseinit)
         if 'absolutePaths' in code.co_varnames[:code.co_argcount]:
             p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
         else:
@@ -14736,7 +14776,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
     launchOut.open('mapAttribute', {'key' : 'org.eclipse.debug.core.environmentVariables'})
-    for key, value in _get_ide_envvars().iteritems():
+    for key, value in _get_ide_envvars().items():
         launchOut.element('mapEntry', {'key' : key, 'value' : value})
     launchOut.close('mapAttribute')
 
@@ -14819,7 +14859,7 @@ def generate_eclipse_workingsets():
     # identify the location where to look for workingsets.xml
     wsfilename = 'workingsets.xml'
     wsloc = '.metadata/.plugins/org.eclipse.ui.workbench'
-    if os.environ.has_key('WORKSPACE'):
+    if 'WORKSPACE' in os.environ:
         expected_wsroot = os.environ['WORKSPACE']
     else:
         expected_wsroot = primary_suite().dir
@@ -14836,7 +14876,7 @@ def generate_eclipse_workingsets():
     wspath = join(wsdir, wsfilename)
 
     def _add_to_working_set(key, value):
-        if not workingSets.has_key(key):
+        if key not in workingSets:
             workingSets[key] = [value]
         else:
             workingSets[key].append(value)
@@ -14905,12 +14945,12 @@ def _copy_workingset_xml(wspath, workingSets):
     # parsing logic
     def _ws_start(name, attributes):
         if name == 'workingSet':
-            if attributes.has_key('name'):
+            if 'name' in attributes:
                 ps.current_ws_name = attributes['name']
-                if attributes.has_key('aggregate') and attributes['aggregate'] == 'true':
+                if 'aggregate' in attributes and attributes['aggregate'] == 'true':
                     ps.aggregate_ws = True
                     ps.current_ws = None
-                elif workingSets.has_key(ps.current_ws_name):
+                elif ps.current_ws_name in workingSets:
                     ps.current_ws = workingSets[ps.current_ws_name]
                     ps.seen_ws.append(ps.current_ws_name)
                     ps.seen_projects = list()
@@ -14950,7 +14990,7 @@ def _copy_workingset_xml(wspath, workingSets):
         if name == 'item':
             if ps.current_ws is None:
                 target.element(name, attributes)
-            elif not attributes.has_key('elementID') and attributes.has_key('factoryID') and attributes.has_key('path') and attributes.has_key('type'):
+            elif not 'elementID' in attributes and 'factoryID' in attributes and 'path' in attributes and 'type' in attributes:
                 target.element(name, attributes)
                 p_name = attributes['path'][1:]  # strip off the leading '/'
                 ps.seen_projects.append(p_name)
@@ -14965,7 +15005,7 @@ def _copy_workingset_xml(wspath, workingSets):
     # process document
     parser.StartElementHandler = _ws_start
     parser.EndElementHandler = _ws_end
-    with open(wspath, 'r') as wsfile:
+    with open(wspath, 'rb') as wsfile:
         parser.ParseFile(wsfile)
 
     target.close('workingSetManager')
@@ -15218,7 +15258,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
-    out = StringIO.StringIO()
+    out = StringIO()
     jdkPlatform = 'JDK_' + str(jdk.version)
 
     annotationProcessorEnabled = "false"
@@ -15604,7 +15644,7 @@ def intellij_get_python_sdk_name(sdks):
     return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
 
 def intellij_get_ruby_sdk_name(sdks):
-    for sdk in sdks.itervalues():
+    for sdk in sdks.values():
         if sdk['type'] == intellij_ruby_sdk_type:
             return sdk['name']
     return "truffleruby"
@@ -15649,7 +15689,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     def _intellij_external_project(externalProjects, sdks, host):
         if externalProjects:
-            for project_name, project_definition in externalProjects.iteritems():
+            for project_name, project_definition in externalProjects.items():
                 if not project_definition.get('path', None):
                     abort("external project {} is missing path attribute".format(project_name))
                 if not project_definition.get('type', None):
@@ -15811,7 +15851,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if compilerXml and jdk.javaCompliance >= '9':
                 moduleDeps = p.get_concealed_imported_packages(jdk=jdk)
                 if moduleDeps:
-                    exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.iteritems() if dependencies_project_packages.isdisjoint(pkgs)])
+                    exports = sorted([(m, pkgs) for m, pkgs in moduleDeps.items() if dependencies_project_packages.isdisjoint(pkgs)])
                     if exports:
                         args = []
                         exported_modules = set()
@@ -15987,7 +16027,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         compilerXml.close('wildcardResourcePatterns')
         if annotationProcessorProfiles:
             compilerXml.open('annotationProcessing')
-            for t, modules in sorted(annotationProcessorProfiles.iteritems()):
+            for t, modules in sorted(annotationProcessorProfiles.items()):
                 source_gen_dir = t[0]
                 processors = t[1:]
                 compilerXml.open('profile', attributes={'default': 'false', 'name': '-'.join([ap.name for ap in processors]) + "-" + source_gen_dir, 'enabled': 'true'})
@@ -16061,7 +16101,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if corePrefsSources:
                 miscXml = XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
-                out = StringIO.StringIO()
+                out = StringIO()
                 print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
                     print('# Source:', source, file=out)
@@ -16073,7 +16113,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
-                    out = StringIO.StringIO()
+                    out = StringIO()
                     print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
                         print('# Source:', source, file=out)
@@ -16307,7 +16347,7 @@ def ideclean(args):
         except:
             log_error("Error removing {0}".format(p.name + '.jar'))
 
-    for d in _dists.itervalues():
+    for d in _dists.values():
         if not d.isJARDistribution():
             continue
         if d.get_ide_project_dir():
@@ -16463,7 +16503,7 @@ def verifysourceinproject(args):
                     unmanagedSources.setdefault(suite.vc_dir, []).extend(javaSourcesInVC)
 
     # also check for files that are outside of suites
-    for vcDir, vc in suiteVcDirs.iteritems():
+    for vcDir, vc in suiteVcDirs.items():
         for dirpath, dirnames, files in os.walk(vcDir):
             if dirpath in suiteDirs:
                 # skip known suites
@@ -16485,7 +16525,7 @@ def verifysourceinproject(args):
     retcode = 0
     if len(unmanagedSources) > 0:
         log('The following files are managed but not in any project:')
-        for vc_dir, sources in unmanagedSources.iteritems():
+        for vc_dir, sources in unmanagedSources.items():
             for source in sources:
                 log(source)
             if suiteWhitelists.get(vc_dir) is not None:
@@ -16746,11 +16786,11 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             g = find_group(p)
             if g is None:
                 continue
-            if not groups.has_key(g):
+            if g not in groups:
                 groups[g] = set()
             groups[g].add(p)
         groupargs = list()
-        for k, v in groups.iteritems():
+        for k, v in groups.items():
             if len(v) == 0:
                 continue
             groupargs.append('-group')
@@ -16903,7 +16943,7 @@ def site(args):
         if args.dot_output_base is not None:
             dotErr = None
             try:
-                if 'version' not in subprocess.check_output(['dot', '-V'], stderr=subprocess.STDOUT):
+                if 'version' not in _check_output_str(['dot', '-V'], stderr=subprocess.STDOUT):
                     dotErr = 'dot -V does not print a string containing "version"'
             except subprocess.CalledProcessError as e:
                 dotErr = 'error calling "dot -V": {0}'.format(e)
@@ -17342,9 +17382,9 @@ def select_items(items, descriptions=None, allowMultiple=True):
                 log('\n'.join(wrapper.wrap(('[{0:>' + numlen + '}] {1} - {2}').format(i + 1, items[i], descriptions[i]))))
         while True:
             if allowMultiple:
-                s = raw_input('Enter number(s) of selection (separate multiple choices with spaces): ').split()
+                s = input('Enter number(s) of selection (separate multiple choices with spaces): ').split()
             else:
-                s = [raw_input('Enter number of selection: ')]
+                s = [input('Enter number of selection: ')]
             try:
                 s = [int(x) for x in s]
             except:
@@ -17384,7 +17424,7 @@ def exportlibs(args):
         entries = {}
         def add(path, arcname):
             apath = os.path.abspath(path)
-            if not entries.has_key(arcname):
+            if arcname not in entries:
                 entries[arcname] = apath
                 logv('[adding ' + path + ']')
                 addMethod(path, arcname=arcname)
@@ -17395,18 +17435,18 @@ def exportlibs(args):
 
         libsToExport = set()
         if args.include_all:
-            for lib in _libs.itervalues():
+            for lib in _libs.values():
                 libsToExport.add(lib)
         else:
             def isValidLibrary(dep):
-                if dep in _libs.iterkeys():
+                if dep in _libs.keys():
                     lib = _libs[dep]
                     if len(lib.urls) != 0 or args.include_system_libs:
                         return lib
                 return None
 
             # iterate over all project dependencies and find used libraries
-            for p in _projects.itervalues():
+            for p in _projects.values():
                 for dep in p.deps:
                     r = isValidLibrary(dep)
                     if r:
@@ -17764,7 +17804,7 @@ def checkcopyrights(args):
             return ArgumentParser.format_help(self) + self._get_program_help()
 
         def _get_program_help(self):
-            help_output = subprocess.check_output([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
+            help_output = _check_output_str([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
             return '\nother argumemnts preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
 
     # ensure compiled form of code is up to date
@@ -17847,8 +17887,8 @@ def _copy_eclipse_settings(p, files=None):
     settingsDir = join(p.dir, ".settings")
     ensure_dir_exists(settingsDir)
 
-    for name, sources in p.eclipse_settings_sources().iteritems():
-        out = StringIO.StringIO()
+    for name, sources in p.eclipse_settings_sources().items():
+        out = StringIO()
         print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
             print('# Source:', source, file=out)
@@ -17933,7 +17973,7 @@ def show_envs(args):
     parser.add_argument('--all', action='store_true', help='show all variables, not just those starting with "MX"')
     args = parser.parse_args(args)
 
-    for key, value in os.environ.iteritems():
+    for key, value in os.environ.items():
         if args.all or key.startswith('MX'):
             print('{0}: {1}'.format(key, value))
 
@@ -17984,9 +18024,9 @@ def ask_question(question, options, default=None, answer=None):
         print(question + questionMark + answer)
     else:
         if is_interactive():
-            answer = raw_input(question + questionMark) or default
+            answer = input(question + questionMark) or default
             while not answer:
-                answer = raw_input(question + questionMark)
+                answer = input(question + questionMark)
         else:
             if default:
                 answer = default
@@ -18045,7 +18085,7 @@ update_commands("mx", {
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
     'benchplot': [mx_benchplot.benchplot, '[options]'],
-    'binary-url': [binary_url, '<repository id> <distribution name>'],
+    'binary-url': [binary_url, '<distribution name>'],
     'build': [build, '[options]'],
     'canonicalizeprojects': [canonicalizeprojects, ''],
     'checkcopyrights': [checkcopyrights, '[options]'],
@@ -18075,7 +18115,6 @@ update_commands("mx", {
     'javap': [javap, '[options] <class name patterns>'],
     'maven-deploy' : [maven_deploy, ''],
     'maven-install' : [maven_install, ''],
-    'maven-url': [maven_url, '<repository id> <distribution name>'],
     'minheap' : [run_java_min_heap, ''],
     'netbeansinit': [netbeansinit, ''],
     'projectgraph': [projectgraph, ''],
@@ -18248,7 +18287,7 @@ def _remove_unsatisfied_deps():
                 if reasonAttr:
                     abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
             else:
-                assert isinstance(reasonAttr, basestring)
+                assert isinstance(reasonAttr, str)
                 strippedReason = reasonAttr.strip()
                 if len(strippedReason) != 0:
                     if not strippedReason == "false":
@@ -18291,7 +18330,7 @@ def _remove_unsatisfied_deps():
     walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
 
     res = OrderedDict()
-    for dep, reason in removedDeps.iteritems():
+    for dep, reason in removedDeps.items():
         if not isinstance(reason, str):
             assert isinstance(reason, tuple)
         res[dep.name] = reason
@@ -18336,7 +18375,7 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
             # Try use the URL first so that a big repo is cloned to a local
             # directory whose named is based on the repo instead of a suite
             # nested in the big repo.
-            root, _ = os.path.splitext(basename(urlparse.urlparse(url).path))
+            root, _ = os.path.splitext(basename(_urllib_parse.urlparse(url).path))
             if root:
                 import_dir = join(SiblingSuiteModel.siblings_dir(importing_suite.dir), root)
             else:
@@ -18733,8 +18772,8 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
     else:
         abort("Unknown Socks Proxy type {0}".format(proxytype))
 
-    opener = urllib2.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
-    urllib2.install_opener(opener)
+    opener = _urllib_request.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
+    _urllib_request.install_opener(opener)
 
 
 def main():
@@ -18905,7 +18944,7 @@ def main():
     command_args = commandAndArgs[1:]
 
     if command not in _mx_commands.commands():
-        hits = [c for c in _mx_commands.commands().iterkeys() if c.startswith(command)]
+        hits = [c for c in _mx_commands.commands().keys() if c.startswith(command)]
         if len(hits) == 1:
             command = hits[0]
         elif len(hits) == 0:
@@ -18949,7 +18988,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.201.0")  # GR-13290: URL of maven-deployed artifacts
+version = VersionSpec("5.202.0")  # GR-13161: Python3 support
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

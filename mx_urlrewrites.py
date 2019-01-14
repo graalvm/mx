@@ -62,7 +62,7 @@ def register_urlrewrite(urlrewrite, onError=None):
         return
     if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
         onError('A URL rewrite rule must be a dict with a single entry')
-    for pattern, attrs in urlrewrite.iteritems():
+    for pattern, attrs in urlrewrite.items():
         replacement = attrs.pop('replacement', None)
         if replacement is None:
             raise Exception('URL rewrite for pattern "' + pattern + '" is missing "replacement" entry')
@@ -72,7 +72,7 @@ def register_urlrewrite(urlrewrite, onError=None):
             pattern = re.compile(pattern)
         except Exception as e: # pylint: disable=broad-except
             onError('Error parsing URL rewrite pattern "' + pattern + '": ' + str(e))
-        urlrewrite = URLRewrite(pattern, replacement)
+        urlrewrite = URLRewrite(pattern, str(replacement))
         mx.logvv("Registering url rewrite: " + str(urlrewrite))
         _urlrewrites.append(urlrewrite)
 

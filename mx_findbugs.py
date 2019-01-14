@@ -1,4 +1,3 @@
-#!/usr/bin/env python2.7
 #
 # ----------------------------------------------------------------------------------------------------
 #
@@ -116,7 +115,7 @@ def findbugs(args, fbArgs=None, suite=None, projects=None):
         xml = xmlDoc.xml(indent='  ', newl='\n')
         print(xml, file=fp)
 
-    outputDirs = map(mx._cygpathU2W, [p.output_dir() for p in projectsToTest])
+    outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
     javaCompliance = max([p.javaCompliance for p in projectsToTest])
     jdk = mx.get_jdk(javaCompliance)
     if jdk.javaCompliance >= '9':
