@@ -30,7 +30,6 @@ import os
 import re
 import zipfile
 import pickle
-from _mx_portable import StringIO, _cmp, _viewkeys
 import shutil
 import itertools
 from os.path import join, exists, dirname, basename
@@ -39,8 +38,13 @@ from tempfile import mkdtemp
 from zipfile import ZipFile
 
 import mx
-from _mx_portable import _basestring
 
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+import sys
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 class JavaModuleDescriptor(object):
     """
@@ -67,7 +71,7 @@ class JavaModuleDescriptor(object):
         self.concealedRequires = concealedRequires if concealedRequires else {}
         self.uses = frozenset(uses)
         self.provides = provides
-        exportedPackages = frozenset(_viewkeys(exports))
+        exportedPackages = frozenset(exports.keys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
         assert len(exports) == 0 or exportedPackages.issubset(self.packages), exportedPackages - self.packages
         self.conceals = self.packages - exportedPackages
@@ -84,7 +88,7 @@ class JavaModuleDescriptor(object):
 
     def __cmp__(self, other):
         assert isinstance(other, JavaModuleDescriptor)
-        return _cmp(self.name, other.name)
+        return (self.name > other.name) - (self.name < other.name)
 
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
@@ -366,7 +370,7 @@ def get_library_as_module(dep, jdk):
             provides.setdefault(service, []).extend(providers)
         else:
             mx.abort('Cannot parse module descriptor line: ' + str(parts))
-    packages.update(_viewkeys(exports))
+    packages.update(exports.keys())
 
     if save:
         try:
@@ -663,7 +667,7 @@ def get_transitive_closure(roots, observable_modules):
             for name in mod.requires.keys():
                 add_transitive(lookup_module(name))
     for root in roots:
-        if isinstance(root, _basestring):
+        if isinstance(root, str):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure

@@ -29,7 +29,15 @@ from __future__ import print_function
 import os, tempfile
 from argparse import ArgumentParser, REMAINDER
 from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, abspath
-from _mx_portable import StringIO, _raw_input
+
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+import sys
+if sys.version_info[0] < 3:
+    def input(prompt=None):                    # pylint: disable=redefined-builtin
+        return raw_input(prompt)
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 def is_valid_jdk(jdk):
     """
@@ -209,6 +217,6 @@ if __name__ == '__main__':
 
             os.rename(tmp_cache_path, jdk_cache_path)
             choices = {str(index):jdk for index, jdk in choices}
-            jdks = [choices[n] for n in _raw_input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
+            jdks = [choices[n] for n in input('Select JDK(s) (separate multiple choices by whitespace)> ').split() if n in choices]
             if jdks:
                 apply_selection(args, jdks[0], jdks[1:])

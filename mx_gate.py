@@ -36,8 +36,6 @@ from argparse import ArgumentParser
 import mx
 import sys
 
-from _mx_portable import _basestring
-
 """
 Predefined Task tags.
 """
@@ -75,7 +73,7 @@ class Task:
 
     def tag_matches(self, _tags):
         for t in _tags:
-            assert isinstance(t, _basestring), '{} is not a string and thus not a valid tag'.format(t)
+            assert isinstance(t, str), '{} is not a string and thus not a valid tag'.format(t)
             if t in Task.tags:
                 if t not in Task.tags_range:
                     # no range restriction

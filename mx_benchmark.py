@@ -39,7 +39,6 @@ from argparse import RawTextHelpFormatter
 from collections import OrderedDict
 
 import mx
-from _mx_portable import _long
 
 _bm_suites = {}
 _benchmark_executor = None
@@ -489,8 +488,6 @@ class BaseRule(Rule):
                         inst = str(v)
                     elif vtype is int:
                         inst = int(v)
-                    elif vtype is _long:
-                        inst = _long(v)
                     elif vtype is float:
                         inst = float(v)
                     elif vtype is bool:
@@ -499,7 +496,7 @@ class BaseRule(Rule):
                         inst = vtype(v)
                     else:
                         raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
-                if not isinstance(inst, (str, int, _long, float, bool)):
+                if not isinstance(inst, (str, int, float, bool)):
                     raise RuntimeError("Object '{0}' has unknown type: {1}".format(inst, type(inst)))
                 datapoint[key] = inst
             datapoints.append(datapoint)
