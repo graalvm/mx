@@ -51,11 +51,11 @@ Context manager for a single gate task that can prevent the
 task from executing or time and log its execution.
 """
 class Task:
-    # None or a list of strings. If not None, only tasks whose title
+    # A list of strings. If not empty, only tasks whose title
     # matches at least one of the substrings in this list will return
     # a non-None value from __enter__. The body of a 'with Task(...) as t'
     # statement should check 't' and exit immediately if it is None.
-    filters = None
+    filters = []
     log = True # whether to log task messages
     dryRun = False
     startAtFilter = None
@@ -74,7 +74,7 @@ class Task:
     def tag_matches(self, _tags):
         for t in _tags:
             assert isinstance(t, str), '{} is not a string and thus not a valid tag'.format(t)
-            if t in Task.tags:
+            if Task.tags is not None and t in Task.tags: # pylint: disable=unsupported-membership-test
                 if t not in Task.tags_range:
                     # no range restriction
                     return True
@@ -83,7 +83,7 @@ class Task:
                     cnt = Task.tags_count[t]
                     # increment counter
                     Task.tags_count[t] += 1
-                    if frm <= cnt and cnt < to:
+                    if frm <= cnt < to:
                         return True
         return False
 
@@ -117,7 +117,7 @@ class Task:
                     Task.startAtFilter = None
                 else:
                     self.skipped = True
-            elif Task.filters:
+            elif len(Task.filters) > 0:
                 titles = [self.title] + self.legacyTitles
                 if Task.filtersExclude:
                     self.skipped = any([f in t for t in titles for f in Task.filters])
@@ -125,7 +125,7 @@ class Task:
                     self.skipped = not any([f in t for t in titles for f in Task.filters])
             if Task.tags is not None:
                 if Task.tagsExclude:
-                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False
+                    self.skipped = all([t in Task.tags for t in self.tags]) if tags else False # pylint: disable=unsupported-membership-test
                 else:
                     _tags = self.tags if self.tags else []
                     self.skipped = not self.tag_matches(_tags)
@@ -436,7 +436,7 @@ def gate(args):
     mx.log('  ' + str(total.duration))
 
     if args.task_filter:
-        Task.filters = None
+        Task.filters = []
 
 def _collect_tasks(cleanArgs, args):
     prevDryRun = Task.dryRun
@@ -502,7 +502,7 @@ def _run_gate(cleanArgs, args, tasks):
         with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
             if t:
                 defaultBuildArgs = ['-p']
-                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags
+                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
                 # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
                 if not args.no_warning_as_error and fullbuild:
                     defaultBuildArgs += ['--warning-as-error']
@@ -641,7 +641,7 @@ def get_jacoco_agent_args():
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
     if use of JaCoCo has been requested otherwise returns None.
     '''
-    if _jacoco == 'on' or _jacoco == 'append':
+    if _jacoco in ('on', 'append'):
         jacocoagent = mx.library('JACOCOAGENT_0.8.2', True)
 
         excludes, includes = _jacoco_excludes_includes()
@@ -676,7 +676,7 @@ def jacocoreport(args):
     includedirs = []
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
-        if (projsetting == 'include' or projsetting == '') and _jacoco_is_package_whitelisted(p.name):
+        if projsetting in ('include', '') and _jacoco_is_package_whitelisted(p.name):
             if isinstance(p, mx.ClasspathDependency):
                 source_dirs = []
                 if p.isJavaProject():

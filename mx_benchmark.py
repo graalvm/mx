@@ -258,7 +258,6 @@ class BenchmarkSuite(object):
         Can be overridden to check for existence of required environment variables
         before the benchmark suite executed.
         """
-        pass
 
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
@@ -285,7 +284,6 @@ class BenchmarkSuite(object):
 
         Arguments: see `run`.
         """
-        pass
 
     def after(self, bmSuiteArgs):
         """Called exactly once after all benchmark invocations are done.
@@ -294,7 +292,6 @@ class BenchmarkSuite(object):
 
         Arguments: see `run`.
         """
-        pass
 
     def parserNames(self):
         """Returns the list of parser names that this benchmark suite uses.
@@ -755,7 +752,6 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
         The `error` field of each datapoint should not be modified in this benchmark,
         as it will be overwritten with the appropriate error message.
         """
-        pass
 
     def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
         self.repairDatapoints(benchmarks, bmSuiteArgs, partialResults)
@@ -1237,8 +1233,6 @@ class DummyJavaVm(OutputCapturingJavaVm):
     Note that the warning R0921 (abstract-class-little-used) has been removed
     from pylint 1.4.3.
     """
-    pass
-
 
 def add_java_vm(javavm, suite=None, priority=0):
     java_vm_registry.add_vm(javavm, suite, priority)

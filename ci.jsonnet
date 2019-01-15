@@ -7,8 +7,7 @@ java = {
 gate = java + {
   targets: ['gate'],
   packages+: {
-    "pip:astroid": "==1.1.0",
-    "pip:pylint": "==1.1.0",
+    "pip:pylint": "==1.9.3",
   },
   downloads+: {
     JDT: {name: 'ecj', version: "4.5.1", platformspecific: false},
