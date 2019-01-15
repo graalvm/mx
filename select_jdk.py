@@ -34,7 +34,7 @@ from os.path import exists, expanduser, join, isdir, isfile, realpath, dirname, 
 import sys
 if sys.version_info[0] < 3:
     def input(prompt=None):                    # pylint: disable=redefined-builtin
-        return raw_input(prompt)
+        return raw_input(prompt)               # pylint: disable=undefined-variable
     from StringIO import StringIO
 else:
     from io import StringIO

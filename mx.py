@@ -81,11 +81,11 @@ _mx_commands = MxCommands("mx")
 if sys.version_info[0] < 3:
     filter = itertools.ifilter                 # pylint: disable=redefined-builtin,invalid-name
     def input(prompt=None):                    # pylint: disable=redefined-builtin
-        return raw_input(prompt)
+        return raw_input(prompt)               # pylint: disable=undefined-variable
 
     from StringIO import StringIO
     import __builtin__ as builtins
-    import urllib2                             #pylint: disable=unused-import
+    import urllib2                             # pylint: disable=unused-import
     _urllib_request = urllib2
     _urllib_error = urllib2
     del urllib2
@@ -94,13 +94,13 @@ if sys.version_info[0] < 3:
         return x
     def _encode(x):
         return x
-    _unicode = unicode
+    _unicode = unicode                         # pylint: disable=undefined-variable
 else:
     from io import StringIO
-    import builtins                            #pylint: disable=unused-import,no-name-in-module
-    import urllib.request as _urllib_request   #pylint: disable=unused-import,no-name-in-module
-    import urllib.error as _urllib_error       #pylint: disable=unused-import,no-name-in-module
-    import urllib.parse as _urllib_parse       #pylint: disable=unused-import,no-name-in-module
+    import builtins                            # pylint: disable=unused-import,no-name-in-module
+    import urllib.request as _urllib_request   # pylint: disable=unused-import,no-name-in-module
+    import urllib.error as _urllib_error       # pylint: disable=unused-import,no-name-in-module
+    import urllib.parse as _urllib_parse       # pylint: disable=unused-import,no-name-in-module
     def _decode(x):
         return x.decode()
     def _encode(x):
@@ -18988,7 +18988,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.202.0")  # GR-13161: Python3 support
+version = VersionSpec("5.202.1")  # GR-13343: pylint 1.9.3
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
