@@ -1013,7 +1013,6 @@ class BuildTask(object):
         The 'daemons' argument is a dictionary for storing any persistent state
         that might be shared between tasks.
         """
-        pass
 
     @abstractmethod
     def build(self):
@@ -2296,7 +2295,7 @@ class LayoutDistribution(AbstractDistribution):
                 "source_type": source_type,
                 "_str_": source,
             }
-            if source_type == 'dependency' or source_type == 'extracted-dependency':
+            if source_type in ('dependency', 'extracted-dependency'):
                 if '/' in source_spec:
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
                 else:
@@ -2314,7 +2313,7 @@ class LayoutDistribution(AbstractDistribution):
             source_dict = source
             source_type = source_dict['source_type']
             # TODO check structure
-            if source_type == 'dependency' or source_type == 'extracted-dependency':
+            if source_type in ('dependency', 'extracted-dependency'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
@@ -2636,7 +2635,7 @@ class LayoutDistribution(AbstractDistribution):
                 pass  # this is handled by _persist_layout
             elif source_type == 'string':
                 pass  # this is handled by _persist_layout
-            elif source_type == 'dependency' or source_type == 'extracted-dependency':
+            elif source_type in ('dependency', 'extracted-dependency'):
                 pass  # this is handled by a build task dependency
             else:
                 abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=suite)
@@ -2688,7 +2687,7 @@ class LayoutDistribution(AbstractDistribution):
         if source not in self._source_location_cache:
             source_dict = LayoutDistribution._as_source_dict(source, self.name, "??", self.path_substitutions, self.string_substitutions, self, self)
             source_type = source_dict['source_type']
-            if source_type == 'dependency' or source_type == 'extracted-dependency':
+            if source_type in ('dependency', 'extracted-dependency'):
                 dep = source_dict['dependency']
                 if source_dict['path'] is None:
                     found_dest = []
@@ -2905,7 +2904,6 @@ class Project(Dependency):
         Generates an Eclipse project configuration for this project if Eclipse
         supports projects of this type.
         """
-        pass
 
     def is_test_project(self):
         return self.testProject
@@ -3797,7 +3795,6 @@ class JavaCompiler:
         :param dict daemons: map from name to `CompilerDaemon` into which new daemons should be registered
         :param list compileArgs: the value bound to the `args` parameter when calling `compile`
         """
-        pass
 
     def compile(self, jdk, args):
         """
@@ -3817,7 +3814,7 @@ class JavacLikeCompiler(JavaCompiler):
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-d', outputDir]
         compliance = project.javaCompliance
-        if self.jdk.javaCompliance.value > 8 and compliance.value <= 8:
+        if self.jdk.javaCompliance.value > 8 and compliance.value <= 8: # pylint: disable=chained-comparison
             # Ensure classes from dependencies take precedence over those in the JDK image.
             javacArgs.append('-Xbootclasspath/p:' + classPath)
         else:
@@ -5897,7 +5894,7 @@ class HgConfig(VC):
     def incoming(self, vcdir, abortOnError=True):
         out = OutputCapture()
         rc = self.run(['hg', '-R', vcdir, 'incoming'], nonZeroIsFatal=False, out=out)
-        if rc == 0 or rc == 1:
+        if rc in (0, 1):
             return out.data
         else:
             if abortOnError:
@@ -5910,7 +5907,7 @@ class HgConfig(VC):
         if dest:
             cmd.append(dest)
         rc = self.run(cmd, nonZeroIsFatal=False, out=out)
-        if rc == 0 or rc == 1:
+        if rc in (0, 1):
             return out.data
         else:
             if abortOnError:
@@ -6129,7 +6126,7 @@ class GitConfig(VC):
             print('{0}'.format(" ".join(args)))
         out = OutputCapture()
         rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
-        if rc == 0 or rc == 1:
+        if rc in (0, 1):
             return out.data
         else:
             if abortOnError:
@@ -6474,7 +6471,7 @@ class GitConfig(VC):
         if path:
             cmd.extend(['--', path])
         rc = self.run(cmd, nonZeroIsFatal=False, cwd=vcdir, out=out)
-        if rc == 0 or rc == 1:
+        if rc in (0, 1):
             return out.data
         else:
             if abortOnError:
@@ -7017,18 +7014,14 @@ class BinaryVC(VC):
     def root(self, directory, abortOnError=True):
         if abortOnError:
             abort("A binary VC has no 'root'")
-        return None
 
     def active_branch(self, vcdir, abortOnError=True):
         if abortOnError:
             abort("A binary VC has no active branch")
-        return None
 
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         if abortOnError:
             abort("A binary VC has no branch")
-        return None
-
 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
@@ -7967,7 +7960,6 @@ class SuiteModel:
 
     def verify_imports(self, suites, args):
         """Ensure that the imports are consistent."""
-        pass
 
     def _check_exists(self, suite_import, path, check_alternate=True):
         if check_alternate and suite_import.urlinfos is not None and not exists(path):
@@ -9140,7 +9132,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
         if not dry_run:
             warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
-    elif conflict_resolution == 'latest' or conflict_resolution == 'latest_all':
+    elif conflict_resolution in ('latest', 'latest_all'):
         if not existingSuite:
             return None # can not resolve at the moment
         if existingSuite.vc.kind != otherImport.kind:
@@ -9762,7 +9754,6 @@ class Timer():
     def __exit__(self, t, value, traceback):
         elapsed = time.time() - self.start
         print('{} took {} seconds'.format(self.name, elapsed))
-        return None
 
 def get_os():
     """
@@ -11891,7 +11882,7 @@ class JDKConfig(Comparable):
 
             keyword = lines[0]
             setattr(self, '.transitiveRequiresKeyword', keyword)
-            assert keyword == 'transitive' or keyword == 'public'
+            assert keyword in ('transitive', 'public')
 
             for line in lines[1:]:
                 parts = line.strip().split()
@@ -12360,7 +12351,7 @@ def _attempt_download(url, path, jarEntryName=None):
             if progress:
                 sys.stdout.write('\n')
 
-            if length != -1 and length != bytesRead:
+            if length not in (-1, bytesRead):
                 log_error('Download of {} truncated: read {} of {} bytes.'.format(url, bytesRead, length))
                 return "retry"
 
@@ -13034,6 +13025,10 @@ pylint_ver_map = {
     },
     (1, 9): {
         'rcfile': '.pylintrc19',
+        'additional_options': ['--score=n']
+    },
+    (2, 2): {
+        'rcfile': '.pylintrc22',
         'additional_options': ['--score=n']
     }
 }
@@ -15580,7 +15575,7 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
 def intellij_read_sdks():
     sdks = dict()
     os_type = get_os()
-    if os_type == "linux" or os_type == "openbsd" or os_type == "solaris" or os_type == "windows":
+    if os_type in ('linux', 'openbsd', 'solaris', 'windows'):
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
     elif os_type == "darwin":
