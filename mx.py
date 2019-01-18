@@ -18995,7 +18995,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.203.0")  # GR-13290: URL of maven-deployed artifacts
+version = VersionSpec("5.204.0")  # [GR-13380] Fix maven deployment for windows-amd64.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
