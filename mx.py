@@ -7681,10 +7681,11 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                 if repo == maven_local_repository():
                     log("Installing dummy {}".format(full_maven_name))
                     # Allow installing local dummy platform dependend artifacts for other platforms
-                    with tempfile.NamedTemporaryFile('w', suffix='.tar.gz') as foreign_platform_dummy_tarball:
-                        with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
-                            arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
-                        _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+                    foreign_platform_dummy_tarball = tempfile.NamedTemporaryFile('w', suffix='.tar.gz', delete=False)
+                    foreign_platform_dummy_tarball.close()
+                    with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
+                        arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
+                    _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
                 else:
                     logv("Skip deploying {}".format(full_maven_name))
             else:
@@ -11220,6 +11221,8 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
 
 
     mavenCommand = 'mvn'
+    if get_os() == 'windows':
+        mavenCommand += '.cmd'
     mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
