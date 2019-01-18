@@ -7686,6 +7686,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                     with Archiver(foreign_platform_dummy_tarball.name, kind='tgz') as arc:
                         arc.add_str("Dummy artifact {} for local maven install\n".format(full_maven_name), full_maven_name + ".README", None)
                     _deploy_binary_maven(dist.suite, dist.maven_artifact_id(platform), dist.maven_group_id(), foreign_platform_dummy_tarball.name, versionGetter(dist.suite), repo, settingsXml=settingsXml, extension=dist.remoteExtension(), dryRun=dryRun)
+                    os.unlink(foreign_platform_dummy_tarball.name)
                 else:
                     logv("Skip deploying {}".format(full_maven_name))
             else:
