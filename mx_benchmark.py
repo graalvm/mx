@@ -494,7 +494,8 @@ class BaseRule(Rule):
                     else:
                         raise RuntimeError("Cannot handle object '{0}' of expected type {1}".format(v, vtype))
                 if not isinstance(inst, (str, int, float, bool)):
-                    raise RuntimeError("Object '{0}' has unknown type: {1}".format(inst, type(inst)))
+                    if type(inst).__name__ != 'long': # Python2: int(x) can result in a long
+                        raise RuntimeError("Object '{}' has unknown type: {}".format(inst, type(inst)))
                 datapoint[key] = inst
             datapoints.append(datapoint)
         return datapoints
