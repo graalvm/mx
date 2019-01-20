@@ -18996,7 +18996,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.1")  # [GR-13380] Fix maven deployment for windows-amd64 (with cleanup).
+version = VersionSpec("5.204.2")  # [GR-13411] handle int(x) overflowing to long on python2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
