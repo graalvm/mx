@@ -18674,7 +18674,20 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         return True
 
     try:
-        dynamic_imports_added = False
+        dynamic_imports_added = [False]
+
+        def _maybe_add_dynamic_imports():
+            if not worklist and not dynamic_imports_added[0]:
+                for name, in_subdir in get_dynamic_imports():
+                    if name not in discovered:
+                        primary.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
+                        worklist.append((primary.name, name))
+                        _log_discovery("Adding {}->{} dynamic import".format(primary.name, name))
+                    else:
+                        _log_discovery("Skipping {}->{} dynamic import (already imported)".format(primary.name, name))
+                dynamic_imports_added[0] = True
+
+        _maybe_add_dynamic_imports()
         while worklist:
             importing_suite_name, imported_suite_name = worklist.popleft()
             importing_suite = discovered[importing_suite_name]
@@ -18723,15 +18736,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
                         _log_discovery("{} was already at the right revision: {} (`update_existing` mode)".format(discovered_suite.vc_dir, suite_import.version))
                 else:
                     _add_discovered_suite(discovered_suite, importing_suite.name)
-            if not worklist and not dynamic_imports_added:
-                for name, in_subdir in get_dynamic_imports():
-                    if name not in discovered:
-                        primary.suite_imports.append(SuiteImport(name, version=None, urlinfos=None, dynamicImport=True, in_subdir=in_subdir))
-                        worklist.append((primary.name, name))
-                        _log_discovery("Adding {}->{} dynamic import".format(primary.name, name))
-                    else:
-                        _log_discovery("Skipping {}->{} dynamic import (already imported)".format(primary.name, name))
-                dynamic_imports_added = True
+            _maybe_add_dynamic_imports()
     except SystemExit as se:
         cloned_during_discovery = [d for d, (t, _) in original_version.items() if t == VersionType.CLONED]
         if cloned_during_discovery:
@@ -18996,7 +19001,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.2")  # [GR-13411] handle int(x) overflowing to long on python2
+version = VersionSpec("5.204.3")  # GR-13449
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
