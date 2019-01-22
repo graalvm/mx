@@ -218,7 +218,7 @@ def no_suite_discovery(func):
     _no_suite_discovery.append(func.__name__)
     return func
 
-import mx_findbugs
+import mx_spotbugs
 import mx_sigtest
 import mx_gate
 import mx_jackpot
@@ -18120,7 +18120,7 @@ def list_commands(l):
     return _mx_commands.list_commands(l)
 
 _build_commands = ['ideinit', 'build', 'unittest', 'gate', 'clean']
-_style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'findbugs', 'eclipseformat']
+_style_check_commands = ['canonicalizeprojects', 'checkheaders', 'checkstyle', 'spotbugs', 'eclipseformat']
 _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 
@@ -18144,7 +18144,8 @@ update_commands("mx", {
     'exportlibs': [exportlibs, ''],
     'verifymultireleaseprojects' : [verifyMultiReleaseProjects, ''],
     'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
-    'findbugs': [mx_findbugs.findbugs, ''],
+    'findbugs': [mx_spotbugs.spotbugs, ''],
+    'spotbugs': [mx_spotbugs.spotbugs, ''],
     'findclass': [findclass, ''],
     'fsckprojects': [fsckprojects, ''],
     'gate': [mx_gate.gate, '[options]'],
@@ -19041,7 +19042,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.210.1")  # sonarqube-upload fix
+version = VersionSpec("5.210.2")  # GR-13337 Upgrade to latest spotbugs (findbugs).
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

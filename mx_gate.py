@@ -44,7 +44,7 @@ class Tags:
     style = 'style'         # code style checks (without build)
     build = 'build'         # build
     ecjbuild = 'ecjbuild'   # build with ecj only
-    fullbuild = 'fullbuild' # full build (including warnings, findbugs and ide init)
+    fullbuild = 'fullbuild' # full build (including warnings, spotbugs and ide init)
 
 """
 Context manager for a single gate task that can prevent the
@@ -543,8 +543,8 @@ def _run_gate(cleanArgs, args, tasks):
         if t and mx.command_function('checkstyle')(['--primary']) != 0:
             t.abort('Checkstyle warnings were found')
 
-    with Task('FindBugs', tasks, tags=[Tags.fullbuild]) as t:
-        if t and mx.command_function('findbugs')([]) != 0:
+    with Task('SpotBugs', tasks, tags=[Tags.fullbuild]) as t:
+        if t and mx.command_function('spotbugs')([]) != 0:
             t.abort('FindBugs warnings were found')
 
     with Task('VerifyLibraryURLs', tasks, tags=[Tags.fullbuild]) as t:
