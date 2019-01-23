@@ -8823,21 +8823,22 @@ class Suite(object):
         pd = attrs.pop('platformDependent', False)
         platformDependent = bool(os_arch) or pd
         testDistribution = attrs.pop('testDistribution', None)
+        path = attrs.pop('path', None)
+        layout = attrs.pop('layout', None)
         if className:
             if not self.extensions or not hasattr(self.extensions, className):
                 abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
             d = getattr(self.extensions, className)(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
         elif native:
-            path = attrs.pop('path', None)
-            layout = attrs.pop('layout', None)
-            if layout:
+            if layout is not None:
                 d = LayoutTARDistribution(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
             else:
                 relpath = attrs.pop('relpath', False)
                 output = attrs.pop('output', None)
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
+        elif layout is not None:
+            d = LayoutJARDistribution(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
         else:
-            path = attrs.pop('path', None)
             subDir = attrs.pop('subDir', None)
             sourcesPath = attrs.pop('sourcesPath', None)
             if sourcesPath == "<unified>":
@@ -19001,7 +19002,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.3")  # GR-13449
+version = VersionSpec("5.204.4")  # GR-13474
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
