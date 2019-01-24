@@ -14076,7 +14076,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
         deps = []
     javaProjects = [p for p in suite.projects if p.isJavaProject()]
     if len(javaProjects) == 0:
-        return None
+        return None, None
 
     slm, sources = _source_locator_memento(deps, jdk=jdk)
     # Without an entry for the "Project:" field in an attach configuration, Eclipse Neon has problems connecting
