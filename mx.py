@@ -14074,10 +14074,14 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
     if deps is None:
         deps = []
+    javaProjects = [p for p in suite.projects if p.isJavaProject()]
+    if len(javaProjects) == 0:
+        return None
+
     slm, sources = _source_locator_memento(deps, jdk=jdk)
     # Without an entry for the "Project:" field in an attach configuration, Eclipse Neon has problems connecting
     # to a waiting VM and leaves it hanging. Putting any valid project entry in the field seems to solve it.
-    firstProjectName = [p for p in suite.projects if p.isJavaProject()][0].name if suite.projects else ''
+    firstProjectName = javaProjects[0].name
 
     launch = XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
@@ -14658,7 +14662,8 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
 
     jdk = get_jdk(tag='default')
     _, launchFile = make_eclipse_attach(s, 'localhost', '8000', deps=dependencies(), jdk=jdk)
-    files.append(launchFile)
+    if launchFile:
+        files.append(launchFile)
 
     # Create an Eclipse project for each distribution that will create/update the archive
     # for the distribution whenever any (transitively) dependent project of the
@@ -19002,7 +19007,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.4")  # GR-13474
+version = VersionSpec("5.204.5")  # GR-13504
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
