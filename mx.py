@@ -14076,7 +14076,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
         deps = []
     javaProjects = [p for p in suite.projects if p.isJavaProject()]
     if len(javaProjects) == 0:
-        return None
+        return None, None
 
     slm, sources = _source_locator_memento(deps, jdk=jdk)
     # Without an entry for the "Project:" field in an attach configuration, Eclipse Neon has problems connecting
@@ -19007,7 +19007,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.5")  # GR-13504
+version = VersionSpec("5.204.6")  # make_eclipse_attach
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
