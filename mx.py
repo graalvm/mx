@@ -11229,6 +11229,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     mavenCommand = 'mvn'
     if get_os() == 'windows':
         mavenCommand += '.cmd'
+        extra_args += ['--batch-mode'] # prevent maven to color output
     mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
