@@ -11211,7 +11211,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     host, port = _parse_http_proxy(["HTTPS_PROXY", "https_proxy"])
     add_proxy_property('https.proxyHost', host)
     add_proxy_property('https.proxyPort', port)
-    add_proxy_property('http.nonProxyHosts', _java_no_proxy())
+    java_no_proxy = _java_no_proxy()
+    if get_os() == 'windows':
+        # Prevent Windows from getting confused by use of `|` as separator
+        java_no_proxy = '"' + java_no_proxy.replace('|', '^|') + '"'
+    add_proxy_property('http.nonProxyHosts', java_no_proxy)
 
     extra_args = []
     if proxyArgs:
@@ -11225,6 +11229,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     mavenCommand = 'mvn'
     if get_os() == 'windows':
         mavenCommand += '.cmd'
+        extra_args += ['--batch-mode'] # prevent maven to color output
     mavenHome = get_env('MAVEN_HOME')
     if mavenHome:
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
@@ -19007,7 +19012,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.204.6")  # make_eclipse_attach
+version = VersionSpec("5.205.0")  # [GR-13531] Fix running maven commands on Windows.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
