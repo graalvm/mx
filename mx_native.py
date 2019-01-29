@@ -107,7 +107,7 @@ class Ninja(object):
             os.chmod(self.binary, 0o755)
             self._run(*args, **kwargs)  # retry
         else:
-            not rc or mx.abort(rc)  # pylint: disable=expression-not-assigned
+            not rc or mx.abort(rc if mx.get_opts().verbose else out.data)  # pylint: disable=expression-not-assigned
 
 
 class NinjaProject(mx.AbstractNativeProject):
@@ -313,6 +313,30 @@ class NinjaManifestGenerator(object):
 
         return build
 
+    def asm_rule(self):
+        assert mx.get_os() == 'windows'
+
+        self.n.rule('cpp',
+                    command='cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out',
+                    description='CPP $out',
+                    deps='msvc')
+        self.newline()
+
+        self.n.rule('asm',
+                    command='ml64 -nologo -Fo$out -c $in',
+                    description='ASM $out')
+        self.newline()
+
+        def preprocessed(source_file):
+            output = os.path.splitext(source_file)[0] + '.asm'
+            return self.n.build(output, 'cpp', self._resolve(source_file))[0]
+
+        def build(source_file):
+            output = os.path.splitext(source_file)[0] + '.obj'
+            return self.n.build(output, 'asm', preprocessed(source_file))[0]
+
+        return build
+
     def ar_rule(self):
         if mx.get_os() == 'windows':
             command = 'lib -nologo -out:$out $in'
@@ -446,27 +470,35 @@ class DefaultNativeProject(NinjaProject):
         if self._kind == self._kinds['shared_lib']:
             default_ldflags += dict(
                 darwin=['-dynamiclib', '-undefined', 'dynamic_lookup'],
-                windows=['-DLL'],
+                windows=['-dll'],
             ).get(mx.get_os(), ['-shared', '-fPIC'])
 
         return default_ldflags + super(DefaultNativeProject, self).ldflags
+
+    @property
+    def h_files(self):
+        return self._source['files']['.h']
 
     @property
     def c_files(self):
         return self._source['files']['.c']
 
     @property
-    def h_files(self):
-        return self._source['files']['.h']
+    def asm_sources(self):
+        return self._source['files']['.S']
 
     def generate_manifest(self, path):
-        unsupported_source_files = list(self._source['files'].viewkeys() - {'.c', '.h'})
+        unsupported_source_files = list(self._source['files'].viewkeys() - {'.h', '.c', '.S'})
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
             gen.comment('Project rules')
-            cc = gen.cc_rule()
+            cc = asm = None
+            if self.c_files:
+                cc = gen.cc_rule()
+            if self.asm_sources:
+                asm = gen.asm_rule() if mx.get_os() == 'windows' else cc if cc else gen.cc_rule()
 
             ar = link = None
             if self._kind == self._kinds['static_lib']:
@@ -479,6 +511,8 @@ class DefaultNativeProject(NinjaProject):
 
             gen.comment('Compiled project sources')
             object_files = [cc(f) for f in self.c_files]
+            gen.newline()
+            object_files += [asm(f) for f in self.asm_sources]
             gen.newline()
 
             gen.comment('Project deliverable')
