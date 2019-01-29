@@ -963,7 +963,7 @@ class BuildTask(object):
         else:
             self.logSkip(reason)
 
-    def logBuild(self, reason):
+    def logBuild(self, reason=None):
         if reason:
             log('{}... [{}]'.format(self, reason))
         else:
@@ -972,7 +972,7 @@ class BuildTask(object):
     def logClean(self):
         log('Cleaning {}...'.format(self.subject.name))
 
-    def logSkip(self, reason):
+    def logSkip(self, reason=None):
         if reason:
             logv('[{} - skipping {}]'.format(reason, self.subject.name))
         else:
@@ -4962,10 +4962,10 @@ class NoOpTask(BuildTask):
     def __str__(self):
         return "NoOp"
 
-    def logBuild(self, reason):
+    def logBuild(self, reason=None):
         pass
 
-    def logSkip(self, reason):
+    def logSkip(self, reason=None):
         pass
 
     def needsBuild(self, newestInput):
@@ -5201,10 +5201,10 @@ class LibraryDownloadTask(BuildTask):
     def __str__(self):
         return "Downloading {}".format(self.subject.name)
 
-    def logBuild(self, reason):
+    def logBuild(self, reason=None):
         pass
 
-    def logSkip(self, reason):
+    def logSkip(self, reason=None):
         pass
 
     def needsBuild(self, newestInput):
