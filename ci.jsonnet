@@ -98,7 +98,7 @@ python3 = {
 
 {
   # Overlay
-  java8: {name: 'labsjdk', version: "8u192-jvmci-0.53", platformspecific: true},
+  java8: {name: 'labsjdk', version: "8u192-jvmci-0.54", platformspecific: true},
   java11: {name: 'oraclejdk', version: "11+28", platformspecific: true},
   overlay: '77252e5678acc8ddeafe7ef6a34f4bf44518b64d',
 

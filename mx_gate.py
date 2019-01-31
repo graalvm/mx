@@ -469,6 +469,10 @@ def _run_gate(cleanArgs, args, tasks):
                     with open(release) as fp:
                         mx.log(fp.read().strip())
 
+    with Task('VerifyMultiReleaseProjects', tasks, tags=[Tags.always]) as t:
+        if t:
+            mx.command_function('verifymultireleaseprojects')([])
+
     for suiteRunner in _pre_gate_runners:
         suite, runner = suiteRunner
         if args.all_suites or suite is mx.primary_suite():
