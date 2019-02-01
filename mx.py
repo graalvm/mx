@@ -9020,8 +9020,6 @@ class Suite(object):
         self._init_metadata()
         self.visit_imports(Suite._resolve_dependencies_visitor)
         self._resolve_dependencies()
-        if _opts.verbose:
-            self._verify_multirelease_projects()
         self.visit_imports(Suite._post_init_visitor)
         self._post_init()
 
@@ -9216,11 +9214,6 @@ class SourceSuite(Suite):
         super(SourceSuite, self)._resolve_dependencies()
         for d in self.projects:
             d.resolveDeps()
-
-    def _verify_multirelease_projects(self):
-        for d in self.projects:
-            if hasattr(d, 'multiReleaseJarVersion') or hasattr(d, 'overlayTarget'):
-                d.get_overlay_flatten_map()
 
     def version(self, abortOnError=True):
         """
@@ -13868,6 +13861,15 @@ def _parse_multireleasejar_version(value):
     except ValueError:
         raise ArgumentTypeError('multi-release jar version ({}) must be an int value greater than 8'.format(value))
 
+def verifyMultiReleaseProjects(args):
+    """verifies properties of multi-release projects"""
+    for p in projects():
+        if hasattr(p, 'multiReleaseJarVersion') or hasattr(p, 'overlayTarget'):
+            compat = p.suite.getMxCompatibility()
+            if compat.verify_multirelease_projects():
+                # This will abort if there's an error in getting the map
+                p.get_overlay_flatten_map()
+
 def flattenMultiReleaseSources(args):
     """print map for flattening multi-release sources
 
@@ -18116,6 +18118,7 @@ update_commands("mx", {
     'eclipseinit': [eclipseinit_cli, ''],
     'envs': [show_envs, '[options]'],
     'exportlibs': [exportlibs, ''],
+    'verifymultireleaseprojects' : [verifyMultiReleaseProjects, ''],
     'flattenmultireleasesources' : [flattenMultiReleaseSources, 'version'],
     'findbugs': [mx_findbugs.findbugs, ''],
     'findclass': [findclass, ''],
@@ -19012,7 +19015,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.206.0")  # GR-13527
+version = VersionSpec("5.206.1")  # GR-13659
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

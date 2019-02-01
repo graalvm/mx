@@ -176,6 +176,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def verify_multirelease_projects(self):
+        """
+        Should multi-release projects be verified (see mx.verifyMultiReleaseProjects).
+        """
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -391,6 +397,14 @@ class MxCompatibility51951(MxCompatibility51950):  # pylint: disable=too-many-an
         return mx.VersionSpec("5.195.1")
 
     def check_checkstyle_config(self):
+        return True
+
+class MxCompatibility52061(MxCompatibility51951):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.206.1")
+
+    def verify_multirelease_projects(self):
         return True
 
 def minVersion():
