@@ -747,6 +747,18 @@ public class CheckCopyright {
         return result;
     }
 
+    private static String getFileContent(byte[] fileContentBytes) {
+        String fileContent = new String(fileContentBytes);
+        if (fileContent.charAt(fileContent.length() - 1) != '\n') {
+            /*
+             * If the file does not end with a newline, the DOTALL does not work. Although files
+             * should have a trailing newline, it is not the copyright checkers job to ensure this.
+             */
+            return fileContent + '\n';
+        }
+        return fileContent;
+    }
+
     private static void checkFile(Info info) throws IOException {
         String fileName = info.fileName;
         File file = new File(fileName);
@@ -759,11 +771,8 @@ public class CheckCopyright {
         FileInputStream is = new FileInputStream(file);
         is.read(fileContentBytes);
         is.close();
-        final String fileContent = new String(fileContentBytes);
+        final String fileContent = getFileContent(fileContentBytes);
         CopyrightHandler copyrightHandler = CopyrightHandler.getCopyrightHandler(fileName);
-        if (file.getName().equals("Makefile")) {
-            System.console();
-        }
         if (copyrightHandler != null) {
             Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);
             if (copyrightMatcher.matches()) {
