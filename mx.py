@@ -2330,7 +2330,7 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['exclude'] = [source_dict['exclude']]
         if path_substitutions and source_dict.get("path"):
             source_dict["path"] = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
-        if string_substitutions and source_dict.get("value"):
+        if string_substitutions and source_dict.get("value") and not source_dict.get("ignore_value_subst"):
             source_dict["value"] = mx_subst.as_engine(string_substitutions).substitute(source_dict["value"], distribution=distribution_object)
         return source_dict
 
@@ -19015,7 +19015,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.206.2")  # fix copyrightchecker newlines
+version = VersionSpec("5.207.0")  # GR-12499
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
