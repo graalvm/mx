@@ -4279,6 +4279,12 @@ def _merge_file_contents(input_files, output_file):
 
 
 class AbstractNativeProject(Project):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, **kwargs):
+        context = 'project ' + name
+        self.buildDependencies = Suite._pop_list(kwargs, 'buildDependencies', context)
+        super(AbstractNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
+                                                    **kwargs)
+
     def isPlatformDependent(self):
         return True
 
@@ -4296,7 +4302,7 @@ class NativeProject(AbstractNativeProject):
       buildEnv: a dictionary of custom environment variables that are passed to the `make` process
     """
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
-        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
+        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath

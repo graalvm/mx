@@ -143,11 +143,11 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, **kwargs):
         context = 'project ' + name
-        self.buildDependencies = mx.Suite._pop_list(kwargs, 'buildDependencies', context) + self._ninja_deps
         self._cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
         self._ldflags = mx.Suite._pop_list(kwargs, 'ldflags', context)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
                                            **kwargs)
+        self.buildDependencies += self._ninja_deps
         self.out_dir = self.get_output_root()
 
     @lazy_class_default
