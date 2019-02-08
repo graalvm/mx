@@ -12361,7 +12361,7 @@ def _attempt_download(url, path, jarEntryName=None):
             conn = _urlopen(url, timeout=10)
 
             # Not all servers support the "Content-Length" header
-            lengthHeader = conn.info().getheader('Content-Length')
+            lengthHeader = conn.headers.get('Content-Length')
             length = int(lengthHeader.strip()) if lengthHeader else -1
 
             bytesRead = 0
