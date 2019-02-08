@@ -141,12 +141,11 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
             Flags used during linking step.
     """
 
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, **kwargs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
         context = 'project ' + name
         self._cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
         self._ldflags = mx.Suite._pop_list(kwargs, 'ldflags', context)
-        super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
-                                           **kwargs)
+        super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         self.buildDependencies += self._ninja_deps
         self.out_dir = self.get_output_root()
 
@@ -448,12 +447,11 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         ),
     )
 
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, kind, **kwargs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         if srcDirs:
             mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
-        super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
-                                                   **kwargs)
+        super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         try:
             self._kind = self._kinds[kind]
         except KeyError:

@@ -4279,7 +4279,7 @@ def _merge_file_contents(input_files, output_file):
 
 
 class AbstractNativeProject(Project):
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, **kwargs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense=None, **kwargs):
         context = 'project ' + name
         self.buildDependencies = Suite._pop_list(kwargs, 'buildDependencies', context)
         super(AbstractNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
@@ -9350,8 +9350,8 @@ class SourceSuite(Suite):
                                               theLicense=theLicense, testProject=testProject, **attrs)
                         else:
                             from mx_native import DefaultNativeProject
-                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, theLicense,
-                                                     kind=native, testProject=testProject, **attrs)
+                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, kind=native,
+                                                     theLicense=theLicense, testProject=testProject, **attrs)
                     else:
                         javaCompliance = attrs.pop('javaCompliance', None)
                         if javaCompliance is None:
