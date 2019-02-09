@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2018, 2018, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -177,6 +177,26 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
             sys.path.append(module_path)
 
         return deps
+
+    def resolveDeps(self):
+        super(NinjaProject, self).resolveDeps()
+        if any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
+            self.buildDependencies += [self._jdk_dep]
+
+    @lazy_class_default
+    def _jdk_dep(cls):  # pylint: disable=no-self-argument
+        class JavaHome(NativeDependency):
+            def __init__(self, jdk):
+                super(JavaHome, self).__init__(mx.suite('mx'), 'JAVA_HOME=' + jdk.home, None)
+                self.include_dirs = jdk.include_dirs
+
+            def getBuildTask(self, args):
+                return mx.NoOpTask(self, args)
+
+            def _walk_deps_visit_edges(self, *args, **kwargs):
+                pass
+
+        return JavaHome(mx.get_jdk(tag=mx.DEFAULT_JDK_TAG))
 
     def getBuildTask(self, args):
         return NinjaBuildTask(args, self)
@@ -459,7 +479,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
     )
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
-        self._deliverable = kwargs.pop('deliverable', name.split('.')[-1])
+        self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
         if srcDirs:
             mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
@@ -479,7 +499,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
     @property
     def _target(self):
-        return self._kind['target'](self._deliverable)
+        return self._kind['target'](self.deliverable)
 
     @property
     def cflags(self):

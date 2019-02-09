@@ -11662,6 +11662,8 @@ class JDKConfig(Comparable):
         self.javap = exe_suffix(join(self.home, 'bin', 'javap'))
         self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
         self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
+        self.include_dirs = [join(self.home, 'include'),
+                             join(self.home, 'include', 'win32' if get_os() == 'windows' else get_os())]
         self.toolsjar = join(self.home, 'lib', 'tools.jar')
         if not exists(self.toolsjar):
             self.toolsjar = None
