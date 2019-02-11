@@ -139,12 +139,15 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
             Flags used during compilation step.
         ldflags : list of str, optional
             Flags used during linking step.
+        ldlibs : list of str, optional
+            Flags used during linking step.
     """
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
         context = 'project ' + name
         self._cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
         self._ldflags = mx.Suite._pop_list(kwargs, 'ldflags', context)
+        self._ldlibs = mx.Suite._pop_list(kwargs, 'ldlibs', context)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         self.buildDependencies += self._ninja_deps
         self.out_dir = self.get_output_root()
@@ -189,6 +192,10 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
     @property
     def ldflags(self):
         return self._ldflags
+
+    @property
+    def ldlibs(self):
+        return self._ldlibs
 
     @property
     def source_tree(self):
@@ -360,9 +367,9 @@ class NinjaManifestGenerator(object):
 
     def link_rule(self):
         if mx.get_os() == 'windows':
-            command = 'link -nologo $ldflags -out:$out $in'
+            command = 'link -nologo $ldflags -out:$out $in $ldlibs'
         else:
-            command = 'gcc $ldflags -o $out $in'
+            command = 'gcc $ldflags -o $out $in $ldlibs'
 
         self.n.rule('link',
                     command=command,
@@ -522,7 +529,11 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
             else:
                 link = gen.link_rule()
 
-            gen.variables(cflags=self.cflags, ldflags=self.ldflags if link else None)
+            gen.variables(
+                cflags=self.cflags,
+                ldflags=self.ldflags if link else None,
+                ldlibs=self.ldlibs if link else None,
+            )
             gen.include(collections.OrderedDict.fromkeys(
                 # remove the duplicates while maintaining the ordering
                 [mx.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
