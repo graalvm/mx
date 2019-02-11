@@ -17724,8 +17724,9 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
     parser = ArgumentParser(prog='mx verify-ci')
     parser.add_argument('-s', '--sync', action='store_true', help='synchronize with graal configuration')
     parser.add_argument('-q', '--quiet', action='store_true', help='Only produce output if something is changed')
-
     args = parser.parse_args(args)
+
+    common_dirs = common_dirs or []
 
     def _handle_error(msg, base_file, dest_file):
         if args.sync:
@@ -17733,9 +17734,9 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
             shutil.copy(base_file, dest_file)
         else:
             log(msg + ": " + os.path.normpath(dest_file))
-            log("Try synchronizing the following directories:")
-            log("  " + base_dir)
-            log("  " + dest_dir)
+            log("Try synchronizing:")
+            log("  " + base_file)
+            log("  " + dest_file)
             log("Or execute 'mx verify-ci' with the  '--sync' option.")
             abort(1)
 
@@ -17746,7 +17747,7 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
         return s1[:l]
 
     def _verify_file(base_file, dest_file):
-        if not os.path.isfile(dest_file):
+        if not os.path.isfile(base_file) or not os.path.isfile(dest_file):
             _handle_error('Common CI file not found', base_file, dest_file)
         if not filecmp.cmp(base_file, dest_file):
             _handle_error('Common CI file mismatch', base_file, dest_file)
