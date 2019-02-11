@@ -18909,8 +18909,9 @@ def main():
             # are seen.  The primary suite must have everything required for loading
             # defined.
             SourceSuite._load_env_in_mxDir(primarySuiteMxDir)
-            if _opts.additional_env:
-                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=_opts.additional_env, abort_if_missing=True)
+            additional_env = _opts.additional_env or get_env('MX_ENV_PATH')
+            if additional_env:
+                SourceSuite._load_env_in_mxDir(primarySuiteMxDir, file_name=additional_env, abort_if_missing=True)
 
             _setup_binary_suites()
             if should_discover_suites:
@@ -19017,7 +19018,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.208.0")  # sonarqube-upload
+version = VersionSpec("5.209.0")  # GR-13837 env var for env file
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
