@@ -375,7 +375,17 @@ suite = {
       "version" : "1.7.2",
       "urls" : ["https://pypi.org/packages/source/n/ninja_syntax/ninja_syntax-{version}.tar.gz"],
       "sha1" : "702ca2d0ae93841c5ab75e4d119b29780ec0b7d9"
-    }
+    },
+
+    "SONARSCANNER_CLI_3_3_0_1492": {
+      "sha1": "9116a2763e257dbc0251c18cd7dd975c588f0169",
+      "maven": {
+        "groupId": "org.sonarsource.scanner.cli",
+        "artifactId": "sonar-scanner-cli",
+        "version": "3.3.0.1492",
+      },
+      "licence": "LGPLv30",
+    },
   },
 
   "licenses" : {
@@ -394,6 +404,10 @@ suite = {
     "LGPLv21" : {
       "name" : "GNU Lesser General Public License, version 2.1",
       "url" : "http://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"
+    },
+    "LGPLv30": {
+      "name": "GNU Lesser General Public License, version 3.0",
+      "url": "http://www.gnu.org/licenses/lgpl-3.0.en.html"
     },
     "MIT" : {
       "name" : "MIT License",

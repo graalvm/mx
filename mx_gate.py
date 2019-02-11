@@ -551,7 +551,7 @@ def _run_gate(cleanArgs, args, tasks):
         if t:
             mx.command_function('verifylibraryurls')([])
 
-    jacoco_exec = 'jacoco.exec'
+    jacoco_exec = JACOCO_EXEC
     if exists(jacoco_exec):
         os.unlink(jacoco_exec)
 
@@ -585,6 +585,9 @@ def checkheaders(args):
     mx.log('The checkheaders command is obsolete.  The checkstyle or checkcopyrights command performs\n'\
            'the required checks depending on the mx configuration.')
     return 0
+
+
+JACOCO_EXEC = 'jacoco.exec'
 
 _jacoco = 'off'
 
@@ -654,7 +657,7 @@ def get_jacoco_agent_args():
                         'inclbootstrapclasses' : 'true',
                         'includes' : ':'.join(includes),
                         'excludes' : ':'.join(excludes),
-                        'destfile' : 'jacoco.exec'
+                        'destfile' : JACOCO_EXEC,
         }
         return ['-javaagent:' + jacocoagent.get_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
     return None
@@ -688,7 +691,7 @@ def jacocoreport(args):
                 includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
 
     def _run_reporter(extra_args=None):
-        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', 'jacoco.exec', '--out',
+        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', JACOCO_EXEC, '--out',
                      args.output_directory, '--format', args.format] +
                     (extra_args or []) +
                     sorted(includedirs),
@@ -702,3 +705,132 @@ def jacocoreport(args):
             fp.writelines((e + "\n" for e in excludes))
             fp.flush()
             _run_reporter(['--exclude-file', fp.name])
+
+
+def _parse_java_properties(args):
+    prop_re = re.compile('-D(?P<key>[^=]+)=(?P<value>.*)')
+    remainder = []
+    java_properties = {}
+    for arg in args:
+        m = prop_re.match(arg)
+        if m:
+            java_properties[m.group('key')] = m.group('value')
+        else:
+            remainder.append(arg)
+    return java_properties, remainder
+
+
+def _jacoco_excludes_includes_projects(limit_to_primary=False):
+    includes = []
+    excludes = []
+
+    for p in mx.projects(limit_to_primary=limit_to_primary):
+        if p.isJavaProject():
+            projsetting = getattr(p, 'jacoco', '')
+            if not _jacoco_is_package_whitelisted(p.name):
+                excludes.append(p)
+            elif projsetting == 'exclude':
+                excludes.append(p)
+            elif projsetting == 'include':
+                includes.append(p)
+    return excludes, includes
+
+
+def _jacoco_exclude_classes(projects):
+    excludeClasses = {}
+
+    for p in projects:
+        r = p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeGenSrc=True)
+        excludeClasses.update(r)
+        r = p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeGenSrc=True)
+        excludeClasses.update(r)
+    return excludeClasses
+
+
+def sonarqube_upload(args):
+    """run SonarQube scanner and upload JaCoCo results"""
+
+    sonarqube_cli = mx.library("SONARSCANNER_CLI_3_3_0_1492", True)
+
+    parser = ArgumentParser(prog='mx sonarqube-upload')
+    parser.add_argument('--exclude-generated', action='store_true', help='Exclude generated source files')
+    args, sonar_args = mx.extract_VM_args(args, useDoubleDash=True, defaultAllVMArgs=True)
+    args, other_args = parser.parse_known_args(args)
+    java_props, other_args = _parse_java_properties(other_args)
+
+    def _check_required_prop(prop):
+        if prop not in java_props:
+            mx.abort("Required property '{prop}' not present. (Format is '-D{prop}=<value>')".format(prop=prop))
+
+    _check_required_prop('sonar.projectKey')
+    _check_required_prop('sonar.host.url')
+
+    basedir = mx.primary_suite().dir
+
+    # collect excluded projects
+    excludes, includes = _jacoco_excludes_includes_projects(limit_to_primary=True)
+    # collect excluded classes
+    exclude_classes = _jacoco_exclude_classes(includes)
+    java_bin = []
+    java_src = []
+    java_libs = []
+
+    def _visit_deps(dep, edge):
+        if dep.isJARDistribution() or dep.isLibrary():
+            java_libs.append(dep.classpath_repr())
+
+    mx.walk_deps(includes, visit=_visit_deps)
+
+    # collect all sources and binaries -- do exclusion later
+    for p in includes:
+        java_src.extend(p.source_dirs())
+        if not args.exclude_generated:
+            gen_dir = p.source_gen_dir()
+            if os.path.exists(gen_dir):
+                java_src.append(gen_dir)
+        java_bin.append(p.output_dir())
+
+    java_src = [os.path.relpath(s, basedir) for s in java_src]
+    java_bin = [os.path.relpath(b, basedir) for b in java_bin]
+
+    exclude_dirs = []
+    for p in excludes:
+        exclude_dirs.extend(p.source_dirs())
+        exclude_dirs.append(p.source_gen_dir())
+
+    javaCompliance = max([p.javaCompliance for p in includes])
+
+    jacoco_exec = JACOCO_EXEC
+    if not os.path.exists(jacoco_exec):
+        mx.abort('No JaCoCo report file found: ' + jacoco_exec)
+
+    def _add_default_prop(key, value):
+        if key not in java_props:
+            java_props[key] = value
+
+    # default properties
+    _add_default_prop('sonar.java.source', str(javaCompliance))
+    _add_default_prop('sonar.projectBaseDir', basedir)
+    _add_default_prop('sonar.jacoco.reportPaths', jacoco_exec)
+    _add_default_prop('sonar.sources', ','.join(java_src))
+    _add_default_prop('sonar.java.binaries', ','.join(java_bin))
+    _add_default_prop('sonar.java.libraries', ','.join(java_libs))
+    exclude_patterns = [os.path.relpath(e.dir, basedir) + '**' for e in exclude_dirs] + \
+                       list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]))
+    if exclude_patterns:
+        _add_default_prop('sonar.exclusions', ','.join(exclude_patterns))
+        _add_default_prop('sonar.coverage.exclusions', ','.join(exclude_patterns))
+    _add_default_prop('sonar.verbose', 'true' if mx._opts.verbose else 'false')
+
+    with tempfile.NamedTemporaryFile(suffix="-sonarqube.properties", mode="w+") as fp:
+        # prepare properties file
+        fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.iteritems()))
+        fp.flush()
+        # run sonarqube cli
+        java_args = other_args + ['-Dproject.settings=' + fp.name, '-jar', sonarqube_cli.get_path(True)] + sonar_args
+        exit_code = mx.run_java(java_args, nonZeroIsFatal=False)
+
+        if exit_code != 0:
+            fp.seek(0)
+            mx.abort('SonarQube scanner terminated with non-zero exit code: {}\n  Properties file:\n{}'.format(
+                exit_code, ''.join(('    ' + l for l in fp.readlines()))))
