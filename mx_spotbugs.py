@@ -68,18 +68,37 @@ def _should_test_project(p):
     return True
 
 def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs.jar'):
+    projectsToTest = [p for p in mx.projects() if _should_test_project(p)]
+    projectsByVersion = {}
+    for p in projectsToTest:
+        compat = p.suite.getMxCompatibility()
+        spotbugsVersion = compat.spotbugs_version()
+        if spotbugsVersion not in projectsByVersion:
+            projectsByVersion[spotbugsVersion] = []
+        projectsByVersion[spotbugsVersion].append(p)
+    resultcode = 0
+    for spotbugsVersion, versionProjects in projectsByVersion.items():
+        mx.logv('Running spotbugs version {} on projects {}'.format(spotbugsVersion, versionProjects))
+        resultcode = max(resultcode, _spotbugs(args, fbArgs, suite, versionProjects, spotbugsVersion))
+    return resultcode
+
+def _spotbugs(args, fbArgs, suite, projectsToTest, spotbugsVersion):
     """run FindBugs against non-test Java projects"""
     findBugsHome = mx.get_env('SPOTBUGS_HOME', mx.get_env('FINDBUGS_HOME', None))
+    if spotbugsVersion == '3.0.0':
+        jarFileName = 'findbugs.jar'
+    else:
+        jarFileName = 'spotbugs.jar'
     if suite is None:
         suite = mx.primary_suite()
     if findBugsHome:
         spotbugsJar = join(findBugsHome, 'lib', jarFileName)
     else:
-        spotbugsLib = join(mx._mx_suite.get_output_root(), 'spotbugs')
+        spotbugsLib = join(mx._mx_suite.get_output_root(), 'spotbugs-' + spotbugsVersion)
         if not exists(spotbugsLib):
             tmp = tempfile.mkdtemp(prefix='spotbugs-download-tmp', dir=mx._mx_suite.dir)
             try:
-                spotbugsDist = mx.library('SPOTBUGS_DIST').get_path(resolve=True)
+                spotbugsDist = mx.library('SPOTBUGS_' + spotbugsVersion).get_path(resolve=True)
                 with zipfile.ZipFile(spotbugsDist) as zf:
                     candidates = [e for e in zf.namelist() if e.endswith('/lib/' + jarFileName)]
                     assert len(candidates) == 1, candidates
@@ -90,7 +109,6 @@ def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs
                 shutil.rmtree(tmp)
         spotbugsJar = join(spotbugsLib, jarFileName)
     assert exists(spotbugsJar)
-    projectsToTest = [p for p in mx.projects() if _should_test_project(p)]
     if not projectsToTest:
         return 0
 

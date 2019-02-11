@@ -182,6 +182,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def spotbugs_version(self):
+        """
+        Which version of findbugs/spotbugs should be used?
+        """
+        return "3.0.0"
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -406,6 +412,14 @@ class MxCompatibility52061(MxCompatibility51951):  # pylint: disable=too-many-an
 
     def verify_multirelease_projects(self):
         return True
+
+class MxCompatibility52102(MxCompatibility52061):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.210.2")
+
+    def spotbugs_version(self):
+        return "3.1.11"
 
 def minVersion():
     _ensureCompatLoaded()
