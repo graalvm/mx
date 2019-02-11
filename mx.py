@@ -910,7 +910,7 @@ class BuildTask(object):
     """
     def execute(self):
         if self.buildForbidden():
-            self.logSkip(None)
+            self.logSkip()
             return
         buildNeeded = False
         if self.args.clean and not self.cleanForbidden():
@@ -4371,6 +4371,19 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         if not self.args.native:
             return True
         return super(AbstractNativeBuildTask, self).cleanForbidden()
+
+    def needsBuild(self, newestInput):
+        is_needed, reason = super(AbstractNativeBuildTask, self).needsBuild(newestInput)
+        if is_needed:
+            return True, reason
+
+        output = self.newestOutput()
+        if output is None:
+            return True, None
+        elif newestInput and output.isOlderThan(newestInput):
+            return True, '{} is older than {}'.format(output, newestInput)
+
+        return False, reason
 
 
 class NativeBuildTask(AbstractNativeBuildTask):

@@ -26,6 +26,7 @@ import abc
 import collections
 import errno
 import filecmp
+import itertools
 import os
 import subprocess
 import sys
@@ -110,7 +111,20 @@ class Ninja(object):
             not rc or mx.abort(rc if mx.get_opts().verbose else out.data)  # pylint: disable=expression-not-assigned
 
 
-class NinjaProject(mx.AbstractNativeProject):
+class NativeDependency(mx.Dependency):
+    """A Dependency that can be included and linked in when building native projects.
+
+    Attributes
+        include_dirs : iterable of str
+            Directories with headers provided by this dependency.
+        libs : iterable of str
+            Libraries provided by this dependency.
+    """
+    include_dirs = ()
+    libs = ()
+
+
+class NinjaProject(mx.AbstractNativeProject, NativeDependency):
     """A Project containing native code that is built using the Ninja build system.
 
     What distinguishes Ninja from other build systems is that its input files are
@@ -212,22 +226,17 @@ class NinjaBuildTask(mx.AbstractNativeBuildTask):
         return 'Building {} with Ninja'.format(self.subject.name)
 
     def needsBuild(self, newestInput):
+        is_needed, self._reason = super(NinjaBuildTask, self).needsBuild(newestInput)
+        if is_needed:
+            return True, self._reason
+
         if not mx.exists(self._manifest):
             self._reason = 'no build manifest'
             return True, self._reason
 
         mx.logv('Checking whether to build {} with Ninja...'.format(self.subject.name))
-
         is_needed, self._reason = self.ninja.needs_build()
-        if is_needed:
-            return True, self._reason
-
-        is_forced, reason = super(NinjaBuildTask, self).needsBuild(newestInput)
-        if is_forced:
-            self._reason = reason
-            return True, self._reason
-
-        return False, self._reason
+        return is_needed, self._reason
 
     def newestOutput(self):
         return mx.TimeStampFile.newest([mx.join(self.subject.out_dir, self.subject._target)])
@@ -401,7 +410,7 @@ class NinjaManifestGenerator(object):
         self.newline()
 
 
-class DefaultNativeProject(NinjaProject):
+class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
     """A NinjaProject that makes many assumptions when generating a build manifest.
 
     It is assumed that:
@@ -414,6 +423,9 @@ class DefaultNativeProject(NinjaProject):
             - Name is derived from the `name` of the project.
 
         #. All source files are supported and necessary to build the deliverable.
+
+        #. All `include_dirs` and `libs` provided by build dependencies are necessary
+           to build the deliverable.
 
         #. The deliverable and the public headers are intended for distribution.
 
@@ -442,13 +454,19 @@ class DefaultNativeProject(NinjaProject):
         srcDirs += [self.include, self.src]
         super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
                                                    **kwargs)
-        if next(os.walk(mx.join(self.dir, self.include)))[1]:
-            mx.abort('include directory must have a flat structure')
         try:
             self._kind = self._kinds[kind]
         except KeyError:
             mx.abort('"native" should be one of {}, but "{}" is given'.format(self._kinds.keys(), kind))
         self._deliverable = name.split('.')[-1]
+
+        include_dir = mx.join(self.dir, self.include)
+        if next(os.walk(include_dir))[1]:
+            mx.abort('include directory must have a flat structure')
+
+        self.include_dirs = [include_dir]
+        if kind == 'static_lib':
+            self.libs = [mx.join(self.out_dir, self._target)]
 
     @property
     def _target(self):
@@ -507,7 +525,11 @@ class DefaultNativeProject(NinjaProject):
                 link = gen.link_rule()
 
             gen.variables(cflags=self.cflags, ldflags=self.ldflags if link else None)
-            gen.include(collections.OrderedDict.fromkeys([mx.dirname(h_file) for h_file in self.h_files]).keys())
+            gen.include(collections.OrderedDict.fromkeys(
+                # remove the duplicates while maintaining the ordering
+                [mx.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
+                    getattr(d, 'include_dirs', []) for d in self.buildDependencies))
+            ).keys())
 
             gen.comment('Compiled project sources')
             object_files = [cc(f) for f in self.c_files]
@@ -519,7 +541,8 @@ class DefaultNativeProject(NinjaProject):
             if self._kind == self._kinds['static_lib']:
                 ar(self._target, object_files)
             else:
-                link(self._target, object_files)
+                link(self._target, object_files + list(itertools.chain.from_iterable(
+                    getattr(d, 'libs', []) for d in self.buildDependencies)))
 
     def getArchivableResults(self, use_relpath=True, single=False):
         def result(base_dir, file_path):
