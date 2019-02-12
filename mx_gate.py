@@ -731,7 +731,7 @@ def _jacoco_excludes_includes_projects(limit_to_primary=False):
                 excludes.append(p)
             elif projsetting == 'exclude':
                 excludes.append(p)
-            elif projsetting == 'include':
+            else:
                 includes.append(p)
     return excludes, includes
 
