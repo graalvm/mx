@@ -3036,6 +3036,11 @@ class JavaProject(Project, ClasspathDependency):
         self.declaredAnnotationProcessors = []
         self._mismatched_imports = None
 
+    @property
+    def include_dirs(self):
+        """Directories with headers provided by this project."""
+        return [self.jni_gen_dir()] if self.jni_gen_dir() else []
+
     def resolveDeps(self):
         Project.resolveDeps(self)
         self._resolveDepsHelper(self.declaredAnnotationProcessors)
@@ -3069,13 +3074,12 @@ class JavaProject(Project, ClasspathDependency):
         return res
 
     def jni_gen_dir(self, relative=False):
-        if hasattr(self, "jniHeaders") and self.jniHeaders:
+        if getattr(self, 'jniHeaders', False):
             res = join(self.get_output_root(), 'jni_gen')
             if relative:
                 res = os.path.relpath(res, self.dir)
             return res
-        else:
-            return None
+        return None
 
     def output_dir(self, relative=False):
         """
