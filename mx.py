@@ -910,7 +910,7 @@ class BuildTask(object):
     """
     def execute(self):
         if self.buildForbidden():
-            self.logSkip(None)
+            self.logSkip()
             return
         buildNeeded = False
         if self.args.clean and not self.cleanForbidden():
@@ -3036,6 +3036,11 @@ class JavaProject(Project, ClasspathDependency):
         self.declaredAnnotationProcessors = []
         self._mismatched_imports = None
 
+    @property
+    def include_dirs(self):
+        """Directories with headers provided by this project."""
+        return [self.jni_gen_dir()] if self.jni_gen_dir() else []
+
     def resolveDeps(self):
         Project.resolveDeps(self)
         self._resolveDepsHelper(self.declaredAnnotationProcessors)
@@ -3069,13 +3074,12 @@ class JavaProject(Project, ClasspathDependency):
         return res
 
     def jni_gen_dir(self, relative=False):
-        if hasattr(self, "jniHeaders") and self.jniHeaders:
+        if getattr(self, 'jniHeaders', False):
             res = join(self.get_output_root(), 'jni_gen')
             if relative:
                 res = os.path.relpath(res, self.dir)
             return res
-        else:
-            return None
+        return None
 
     def output_dir(self, relative=False):
         """
@@ -4279,6 +4283,12 @@ def _merge_file_contents(input_files, output_file):
 
 
 class AbstractNativeProject(Project):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense=None, **kwargs):
+        context = 'project ' + name
+        self.buildDependencies = Suite._pop_list(kwargs, 'buildDependencies', context)
+        super(AbstractNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense,
+                                                    **kwargs)
+
     def isPlatformDependent(self):
         return True
 
@@ -4296,7 +4306,7 @@ class NativeProject(AbstractNativeProject):
       buildEnv: a dictionary of custom environment variables that are passed to the `make` process
     """
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, results, output, d, theLicense=None, testProject=False, vpath=False, **kwArgs):
-        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject, **kwArgs)
+        super(NativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=testProject, **kwArgs)
         self.results = results
         self.output = output
         self.vpath = vpath
@@ -4371,6 +4381,19 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         if not self.args.native:
             return True
         return super(AbstractNativeBuildTask, self).cleanForbidden()
+
+    def needsBuild(self, newestInput):
+        is_needed, reason = super(AbstractNativeBuildTask, self).needsBuild(newestInput)
+        if is_needed:
+            return True, reason
+
+        output = self.newestOutput()
+        if output is None:
+            return True, None
+        elif newestInput and output.isOlderThan(newestInput):
+            return True, '{} is older than {}'.format(output, newestInput)
+
+        return False, reason
 
 
 class NativeBuildTask(AbstractNativeBuildTask):
@@ -9331,8 +9354,8 @@ class SourceSuite(Suite):
                                               theLicense=theLicense, testProject=testProject, **attrs)
                         else:
                             from mx_native import DefaultNativeProject
-                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, theLicense,
-                                                     kind=native, testProject=testProject, **attrs)
+                            p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, kind=native,
+                                                     theLicense=theLicense, testProject=testProject, **attrs)
                     else:
                         javaCompliance = attrs.pop('javaCompliance', None)
                         if javaCompliance is None:
@@ -19018,7 +19041,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.209.0")  # GR-13837 env var for env file
+version = VersionSpec("5.210.0")  # GR-13599
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
