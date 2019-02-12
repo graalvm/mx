@@ -426,7 +426,8 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
         #. There is only one deliverable:
             - Kind is the value of the `native` attribute, and
-            - Name is derived from the `name` of the project.
+            - Name is the value of the `deliverable` attribute if it is specified,
+              otherwise it is derived from the `name` of the project.
 
         #. All source files are supported and necessary to build the deliverable.
 
@@ -441,6 +442,9 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
             Depending on the value, the necessary flags will be prepended to `cflags`
             and `ldflags` automatically.
+        deliverable : str, optional
+            Name of the deliverable. By default, it is derived from the `name` of the
+            project.
     """
     include = 'include'
     src = 'src'
@@ -455,6 +459,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
     )
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
+        self._deliverable = kwargs.pop('deliverable', name.split('.')[-1])
         if srcDirs:
             mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
@@ -463,7 +468,6 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
             self._kind = self._kinds[kind]
         except KeyError:
             mx.abort('"native" should be one of {}, but "{}" is given'.format(self._kinds.keys(), kind))
-        self._deliverable = name.split('.')[-1]
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
