@@ -633,7 +633,7 @@ def _jacoco_excludes_includes():
 
     excludes = []
     for p in mx.projects():
-        if p.isJavaProject():
+        if p.isJavaProject() and p.name not in baseExcludes:
             excludes += _filter(
                 p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True,
                                                 includeGenSrc=True).keys())
