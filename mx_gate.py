@@ -723,6 +723,7 @@ def _parse_java_properties(args):
 def _jacoco_excludes_includes_projects(limit_to_primary=False):
     includes = []
     excludes = []
+    overlayTarget = []
 
     for p in mx.projects(limit_to_primary=limit_to_primary):
         if p.isJavaProject():
@@ -732,7 +733,11 @@ def _jacoco_excludes_includes_projects(limit_to_primary=False):
             elif projsetting == 'exclude':
                 excludes.append(p)
             else:
+                if hasattr(p, 'overlayTarget'):
+                    overlayTarget.append(mx.project(p.overlayTarget))
                 includes.append(p)
+    includes = [i for i in includes if i not in overlayTarget]
+    excludes += overlayTarget
     return excludes, includes
 
 
