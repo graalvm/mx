@@ -619,13 +619,16 @@ def _jacoco_excludes_includes():
     includes = list(_jacoco_includes)
     baseExcludes = []
     for p in mx.projects():
-        projsetting = getattr(p, 'jacoco', '')
-        if not _jacoco_is_package_whitelisted(p.name):
-            baseExcludes.append(p.name)
-        elif projsetting == 'exclude':
-            baseExcludes.append(p.name)
-        elif projsetting == 'include':
-            includes.append(p.name + '.*')
+        if p.isJavaProject():
+            projsetting = getattr(p, 'jacoco', '')
+            if not _jacoco_is_package_whitelisted(p.name):
+                pass
+            elif projsetting == 'exclude':
+                baseExcludes.append(p.name)
+            elif projsetting == 'include':
+                includes.append(p.name + '.*')
+    if _jacoco_whitelisted_packages:
+        includes.extend((x + '.*' for x in _jacoco_whitelisted_packages))
 
     def _filter(l):
         # filter out specific classes which are already covered by a baseExclude package
@@ -633,7 +636,7 @@ def _jacoco_excludes_includes():
 
     excludes = []
     for p in mx.projects():
-        if p.isJavaProject() and p.name not in baseExcludes:
+        if p.isJavaProject() and p.name not in baseExcludes and _jacoco_is_package_whitelisted(p.name):
             excludes += _filter(
                 p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True,
                                                 includeGenSrc=True).keys())
