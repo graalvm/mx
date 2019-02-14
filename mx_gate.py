@@ -633,7 +633,7 @@ def _jacoco_excludes_includes():
 
     excludes = []
     for p in mx.projects():
-        if p.isJavaProject():
+        if p.isJavaProject() and p.name not in baseExcludes:
             excludes += _filter(
                 p.find_classes_with_annotations(None, _jacoco_excluded_annotations, includeInnerClasses=True,
                                                 includeGenSrc=True).keys())
@@ -723,6 +723,7 @@ def _parse_java_properties(args):
 def _jacoco_excludes_includes_projects(limit_to_primary=False):
     includes = []
     excludes = []
+    overlayTarget = []
 
     for p in mx.projects(limit_to_primary=limit_to_primary):
         if p.isJavaProject():
@@ -731,8 +732,12 @@ def _jacoco_excludes_includes_projects(limit_to_primary=False):
                 excludes.append(p)
             elif projsetting == 'exclude':
                 excludes.append(p)
-            elif projsetting == 'include':
+            else:
+                if hasattr(p, 'overlayTarget'):
+                    overlayTarget.append(mx.project(p.overlayTarget))
                 includes.append(p)
+    includes = [i for i in includes if i not in overlayTarget]
+    excludes += overlayTarget
     return excludes, includes
 
 
@@ -798,7 +803,7 @@ def sonarqube_upload(args):
         exclude_dirs.extend(p.source_dirs())
         exclude_dirs.append(p.source_gen_dir())
 
-    javaCompliance = max([p.javaCompliance for p in includes])
+    javaCompliance = max([p.javaCompliance for p in includes]) if includes else mx.JavaCompliance('1.7')
 
     jacoco_exec = JACOCO_EXEC
     if not os.path.exists(jacoco_exec):
@@ -815,7 +820,7 @@ def sonarqube_upload(args):
     _add_default_prop('sonar.sources', ','.join(java_src))
     _add_default_prop('sonar.java.binaries', ','.join(java_bin))
     _add_default_prop('sonar.java.libraries', ','.join(java_libs))
-    exclude_patterns = [os.path.relpath(e.dir, basedir) + '**' for e in exclude_dirs] + \
+    exclude_patterns = [os.path.relpath(e, basedir) + '**' for e in exclude_dirs] + \
                        list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]))
     if exclude_patterns:
         _add_default_prop('sonar.exclusions', ','.join(exclude_patterns))
