@@ -820,15 +820,20 @@ public class CheckCopyright {
 
     private static void getDirWalkFiles(File dir, ArrayList<String> list) {
         File[] files = dir.listFiles();
-        for (File file : files) {
-            if (ignoreFile(file.getName())) {
-                continue;
+        if (files != null) {
+            for (File file : files) {
+                if (ignoreFile(file.getName())) {
+                    continue;
+                }
+                if (file.isDirectory()) {
+                    getDirWalkFiles(file, list);
+                } else {
+                    list.add(file.getAbsolutePath());
+                }
             }
-            if (file.isDirectory()) {
-                getDirWalkFiles(file, list);
-            } else {
-                list.add(file.getAbsolutePath());
-            }
+        } else {
+            System.out.println("ERROR: Cannot read directory " + dir);
+            error = true;
         }
     }
 

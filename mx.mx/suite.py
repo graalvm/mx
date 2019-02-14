@@ -134,12 +134,20 @@ suite = {
       "license": "BSD-new",
     },
 
-    "FINDBUGS_DIST" : {
+    "SPOTBUGS_3.0.0" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/findbugs-3.0.0.zip",
         "http://sourceforge.net/projects/findbugs/files/findbugs/3.0.0/findbugs-3.0.0.zip/download",
       ],
       "sha1" : "6e56d67f238dbcd60acb88a81655749aa6419c5b",
+    },
+
+    "SPOTBUGS_3.1.11" : {
+      "urls" : [
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/spotbugs-3.1.11.zip",
+        "https://repo.maven.apache.org/maven2/com/github/spotbugs/spotbugs/3.1.11/spotbugs-3.1.11.zip",
+      ],
+      "sha1" : "8f961e0ddd445cc4e89b18563ac5730766d220f1",
     },
 
     "SIGTEST" : {
@@ -434,7 +442,7 @@ suite = {
       "checkstyle" : "com.oracle.mxtool.junit",
       "javaCompliance" : "1.8+",
       "annotationProcessors" : ["JMH_1_21"],
-      "findbugsIgnoresGenerated" : True,
+      "spotbugsIgnoresGenerated" : True,
     },
 
     "com.oracle.mxtool.junit" : {
