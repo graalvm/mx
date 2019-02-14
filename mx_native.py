@@ -336,26 +336,27 @@ class NinjaManifestGenerator(object):
     def include(self, dirs):
         self.variables(includes=['-I' + self._resolve(d) for d in dirs])
 
-    def cc_rule(self):
+    def cc_rule(self, cxx=False):
         if mx.get_os() == 'windows':
             command = 'cl -nologo -showIncludes $includes $cflags -c $in -Fo$out'
             depfile = None
             deps = 'msvc'
         else:
-            command = 'gcc -MMD -MF $out.d $includes $cflags -c $in -o $out'
+            command = '%s -MMD -MF $out.d $includes $cflags -c $in -o $out' % ('g++' if cxx else 'gcc')
             depfile = '$out.d'
             deps = 'gcc'
 
-        self.n.rule('cc',
+        rule = 'cxx' if cxx else 'cc'
+        self.n.rule(rule,
                     command=command,
-                    description='CC $out',
+                    description='%s $out' % rule.upper(),
                     depfile=depfile,
                     deps=deps)
         self.newline()
 
         def build(source_file):
             output = os.path.splitext(source_file)[0] + ('.obj' if mx.get_os() == 'windows' else '.o')
-            return self.n.build(output, 'cc', self._resolve(source_file))[0]
+            return self.n.build(output, rule, self._resolve(source_file))[0]
 
         return build
 
@@ -396,11 +397,11 @@ class NinjaManifestGenerator(object):
 
         return lambda archive, members: self.n.build(archive, 'ar', members)[0]
 
-    def link_rule(self):
+    def link_rule(self, cxx=False):
         if mx.get_os() == 'windows':
             command = 'link -nologo $ldflags -out:$out $in $ldlibs'
         else:
-            command = 'gcc $ldflags -o $out $in $ldlibs'
+            command = '%s $ldflags -o $out $in $ldlibs' % ('g++' if cxx else 'gcc')
 
         self.n.rule('link',
                     command=command,
@@ -542,19 +543,25 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         return self._source['files']['.c']
 
     @property
+    def cxx_files(self):
+        return self._source['files']['.cc']
+
+    @property
     def asm_sources(self):
         return self._source['files']['.S']
 
     def generate_manifest(self, path):
-        unsupported_source_files = list(self._source['files'].viewkeys() - {'.h', '.c', '.S'})
+        unsupported_source_files = list(self._source['files'].viewkeys() - {'.h', '.c', '.cc', '.S'})
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
             gen.comment('Project rules')
-            cc = asm = None
+            cc = cxx = asm = None
             if self.c_files:
                 cc = gen.cc_rule()
+            if self.cxx_files:
+                cxx = gen.cc_rule(cxx=True)
             if self.asm_sources:
                 asm = gen.asm_rule() if mx.get_os() == 'windows' else cc if cc else gen.cc_rule()
 
@@ -562,7 +569,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
             if self._kind == self._kinds['static_lib']:
                 ar = gen.ar_rule()
             else:
-                link = gen.link_rule()
+                link = gen.link_rule(cxx=bool(self.cxx_files))
 
             gen.variables(
                 cflags=self.cflags,
@@ -577,6 +584,8 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
             gen.comment('Compiled project sources')
             object_files = [cc(f) for f in self.c_files]
+            gen.newline()
+            object_files += [cxx(f) for f in self.cxx_files]
             gen.newline()
             object_files += [asm(f) for f in self.asm_sources]
             gen.newline()
