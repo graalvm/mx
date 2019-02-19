@@ -1089,6 +1089,9 @@ class Distribution(Dependency):
         for l in self.update_listeners:
             l(self)
 
+    def removeDependency(self, dep):
+        self.deps.remove(dep)
+
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
@@ -2272,9 +2275,16 @@ class LayoutDistribution(AbstractDistribution):
         self._source_location_cache = {}
         self.archive_factory = archive_factory or Archiver
         self.compress = compress
+        self._removed_deps = set()
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
+
+    def removeDependency(self, d):
+        super(LayoutDistribution, self).removeDependency(d)
+        self._removed_deps.add(d.qualifiedName())
+        if d.suite == self.suite:
+            self._removed_deps.add(d.name)
 
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
@@ -2347,8 +2357,10 @@ class LayoutDistribution(AbstractDistribution):
                 yield destination, source_dict
 
     def _walk_layout(self):
-        for t in LayoutTARDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
-            yield t
+        for (destination, source_dict) in LayoutTARDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
+            dep = source_dict.get("dependency")
+            if dep not in self._removed_deps:
+                yield (destination, source_dict)
 
     def _install_source(self, source, output, destination, archiver):
         clean_destination = destination
@@ -18354,18 +18366,8 @@ def _remove_unsatisfied_deps():
             for distDep in list(dist.deps):
                 if distDep in removedDeps:
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
-                    dist.deps.remove(distDep)
+                    dist.removeDependency(distDep)
                     distRemovedDeps.append(distDep)
-
-            if isinstance(dist, LayoutDistribution) and distRemovedDeps:
-                removed_destinations = []
-                removed_deps = {d.qualifiedName() for d in distRemovedDeps} \
-                               | {d.name for d in distRemovedDeps if d.suite == dist.suite}
-                for dst, src in LayoutDistribution._walk_static_layout(dist.layout, dist.name, context=dist.suite):
-                    if src.get('dependency') in removed_deps:
-                        removed_destinations.append(dst)
-                for dst in removed_destinations:
-                    del dist.layout[dst]  # prune layout
 
             if discard(dist):
                 note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
@@ -19042,7 +19044,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.210.4")  # jacoco excludes only for whitelisted packages
+version = VersionSpec("5.210.5")  # layout distribution fixes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
