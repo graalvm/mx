@@ -1071,6 +1071,7 @@ class Distribution(Dependency):
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
         self.platforms = platforms or [None]
+        self.buildDependencies = []
         if testDistribution is None:
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
@@ -1090,10 +1091,14 @@ class Distribution(Dependency):
             l(self)
 
     def removeDependency(self, dep):
-        self.deps.remove(dep)
+        if dep in self.deps:
+            self.deps.remove(dep)
+        if dep in self.buildDependencies:
+            self.buildDependencies.remove(dep)
 
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
         overlaps = getattr(self, 'overlaps', [])
@@ -1111,7 +1116,7 @@ class Distribution(Dependency):
             self.theLicense = get_license(licenseId, context=self)
 
     def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        deps = [(DEP_STANDARD, self.deps), (DEP_EXCLUDED, self.excludedLibs)]
+        deps = [(DEP_STANDARD, self.deps), (DEP_EXCLUDED, self.excludedLibs), (DEP_BUILD, self.buildDependencies)]
         self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
     def make_archive(self):
@@ -1296,7 +1301,6 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
-        self.buildDependencies = []
         if self.is_stripped():
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
@@ -1892,15 +1896,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if ts.isNewerThan(self.path):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
-
-    def resolveDeps(self):
-        super(JARDistribution, self).resolveDeps()
-        self._resolveDepsHelper(self.buildDependencies)
-
-    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        super(JARDistribution, self)._walk_deps_visit_edges(visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
-        deps = [(DEP_BUILD, self.buildDependencies)]
-        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
@@ -18359,11 +18354,11 @@ def _remove_unsatisfied_deps():
                 if buildDep in removedDeps:
                     note_removal(dep, 'removed {} because {} was removed'.format(dep, buildDep))
 
-    def prune(dist, discard=lambda d: not d.deps):
+    def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
         assert dist.isDistribution()
-        if dist.deps:
+        if dist.deps or dist.buildDependencies:
             distRemovedDeps = []
-            for distDep in list(dist.deps):
+            for distDep in list(dist.deps) + list(dist.buildDependencies):
                 if distDep in removedDeps:
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
                     dist.removeDependency(distDep)
