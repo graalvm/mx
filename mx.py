@@ -1071,6 +1071,7 @@ class Distribution(Dependency):
         self.excludedLibs = excludedLibs
         self.platformDependent = platformDependent
         self.platforms = platforms or [None]
+        self.buildDependencies = []
         if testDistribution is None:
             self.testDistribution = name.endswith('_TEST') or name.endswith('_TESTS')
         else:
@@ -1089,8 +1090,15 @@ class Distribution(Dependency):
         for l in self.update_listeners:
             l(self)
 
+    def removeDependency(self, dep):
+        if dep in self.deps:
+            self.deps.remove(dep)
+        if dep in self.buildDependencies:
+            self.buildDependencies.remove(dep)
+
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
         overlaps = getattr(self, 'overlaps', [])
@@ -1108,7 +1116,7 @@ class Distribution(Dependency):
             self.theLicense = get_license(licenseId, context=self)
 
     def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        deps = [(DEP_STANDARD, self.deps), (DEP_EXCLUDED, self.excludedLibs)]
+        deps = [(DEP_STANDARD, self.deps), (DEP_EXCLUDED, self.excludedLibs), (DEP_BUILD, self.buildDependencies)]
         self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
 
     def make_archive(self):
@@ -1293,7 +1301,6 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
-        self.buildDependencies = []
         if self.is_stripped():
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
@@ -1890,15 +1897,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
 
-    def resolveDeps(self):
-        super(JARDistribution, self).resolveDeps()
-        self._resolveDepsHelper(self.buildDependencies)
-
-    def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
-        super(JARDistribution, self)._walk_deps_visit_edges(visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
-        deps = [(DEP_BUILD, self.buildDependencies)]
-        self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit=preVisit, visit=visit, ignoredEdges=ignoredEdges, visitEdge=visitEdge)
-
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
 
@@ -2264,7 +2262,8 @@ class LayoutDistribution(AbstractDistribution):
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
         """
-        super(LayoutDistribution, self).__init__(suite, name, deps + LayoutDistribution._extract_deps(layout, suite, name), path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
+        super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
+        self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
         self.output = join(self.get_output_base(), name)  # initialized here rather than passed above since `get_output_base` is not ready before the super constructor
         self.layout = layout
         self.path_substitutions = path_substitutions or mx_subst.path_substitutions
@@ -2272,9 +2271,16 @@ class LayoutDistribution(AbstractDistribution):
         self._source_location_cache = {}
         self.archive_factory = archive_factory or Archiver
         self.compress = compress
+        self._removed_deps = set()
 
     def getBuildTask(self, args):
         return LayoutArchiveTask(args, self)
+
+    def removeDependency(self, d):
+        super(LayoutDistribution, self).removeDependency(d)
+        self._removed_deps.add(d.qualifiedName())
+        if d.suite == self.suite:
+            self._removed_deps.add(d.name)
 
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
@@ -2347,8 +2353,10 @@ class LayoutDistribution(AbstractDistribution):
                 yield destination, source_dict
 
     def _walk_layout(self):
-        for t in LayoutTARDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
-            yield t
+        for (destination, source_dict) in LayoutTARDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
+            dep = source_dict.get("dependency")
+            if dep not in self._removed_deps:
+                yield (destination, source_dict)
 
     def _install_source(self, source, output, destination, archiver):
         clean_destination = destination
@@ -18347,25 +18355,15 @@ def _remove_unsatisfied_deps():
                 if buildDep in removedDeps:
                     note_removal(dep, 'removed {} because {} was removed'.format(dep, buildDep))
 
-    def prune(dist, discard=lambda d: not d.deps):
+    def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
         assert dist.isDistribution()
-        if dist.deps:
+        if dist.deps or dist.buildDependencies:
             distRemovedDeps = []
-            for distDep in list(dist.deps):
+            for distDep in list(dist.deps) + list(dist.buildDependencies):
                 if distDep in removedDeps:
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
-                    dist.deps.remove(distDep)
+                    dist.removeDependency(distDep)
                     distRemovedDeps.append(distDep)
-
-            if isinstance(dist, LayoutDistribution) and distRemovedDeps:
-                removed_destinations = []
-                removed_deps = {d.qualifiedName() for d in distRemovedDeps} \
-                               | {d.name for d in distRemovedDeps if d.suite == dist.suite}
-                for dst, src in LayoutDistribution._walk_static_layout(dist.layout, dist.name, context=dist.suite):
-                    if src.get('dependency') in removed_deps:
-                        removed_destinations.append(dst)
-                for dst in removed_destinations:
-                    del dist.layout[dst]  # prune layout
 
             if discard(dist):
                 note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
@@ -19042,7 +19040,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.210.4")  # jacoco excludes only for whitelisted packages
+version = VersionSpec("5.210.5")  # layout distribution fixes
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
