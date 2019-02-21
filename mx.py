@@ -2262,7 +2262,8 @@ class LayoutDistribution(AbstractDistribution):
         :type path_substitutions: mx_subst.SubstitutionEngine
         :type string_substitutions: mx_subst.SubstitutionEngine
         """
-        super(LayoutDistribution, self).__init__(suite, name, deps + LayoutDistribution._extract_deps(layout, suite, name), path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
+        super(LayoutDistribution, self).__init__(suite, name, deps, path, excludedLibs or [], platformDependent, theLicense, output=None, **kw_args)
+        self.buildDependencies += LayoutDistribution._extract_deps(layout, suite, name)
         self.output = join(self.get_output_base(), name)  # initialized here rather than passed above since `get_output_base` is not ready before the super constructor
         self.layout = layout
         self.path_substitutions = path_substitutions or mx_subst.path_substitutions
