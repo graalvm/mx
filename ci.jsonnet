@@ -1,7 +1,7 @@
 local
 java = {
   downloads+: {
-    JAVA_HOME: {name: 'oraclejdk', version: "8u192", platformspecific: true}
+    JAVA_HOME: {name: 'oraclejdk', version: "8u202", platformspecific: true}
   }
 },
 gate = java + {
@@ -98,7 +98,7 @@ python3 = {
 
 {
   # Overlay
-  java8: {name: 'labsjdk', version: "8u192-jvmci-0.54", platformspecific: true},
+  java8: {name: 'labsjdk', version: "8u202-jvmci-0.55", platformspecific: true},
   java11: {name: 'oraclejdk', version: "11+28", platformspecific: true},
   overlay: '2cf9d7ec2c131d8e999c11e4de289fa003faaebd',
 
