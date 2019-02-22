@@ -834,11 +834,12 @@ class ClasspathDependency(Dependency):
 
 
 class BuildTask(object):
-    __metaclass__ = ABCMeta
     """
     A build task is used to build a dependency.
     :type deps: list[BuildTask]
     """
+    __metaclass__ = ABCMeta
+
     def __init__(self, subject, args, parallelism):
         """
         :param Dependency subject: the dependency built by this task
@@ -851,6 +852,10 @@ class BuildTask(object):
         self.built = False
         self.args = args
         self.proc = None
+
+        discriminant = subject._extra_artifact_discriminant()
+        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
+                                     discriminant if discriminant else '', subject.name)
 
     def __str__(self):
         nyi('__str__', self)
@@ -870,45 +875,37 @@ class BuildTask(object):
     def cleanSharedMemoryState(self):
         self._builtBox = None
 
-    def _persistDeps(self):
+    @property
+    def _current_deps(self):
+        return [d.subject.name for d in self.deps]
+
+    def _persist_deps(self):
         """
-        Saves the dependencies for this task's subject to a file. This can be used to
-        determine whether the ordered set of dependencies for this task have changed
-        since the last time it was built.
-        Returns True if file already existed and did not reflect the current dependencies.
+        Saves the dependencies for this task's subject to a file.
         """
-        typePrefix = type(self.subject).__name__
-        p = [self.subject.suite.get_mx_output_dir(), 'savedDeps', typePrefix]
-        discriminant = self.subject._extra_artifact_discriminant()
-        if discriminant:
-            p.append(discriminant)
-        p.append(self.subject.name)
-        savedDepsFile = join(*p)
-        currentDeps = [d.subject.name for d in self.deps]
-        outOfDate = False
-        if exists(savedDepsFile):
-            with open(savedDepsFile) as fp:
-                savedDeps = [l.strip() for l in fp.readlines()]
-            if savedDeps != currentDeps:
-                outOfDate = True
-            else:
-                return False
+        if self._current_deps:
+            with SafeFileCreation(self._saved_deps_path) as sfc:
+                with open(sfc.tmpPath, 'w') as f:
+                    for d in self._current_deps:
+                        print(d, file=f)
+        elif exists(self._saved_deps_path):
+            os.remove(self._saved_deps_path)
 
-        if len(currentDeps) == 0:
-            if exists(savedDepsFile):
-                os.remove(savedDepsFile)
-        else:
-            ensure_dir_exists(dirname(savedDepsFile))
-            with open(savedDepsFile, 'w') as fp:
-                for dname in currentDeps:
-                    print(dname, file=fp)
+    def _deps_changed(self):
+        """
+        Returns True if there are saved dependencies for this task's subject and
+        they have changed since the last time it was built.
+        """
+        if exists(self._saved_deps_path):
+            with open(self._saved_deps_path) as f:
+                if f.read().splitlines() != self._current_deps:
+                    return True
+        return False
 
-        return outOfDate
-
-    """
-    Execute the build task.
-    """
     def execute(self):
+        """
+        Execute the build task.
+        """
         if self.buildForbidden():
             self.logSkip()
             return
@@ -926,8 +923,7 @@ class BuildTask(object):
                     reason = 'dependency {} updated'.format(updated[0].subject)
                 else:
                     reason = 'dependencies updated: ' + ', '.join([u.subject.name for u in updated])
-        changed = self._persistDeps()
-        if not buildNeeded and changed:
+        if not buildNeeded and self._deps_changed():
             buildNeeded = True
             reason = 'dependencies were added, removed or re-ordered'
         if not buildNeeded:
@@ -939,7 +935,8 @@ class BuildTask(object):
                     newestInput = depNewestOutput
                     newestInputDep = dep
             if newestInputDep:
-                logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name, newestInput))
+                logvv('Newest dependency for {}: {} ({})'.format(self.subject.name, newestInputDep.subject.name,
+                                                                 newestInput))
 
             if get_env('MX_BUILD_SHALLOW_DEPENDENCY_CHECKS') is None:
                 shallow_dependency_checks = self.args.shallow_dependency_checks is True
@@ -958,6 +955,7 @@ class BuildTask(object):
                 self.clean(forBuild=True)
             self.logBuild(reason)
             self.build()
+            self._persist_deps()
             self.built = True
             logv('Finished {}'.format(self))
         else:
