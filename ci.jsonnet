@@ -63,6 +63,7 @@ downstream_truffleruby_binary_truffle = java + {
   targets: ['gate'],
   packages+: {
     llvm: "==3.8",
+    ruby: ">=2.0.0",
   },
   environment+: {
     PATH: "$LLVM/bin:$PATH",
