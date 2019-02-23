@@ -723,7 +723,7 @@ class Dependency(SuiteConstituent):
         built artifacts and will avoid unnecessary rebuilds when frequently changing this build configuration.
         :rtype : str
         """
-        return None
+        return ''
 
     def _resolveDepsHelper(self, deps, fatalIfMissing=True):
         """
@@ -852,10 +852,8 @@ class BuildTask(object):
         self.built = False
         self.args = args
         self.proc = None
-
-        discriminant = subject._extra_artifact_discriminant()
         self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     discriminant if discriminant else '', subject.name)
+                                     subject._extra_artifact_discriminant(), subject.name)
 
     def __str__(self):
         nyi('__str__', self)
@@ -1167,12 +1165,8 @@ class Distribution(Dependency):
         nyi('localExtension', self)
 
     def _default_path(self):
-        p = [self.suite.get_output_root(platformDependent=self.platformDependent), 'dists']
-        discriminant = self._extra_artifact_discriminant()
-        if discriminant:
-            p.append(discriminant)
-        p.append(self.default_filename())
-        return join(*p)
+        return join(self.suite.get_output_root(platformDependent=self.platformDependent), 'dists',
+                    self._extra_artifact_discriminant(), self.default_filename())
 
     def default_filename(self):
         return _map_to_maven_dist_name(self.name) + '.' + self.localExtension()
@@ -1324,11 +1318,11 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def _extra_artifact_discriminant(self):
         if self.suite.isBinarySuite() or not self.suite.getMxCompatibility().jarsUseJDKDiscriminant():
-            return None
+            return ''
         compliance = self._compliance_for_build()
         if compliance:
-            return "jdk{}".format(compliance)
-        return None
+            return 'jdk{}'.format(compliance)
+        return ''
 
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
