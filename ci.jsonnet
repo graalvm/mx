@@ -4,6 +4,7 @@ java = {
     JAVA_HOME: {name: 'oraclejdk', version: "8u202", platformspecific: true}
   }
 },
+labsjdk8 = {name: 'labsjdk', version: "8u202-jvmci-0.55", platformspecific: true},
 gate = java + {
   targets: ['gate'],
   packages+: {
@@ -59,8 +60,11 @@ jmh_test = java + {
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
   ]
 },
-downstream_truffleruby_binary_truffle = java + {
+downstream_truffleruby_binary_truffle = {
   targets: ['gate'],
+  downloads+: {
+    JAVA_HOME: labsjdk8,
+  },
   packages+: {
     llvm: "==3.8",
     ruby: ">=2.0.0",
@@ -99,7 +103,7 @@ python3 = {
 
 {
   # Overlay
-  java8: {name: 'labsjdk', version: "8u202-jvmci-0.55", platformspecific: true},
+  java8: labsjdk8,
   java11: {name: 'oraclejdk', version: "11+28", platformspecific: true},
   overlay: '2cf9d7ec2c131d8e999c11e4de289fa003faaebd',
 
