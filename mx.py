@@ -2305,6 +2305,9 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict["path"] = source_spec
             elif source_type == 'string':
                 source_dict["value"] = source_spec
+            elif source_type == 'classpath':
+                classpath = os.pathsep.join(normpath(entry) for entry in source_spec.split(':'))
+                source_dict["value"] = classpath
             else:
                 abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
         else:
@@ -2321,7 +2324,7 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = "file:" + source_dict['path']
             elif source_type == 'link':
                 source_dict['_str_'] = "link:" + source_dict['path']
-            elif source_type == 'string':
+            elif source_type == 'string' or source_type == 'classpath':
                 source_dict['_str_'] = "string:" + source_dict['value']
         if 'exclude' in source_dict:
             if isinstance(source_dict['exclude'], str):
@@ -2358,6 +2361,7 @@ class LayoutDistribution(AbstractDistribution):
         source_type = source['source_type']
         provenance = "{}<-{}".format(destination, source['_str_'])
 
+        symlink_worklist=[]
         def add_symlink(source_file, src, abs_dest, archive_dest):
             destination_directory = dirname(abs_dest)
             ensure_dir_exists(destination_directory)
@@ -2368,7 +2372,10 @@ class LayoutDistribution(AbstractDistribution):
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            os.symlink(src, abs_dest)
+            if get_os() != 'windows':
+                os.symlink(src, abs_dest)
+            else:
+                symlink_worklist.append((src, abs_dest, resolved_output_link_target))
 
         def merge_recursive(src, dst, src_arcname, excludes):
             """
@@ -2376,7 +2383,10 @@ class LayoutDistribution(AbstractDistribution):
             """
             if glob_match_any(excludes, src_arcname):
                 return
-            absolute_destination = join(output, dst)
+            absolute_destination = normpath(join(output, dst))
+            if get_os() == 'windows':
+                # See https://docs.microsoft.com/en-us/windows/desktop/FileIO/naming-a-file#maximum-path-length-limitation
+                absolute_destination = '\\\\?\\' + absolute_destination
             if islink(src):
                 link_target = os.readlink(src)
                 if isabs(link_target):
@@ -2566,7 +2576,7 @@ class LayoutDistribution(AbstractDistribution):
                 absolute_destination = join(absolute_destination, link_target_basename)
                 clean_destination = join(clean_destination, link_target_basename)
             add_symlink(destination, link_target, absolute_destination, clean_destination)
-        elif source_type == 'string':
+        elif source_type == 'string' or source_type == 'classpath':
             if destination.endswith('/'):
                 abort("Can not use `string` source with a destination ending with `/` ({})".format(destination), context=self)
             ensure_dir_exists(dirname(absolute_destination))
@@ -2576,6 +2586,8 @@ class LayoutDistribution(AbstractDistribution):
             archiver.add_str(s, clean_destination, provenance)
         else:
             abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=self)
+
+        return symlink_worklist
 
     def _verify_layout(self):
         output = realpath(self.get_output())
@@ -2611,8 +2623,22 @@ class LayoutDistribution(AbstractDistribution):
                                   context=self,
                                   reset_user_group=getattr(self, 'reset_user_group', False),
                                   compress=self.compress) as arc:
+            symlink_worklist=[]
             for destination, source in self._walk_layout():
-                self._install_source(source, output, destination, arc)
+                symlink_worklist.extend(self._install_source(source, output, destination, arc))
+            if symlink_worklist and get_os() != 'windows':
+                abort('Using copy instead of adding symlinks should only happen on platform Windows')
+            for src, abs_dest, resolved_output_link_target in reversed(symlink_worklist):
+                if not exists(resolved_output_link_target):
+                    target_dir = dirname(resolved_output_link_target)
+                    with_suffix = [f for f in os.listdir(target_dir) if f.startswith(basename(resolved_output_link_target) + '.')]
+                    if len(with_suffix) == 1:
+                        resolved_output_link_target_with_suffix = join(target_dir, with_suffix[0])
+                    if exists(resolved_output_link_target_with_suffix):
+                        resolved_output_link_target = resolved_output_link_target_with_suffix
+                    else:
+                        abort('resolved_output_link_target ' + resolved_output_link_target + ' does not exist')
+                shutil.copy(resolved_output_link_target, abs_dest)
         self._persist_layout()
 
     def needsUpdate(self, newestInput):
@@ -2633,7 +2659,7 @@ class LayoutDistribution(AbstractDistribution):
                             return up
             elif source_type == 'link':
                 pass  # this is handled by _persist_layout
-            elif source_type == 'string':
+            elif source_type == 'string' or source_type == 'classpath':
                 pass  # this is handled by _persist_layout
             elif source_type in ('dependency', 'extracted-dependency'):
                 pass  # this is handled by a build task dependency
