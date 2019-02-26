@@ -74,7 +74,7 @@ class Ninja(object):
 
         self._run('-n', '-d', 'explain', out=out, err=details)
         if details.lines:
-            return True, details.lines[0]
+            return True, [l for l in details.lines if l.startswith('ninja explain:')][0]
         else:
             assert out.lines == ['ninja: no work to do.']
             return False, out.lines[0]
