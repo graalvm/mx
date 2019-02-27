@@ -141,6 +141,12 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
             Flags used during linking step.
         ldlibs : list of str, optional
             Flags used during linking step.
+        use_jdk_headers : bool, optional
+            Whether to add directories with JDK headers to the list of directories
+            searched for header files. Default is False.
+
+            The use of JDK headers is implied if any build dependency is a Java
+            project with JNI headers.
     """
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
@@ -148,6 +154,7 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
         self._cflags = mx.Suite._pop_list(kwargs, 'cflags', context)
         self._ldflags = mx.Suite._pop_list(kwargs, 'ldflags', context)
         self._ldlibs = mx.Suite._pop_list(kwargs, 'ldlibs', context)
+        self.use_jdk_headers = kwargs.pop('use_jdk_headers', False)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         self.buildDependencies += self._ninja_deps
         self.out_dir = self.get_output_root()
@@ -180,7 +187,7 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
 
     def resolveDeps(self):
         super(NinjaProject, self).resolveDeps()
-        if any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
+        if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
             self.buildDependencies += [self._jdk_dep]
 
     @lazy_class_default
