@@ -166,9 +166,13 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
         try:
             subprocess.check_output(['ninja', '--version'], stderr=subprocess.STDOUT)
         except OSError:
-            dep = mx.library('NINJA')
-            deps.append(dep.qualifiedName())
-            Ninja.binary = mx.join(dep.get_path(False), 'ninja')
+            dep = mx.library('NINJA', False)
+            if dep:
+                deps.append(dep.qualifiedName())
+                Ninja.binary = mx.join(dep.get_path(False), 'ninja')
+            else:
+                # necessary until GR-13214 is resolved
+                mx.warn('Make `ninja` binary available via PATH to build native projects.')
 
         try:
             import ninja_syntax  # pylint: disable=unused-variable, unused-import

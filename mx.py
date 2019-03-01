@@ -15865,7 +15865,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             dependencies_project_packages = set()
 
-            def processDep(dep, edge):
+            def should_process_dep(dep, edge):
+                if dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
+                    logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
+                    return False
+                return True
+
+            def process_dep(dep, edge):
                 if dep is proj:
                     return
                 if dep.isLibrary() or dep.isJARDistribution() or dep.isMavenProject():
@@ -15883,11 +15889,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
-                elif dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
-                    logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
-            p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+
+            p.walk_deps(preVisit=should_process_dep, visit=process_dep, ignoredEdges=[DEP_EXCLUDED])
 
             moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_java_sdk_type, 'jdkName': intellij_get_java_sdk_name(sdks, jdk)})
 
@@ -19034,7 +19039,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.0")  # GR-13645
+version = VersionSpec("5.213.1")  # GR-7934
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
