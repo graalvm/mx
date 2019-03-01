@@ -68,6 +68,7 @@ from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
+from os.path import split as split_path
 from tempfile import mkdtemp, mkstemp
 import fnmatch
 import operator
@@ -2361,7 +2362,6 @@ class LayoutDistribution(AbstractDistribution):
         source_type = source['source_type']
         provenance = "{}<-{}".format(destination, source['_str_'])
 
-        symlink_worklist=[]
         def add_symlink(source_file, src, abs_dest, archive_dest):
             destination_directory = dirname(abs_dest)
             ensure_dir_exists(destination_directory)
@@ -2369,13 +2369,24 @@ class LayoutDistribution(AbstractDistribution):
             if not resolved_output_link_target.startswith(output):
                 abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
             archiver.add_link(src, archive_dest, provenance)
+            if get_os() == 'windows':
+                def strip_suffix(path):
+                    dirname, filename = split_path(path)
+                    stripped_filename = filename.rpartition('.')[0]
+                    return join(dirname, stripped_filename or filename)
+                abs_dest = strip_suffix(abs_dest) + '.cmd'
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            if get_os() != 'windows':
-                os.symlink(src, abs_dest)
+            if get_os() == 'windows':
+                link_template_name = join(_mx_suite.mxDir, 'exe_link_template.cmd')
+                with open(link_template_name, 'r') as template, SafeFileCreation(abs_dest) as sfc, open(sfc.tmpPath, 'w') as link:
+                    _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
+                    _template_subst.register_no_arg('target', normpath(strip_suffix(src)))
+                    for line in template:
+                        link.write(_template_subst.substitute(line))
             else:
-                symlink_worklist.append((src, abs_dest, resolved_output_link_target))
+                os.symlink(src, abs_dest)
 
         def merge_recursive(src, dst, src_arcname, excludes):
             """
@@ -2587,8 +2598,6 @@ class LayoutDistribution(AbstractDistribution):
         else:
             abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=self)
 
-        return symlink_worklist
-
     def _verify_layout(self):
         output = realpath(self.get_output())
         for destination, sources in self.layout.items():
@@ -2623,22 +2632,8 @@ class LayoutDistribution(AbstractDistribution):
                                   context=self,
                                   reset_user_group=getattr(self, 'reset_user_group', False),
                                   compress=self.compress) as arc:
-            symlink_worklist=[]
             for destination, source in self._walk_layout():
-                symlink_worklist.extend(self._install_source(source, output, destination, arc))
-            if symlink_worklist and get_os() != 'windows':
-                abort('Using copy instead of adding symlinks should only happen on platform Windows')
-            for src, abs_dest, resolved_output_link_target in reversed(symlink_worklist):
-                if not exists(resolved_output_link_target):
-                    target_dir = dirname(resolved_output_link_target)
-                    with_suffix = [f for f in os.listdir(target_dir) if f.startswith(basename(resolved_output_link_target) + '.')]
-                    if len(with_suffix) == 1:
-                        resolved_output_link_target_with_suffix = join(target_dir, with_suffix[0])
-                    if exists(resolved_output_link_target_with_suffix):
-                        resolved_output_link_target = resolved_output_link_target_with_suffix
-                    else:
-                        abort('resolved_output_link_target ' + resolved_output_link_target + ' does not exist')
-                shutil.copy(resolved_output_link_target, abs_dest)
+                self._install_source(source, output, destination, arc)
         self._persist_layout()
 
     def needsUpdate(self, newestInput):
