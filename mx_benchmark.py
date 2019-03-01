@@ -1655,7 +1655,6 @@ class BenchmarkExecutor(object):
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
-          "config.platform-version": "",
           "machine.name": self.machineName(mxBenchmarkArgs),
           "machine.node": self.machineNode(mxBenchmarkArgs),
           "machine.hostname": self.machineHostname(),
