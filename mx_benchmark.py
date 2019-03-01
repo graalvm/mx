@@ -210,6 +210,10 @@ class BenchmarkSuite(object):
 
     A suite needs to be registered with mx_benchmarks.add_bm_suite.
     """
+    def __init__(self, *args, **kwargs):
+        super(BenchmarkSuite, self).__init__(*args, **kwargs)
+        self._suite_dimensions = {}
+
     def name(self):
         """Returns the name of the suite.
 
@@ -301,6 +305,14 @@ class BenchmarkSuite(object):
         :rtype: list[str]
         """
         return []
+
+    def suiteDimensions(self):
+        """Returns context specific dimensions that will be integrated in the measurement
+        data.
+
+        :rtype: dict
+        """
+        return self._suite_dimensions
 
     def run(self, benchmarks, bmSuiteArgs):
         """Runs the specified benchmarks with the given arguments.
@@ -1060,6 +1072,7 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     to extract the `--jvm-config` and the VM-and-run arguments to the benchmark suite
     (see the `benchmark` method for more information).
     """
+
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         """Creates a list of arguments for the JVM using the suite arguments.
 
@@ -1092,7 +1105,17 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     def before(self, bmSuiteArgs):
         super(JavaBenchmarkSuite, self).before(bmSuiteArgs)
         with mx.DisableJavaDebugging():
-            self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
+            code, out, _ = self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
+            if code == 0:
+                output_lines = out.splitlines()
+                assert "version" in output_lines[0]
+                assert len(output_lines) >= 3
+                jdk_version_number = output_lines[0].split("\"")[1]
+                jdk_major_version = mx.JavaCompliance(jdk_version_number).value
+                jdk_version_string = output_lines[2]
+                self._suite_dimensions["platform.jdk-version-number"] = jdk_version_number
+                self._suite_dimensions["platform.jdk-major-version"] = jdk_major_version
+                self._suite_dimensions["platform.jdk-version-string"] = jdk_version_string
 
 
 class Vm(object): #pylint: disable=R0922
@@ -1650,6 +1673,7 @@ class BenchmarkExecutor(object):
           "warnings": "",
         }
 
+        standard.update(suite.suiteDimensions())
         standard.update(self.extras(mxBenchmarkArgs))
 
         def commit_info(prefix, mxsuite):
@@ -1789,7 +1813,7 @@ class BenchmarkExecutor(object):
             help="Print the list of all available benchmark suites or all benchmarks available in a suite.")
         parser.add_argument(
             "--fork-count-file", default=None,
-            help="Path to the file that lists the number of re-executions for the targetted benchmarks, using the JSON format: { (<name>: <count>,)* }")
+            help="Path to the file that lists the number of re-executions for the targeted benchmarks, using the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
