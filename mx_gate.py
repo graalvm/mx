@@ -646,14 +646,15 @@ def _jacoco_excludes_includes():
     excludes += [package + '.*' for package in baseExcludes]
     return excludes, includes
 
+def get_jacoco_agent_path():
+    return mx.library('JACOCOAGENT_0.8.2', True).get_path(True)
+
 def get_jacoco_agent_args():
     '''
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
     if use of JaCoCo has been requested otherwise returns None.
     '''
     if _jacoco in ('on', 'append'):
-        jacocoagent = mx.library('JACOCOAGENT_0.8.2', True)
-
         excludes, includes = _jacoco_excludes_includes()
         agentOptions = {
                         'append' : 'true' if _jacoco == 'append' else 'false',
@@ -662,7 +663,7 @@ def get_jacoco_agent_args():
                         'excludes' : ':'.join(excludes),
                         'destfile' : JACOCO_EXEC,
         }
-        return ['-javaagent:' + jacocoagent.get_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
+        return ['-javaagent:' + get_jacoco_agent_path() + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
     return None
 
 def jacocoreport(args):
