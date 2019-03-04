@@ -536,19 +536,19 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
     @property
     def h_files(self):
-        return self._source['files']['.h']
+        return self._source['files'].get('.h', [])
 
     @property
     def c_files(self):
-        return self._source['files']['.c']
+        return self._source['files'].get('.c', [])
 
     @property
     def cxx_files(self):
-        return self._source['files']['.cc']
+        return self._source['files'].get('.cc', [])
 
     @property
     def asm_sources(self):
-        return self._source['files']['.S']
+        return self._source['files'].get('.S', [])
 
     def generate_manifest(self, path):
         unsupported_source_files = list(self._source['files'].viewkeys() - {'.h', '.c', '.cc', '.S'})
