@@ -53,11 +53,14 @@ def _get_spotbugs_attribute(p, suffix, default=None):
     return spotbugs_attribute_value if found else default
 
 def _should_test_project(p):
-    if not p.isJavaProject():
-        return False
     spotbugs_attribute_value = _get_spotbugs_attribute(p, '')
     if spotbugs_attribute_value is not None:
-        return spotbugs_attribute_value.lower() == 'true' or spotbugs_attribute_value is True
+        if p.isJavaProject():
+            return spotbugs_attribute_value.lower() == 'true' or spotbugs_attribute_value is True
+        else:
+            return spotbugs_attribute_value.lower() == 'always'
+    if not p.isJavaProject():
+        return False
     if p.name.endswith('.test'):
         return False
     if p.javaCompliance >= '9':
