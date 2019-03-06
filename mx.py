@@ -2305,9 +2305,6 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict["path"] = source_spec
             elif source_type == 'string':
                 source_dict["value"] = source_spec
-            elif source_type == 'classpath':
-                classpath = os.pathsep.join(normpath(entry) for entry in source_spec.split(':'))
-                source_dict["value"] = classpath
             else:
                 abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
         else:
@@ -2324,7 +2321,7 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = "file:" + source_dict['path']
             elif source_type == 'link':
                 source_dict['_str_'] = "link:" + source_dict['path']
-            elif source_type == 'string' or source_type == 'classpath':
+            elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
         if 'exclude' in source_dict:
             if isinstance(source_dict['exclude'], str):
@@ -2581,7 +2578,7 @@ class LayoutDistribution(AbstractDistribution):
                 absolute_destination = join(absolute_destination, link_target_basename)
                 clean_destination = join(clean_destination, link_target_basename)
             add_symlink(destination, link_target, absolute_destination, clean_destination)
-        elif source_type == 'string' or source_type == 'classpath':
+        elif source_type == 'string':
             if destination.endswith('/'):
                 abort("Can not use `string` source with a destination ending with `/` ({})".format(destination), context=self)
             ensure_dir_exists(dirname(absolute_destination))
@@ -2648,7 +2645,7 @@ class LayoutDistribution(AbstractDistribution):
                             return up
             elif source_type == 'link':
                 pass  # this is handled by _persist_layout
-            elif source_type == 'string' or source_type == 'classpath':
+            elif source_type == 'string':
                 pass  # this is handled by _persist_layout
             elif source_type in ('dependency', 'extracted-dependency'):
                 pass  # this is handled by a build task dependency
