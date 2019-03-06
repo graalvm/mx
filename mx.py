@@ -8295,6 +8295,8 @@ class Suite(object):
     :type dists: list[Distribution]
     """
     def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
+        if primary is True and vc_dir is None:
+            abort("The primary suite must be in a vcs repository")
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
@@ -19040,7 +19042,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.5")  # GR-14283
+version = VersionSpec("5.213.6")  # GR-14280
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
