@@ -727,9 +727,9 @@ def _parse_java_properties(args):
 def _jacoco_excludes_includes_projects(limit_to_primary=False):
     includes = []
     excludes = []
-    overlayTarget = []
 
-    for p in mx.projects(limit_to_primary=limit_to_primary):
+    projects = mx.projects(limit_to_primary=limit_to_primary)
+    for p in projects:
         if p.isJavaProject():
             projsetting = getattr(p, 'jacoco', '')
             if not _jacoco_is_package_whitelisted(p.name):
@@ -737,13 +737,8 @@ def _jacoco_excludes_includes_projects(limit_to_primary=False):
             elif projsetting == 'exclude':
                 excludes.append(p)
             else:
-                if hasattr(p, 'overlayTarget'):
-                    overlayTarget.append(mx.project(p.overlayTarget))
                 includes.append(p)
-    includes = [i for i in includes if i not in overlayTarget]
-    excludes += overlayTarget
     return excludes, includes
-
 
 def _jacoco_exclude_classes(projects):
     excludeClasses = {}
@@ -754,7 +749,6 @@ def _jacoco_exclude_classes(projects):
         r = p.find_classes_with_matching_source_line(None, lambda line: 'JaCoCo Exclude' in line, includeGenSrc=True)
         excludeClasses.update(r)
     return excludeClasses
-
 
 def sonarqube_upload(args):
     """run SonarQube scanner and upload JaCoCo results"""
@@ -802,6 +796,32 @@ def sonarqube_upload(args):
     java_src = [os.path.relpath(s, basedir) for s in java_src]
     java_bin = [os.path.relpath(b, basedir) for b in java_bin]
 
+    # Overlayed sources and classes must be excluded
+    overlayed_sources = []
+    overlayed_classfiles = {}
+    for p in includes:
+        if hasattr(p, "overlayTarget"):
+            target = mx.project(p.overlayTarget)
+            overlay_sources = []
+            for srcDir in p.source_dirs():
+                for root, _, files in os.walk(srcDir):
+                    for name in files:
+                        if name.endswith('.java') and name != 'package-info.java':
+                            overlay_sources.append(join(os.path.relpath(root, srcDir), name))
+            print(p, target, overlay_sources)
+            for srcDir in target.source_dirs():
+                for root, _, files in os.walk(srcDir):
+                    for name in files:
+                        if name.endswith('.java') and name != 'package-info.java':
+                            s = join(os.path.relpath(root, srcDir), name)
+                            if s in overlay_sources:
+                                overlayed = join(os.path.relpath(root, basedir), name)
+                                overlayed_sources.append(overlayed)
+            for s in overlay_sources:
+                classfile = join(os.path.relpath(target.output_dir(), basedir), s[:-len('java')] + 'class')
+                with open(classfile, 'rb') as fp:
+                    overlayed_classfiles[classfile] = fp.read()
+
     exclude_dirs = []
     for p in excludes:
         exclude_dirs.extend(p.source_dirs())
@@ -825,6 +845,7 @@ def sonarqube_upload(args):
     _add_default_prop('sonar.java.binaries', ','.join(java_bin))
     _add_default_prop('sonar.java.libraries', ','.join(java_libs))
     exclude_patterns = [os.path.relpath(e, basedir) + '**' for e in exclude_dirs] + \
+                       overlayed_sources + \
                        list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]))
     if exclude_patterns:
         _add_default_prop('sonar.exclusions', ','.join(exclude_patterns))
@@ -835,9 +856,21 @@ def sonarqube_upload(args):
         # prepare properties file
         fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.iteritems()))
         fp.flush()
-        # run sonarqube cli
-        java_args = other_args + ['-Dproject.settings=' + fp.name, '-jar', sonarqube_cli.get_path(True)] + sonar_args
-        exit_code = mx.run_java(java_args, nonZeroIsFatal=False)
+
+        # Since there's no options to exclude individual classes,
+        # we temporarily delete the overlayed class files instead.
+        for classfile in overlayed_classfiles:
+            os.remove(classfile)
+
+        try:
+            # run sonarqube cli
+            java_args = other_args + ['-Dproject.settings=' + fp.name, '-jar', sonarqube_cli.get_path(True)] + sonar_args
+            exit_code = mx.run_java(java_args, nonZeroIsFatal=False)
+        finally:
+            # Restore temporarily deleted class files
+            for classfile, data in overlayed_classfiles.items():
+                with open(classfile, 'wb') as cf:
+                    cf.write(data)
 
         if exit_code != 0:
             fp.seek(0)
