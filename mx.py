@@ -19063,7 +19063,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.7")  # [GR-14053] Fixes for building vm suite on Windows.
+version = VersionSpec("5.213.8")  # [GR-14169] Layout distributions ignore updates in directories.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
