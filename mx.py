@@ -2643,6 +2643,15 @@ class LayoutDistribution(AbstractDistribution):
                         up = _needsUpdate(source_file, self.path)
                         if up:
                             return up
+                    elif isdir(source_file):
+                        for root, _, files in os.walk(source_file):
+                            up = _needsUpdate(root, self.path)
+                            if up:
+                                return up
+                            for f in files:
+                                up = _needsUpdate(join(root, f), self.path)
+                                if up:
+                                    return up
             elif source_type == 'link':
                 pass  # this is handled by _persist_layout
             elif source_type == 'string':
@@ -19054,7 +19063,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.7")  # [GR-14053] Fixes for building vm suite on Windows.
+version = VersionSpec("5.213.8")  # [GR-14169] Layout distributions ignore updates in directories.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
