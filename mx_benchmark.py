@@ -202,6 +202,7 @@ add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
 ))
 get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-jar", default=None)
 get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-name", default=None)
+get_parser("jmh_jar_benchmark_suite_vm").add_argument("--jmh-benchmarks", default=None)
 
 
 class BenchmarkSuite(object):
@@ -1439,7 +1440,7 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        _, out, _ = jvm.run(cwd, args + ["-l"])
+        _, out, _ = jvm.run(cwd, args + self.jmhBenchmarkFilter(bmSuiteArgs) + ["-l"])
         benchs = out.splitlines()
         linenumber = -1
         for linenumber in range(len(benchs)):
@@ -1467,6 +1468,11 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         if jmh_name is None:
             mx.abort("Please use the --jmh-name benchmark suite argument to set the name of the JMH suite.")
         return jmh_name
+
+    def jmhBenchmarkFilter(self, bmSuiteArgs):
+        jmh_benchmarks = self.jmhArgs(bmSuiteArgs).jmh_benchmarks
+        jmh_benchmarks = jmh_benchmarks if jmh_benchmarks is not None else ""
+        return jmh_benchmarks.split(',')
 
     def jmhJAR(self, bmSuiteArgs):
         jmh_jar = self.jmhArgs(bmSuiteArgs).jmh_jar
