@@ -2643,6 +2643,15 @@ class LayoutDistribution(AbstractDistribution):
                         up = _needsUpdate(source_file, self.path)
                         if up:
                             return up
+                    elif isdir(source_file):
+                        for root, _, files in os.walk(source_file):
+                            up = _needsUpdate(root, self.path)
+                            if up:
+                                return up
+                            for f in files:
+                                up = _needsUpdate(join(root, f), self.path)
+                                if up:
+                                    return up
             elif source_type == 'link':
                 pass  # this is handled by _persist_layout
             elif source_type == 'string':
