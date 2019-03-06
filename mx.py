@@ -68,7 +68,6 @@ from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
-from os.path import split as split_path
 from tempfile import mkdtemp, mkstemp
 import fnmatch
 import operator
@@ -2371,9 +2370,7 @@ class LayoutDistribution(AbstractDistribution):
             archiver.add_link(src, archive_dest, provenance)
             if get_os() == 'windows':
                 def strip_suffix(path):
-                    dirname, filename = split_path(path)
-                    stripped_filename = filename.rpartition('.')[0]
-                    return join(dirname, stripped_filename or filename)
+                    return os.path.splitext(path)[0]
                 abs_dest = strip_suffix(abs_dest) + '.cmd'
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
@@ -2394,10 +2391,7 @@ class LayoutDistribution(AbstractDistribution):
             """
             if glob_match_any(excludes, src_arcname):
                 return
-            absolute_destination = normpath(join(output, dst))
-            if get_os() == 'windows':
-                # See https://docs.microsoft.com/en-us/windows/desktop/FileIO/naming-a-file#maximum-path-length-limitation
-                absolute_destination = '\\\\?\\' + absolute_destination
+            absolute_destination = _safe_path(join(output, dst))
             if islink(src):
                 link_target = os.readlink(src)
                 if isabs(link_target):
