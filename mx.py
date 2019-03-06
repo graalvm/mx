@@ -2365,10 +2365,22 @@ class LayoutDistribution(AbstractDistribution):
             if not resolved_output_link_target.startswith(output):
                 abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
             archiver.add_link(src, archive_dest, provenance)
+            if get_os() == 'windows':
+                def strip_suffix(path):
+                    return os.path.splitext(path)[0]
+                abs_dest = strip_suffix(abs_dest) + '.cmd'
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            os.symlink(src, abs_dest)
+            if get_os() == 'windows':
+                link_template_name = join(_mx_suite.mxDir, 'exe_link_template.cmd')
+                with open(link_template_name, 'r') as template, SafeFileCreation(abs_dest) as sfc, open(sfc.tmpPath, 'w') as link:
+                    _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
+                    _template_subst.register_no_arg('target', normpath(strip_suffix(src)))
+                    for line in template:
+                        link.write(_template_subst.substitute(line))
+            else:
+                os.symlink(src, abs_dest)
 
         def merge_recursive(src, dst, src_arcname, excludes):
             """
@@ -2376,7 +2388,7 @@ class LayoutDistribution(AbstractDistribution):
             """
             if glob_match_any(excludes, src_arcname):
                 return
-            absolute_destination = join(output, dst)
+            absolute_destination = _safe_path(join(output, dst))
             if islink(src):
                 link_target = os.readlink(src)
                 if isabs(link_target):
@@ -19042,7 +19054,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.6")  # GR-14280
+version = VersionSpec("5.213.7")  # [GR-14053] Fixes for building vm suite on Windows.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
