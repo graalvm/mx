@@ -796,8 +796,9 @@ def sonarqube_upload(args):
     java_src = [os.path.relpath(s, basedir) for s in java_src]
     java_bin = [os.path.relpath(b, basedir) for b in java_bin]
 
-    # Overlayed sources must be excluded
+    # Overlayed sources and classes must be excluded
     overlayed_sources = []
+    overlayed_classfiles = {}
     for p in includes:
         if hasattr(p, "overlayTarget"):
             target = mx.project(p.overlayTarget)
@@ -816,6 +817,10 @@ def sonarqube_upload(args):
                             if s in overlay_sources:
                                 overlayed = join(os.path.relpath(root, basedir), name)
                                 overlayed_sources.append(overlayed)
+            for s in overlay_sources:
+                classfile = join(os.path.relpath(target.output_dir(), basedir), s[:-len('java')] + 'class')
+                with open(classfile, 'rb') as fp:
+                    overlayed_classfiles[classfile] = fp.read()
 
     exclude_dirs = []
     for p in excludes:
@@ -851,9 +856,21 @@ def sonarqube_upload(args):
         # prepare properties file
         fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.iteritems()))
         fp.flush()
-        # run sonarqube cli
-        java_args = other_args + ['-Dproject.settings=' + fp.name, '-jar', sonarqube_cli.get_path(True)] + sonar_args
-        exit_code = mx.run_java(java_args, nonZeroIsFatal=False)
+
+        # Since there's no options to exclude individual classes,
+        # we temporarily delete the overlayed class files instead.
+        for classfile in overlayed_classfiles:
+            os.remove(classfile)
+
+        try:
+            # run sonarqube cli
+            java_args = other_args + ['-Dproject.settings=' + fp.name, '-jar', sonarqube_cli.get_path(True)] + sonar_args
+            exit_code = mx.run_java(java_args, nonZeroIsFatal=False)
+        finally:
+            # Restore temporarily deleted class files
+            for classfile, data in overlayed_classfiles.items():
+                with open(classfile, 'wb') as cf:
+                    cf.write(data)
 
         if exit_code != 0:
             fp.seek(0)
