@@ -4997,25 +4997,19 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
+
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
-        BuildTask.__init__(self, subject, args, 1)
+        super(NoOpTask, self).__init__(subject, args, 1)
 
     def __str__(self):
         return "NoOp"
 
-    def logBuild(self, reason=None):
-        pass
-
-    def logSkip(self, reason=None):
-        pass
-
-    def needsBuild(self, newestInput):
-        return (False, None)
-
     def newestOutput(self):
-        # TODO Should still return something for jdk/jre library and NativeTARDistributions
         return None
+
+    def execute(self):
+        pass
 
     def build(self):
         pass
@@ -5023,8 +5017,6 @@ class NoOpTask(BuildTask):
     def clean(self, forBuild=False):
         pass
 
-    def cleanForbidden(self):
-        return True
 
 class JdkLibrary(BaseLibrary, ClasspathDependency):
     """
