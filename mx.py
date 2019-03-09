@@ -4411,8 +4411,6 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         output = self.newestOutput()
         if output is None:
             return True, None
-        elif newestInput and output.isOlderThan(newestInput):
-            return True, '{} is older than {}'.format(output, newestInput)
 
         return False, reason
 
