@@ -15721,8 +15721,22 @@ def intellij_get_ruby_sdk_name(sdks):
             return sdk['name']
     return "truffleruby"
 
-def _intellij_library_file_name(library_name):
-    return library_name.replace('.', '_').replace('-', '_') + '.xml'
+_not_intellij_filename = re.compile(r'[^a-zA-Z0-9]')
+
+def _intellij_library_file_name(library_name, unique_library_file_names):
+    def _gen_name(n=None):
+        suffix = '' if n is None else str(n)
+        return _not_intellij_filename.sub('_', library_name) + suffix + '.xml'
+
+    # Find a unique name like intellij does
+    file_name = _gen_name()
+    i = 2
+    while file_name in unique_library_file_names:
+        file_name = _gen_name(i)
+        i += 1
+
+    unique_library_file_names.add(file_name)
+    return file_name
 
 
 def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refreshOnly=False, mx_python_modules=False,
@@ -16033,6 +16047,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         update_file(moduleXmlFile, modulesXml.xml(indent='  ', newl='\n'))
 
     if java_modules and not module_files_only:
+        unique_library_file_names = set()
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
 
         ensure_dir_exists(librariesDirectory)
@@ -16061,7 +16076,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             libraryXml.close('library')
             libraryXml.close('component')
 
-            libraryFile = join(librariesDirectory, _intellij_library_file_name(name))
+            libraryFile = join(librariesDirectory, _intellij_library_file_name(name, unique_library_file_names))
             return update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
 
         # Setup the libraries that were used above
@@ -16489,6 +16504,7 @@ def fsckprojects(args):
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
         if exists(librariesDirectory):
             neededLibraries = set()
+            unique_library_file_names = set()
             for p in suite.projects_recursive() + _mx_suite.projects_recursive():
                 if not p.isJavaProject():
                     continue
@@ -16498,7 +16514,7 @@ def fsckprojects(args):
                     if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
-            neededLibraryFiles = frozenset([_intellij_library_file_name(l.name) for l in neededLibraries])
+            neededLibraryFiles = frozenset([_intellij_library_file_name(l.name, unique_library_file_names) for l in neededLibraries])
             existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
             for library_file in existingLibraryFiles - neededLibraryFiles:
                 file_path = join(librariesDirectory, library_file)
