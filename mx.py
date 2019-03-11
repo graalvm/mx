@@ -12847,20 +12847,19 @@ def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction
     chunkSize = 0
     chunkStart = 0
     if limit is None:
-        commandLinePrefixAllowance = 3000
         if is_windows():
             # The CreateProcess function on Windows limits the length of a command line to
             # 32,768 characters (http://msdn.microsoft.com/en-us/library/ms682425%28VS.85%29.aspx)
-            limit = 32768 - commandLinePrefixAllowance
+            limit = 32768
         else:
-            # Using just SC_ARG_MAX without extra downwards adjustment
-            # results in "[Errno 7] Argument list too long" on MacOS.
-            commandLinePrefixAllowance = 20000
-            syslimit = os.sysconf('SC_ARG_MAX')
-            if syslimit == -1:
-                syslimit = 262144 # we could use sys.maxint but we prefer a more robust smaller value
-            limit = syslimit - commandLinePrefixAllowance
-            assert limit > 0
+            limit = os.sysconf('SC_ARG_MAX')
+            if limit == -1:
+                limit = 262144 # we could use sys.maxint but we prefer a more robust smaller value
+        # Reduce the limit by 20% to account for the space required by environment
+        # variables and other things that use up the command line limit.
+        # This is not an exact calculation as calculating the exact requirements
+        # is complex (https://www.in-ulm.de/~mascheck/various/argmax/)
+        limit = limit * 0.8
     for i in range(len(files)):
         path = pathFunction(files[i])
         size = len(path) + len(separator)
@@ -19067,7 +19066,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.1")  # GR-14294
+version = VersionSpec("5.214.2")  # [GR-14378] adjust file chunking wrt command line limits
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
