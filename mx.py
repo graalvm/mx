@@ -19063,7 +19063,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.9")  # [GR-14404] Fix TruffleRuby downstream test.
+version = VersionSpec("5.213.10")  # [GR-14395] Add AArch64 ninja binary
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

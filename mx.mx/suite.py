@@ -354,6 +354,10 @@ suite = {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip"],
             "sha1" : "987234c4ce45505c21302e097c24efef4873325c"
           },
+          "aarch64" : {
+            "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
+            "sha1" : "0939b204638c8aae5e2fc2bf9c7576c805d65331"
+          },
           "<others>" : {
             "optional" : True
           }
