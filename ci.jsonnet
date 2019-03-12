@@ -60,7 +60,7 @@ jmh_test = java + {
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
   ]
 },
-downstream_truffleruby_binary_truffle = {
+downstream_truffleruby = {
   targets: ['gate'],
   downloads+: {
     JAVA_HOME: labsjdk8,
@@ -73,7 +73,6 @@ downstream_truffleruby_binary_truffle = {
     PATH: "$LLVM/bin:$PATH",
   },
   run: [
-    ['export', "MX_BINARY_SUITES=sdk,truffle"],
     ["./mx", 'testdownstream', '--repo', "https://github.com/graalvm/truffleruby.git", '--mx-command', "ruby_testdownstream_hello"],
   ],
   timelimit: "10:00",
@@ -114,8 +113,8 @@ python3 = {
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
-    downstream_truffleruby_binary_truffle +           {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle"},
-    downstream_truffleruby_binary_truffle + nocache + {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle-nocache"},
+    downstream_truffleruby +           {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle"},
+    downstream_truffleruby + nocache + {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle-nocache"},
 
     {
       capabilities: ['linux', 'amd64'], targets: ['gate'], name: "gate-version-update-check",
