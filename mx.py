@@ -4411,8 +4411,6 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         output = self.newestOutput()
         if output is None:
             return True, None
-        elif newestInput and output.isOlderThan(newestInput):
-            return True, '{} is older than {}'.format(output, newestInput)
 
         return False, reason
 
@@ -4999,25 +4997,19 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
+
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
-        BuildTask.__init__(self, subject, args, 1)
+        super(NoOpTask, self).__init__(subject, args, 1)
 
     def __str__(self):
         return "NoOp"
 
-    def logBuild(self, reason=None):
-        pass
-
-    def logSkip(self, reason=None):
-        pass
-
-    def needsBuild(self, newestInput):
-        return (False, None)
-
     def newestOutput(self):
-        # TODO Should still return something for jdk/jre library and NativeTARDistributions
         return None
+
+    def execute(self):
+        pass
 
     def build(self):
         pass
@@ -5025,8 +5017,6 @@ class NoOpTask(BuildTask):
     def clean(self, forBuild=False):
         pass
 
-    def cleanForbidden(self):
-        return True
 
 class JdkLibrary(BaseLibrary, ClasspathDependency):
     """
@@ -19077,7 +19067,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.0")  # [GR-14390] update to jvmci-0.56 in CI
+version = VersionSpec("5.214.1")  # GR-14294
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
