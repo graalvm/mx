@@ -322,8 +322,17 @@ except:
 
 _projects = dict()
 _libs = dict()
+"""
+:type: dict[str, ResourceLibrary|Library]
+"""
 _jreLibs = dict()
+"""
+:type: dict[str, JreLibrary]
+"""
 _jdkLibs = dict()
+"""
+:type: dict[str, JdkLibrary]
+"""
 _dists = dict()
 _distTemplates = dict()
 _licenses = dict()
@@ -1617,6 +1626,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                     if dep.isLibrary() or dep.isJARDistribution():
                         if dep.isLibrary():
                             l = dep
+                            # optional libraries and their dependents should already have been removed
+                            assert not l.optional or l.is_available()
                             # merge library jar into distribution jar
                             logv('[' + self.original_path() + ': adding library ' + l.name + ']')
                             jarPath = l.get_path(resolve=True)
@@ -1628,8 +1639,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         else:
                             raise abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
                         if jarPath:
-                            if dep.isJARDistribution() or not dep.optional or exists(jarPath):
-                                addFromJAR(jarPath)
+                            addFromJAR(jarPath)
                         if srcArc.zf and jarSourcePath:
                             with zipfile.ZipFile(jarSourcePath, 'r') as source_zf:
                                 for arcname in source_zf.namelist():
@@ -4771,6 +4781,7 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, l
 
 
 class BaseLibrary(Dependency):
+    __metaclass__ = ABCMeta
     """
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
@@ -4794,6 +4805,14 @@ class BaseLibrary(Dependency):
         """
         return text.format(**vars(self))
 
+    @abstractmethod
+    def is_available(self):
+        """
+        Used to check whether an optional libraries is available.
+        :rtype: bool
+        """
+        pass
+
 
 class ResourceLibrary(BaseLibrary):
     """
@@ -4801,7 +4820,7 @@ class ResourceLibrary(BaseLibrary):
     """
     def __init__(self, suite, name, path, optional, urls, sha1, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
-        self.path = path.replace('/', os.sep)
+        self.path = path.replace('/', os.sep) if path else None
         self.sourcePath = None
         self.urls = urls
         self.sha1 = sha1
@@ -4812,6 +4831,11 @@ class ResourceLibrary(BaseLibrary):
 
     def getBuildTask(self, args):
         return LibraryDownloadTask(args, self)
+
+    def is_available(self):
+        if not self.path:
+            return False
+        return exists(self.get_path(True))
 
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
@@ -4902,8 +4926,13 @@ class PackedResourceLibrary(ResourceLibrary):
         super(PackedResourceLibrary, self).__init__(*args, **kwargs)
         # self.path points to the archive
         # self.extract_path points to the extracted content of the archive
-        archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
-        if self.path == archive_path:
+        if not self.urls or not self.sha1:
+            if not self.optional:
+                abort("non-optional libraries must have urls and sha1")
+            archive_path = None
+        else:
+            archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
+        if self.path == archive_path and archive_path is not None:
             # default path: generate path for extraction
             self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
         else:
@@ -4922,6 +4951,11 @@ class PackedResourceLibrary(ResourceLibrary):
             logvv("Source:      " + src)
             return True
         return False
+
+    def is_available(self):
+        if not self.extract_path:
+            return False
+        return exists(self.get_path(True))
 
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
@@ -4975,6 +5009,10 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
 
     def _comparison_key(self):
         return self.jar
+
+    def is_available(self):
+        # This can not be answered without a JRE as context, see is_provided_by
+        return True
 
     def is_provided_by(self, jdk):
         """
@@ -5073,6 +5111,10 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         else:
             return join(jdk.home, 'jre', path)
 
+    def is_available(self):
+        # This can not be answered without a JDK as context, see is_provided_by
+        return True
+
     def is_provided_by(self, jdk):
         """
         Determines if this library is provided by `jdk`.
@@ -5138,7 +5180,7 @@ class Library(BaseLibrary, ClasspathDependency):
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
-        self.path = path.replace('/', os.sep)
+        self.path = path.replace('/', os.sep) if path is not None else None
         self.urls = urls
         self.sha1 = sha1
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
@@ -5148,20 +5190,20 @@ class Library(BaseLibrary, ClasspathDependency):
             sourceSha1 = sha1
         self.sourceSha1 = sourceSha1
         self.deps = deps
-        abspath = _make_absolute(path, self.suite.dir)
-        if not optional and not exists(abspath):
-            if not len(urls):
+        if not optional:
+            abspath = _make_absolute(path, self.suite.dir)
+            if not exists(abspath) and not len(urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
-        def _checkSha1PropertyCondition(propName, cond, inputPath):
-            if not cond and not optional:
-                absInputPath = _make_absolute(inputPath, self.suite.dir)
-                if exists(absInputPath):
-                    abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
-                abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
+            def _checkSha1PropertyCondition(propName, cond, inputPath):
+                if not cond:
+                    absInputPath = _make_absolute(inputPath, self.suite.dir)
+                    if exists(absInputPath):
+                        abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
+                    abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
 
-        _checkSha1PropertyCondition('sha1', sha1, path)
-        _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
+            _checkSha1PropertyCondition('sha1', sha1, path)
+            _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
 
         for url in urls:
             if url.endswith('/') != self.path.endswith(os.sep):
@@ -5183,6 +5225,11 @@ class Library(BaseLibrary, ClasspathDependency):
 
     def get_urls(self):
         return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+
+    def is_available(self):
+        if not self.path:
+            return False
+        return exists(self.get_path(True))
 
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
@@ -8999,10 +9046,8 @@ class Suite(object):
                 _check_maven(maven)
                 urls = _maven_download_urls(**maven)
 
-            if path is None:
+            if path is None and not optional:
                 if not urls:
-                    if optional:
-                        continue
                     abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
                     abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
@@ -10177,7 +10222,7 @@ def project(name, fatalIfMissing=True, context=None):
     """
     Get the project for a given name. This will abort if the named project does
     not exist and 'fatalIfMissing' is true.
-    :return Project:
+    :rtype: Project
     """
     _, name = splitqualname(name)
     p = _projects.get(name)
@@ -10192,13 +10237,15 @@ def library(name, fatalIfMissing=True, context=None):
     """
     Gets the library for a given name. This will abort if the named library does
     not exist and 'fatalIfMissing' is true.
-    :return Library:
+    :rtype: BaseLibrary
     """
     l = _libs.get(name) or _jreLibs.get(name) or _jdkLibs.get(name)
     if l is None and fatalIfMissing:
         if _projects.get(name):
             abort(name + ' is a project, not a library', context=context)
-        abort(_missing_dep_message(name, 'library'), context=context)
+        raise abort(_missing_dep_message(name, 'library'), context=context)
+    if not fatalIfMissing and l.optional and not l.is_available():
+        return None
     return l
 
 
@@ -10215,7 +10262,7 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             the return list (True)
     :return: a list of Dependency objects representing the transitive set of dependencies that should
             be on the class path for something depending on `names`
-    :rtype : list[ClasspathDependency]
+    :rtype: list[ClasspathDependency]
     """
     if names is None:
         roots = set(dependencies())
@@ -18352,15 +18399,11 @@ def _remove_unsatisfied_deps():
     def visit(dep, edge):
         if dep.isLibrary():
             if dep.optional:
-                try:
-                    dep.optional = False
-                    path = dep.get_path(resolve=True)
-                except SystemExit:
-                    path = None
-                finally:
-                    dep.optional = True
-                if not path:
-                    note_removal(dep, 'optional library {0} was removed as {0.path} does not exist'.format(dep))
+                if not dep.is_available():
+                    note_removal(dep, 'optional library {0} was removed as it is not available'.format(dep))
+            for depDep in list(dep.deps):
+                if depDep in removedDeps:
+                    note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
         elif dep.isJavaProject():
             # TODO this lookup should be the same as the one used in build
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
