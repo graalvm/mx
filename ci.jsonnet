@@ -70,7 +70,7 @@ downstream_truffleruby = {
     ruby: ">=2.0.0",
   },
   environment+: {
-    PATH: "$LLVM/bin:$PATH",
+    PATH: "$BUILD_DIR/main:$LLVM/bin:$PATH",
   },
   run: [
     ["./mx", 'testdownstream', '--repo', "https://github.com/graalvm/truffleruby.git", '--mx-command', "ruby_testdownstream_hello"],
