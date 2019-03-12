@@ -2365,14 +2365,14 @@ class LayoutDistribution(AbstractDistribution):
             if not resolved_output_link_target.startswith(output):
                 abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
             archiver.add_link(src, archive_dest, provenance)
-            if get_os() == 'windows':
+            if is_windows():
                 def strip_suffix(path):
                     return os.path.splitext(path)[0]
                 abs_dest = strip_suffix(abs_dest) + '.cmd'
             if lexists(abs_dest):
                 # Since the `archiver.add_link` above already does "the right thing" regarding duplicates (warn or abort) here we just delete the existing file
                 os.remove(abs_dest)
-            if get_os() == 'windows':
+            if is_windows():
                 link_template_name = join(_mx_suite.mxDir, 'exe_link_template.cmd')
                 with open(link_template_name, 'r') as template, SafeFileCreation(abs_dest) as sfc, open(sfc.tmpPath, 'w') as link:
                     _template_subst = mx_subst.SubstitutionEngine(mx_subst.string_substitutions)
@@ -4422,7 +4422,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif get_os() == 'darwin' and not _opts.cpu_count:
+        elif is_darwin() and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -4647,7 +4647,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     in which case it copies the cache entry.
     """
     sha1Check = sha1 and sha1 != 'NOCHECK'
-    canSymlink = canSymlink and not (get_os() == 'windows' or get_os() == 'cygwin')
+    canSymlink = canSymlink and not (is_windows() or is_cygwin())
 
     if len(urls) == 0 and not sha1Check:
         return path
@@ -9805,21 +9805,39 @@ class Timer():
         elapsed = time.time() - self.start
         print('{} took {} seconds'.format(self.name, elapsed))
 
+def is_darwin():
+    return sys.platform.startswith('darwin')
+
+def is_linux():
+    return sys.platform.startswith('linux')
+
+def is_openbsd():
+    return sys.platform.startswith('openbsd')
+
+def is_sunos():
+    return sys.platform.startswith('sunos')
+
+def is_windows():
+    return sys.platform.startswith('win32')
+
+def is_cygwin():
+    return sys.platform.startswith('cygwin')
+
 def get_os():
     """
     Get a canonical form of sys.platform.
     """
-    if sys.platform.startswith('darwin'):
+    if is_darwin():
         return 'darwin'
-    elif sys.platform.startswith('linux'):
+    elif is_linux():
         return 'linux'
-    elif sys.platform.startswith('openbsd'):
+    elif is_openbsd():
         return 'openbsd'
-    elif sys.platform.startswith('sunos'):
+    elif is_sunos():
         return 'solaris'
-    elif sys.platform.startswith('win32'):
+    elif is_windows():
         return 'windows'
-    elif sys.platform.startswith('cygwin'):
+    elif is_cygwin():
         return 'cygwin'
     else:
         abort('Unknown operating system ' + sys.platform)
@@ -9831,7 +9849,7 @@ def _cygpathU2W(p):
     Translate a path from unix-style to windows-style.
     This method has no effects on other platforms than cygwin.
     """
-    if p is None or get_os() != "cygwin":
+    if p is None or not is_cygwin():
         return p
     return _check_output_str(['cygpath', '-a', '-w', p]).strip()
 
@@ -9840,7 +9858,7 @@ def _cygpathW2U(p):
     Translate a path from windows-style to unix-style.
     This method has no effects on other platforms than cygwin.
     """
-    if p is None or get_os() != "cygwin":
+    if p is None or not is_cygwin():
         return p
     return _check_output_str(['cygpath', '-a', '-u', p]).strip()
 
@@ -9850,7 +9868,7 @@ def _separatedCygpathU2W(p):
     unix-style to windows-style.
     This method has no effects on other platforms than cygwin.
     """
-    if p is None or p == "" or get_os() != "cygwin":
+    if p is None or p == "" or not is_cygwin():
         return p
     return ';'.join(map(_cygpathU2W, p.split(os.pathsep)))
 
@@ -9860,7 +9878,7 @@ def _separatedCygpathW2U(p):
     windows-style to unix-style.
     This method has no effects on other platforms than cygwin.
     """
-    if p is None or p == "" or get_os() != "cygwin":
+    if p is None or p == "" or not is_cygwin():
         return p
     return os.pathsep.join(map(_cygpathW2U, p.split(';')))
 
@@ -9872,7 +9890,7 @@ def get_arch():
         return 'amd64'
     if machine in ['sun4v', 'sun4u', 'sparc64']:
         return 'sparcv9'
-    if machine == 'i386' and get_os() == 'darwin':
+    if machine == 'i386' and is_darwin():
         try:
             # Support for Snow Leopard and earlier version of MacOSX
             if _check_output_str(['sysctl', '-n', 'hw.cpu64bit_capable']).strip() == '1':
@@ -10577,7 +10595,7 @@ environment variables:
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
 
-        if get_os() != 'windows':
+        if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
             self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
             self.add_argument('--ptimeout', help='timeout (in seconds) for subprocesses', type=int, default=0, metavar='<secs>')
@@ -11017,7 +11035,7 @@ def _filtered_jdk_configs(candidates, versionCheck, missingIsError=False, source
         if isinstance(jdk, JDKConfigException):
             if source:
                 message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
-                if get_os() == 'darwin':
+                if is_darwin():
                     candidate = join(candidate, 'Contents', 'Home')
                     if not isinstance(_probe_JDK(candidate), JDKConfigException):
                         message += '. Set ' + source + ' to ' + candidate + ' instead.'
@@ -11193,7 +11211,7 @@ def _removeSubprocess(entry):
             pass
 
 def waitOn(p):
-    if get_os() == 'windows':
+    if is_windows():
         # on windows use a poll loop, otherwise signal does not get handled
         retcode = None
         while retcode is None:
@@ -11251,7 +11269,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     add_proxy_property('https.proxyHost', host)
     add_proxy_property('https.proxyPort', port)
     java_no_proxy = _java_no_proxy()
-    if get_os() == 'windows':
+    if is_windows():
         # Prevent Windows from getting confused by use of `|` as separator
         java_no_proxy = '"' + java_no_proxy.replace('|', '^|') + '"'
     add_proxy_property('http.nonProxyHosts', java_no_proxy)
@@ -11266,7 +11284,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
 
 
     mavenCommand = 'mvn'
-    if get_os() == 'windows':
+    if is_windows():
         mavenCommand += '.cmd'
         extra_args += ['--batch-mode'] # prevent maven to color output
     mavenHome = get_env('MAVEN_HOME')
@@ -11310,7 +11328,7 @@ def _get_new_progress_group_args():
     """
     preexec_fn = None
     creationflags = 0
-    if get_os() == 'windows':
+    if is_windows():
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         preexec_fn = os.setsid
@@ -11381,7 +11399,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     sub = None
 
     try:
-        if timeout or get_os() == 'windows':
+        if timeout or is_windows():
             preexec_fn, creationflags = _get_new_progress_group_args()
         else:
             preexec_fn, creationflags = (None, 0)
@@ -11416,14 +11434,14 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                     retcode = waitOn(p)
                     break
                 except KeyboardInterrupt:
-                    if get_os() == 'windows':
+                    if is_windows():
                         p.terminate()
                     else:
                         # Propagate SIGINT to subprocess. If the subprocess does not
                         # handle the signal, it will terminate and this loop exits.
                         _kill_process(p.pid, signal.SIGINT)
         else:
-            if get_os() == 'windows':
+            if is_windows():
                 abort('Use of timeout not (yet) supported on Windows')
             retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
     except OSError as e:
@@ -11450,7 +11468,7 @@ def exe_suffix(name):
     """
     Gets the platform specific suffix for an executable
     """
-    if get_os() == 'windows':
+    if is_windows():
         return name + '.exe'
     return name
 
@@ -11458,8 +11476,7 @@ def add_lib_prefix(name):
     """
     Adds the platform specific library prefix to a name
     """
-    os = get_os()
-    if os in ['darwin', 'linux', 'openbsd', 'solaris']:
+    if is_darwin() or is_linux() or is_openbsd() or is_sunos():
         return 'lib' + name
     return name
 
@@ -11467,12 +11484,11 @@ def add_lib_suffix(name):
     """
     Adds the platform specific library suffix to a name
     """
-    os = get_os()
-    if os == 'windows':
+    if is_windows():
         return name + '.dll'
-    if os in ['linux', 'openbsd', 'solaris']:
+    if is_linux() or is_openbsd() or is_sunos():
         return name + '.so'
-    if os == 'darwin':
+    if is_darwin():
         return name + '.dylib'
     return name
 
@@ -11480,12 +11496,11 @@ def add_debug_lib_suffix(name):
     """
     Adds the platform specific library suffix to a name
     """
-    os = get_os()
-    if os == 'windows':
+    if is_windows():
         return name + '.pdb'
-    if os in ['linux', 'openbsd', 'solaris']:
+    if is_linux() or is_openbsd() or is_sunos():
         return name + '.debuginfo'
-    if os == 'darwin':
+    if is_darwin():
         return name + '.dylib.dSYM'
     return name
 
@@ -11678,7 +11693,7 @@ class JDKConfig(Comparable):
         self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
         self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
         self.include_dirs = [join(self.home, 'include'),
-                             join(self.home, 'include', 'win32' if get_os() == 'windows' else get_os())]
+                             join(self.home, 'include', 'win32' if is_windows() else get_os())]
         self.toolsjar = join(self.home, 'lib', 'tools.jar')
         if not exists(self.toolsjar):
             self.toolsjar = None
@@ -12265,7 +12280,7 @@ def _send_sigquit():
             return False
 
         if p is not None and _is_process_alive(p) and _isJava():
-            if get_os() == 'windows':
+            if is_windows():
                 log("mx: implement me! want to send SIGQUIT to my child process")
             else:
                 # only send SIGQUIT to the child not the process group
@@ -12292,14 +12307,14 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
 
     for p, args in _currentSubprocesses:
         if _is_process_alive(p):
-            if get_os() == 'windows':
+            if is_windows():
                 p.terminate()
             else:
                 _kill_process(p.pid, killsig)
             time.sleep(0.1)
         if _is_process_alive(p):
             try:
-                if get_os() == 'windows':
+                if is_windows():
                     p.terminate()
                 else:
                     _kill_process(p.pid, signal.SIGKILL)
@@ -12598,7 +12613,7 @@ def build(cmd_args, parser=None):
         deps_w_deprecation_errors = [e.name for e in primary_java_projects + primary_java_project_dists]
         logv("Deprecations are only errors for " + ", ".join(deps_w_deprecation_errors))
 
-    if get_os() == 'windows':
+    if is_windows():
         if args.parallelize:
             warn('parallel builds are not supported on windows: can not use -p')
             args.parallelize = False
@@ -12843,7 +12858,7 @@ def _chunk_files_for_command_line(files, limit=None, separator=' ', pathFunction
     chunkStart = 0
     if limit is None:
         commandLinePrefixAllowance = 3000
-        if get_os() == 'windows':
+        if is_windows():
             # The CreateProcess function on Windows limits the length of a command line to
             # 32,768 characters (http://msdn.microsoft.com/en-us/library/ms682425%28VS.85%29.aspx)
             limit = 32768 - commandLinePrefixAllowance
@@ -13260,7 +13275,7 @@ class SafeFileCreation(object):
                     # Correct the permissions on the temporary file which is created with restrictive permissions
                     os.chmod(tmpPath, 0o666 & ~currentUmask)
                     # Atomic if self.path does not already exist.
-                    if get_os() == 'windows' and exists(path):
+                    if is_windows() and exists(path):
                         # Needed on Windows
                         os.remove(path)
                     os.rename(tmpPath, path)
@@ -13761,7 +13776,7 @@ def _safe_path(path):
     This works around the MAX_PATH limit on Windows:
     https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
     """
-    if get_os() == 'windows':
+    if is_windows():
         if _opts.verbose and '/' in path:
             warn("Forward slash in path on windows: {}".format(path))
             import traceback
@@ -13812,7 +13827,7 @@ def rmtree(path, ignore_errors=False):
     if ignore_errors:
         def on_error(*args):
             pass
-    elif get_os() == 'windows':
+    elif is_windows():
         def on_error(func, _path, exc_info):
             os.chmod(_path, S_IWRITE)
             if isdir(_path):
@@ -14877,7 +14892,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     baseDir = dirname(os.path.abspath(__file__))
 
     cmd = 'mx'
-    if get_os() == 'windows':
+    if is_windows():
         cmd = 'mx.cmd'
     cmdPath = join(baseDir, cmd)
     if not os.path.exists(cmdPath):
@@ -15340,7 +15355,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
-    canSymlink = not (get_os() == 'windows' or get_os() == 'cygwin') and 'symlink' in dir(os)
+    canSymlink = not (is_windows() or is_cygwin()) and 'symlink' in dir(os)
     if canSymlink:
         nbBuildDir = join(p.dir, 'nbproject', 'build')
         apSourceOutRef = "annotation.processing.source.output=" + annotationProcessorSrcFolder
@@ -15648,15 +15663,14 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
 
 def intellij_read_sdks():
     sdks = dict()
-    os_type = get_os()
-    if os_type in ('linux', 'openbsd', 'solaris', 'windows'):
+    if is_linux() or is_openbsd() or is_sunos() or is_windows():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
-    elif os_type == "darwin":
+    elif is_darwin():
         xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
     else:
-        warn("Location of IntelliJ SDK definitions on {} is unknown".format(os_type))
+        warn("Location of IntelliJ SDK definitions on {} is unknown".format(get_os()))
         return sdks
     if len(xmlSdks) == 0:
         warn("IntelliJ SDK definitions not found")
@@ -16206,7 +16220,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 custom_eclipse_exe = get_env('ECLIPSE_EXE')
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
-                    if get_os() == 'darwin':
+                    if is_darwin():
                         custom_eclipse = join(dirname(custom_eclipse), 'Eclipse', 'plugins')
                     if not exists(custom_eclipse_exe):
                         abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
@@ -17748,7 +17762,7 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
-    if get_os() == 'windows':
+    if is_windows():
         dev_null = 'NUL'
     else:
         dev_null = '/dev/null'
@@ -19045,7 +19059,7 @@ def main():
 
     def quit_handler(signum, frame):
         _send_sigquit()
-    if get_os() != 'windows':
+    if not is_windows():
         signal.signal(signal.SIGQUIT, quit_handler)
 
     try:
@@ -19063,7 +19077,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.213.10")  # [GR-14395] Add AArch64 ninja binary
+version = VersionSpec("5.214.0")  # [GR-14390] update to jvmci-0.56 in CI
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
