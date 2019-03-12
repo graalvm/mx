@@ -337,7 +337,7 @@ class NinjaManifestGenerator(object):
         self.variables(includes=['-I' + self._resolve(d) for d in dirs])
 
     def cc_rule(self, cxx=False):
-        if mx.get_os() == 'windows':
+        if mx.is_windows():
             command = 'cl -nologo -showIncludes $includes $cflags -c $in -Fo$out'
             depfile = None
             deps = 'msvc'
@@ -355,13 +355,13 @@ class NinjaManifestGenerator(object):
         self.newline()
 
         def build(source_file):
-            output = os.path.splitext(source_file)[0] + ('.obj' if mx.get_os() == 'windows' else '.o')
+            output = os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
             return self.n.build(output, rule, self._resolve(source_file))[0]
 
         return build
 
     def asm_rule(self):
-        assert mx.get_os() == 'windows'
+        assert mx.is_windows()
 
         self.n.rule('cpp',
                     command='cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out',
@@ -385,7 +385,7 @@ class NinjaManifestGenerator(object):
         return build
 
     def ar_rule(self):
-        if mx.get_os() == 'windows':
+        if mx.is_windows():
             command = 'lib -nologo -out:$out $in'
         else:
             command = 'ar -rc $out $in'
@@ -398,7 +398,7 @@ class NinjaManifestGenerator(object):
         return lambda archive, members: self.n.build(archive, 'ar', members)[0]
 
     def link_rule(self, cxx=False):
-        if mx.get_os() == 'windows':
+        if mx.is_windows():
             command = 'link -nologo $ldflags -out:$out $in $ldlibs'
         else:
             command = '%s $ldflags -o $out $in $ldlibs' % ('g++' if cxx else 'gcc')
@@ -483,7 +483,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
     _kinds = dict(
         static_lib=dict(
-            target=lambda name: mx.add_lib_prefix(name) + ('.lib' if mx.get_os() == 'windows' else '.a'),
+            target=lambda name: mx.add_lib_prefix(name) + ('.lib' if mx.is_windows() else '.a'),
         ),
         shared_lib=dict(
             target=lambda name: mx.add_lib_suffix(mx.add_lib_prefix(name)),
@@ -563,7 +563,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
             if self.cxx_files:
                 cxx = gen.cc_rule(cxx=True)
             if self.asm_sources:
-                asm = gen.asm_rule() if mx.get_os() == 'windows' else cc if cc else gen.cc_rule()
+                asm = gen.asm_rule() if mx.is_windows() else cc if cc else gen.cc_rule()
 
             ar = link = None
             if self._kind == self._kinds['static_lib']:
