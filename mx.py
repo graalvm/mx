@@ -2564,7 +2564,7 @@ class LayoutDistribution(AbstractDistribution):
             def _rel_arcname(_source_file):
                 return os.path.relpath(_source_file, files_root)
             _arcname_f = _rel_arcname
-            if not file_path.startswith(self.suite.vc_dir + os.path.sep):
+            if not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
                 # TODO should always abort, tolerate absolute paths for now
                 abolute_source = isabs(source_path)
                 if abolute_source:
