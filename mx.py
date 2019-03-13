@@ -2566,10 +2566,10 @@ class LayoutDistribution(AbstractDistribution):
             _arcname_f = _rel_arcname
             if not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
                 # TODO should always abort, tolerate absolute paths for now
-                abolute_source = isabs(source_path)
-                if abolute_source:
+                absolute_source = isabs(source_path)
+                if absolute_source:
                     _arcname_f = lambda a: a
-                abort_or_warn("Adding file which is not in the repository: '{}' in '{}'".format(file_path, destination), not abolute_source, context=self)
+                abort_or_warn("Adding file which is not in the repository: '{}' in '{}'".format(file_path, destination), not absolute_source, context=self)
             elif isabs(source_path):
                 abort("Source should not be absolute: '{}' in '{}'".format(source_path, destination), context=self)
             _install_source_files(((source_file, _arcname_f(source_file)) for source_file in glob.iglob(file_path)), include=source_path, excludes=source.get('exclude'))
