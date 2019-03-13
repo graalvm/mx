@@ -1244,6 +1244,7 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param Suite suite: the suite in which the distribution is defined
     :param str name: the name of the distribution which must be unique across all suites
     :param list stripConfigFileNames: names of stripping configurations that are located in `<mx_dir>/proguard/` and suffixed with `.proguard`
+    :param list stripMappingFileNames: names of stripping maps that are located in `<mx_dir>/proguard/` and suffixed with `.map`
     :param str | None subDir: a path relative to `suite.dir` in which the IDE project configuration for this distribution is generated
     :param str path: the path of the jar file created for this distribution. If this is not an absolute path,
            it is interpreted to be relative to `suite.dir`.
@@ -1264,7 +1265,8 @@ class JARDistribution(Distribution, ClasspathDependency):
     :param bool maven:
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
-                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None, **kwArgs):
+                 javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None,
+                 stripMappingFileNames=None, **kwArgs):
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
@@ -1293,6 +1295,10 @@ class JARDistribution(Distribution, ClasspathDependency):
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
             self.stripConfig = None
+        if stripMappingFileNames:
+            self.stripMapping = [join(suite.mxDir, 'proguard', stripMappingFileName + '.map') for stripMappingFileName in stripMappingFileNames]
+        else:
+            self.stripMapping = []
         if self.is_stripped():
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
@@ -1769,13 +1775,15 @@ class JARDistribution(Distribution, ClasspathDependency):
             with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
                 # add config files from projects
                 assert all((os.path.isabs(f) for f in self.stripConfig))
+                # add mapping files
+                assert all((os.path.isabs(f) for f in self.stripMapping))
 
                 # add configs (must be one file)
                 _merge_file_contents(self.stripConfig, config_tmp_file)
                 strip_command += ['-include', config_tmp_file.name]
 
                 # input and output jars
-                input_maps = [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+                input_maps = self.stripMapping + [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
 
                 if not jdk9_or_later:
                     libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
@@ -8885,6 +8893,7 @@ class Suite(object):
             javaCompliance = attrs.pop('javaCompliance', None)
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
+            stripMappingFileNames = attrs.pop('stripMap', None)
             assert stripConfigFileNames is None or isinstance(stripConfigFileNames, list)
             if isinstance(maven, dict) and maven.get('version', None):
                 abort("'version' is not supported in maven specification for distributions")
@@ -8892,7 +8901,8 @@ class Suite(object):
                 abort("'buildDependencies' is not supported for JAR distributions")
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, maven=maven,
-                                stripConfigFileNames=stripConfigFileNames, testDistribution=testDistribution, **attrs)
+                                stripConfigFileNames=stripConfigFileNames, stripMappingFileNames=stripMappingFileNames,
+                                testDistribution=testDistribution, **attrs)
         self.dists.append(d)
         return d
 
@@ -19083,7 +19093,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.4")  # [GR-14330] More robust check for source_path outside suite.vc_dir.
+version = VersionSpec("5.214.5")  # proguard applymapping
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
