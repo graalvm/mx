@@ -2564,12 +2564,13 @@ class LayoutDistribution(AbstractDistribution):
             def _rel_arcname(_source_file):
                 return os.path.relpath(_source_file, files_root)
             _arcname_f = _rel_arcname
-            if not file_path.startswith(self.suite.vc_dir + os.path.sep):
-                # TODO should always abort, tolerate absolute paths for now
-                abolute_source = isabs(source_path)
-                if abolute_source:
+            if not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
+                absolute_source = isabs(source_path)
+                if absolute_source:
                     _arcname_f = lambda a: a
-                abort_or_warn("Adding file which is not in the repository: '{}' in '{}'".format(file_path, destination), not abolute_source, context=self)
+                warn("Adding file which is not in the repository: '{}' in '{}'".format(file_path, destination), context=self)
+            elif isabs(source_path):
+                abort("Source should not be absolute: '{}' in '{}'".format(source_path, destination), context=self)
             _install_source_files(((source_file, _arcname_f(source_file)) for source_file in glob.iglob(file_path)), include=source_path, excludes=source.get('exclude'))
         elif source_type == 'link':
             link_target = source['path']
@@ -19082,7 +19083,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.3")  # [GR-14392] Mimic Intellij for library config files.
+version = VersionSpec("5.214.4")  # [GR-14330] More robust check for source_path outside suite.vc_dir.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
