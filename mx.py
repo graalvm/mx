@@ -5478,6 +5478,7 @@ class VC(object):
         - author-ts: unix timestamp (int)
         - committer: name <e-mail> (best-effort, might only contain a name)
         - committer-ts: unix timestamp (int)
+        - description: Commit description
 
         :param str vcdir: a valid repository path
         :param bool abortOnError: if True abort on error
@@ -6279,13 +6280,14 @@ class GitConfig(VC):
                 return None
 
     def parent_info(self, vcdir, abortOnError=True):
-        out = self.git_command(vcdir, ["show", "-s", "--format=%an <%ae>|||%at|||%cn <%ce>|||%ct", "HEAD"], abortOnError=abortOnError)
-        author, author_ts, committer, committer_ts = out.split("|||")
+        out = self.git_command(vcdir, ["show", "-s", "--format=%an <%ae>|||%at|||%cn <%ce>|||%ct|||%s", "HEAD"], abortOnError=abortOnError)
+        author, author_ts, committer, committer_ts, description = out.split("|||")
         return self._sanitize_parent_info({
             "author": author,
             "author-ts": author_ts,
             "committer": committer,
             "committer-ts": committer_ts,
+            "description": description,
         })
 
     def _tags(self, vcdir, prefix, abortOnError=True):
@@ -11388,7 +11390,7 @@ def _get_new_progress_group_args():
         preexec_fn = os.setsid
     return preexec_fn, creationflags
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, **kwargs):
+def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
@@ -11398,7 +11400,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     Each line of the standard output and error streams of the subprocess are redirected to
     out and err if they are callable objects.
     """
-
+    assert stdin is None or isinstance(stdin, str), "'stdin' must be a string: " + str(stdin)
     assert isinstance(args, list), "'args' must be a list: " + str(args)
     idx = 0
     for arg in args:
@@ -11464,7 +11466,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             stream.close()
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
-        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
+        stdin_pipe = None if stdin is None else subprocess.PIPE
+        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
@@ -11482,6 +11485,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             # see: http://bugs.python.org/issue1167930
             for t in joiners:
                 t.join(10)
+        if isinstance(stdin, str):
+            p.stdin.write(stdin)
+            p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
                 try:
@@ -18287,6 +18293,7 @@ update_commands("mx", {
     'sincoming': [sincoming, ''],
     'site': [site, '[options]'],
     'sonarqube-upload': [mx_gate.sonarqube_upload, '[options]'],
+    'coverage-upload': [mx_gate.coverage_upload, '[options]'],
     'spull': [spull, '[options]'],
     'stip': [stip, ''],
     'suites': [show_suites, ''],
@@ -19138,7 +19145,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.215.2")  # GR-14870 (jvmci-0.58)
+version = VersionSpec("5.215.3")  # [GR-13745] Coverage upload
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

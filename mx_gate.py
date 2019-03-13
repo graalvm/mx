@@ -26,7 +26,7 @@
 
 from __future__ import print_function
 
-import os, re, time, datetime
+import os, re, time, datetime, json
 import tempfile
 import pipes
 import zipfile
@@ -689,6 +689,8 @@ def jacocoreport(args):
         projsetting = getattr(p, 'jacoco', '')
         if projsetting in ('include', '') and _jacoco_is_package_whitelisted(p.name):
             if isinstance(p, mx.ClasspathDependency):
+                if args.omit_excluded and p.is_test_project(): # skip test projects when omit-excluded
+                    continue
                 source_dirs = []
                 if p.isJavaProject():
                     source_dirs += p.source_dirs() + [p.source_gen_dir()]
@@ -750,6 +752,107 @@ def _jacoco_exclude_classes(projects):
         excludeClasses.update(r)
     return excludeClasses
 
+def coverage_upload(args):
+    parser = ArgumentParser(prog='mx coverage-upload')
+    parser.add_argument('--upload-url', required=False, default=mx.get_env('COVERAGE_UPLOAD_URL'), help='Format is like rsync: user@host:/directory')
+    parser.add_argument('--build-name', required=False, default=mx.get_env('BUILD_NAME'))
+    parser.add_argument('--build-url', required=False, default=mx.get_env('BUILD_URL'))
+    args, other_args = parser.parse_known_args(args)
+    if not args.upload_url:
+        parser.print_help()
+        return
+    remote_host, remote_basedir = args.upload_url.split(':')
+    if not remote_host:
+        mx.abort('Cannot determine remote host from {}'.format(args.upload_url))
+
+    primary = mx.primary_suite()
+    info = primary.vc.parent_info(primary.dir)
+    rev = primary.vc.parent(primary.dir)
+    if len(remote_basedir) > 0 and not remote_basedir.endswith('/'):
+        remote_basedir += '/'
+    remote_dir = '{}_{}_{}'.format(primary.name, datetime.datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
+    if args.build_name:
+        remote_dir += '_' + args.build_name
+    upload_dir = remote_basedir + remote_dir
+    jacocoreport(['--omit-excluded'] + other_args)
+    files = [JACOCO_EXEC, 'coverage']
+    print("Syncing {} to {}:{}".format(" ".join(files), remote_host, upload_dir))
+    mx.run([
+        'bash',
+        '-c',
+        r'tar -czf - {files} | ssh {remote} bash -c \'"mkdir -p {remotedir} && cd {remotedir} && cat | tar -x{verbose}z"\''
+            .format(
+                files=" ".join(files),
+                remote=remote_host,
+                remotedir=upload_dir,
+                verbose='v' if mx._opts.verbose else '')
+    ])
+    def upload_string(content, path):
+        mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
+    upload_string(json.dumps({
+        'suite': primary.name,
+        'revision': rev,
+        'directory': remote_dir,
+        'build_name': args.build_name,
+        'build_url': args.build_url,
+        'primary_info': info}), upload_dir + '/description.json')
+    mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do cat \$i; echo ,; done; echo null\]) > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
+    upload_string("""<html>
+<frameset rows="40,*">
+  <frame id="navigation" src="navigation.html"/>
+  <frame id="content" src=""/>
+</frameset>
+</html>""", remote_basedir + '/index.html')
+    upload_string("""<html>
+    <head>
+        <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.7.7/angular.js"></script>
+        <script language="javascript">
+        var App = angular.module('myApp', [])
+            .controller('IndexCtrl', function IndexCtrl($scope, $http) {
+                var hash = parent.window.location.hash;
+                if(hash) {
+                    hash = hash.substring(1, hash.length); // remove leading hash
+                }
+                $http.get('index.json').then(function(response, status) {
+                    var data = response.data.filter(x => x != null);
+                    data.sort((l,r) => r.directory.localeCompare(l.directory));
+                    if(data.length > 0) {
+                        var startdir;
+                        if(hash) {
+                            startdir = data.find((dir) => dir.directory == hash);
+                        }
+                        if(!startdir) {
+                            startdir = data[0];
+                        }
+                        $scope.directory = startdir;
+                    }
+                    $scope.data = data;
+                });
+                $scope.$watch('directory', (dir, olddir) => {
+                    if(dir) {
+                        var content = parent.content.contentDocument;
+                        var newpath;
+                        if(olddir) {
+                            newpath = content.location.href.replace(olddir.directory, dir.directory);
+                        } else {
+                            newpath = dir.directory + "/coverage";
+                        }
+                        content.location.href = newpath;
+                        parent.window.history.replaceState(undefined, undefined, "#" + dir.directory);
+                    }
+                });
+                $scope.step = (i) => $scope.directory = $scope.data[$scope.data.indexOf($scope.directory)+i];
+            });
+        </script>
+    </head>
+    <body ng-app="myApp" ng-controller="IndexCtrl">
+       <button ng-click="step(1)" ng-disabled="data.indexOf(directory) >= data.length-1">&lt;&lt;</button>
+       <button ng-click="step(-1)" ng-disabled="data.indexOf(directory) <= 0">&gt;&gt;</button>
+       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name group by i.suite for i in data"></select>
+       <a href="{{directory.build_url}}" ng-if="directory.build_url">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
+    </body>
+</html>""", remote_basedir + '/navigation.html')
+
 def sonarqube_upload(args):
     """run SonarQube scanner and upload JaCoCo results"""
 
@@ -801,6 +904,7 @@ def sonarqube_upload(args):
     overlayed_classfiles = {}
     for p in includes:
         if hasattr(p, "overlayTarget"):
+            print(p)
             target = mx.project(p.overlayTarget)
             overlay_sources = []
             for srcDir in p.source_dirs():
