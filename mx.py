@@ -2570,6 +2570,8 @@ class LayoutDistribution(AbstractDistribution):
                 if abolute_source:
                     _arcname_f = lambda a: a
                 abort_or_warn("Adding file which is not in the repository: '{}' in '{}'".format(file_path, destination), not abolute_source, context=self)
+            elif isabs(source_path):
+                abort("Source should not be absolute: '{}' in '{}'".format(source_path, destination), context=self)
             _install_source_files(((source_file, _arcname_f(source_file)) for source_file in glob.iglob(file_path)), include=source_path, excludes=source.get('exclude'))
         elif source_type == 'link':
             link_target = source['path']
