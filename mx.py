@@ -6749,12 +6749,13 @@ class GitConfig(VC):
         elif not isinstance(patterns, list):
             patterns = [patterns]
         out = LinesOutputCapture()
-        rc = self.run(['git', 'ls-files'] + patterns, cwd=vcdir, out=out, nonZeroIsFatal=False)
+        err = OutputCapture()
+        rc = self.run(['git', 'ls-files'] + patterns, cwd=vcdir, out=out, err=err, nonZeroIsFatal=False)
         if rc == 0:
             return out.lines
         else:
             if abortOnError:
-                abort('locate returned: ' + str(rc))
+                abort('locate returned: {}\n{}'.format(rc, out.data))
             else:
                 return None
 
@@ -17778,13 +17779,9 @@ def verify_library_urls(args):
     _suites = suites(True)
     if args.include_mx:
         _suites.append(_mx_suite)
-    if is_windows():
-        dev_null = 'NUL'
-    else:
-        dev_null = '/dev/null'
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(dev_null, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -19093,7 +19090,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.5")  # proguard applymapping
+version = VersionSpec("5.214.6")  # GR-14455
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
