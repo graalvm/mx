@@ -19082,7 +19082,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.2")  # [GR-14378] adjust file chunking wrt command line limits
+version = VersionSpec("5.214.3")  # [GR-14392] Mimic Intellij for library config files.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
