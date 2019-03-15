@@ -4808,7 +4808,7 @@ class BaseLibrary(Dependency):
     @abstractmethod
     def is_available(self):
         """
-        Used to check whether an optional libraries is available.
+        Used to check whether an optional library is available.
         :rtype: bool
         """
         pass
@@ -10237,6 +10237,9 @@ def library(name, fatalIfMissing=True, context=None):
     """
     Gets the library for a given name. This will abort if the named library does
     not exist and 'fatalIfMissing' is true.
+
+    As a convenience, if 'fatalIfMissing' is False, optional libraries that are not
+    available are not returned ('None'  is returned instead).
     :rtype: BaseLibrary
     """
     l = _libs.get(name) or _jreLibs.get(name) or _jdkLibs.get(name)
