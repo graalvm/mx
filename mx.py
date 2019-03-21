@@ -3944,6 +3944,8 @@ class JavacCompiler(JavacLikeCompiler):
             abort('Showing task tags is not currently supported for javac')
         javacArgs.append('-encoding')
         javacArgs.append('UTF-8')
+        javacArgs.append('-Xmaxerrs')
+        javacArgs.append('10000')
 
         if jdk.javaCompliance >= '9':
             jdk_modules_overridden_on_classpath = set()  # pylint: disable=C0103
@@ -19136,7 +19138,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.214.7")  # [GR-14521] Fix optional libraries.
+version = VersionSpec("5.214.8")  # [GR-14635] Fix invisible DSL processor errors
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
