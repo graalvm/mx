@@ -19138,7 +19138,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.215.0")  # update to use jvmci-0.57 in CI
+version = VersionSpec("5.215.1")  # fix --record-results
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
