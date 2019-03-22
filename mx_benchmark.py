@@ -1875,10 +1875,10 @@ class BenchmarkExecutor(object):
         # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
         # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
         # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
-        fork_counts = None
+        fork_count_spec = None
         if mxBenchmarkArgs.fork_count_file:
             with open(mxBenchmarkArgs.fork_count_file) as f:
-                fork_counts = json.load(f)
+                fork_count_spec = json.load(f)
         failures_seen = False
         try:
             suite.before(bmSuiteArgs)
@@ -1886,11 +1886,16 @@ class BenchmarkExecutor(object):
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
                 fork_count = 1
-                if benchnames and len(benchnames) == 1 and fork_counts:
-                    fork_count = fork_counts.get("{}:{}".format(suite.name(), benchnames[0]), fork_counts.get(benchnames[0], 1))
-                elif fork_counts:
+                if fork_count_spec and benchnames and len(benchnames) == 1:
+                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]), fork_count_spec.get(benchnames[0], 1))
+                elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
+                    # single benchmark suites executed by providing the suite name only or a wildcard
+                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name()), 1))
+                elif fork_count_spec:
                     mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
-                for _ in range(0, fork_count):
+                for fork_num in range(0, fork_count):
+                    if fork_count_spec:
+                        mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                     try:
                         partialResults = self.execute(
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
