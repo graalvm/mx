@@ -234,10 +234,10 @@ public class JacocoReport {
         }
 
         @Override
-        public void analyzeClass(final ClassReader reader) {
-            String className = reader.getClassName();
-            if (!isClassExcluded(className)) {
-                super.analyzeClass(reader);
+        public void analyzeClass(byte[] buffer, String location) throws IOException {
+            final ClassReader reader = new ClassReader(buffer);
+            if (!isClassExcluded(reader.getClassName())) {
+                super.analyzeClass(buffer, location);
             }
         }
     }
