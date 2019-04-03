@@ -757,6 +757,7 @@ def coverage_upload(args):
     parser.add_argument('--upload-url', required=False, default=mx.get_env('COVERAGE_UPLOAD_URL'), help='Format is like rsync: user@host:/directory')
     parser.add_argument('--build-name', required=False, default=mx.get_env('BUILD_NAME'))
     parser.add_argument('--build-url', required=False, default=mx.get_env('BUILD_URL'))
+    parser.add_argument('--build-number', required=False, default=mx.get_env('BUILD_NUMBER'))
     args, other_args = parser.parse_known_args(args)
     if not args.upload_url:
         parser.print_help()
@@ -773,6 +774,8 @@ def coverage_upload(args):
     remote_dir = '{}_{}_{}'.format(primary.name, datetime.datetime.fromtimestamp(info['author-ts']).strftime('%Y-%m-%d_%H_%M'), rev[:7])
     if args.build_name:
         remote_dir += '_' + args.build_name
+    if args.build_number:
+        remote_dir += '_' + args.build_number
     upload_dir = remote_basedir + remote_dir
     jacocoreport(['--omit-excluded'] + other_args)
     files = [JACOCO_EXEC, 'coverage']
@@ -790,11 +793,13 @@ def coverage_upload(args):
     def upload_string(content, path):
         mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
     upload_string(json.dumps({
+        'timestamp': time.time(),
         'suite': primary.name,
         'revision': rev,
         'directory': remote_dir,
         'build_name': args.build_name,
         'build_url': args.build_url,
+        'build_number': args.build_number,
         'primary_info': info}), upload_dir + '/description.json')
     mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do cat \$i; echo ,; done; echo null\]) > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
     upload_string("""<html>
@@ -848,7 +853,7 @@ def coverage_upload(args):
     <body ng-app="myApp" ng-controller="IndexCtrl">
        <button ng-click="step(1)" ng-disabled="data.indexOf(directory) >= data.length-1">&lt;&lt;</button>
        <button ng-click="step(-1)" ng-disabled="data.indexOf(directory) <= 0">&gt;&gt;</button>
-       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name group by i.suite for i in data"></select>
+       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.build_number group by i.suite for i in data"></select>
        <a href="{{directory.build_url}}" ng-if="directory.build_url">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
     </body>
 </html>""", remote_basedir + '/navigation.html')
@@ -900,11 +905,17 @@ def sonarqube_upload(args):
     java_bin = [os.path.relpath(b, basedir) for b in java_bin]
 
     # Overlayed sources and classes must be excluded
+    jdk_compliance = mx.get_jdk().javaCompliance
     overlayed_sources = []
     overlayed_classfiles = {}
     for p in includes:
-        if hasattr(p, "overlayTarget"):
-            print(p)
+        if hasattr(p, "multiReleaseJarVersion") and jdk_compliance not in p.javaCompliance: # JDK9+ overlays
+            for srcDir in p.source_dirs():
+                for root, _, files in os.walk(srcDir):
+                    for name in files:
+                        if name.endswith('.java') and name != 'package-info.java':
+                            overlayed_sources.append(join(os.path.relpath(root, basedir), name))
+        elif hasattr(p, "overlayTarget"): # JDK8 overlays
             target = mx.project(p.overlayTarget)
             overlay_sources = []
             for srcDir in p.source_dirs():

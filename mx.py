@@ -11663,6 +11663,21 @@ class JavaCompliance(Comparable):
             r = compare(self._upper_bound, other._upper_bound)
         return r
 
+    def __contains__(self, other):
+        if isinstance(other, str):
+            other = JavaCompliance(other)
+        assert other._upper_bound is not None, "Contains check cannot be done with version ranges"
+        r = compare(self.value, other.value)
+        if r == 0:
+            return True
+        elif r > 0:
+            return False
+        else: # r < 0
+            if self._upper_bound is None:
+                return True
+            else:
+                return compare(self._upper_bound, other.value) >= 0
+
     def __hash__(self):
         return self.value ** (self._upper_bound or 1)
 
