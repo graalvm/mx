@@ -61,7 +61,7 @@ def _should_test_project(p):
             return spotbugs_attribute_value.lower() == 'always'
     if not p.isJavaProject():
         return False
-    if p.name.endswith('.test'):
+    if p.is_test_project():
         return False
     if p.javaCompliance >= '9':
         # We no longer use p.suite.getMxCompatibility().filterFindbugsProjectsByJavaCompliance()
