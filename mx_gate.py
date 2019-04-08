@@ -865,6 +865,7 @@ def sonarqube_upload(args):
 
     parser = ArgumentParser(prog='mx sonarqube-upload')
     parser.add_argument('--exclude-generated', action='store_true', help='Exclude generated source files')
+    parser.add_argument('--skip-coverage', action='store_true', default=False, help='Do not upload coverage reports')
     args, sonar_args = mx.extract_VM_args(args, useDoubleDash=True, defaultAllVMArgs=True)
     args, other_args = parser.parse_known_args(args)
     java_props, other_args = _parse_java_properties(other_args)
@@ -945,7 +946,7 @@ def sonarqube_upload(args):
     javaCompliance = max([p.javaCompliance for p in includes]) if includes else mx.JavaCompliance('1.7')
 
     jacoco_exec = JACOCO_EXEC
-    if not os.path.exists(jacoco_exec):
+    if not os.path.exists(jacoco_exec) and not args.skip_coverage:
         mx.abort('No JaCoCo report file found: ' + jacoco_exec)
 
     def _add_default_prop(key, value):
@@ -955,7 +956,8 @@ def sonarqube_upload(args):
     # default properties
     _add_default_prop('sonar.java.source', str(javaCompliance))
     _add_default_prop('sonar.projectBaseDir', basedir)
-    _add_default_prop('sonar.jacoco.reportPaths', jacoco_exec)
+    if not args.skip_coverage:
+        _add_default_prop('sonar.jacoco.reportPaths', jacoco_exec)
     _add_default_prop('sonar.sources', ','.join(java_src))
     _add_default_prop('sonar.java.binaries', ','.join(java_bin))
     _add_default_prop('sonar.java.libraries', ','.join(java_libs))
