@@ -342,7 +342,9 @@ class NinjaManifestGenerator(object):
             depfile = None
             deps = 'msvc'
         else:
-            command = '%s -MMD -MF $out.d $includes $cflags -c $in -o $out' % ('g++' if cxx else 'gcc')
+            c_compiler = os.getenv('CC', 'gcc')
+            cxx_compiler = os.getenv('CXX', 'g++')
+            command = '%s -MMD -MF $out.d $includes $cflags -c $in -o $out' % (cxx_compiler if cxx else c_compiler)
             depfile = '$out.d'
             deps = 'gcc'
 
@@ -388,7 +390,7 @@ class NinjaManifestGenerator(object):
         if mx.is_windows():
             command = 'lib -nologo -out:$out $in'
         else:
-            command = 'ar -rc $out $in'
+            command = os.getenv('AR', 'ar') + ' -rc $out $in'
 
         self.n.rule('ar',
                     command=command,
@@ -401,7 +403,9 @@ class NinjaManifestGenerator(object):
         if mx.is_windows():
             command = 'link -nologo $ldflags -out:$out $in $ldlibs'
         else:
-            command = '%s $ldflags -o $out $in $ldlibs' % ('g++' if cxx else 'gcc')
+            c_compiler = os.getenv('CC', 'gcc')
+            cxx_compiler = os.getenv('CXX', 'g++')
+            command = '%s $ldflags -o $out $in $ldlibs' % (cxx_compiler if cxx else c_compiler)
 
         self.n.rule('link',
                     command=command,
