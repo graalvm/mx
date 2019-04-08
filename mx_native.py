@@ -334,7 +334,10 @@ class NinjaManifestGenerator(object):
         self.newline()
 
     def include(self, dirs):
-        self.variables(includes=['-I' + self._resolve(d) for d in dirs])
+        def quote(path):
+            return '"{}"'.format(path) if mx.is_windows() and ' ' in path else path
+
+        self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
     def cc_rule(self, cxx=False):
         if mx.is_windows():
