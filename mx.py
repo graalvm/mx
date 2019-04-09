@@ -19160,7 +19160,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.215.5")  # [GR-13745] Allow disabling sonarqube coverage
+version = VersionSpec("5.215.6")  # GR-14974
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
