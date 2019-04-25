@@ -2311,7 +2311,7 @@ class LayoutDistribution(AbstractDistribution):
                 "source_type": source_type,
                 "_str_": source,
             }
-            if source_type in ('dependency', 'extracted-dependency'):
+            if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 if '/' in source_spec:
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
                 else:
@@ -2605,6 +2605,8 @@ class LayoutDistribution(AbstractDistribution):
             with open(absolute_destination, 'w') as f:
                 f.write(s)
             archiver.add_str(s, clean_destination, provenance)
+        elif source_type == 'skip':
+            pass
         else:
             abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=self)
 
@@ -2675,7 +2677,7 @@ class LayoutDistribution(AbstractDistribution):
                 pass  # this is handled by _persist_layout
             elif source_type == 'string':
                 pass  # this is handled by _persist_layout
-            elif source_type in ('dependency', 'extracted-dependency'):
+            elif source_type in ('dependency', 'extracted-dependency', 'skip'):
                 pass  # this is handled by a build task dependency
             else:
                 abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=suite)
@@ -2727,7 +2729,7 @@ class LayoutDistribution(AbstractDistribution):
         if source not in self._source_location_cache:
             source_dict = LayoutDistribution._as_source_dict(source, self.name, "??", self.path_substitutions, self.string_substitutions, self, self)
             source_type = source_dict['source_type']
-            if source_type in ('dependency', 'extracted-dependency'):
+            if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 dep = source_dict['dependency']
                 if source_dict['path'] is None:
                     found_dest = []
@@ -6345,7 +6347,6 @@ class GitConfig(VC):
 
     def _latest_revision(self, vcdir, abortOnError=True):
         return self._commitish_revision(vcdir, 'HEAD', abortOnError=abortOnError)
-
 
     def release_version_from_tags(self, vcdir, prefix, snapshotSuffix='dev', abortOnError=True):
         """
