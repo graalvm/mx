@@ -835,14 +835,15 @@ def coverage_upload(args):
                 });
                 $scope.$watch('directory', (dir, olddir) => {
                     if(dir) {
-                        var content = parent.content.contentDocument;
+                        var content = parent.document.getElementById("content");
+                        var contentDocument = content.contentDocument || content.contentWindow.document;
                         var newpath;
                         if(olddir) {
-                            newpath = content.location.href.replace(olddir.directory, dir.directory);
+                            newpath = contentDocument.location.href.replace(olddir.directory, dir.directory);
                         } else {
-                            newpath = dir.directory + "/coverage";
+                            newpath = dir.directory + "/coverage/";
                         }
-                        content.location.href = newpath;
+                        contentDocument.location.href = newpath;
                         parent.window.history.replaceState(undefined, undefined, "#" + dir.directory);
                     }
                 });
