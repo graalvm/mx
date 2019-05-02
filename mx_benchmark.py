@@ -1358,7 +1358,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     def extraVmArgs(self):
         assert self.dist
         jdk = mx.get_jdk(mx.distribution(self.dist).javaCompliance)
-        return ['-cp', mx.classpath([(self.dist)], jdk=jdk)]
+        return mx.get_runtime_jvm_args([self.dist], jdk=jdk)
 
     def filter_distribution(self, dist):
         return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
@@ -1379,7 +1379,8 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def getJMHEntry(self, bmSuiteArgs):
         assert self.dist
-        return ['-jar', mx.distribution(self.dist).path]
+        # JMHArchiveParticipant ensures that mainClass is set correctly
+        return [mx.distribution(self.dist).mainClass]
 
 
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
