@@ -15773,7 +15773,7 @@ def intellij_read_sdks():
             # Don't know how to convert this into a real path so ignore it
             continue
         versionRE = versionRegexes.get(kind)
-        if not versionRE:
+        if not versionRE or sdk.find("version") is None:
             # ignore unknown kinds
             continue
 
