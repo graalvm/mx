@@ -15773,7 +15773,7 @@ def intellij_read_sdks():
             # Don't know how to convert this into a real path so ignore it
             continue
         versionRE = versionRegexes.get(kind)
-        if not versionRE:
+        if not versionRE or sdk.find("version") is None:
             # ignore unknown kinds
             continue
 
@@ -19161,7 +19161,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.216.0")  # layout `skip`
+version = VersionSpec("5.216.1")  # ignore sdk with no version
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
