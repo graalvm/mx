@@ -6685,9 +6685,10 @@ class GitConfig(VC):
         return None
 
     def _remote_url(self, vcdir, remote, push=False, abortOnError=True):
-        cmd = ['git', 'remote', 'get-url']
+        cmd = ['git', 'ls-remote', '--get-url']
         if push:
-            cmd += ['--push']
+            # cmd += ['--push']
+            pass
         cmd += [remote]
         out = OutputCapture()
         rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
