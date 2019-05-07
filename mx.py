@@ -1839,7 +1839,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 if _opts.very_verbose:
                     strip_command.append('-verbose')
-                elif not _opts.verbose:
+                elif not _opts.verbose and get_os() != 'windows':
                     strip_command += ['-dontnote', '**']
 
                 run_java(strip_command, jdk=jdk)
