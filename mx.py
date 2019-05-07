@@ -11327,10 +11327,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     add_proxy_property('https.proxyHost', host)
     add_proxy_property('https.proxyPort', port)
     java_no_proxy = _java_no_proxy()
-    if is_windows():
-        # Prevent Windows from getting confused by use of `|` as separator
-        java_no_proxy = '"' + java_no_proxy.replace('|', '^|') + '"'
-    add_proxy_property('http.nonProxyHosts', java_no_proxy)
+    # if is_windows():
+    #     # Prevent Windows from getting confused by use of `|` as separator
+    #     java_no_proxy = '"' + java_no_proxy.replace('|', '^|') + '"'
+    if not is_windows():
+        add_proxy_property('http.nonProxyHosts', java_no_proxy)
 
     extra_args = []
     if proxyArgs:
