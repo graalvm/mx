@@ -19175,7 +19175,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.216.2")  # manifestEntries
+version = VersionSpec("5.216.3")  # Make exe_link_template robust against spaces in path
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
