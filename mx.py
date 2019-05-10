@@ -1460,7 +1460,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
 
         services = {}
-        manifestEntries = self.manifestEntries
+        manifestEntries = self.manifestEntries.copy()
         with Archiver(self.original_path()) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
@@ -1603,9 +1603,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
-                    if 'Main-Class' in manifestEntries and manifestEntries['Main-Class'] != self.mainClass:
+                    if 'Main-Class' in manifestEntries:
                         abort("Main-Class is defined both as the 'mainClass': '" + self.mainClass + "' argument and in 'manifestEntries' as "
-                              + manifestEntries['Main-Class'] + " of the " + self.name + " distribution. There can not be two main classes.")
+                              + manifestEntries['Main-Class'] + " of the " + self.name + " distribution. There should be only one definition.")
                     manifestEntries['Main-Class'] = self.mainClass
 
                 # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
@@ -19175,7 +19175,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.216.3")  # Make exe_link_template robust against spaces in path
+version = VersionSpec("5.216.4")  # getting versions fast today
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
