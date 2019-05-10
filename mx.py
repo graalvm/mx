@@ -1272,10 +1272,12 @@ class JARDistribution(Distribution, ClasspathDependency):
            or only API documentation. Accepted values are "implementation" and "API".
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
+    :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
                  javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None,
-                 stripMappingFileNames=None, **kwArgs):
+                 stripMappingFileNames=None, manifestEntries=None, **kwArgs):
+        assert manifestEntries is None or isinstance(manifestEntries, dict)
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
@@ -1300,6 +1302,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
+        self.manifestEntries = dict([]) if manifestEntries is None else manifestEntries
         if stripConfigFileNames:
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
@@ -1457,7 +1460,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
 
         services = {}
-        manifestEntries = [] # list of "<name>: <value>" strings
+        manifestEntries = self.manifestEntries
         with Archiver(self.original_path()) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
@@ -1600,7 +1603,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
-                    manifestEntries.append('Main-Class: ' + self.mainClass)
+                    if 'Main-Class' in manifestEntries and manifestEntries['Main-Class'] != self.mainClass:
+                        abort("Main-Class is defined both as the 'mainClass': '" + self.mainClass + "' argument and in 'manifestEntries' as "
+                              + manifestEntries['Main-Class'] + " of the " + self.name + " distribution. There can not be two main classes.")
+                    manifestEntries['Main-Class'] = self.mainClass
 
                 # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
                 # as the overlay classes must be added to the jar instead of the overlayed classes. Overlays for
@@ -1676,8 +1682,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             except ArgumentTypeError as e:
                                 abort(str(e), context=p)
                             archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
-                            if 'Multi-Release: true' not in manifestEntries:
-                                manifestEntries.append('Multi-Release: true')
+                            manifestEntries['Multi-Release'] = 'true'
                         elif hasattr(p, 'overlayTarget'):
                             if p.javaCompliance.value > 8:
                                 abort('Project with "overlayTarget" attribute must have javaCompliance < 9', context=p)
@@ -1717,7 +1722,15 @@ class JARDistribution(Distribution, ClasspathDependency):
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
                 if len(manifestEntries) != 0:
-                    manifest = '\n'.join(['Manifest-Version: 1.0'] + manifestEntries) + '\n\n'
+                    if 'Manifest-Version' not in manifestEntries:
+                        manifest = 'Manifest-Version: 1.0' + '\n'
+                    else:
+                        manifest = 'Manifest-Version: ' + manifestEntries['Manifest-Version'] + '\n'
+                        manifestEntries.pop('Manifest-Version')
+
+                    for manifestKey, manifestValue in manifestEntries.items():
+                        manifest = manifest + manifestKey + ': ' + manifestValue + '\n'
+
                     arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
                 for a in self.archiveparticipants:
                     if hasattr(a, '__closing__'):
@@ -8943,6 +8956,7 @@ class Suite(object):
                 sourcesPath = path
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
+            manifestEntries = attrs.pop('manifestEntries', None)
             javaCompliance = attrs.pop('javaCompliance', None)
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
@@ -8955,7 +8969,7 @@ class Suite(object):
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, maven=maven,
                                 stripConfigFileNames=stripConfigFileNames, stripMappingFileNames=stripMappingFileNames,
-                                testDistribution=testDistribution, **attrs)
+                                testDistribution=testDistribution, manifestEntries=manifestEntries, **attrs)
         self.dists.append(d)
         return d
 
@@ -19161,7 +19175,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.216.1")  # ignore sdk with no version
+version = VersionSpec("5.216.2")  # manifestEntries
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
