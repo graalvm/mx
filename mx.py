@@ -11581,6 +11581,7 @@ def add_debug_lib_suffix(name):
 
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
+mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
 
 
@@ -19175,7 +19176,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.216.4")  # getting versions fast today
+version = VersionSpec("5.217.0")  # libsuffix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
