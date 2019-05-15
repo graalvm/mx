@@ -1,10 +1,10 @@
 local
 java = {
   downloads+: {
-    JAVA_HOME: {name: 'oraclejdk', version: "8u202", platformspecific: true}
+    JAVA_HOME: {name: 'oraclejdk', version: "8u212", platformspecific: true}
   }
 },
-labsjdk8 = {name: 'labsjdk', version: "8u202-jvmci-0.59", platformspecific: true},
+oraclejdk_jvmci = {name: 'oraclejdk', version: "8u212-jvmci-20-b01", platformspecific: true},
 gate = java + {
   targets: ['gate'],
   packages+: {
@@ -63,7 +63,7 @@ jmh_test = java + {
 downstream_truffleruby = {
   targets: ['gate'],
   downloads+: {
-    JAVA_HOME: labsjdk8,
+    JAVA_HOME: oraclejdk_jvmci,
   },
   packages+: {
     llvm: "==3.8",
@@ -102,8 +102,8 @@ python3 = {
 
 {
   # Overlay
-  java8: labsjdk8,
-  java11: {name: 'oraclejdk', version: "11+28", platformspecific: true},
+  java8: oraclejdk_jvmci,
+  java11: {name: 'oraclejdk', version: "11.0.3+12", platformspecific: true},
   overlay: '2cf9d7ec2c131d8e999c11e4de289fa003faaebd',
 
   builds: [
