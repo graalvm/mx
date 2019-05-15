@@ -19176,7 +19176,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.217.0")  # libsuffix
+version = VersionSpec("5.217.1")  # GR-15640 jvmci-20-b01
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
