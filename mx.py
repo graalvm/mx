@@ -11362,7 +11362,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + extra_args + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
-def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
+def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None, quiet=False):
     """
     Recursively runs mx.
 
@@ -11381,7 +11381,9 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
         else:
             commands += ['-p', suite.dir]
             cwd = suite.dir
-    if get_opts().verbose:
+    if quiet:
+        commands.append('--no-warning')
+    elif get_opts().verbose:
         if get_opts().very_verbose:
             commands.append('-V')
         else:
