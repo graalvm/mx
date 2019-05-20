@@ -1345,7 +1345,7 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
-        if compliance < '9' and get_module_name(self):
+        if compliance is not None and compliance < '9' and get_module_name(self):
             # if it is modular, bump compliance to 9+ to get a module-info file
             jdk9 = get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
             if jdk9:
@@ -1848,7 +1848,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if input_maps:
                     _merge_file_contents(input_maps, mapping_tmp_file)
                     strip_command += ['-applymapping', mapping_tmp_file.name]
-
 
                 if _opts.very_verbose:
                     strip_command.append('-verbose')
@@ -11363,7 +11362,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + extra_args + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
-def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
+def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None, quiet=False):
     """
     Recursively runs mx.
 
@@ -11382,7 +11381,9 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
         else:
             commands += ['-p', suite.dir]
             cwd = suite.dir
-    if get_opts().verbose:
+    if quiet:
+        commands.append('--no-warning')
+    elif get_opts().verbose:
         if get_opts().very_verbose:
             commands.append('-V')
         else:
@@ -19176,7 +19177,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.217.1")  # GR-15640 jvmci-20-b01
+version = VersionSpec("5.218.0")  # run_mx: quiet
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
