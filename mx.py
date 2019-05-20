@@ -1345,7 +1345,7 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
-        if compliance < '9' and get_module_name(self):
+        if compliance is not None and compliance < '9' and get_module_name(self):
             # if it is modular, bump compliance to 9+ to get a module-info file
             jdk9 = get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
             if jdk9:
@@ -1848,7 +1848,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if input_maps:
                     _merge_file_contents(input_maps, mapping_tmp_file)
                     strip_command += ['-applymapping', mapping_tmp_file.name]
-
 
                 if _opts.very_verbose:
                     strip_command.append('-verbose')
