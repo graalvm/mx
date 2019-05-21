@@ -1902,7 +1902,6 @@ class BenchmarkExecutor(object):
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                         results.extend(partialResults)
                     except BenchmarkFailureError as error:
-                        results.extend(error.partialResults)
                         failures_seen = True
                         mx.log(traceback.format_exc())
                     except RuntimeError:
