@@ -1901,8 +1901,7 @@ class BenchmarkExecutor(object):
                         partialResults = self.execute(
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                         results.extend(partialResults)
-                    except BenchmarkFailureError as error:
-                        results.extend(error.partialResults)
+                    except BenchmarkFailureError:
                         failures_seen = True
                         mx.log(traceback.format_exc())
                     except RuntimeError:
