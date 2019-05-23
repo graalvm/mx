@@ -48,7 +48,7 @@ bench_test = java + {
     ["./mx", "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"],
   ],
   teardown: [
-    ["bench-uploader.py", "--url", "$BENCH_SERVER_URL", "bench-results.json"],
+    ["bench-uploader.py", "bench-results.json"],
   ],
 },
 jmh_test = java + {
