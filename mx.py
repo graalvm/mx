@@ -18453,6 +18453,8 @@ def _remove_unsatisfied_deps():
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
                 note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
+            elif hasattr(dep, "javaVersionExclusion") and getattr(dep, "javaVersionExclusion") == depJdk.javaCompliance:
+                note_removal(dep, 'project {0} was removed due to its "javaVersionExclusion" attribute'.format(dep))
             else:
                 for depDep in list(dep.deps):
                     if depDep in removedDeps:
@@ -19177,7 +19179,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.218.2")  # GR-16069
+version = VersionSpec("5.218.3")  # GR-15458
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
