@@ -13210,9 +13210,14 @@ def pylint(args):
     args = parser.parse_args(args)
     ver = (-1, -1)
 
+    pylint_exe = 'pylint2'
     try:
-        output = _check_output_str(['pylint', '--version'], stderr=subprocess.STDOUT)
-        m = re.match(r'.*pylint (\d+)\.(\d+)\.(\d+).*', output, re.DOTALL)
+        try:
+            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
+        except OSError as e:
+            pylint_exe = 'pylint'
+            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
+        m = re.search(r'^pylint2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
         if not m:
             log_error('could not determine pylint version from ' + output)
             return -1
@@ -13286,7 +13291,7 @@ def pylint(args):
 
     for pyfile in pyfiles:
         log('Running pylint on ' + pyfile + '...')
-        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
+        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
 
     return 0
 
@@ -19179,7 +19184,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.218.3")  # GR-15458
+version = VersionSpec("5.218.4")  # pylint2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
