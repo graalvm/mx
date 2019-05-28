@@ -1291,6 +1291,10 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def rules(self, out, benchmarks, bmSuiteArgs):
         return [
           StdOutRule(r"-d(?P<flag>[0-9]+)\s+use a (?P<bitnum>[0-9]+)-bit data model", {
+            "benchmark": "test",
+            "metric.better": "lower",
+            "metric.name": "count",
+            "metric.unit": "#",
             "extra.input-num": ("<flag>", int),
             "metric.value": ("<bitnum>", int),
           }),
@@ -1358,7 +1362,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     def extraVmArgs(self):
         assert self.dist
         jdk = mx.get_jdk(mx.distribution(self.dist).javaCompliance)
-        return ['-cp', mx.classpath([(self.dist)], jdk=jdk)]
+        return mx.get_runtime_jvm_args([self.dist], jdk=jdk)
 
     def filter_distribution(self, dist):
         return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
@@ -1379,7 +1383,8 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def getJMHEntry(self, bmSuiteArgs):
         assert self.dist
-        return ['-jar', mx.distribution(self.dist).path]
+        # JMHArchiveParticipant ensures that mainClass is set correctly
+        return [mx.distribution(self.dist).mainClass]
 
 
 class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
@@ -1900,8 +1905,7 @@ class BenchmarkExecutor(object):
                         partialResults = self.execute(
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                         results.extend(partialResults)
-                    except BenchmarkFailureError as error:
-                        results.extend(error.partialResults)
+                    except BenchmarkFailureError:
                         failures_seen = True
                         mx.log(traceback.format_exc())
                     except RuntimeError:

@@ -1272,10 +1272,12 @@ class JARDistribution(Distribution, ClasspathDependency):
            or only API documentation. Accepted values are "implementation" and "API".
     :param bool allowsJavadocWarnings: specifies whether warnings are fatal when javadoc is generated
     :param bool maven:
+    :param dict[str, str] | None manifestEntries: Entries for the `META-INF/MANIFEST.MF` file.
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
                  javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None,
-                 stripMappingFileNames=None, **kwArgs):
+                 stripMappingFileNames=None, manifestEntries=None, **kwArgs):
+        assert manifestEntries is None or isinstance(manifestEntries, dict)
         Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.subDir = subDir
@@ -1300,6 +1302,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.javadocType = javadocType
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
+        self.manifestEntries = dict([]) if manifestEntries is None else manifestEntries
         if stripConfigFileNames:
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
         else:
@@ -1342,7 +1345,7 @@ class JARDistribution(Distribution, ClasspathDependency):
     def _compliance_for_build(self):
         # This JAR will contain class files up to maxJavaCompliance
         compliance = self.maxJavaCompliance()
-        if compliance < '9' and get_module_name(self):
+        if compliance is not None and compliance < '9' and get_module_name(self):
             # if it is modular, bump compliance to 9+ to get a module-info file
             jdk9 = get_jdk('9+', cancel='No module-info will be generated for modular JAR distributions')
             if jdk9:
@@ -1457,7 +1460,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
 
         services = {}
-        manifestEntries = [] # list of "<name>: <value>" strings
+        manifestEntries = self.manifestEntries.copy()
         with Archiver(self.original_path()) as arc:
             with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
@@ -1600,7 +1603,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                                                 srcArc.zf.writestr(info, contents)
 
                 if self.mainClass:
-                    manifestEntries.append('Main-Class: ' + self.mainClass)
+                    if 'Main-Class' in manifestEntries:
+                        abort("Main-Class is defined both as the 'mainClass': '" + self.mainClass + "' argument and in 'manifestEntries' as "
+                              + manifestEntries['Main-Class'] + " of the " + self.name + " distribution. There should be only one definition.")
+                    manifestEntries['Main-Class'] = self.mainClass
 
                 # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
                 # as the overlay classes must be added to the jar instead of the overlayed classes. Overlays for
@@ -1676,8 +1682,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                             except ArgumentTypeError as e:
                                 abort(str(e), context=p)
                             archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
-                            if 'Multi-Release: true' not in manifestEntries:
-                                manifestEntries.append('Multi-Release: true')
+                            manifestEntries['Multi-Release'] = 'true'
                         elif hasattr(p, 'overlayTarget'):
                             if p.javaCompliance.value > 8:
                                 abort('Project with "overlayTarget" attribute must have javaCompliance < 9', context=p)
@@ -1717,7 +1722,15 @@ class JARDistribution(Distribution, ClasspathDependency):
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
                 if len(manifestEntries) != 0:
-                    manifest = '\n'.join(['Manifest-Version: 1.0'] + manifestEntries) + '\n\n'
+                    if 'Manifest-Version' not in manifestEntries:
+                        manifest = 'Manifest-Version: 1.0' + '\n'
+                    else:
+                        manifest = 'Manifest-Version: ' + manifestEntries['Manifest-Version'] + '\n'
+                        manifestEntries.pop('Manifest-Version')
+
+                    for manifestKey, manifestValue in manifestEntries.items():
+                        manifest = manifest + manifestKey + ': ' + manifestValue + '\n'
+
                     arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
                 for a in self.archiveparticipants:
                     if hasattr(a, '__closing__'):
@@ -1835,7 +1848,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if input_maps:
                     _merge_file_contents(input_maps, mapping_tmp_file)
                     strip_command += ['-applymapping', mapping_tmp_file.name]
-
 
                 if _opts.very_verbose:
                     strip_command.append('-verbose')
@@ -8946,6 +8958,7 @@ class Suite(object):
                 sourcesPath = path
             mainClass = attrs.pop('mainClass', None)
             distDeps = Suite._pop_list(attrs, 'distDependencies', context)
+            manifestEntries = attrs.pop('manifestEntries', None)
             javaCompliance = attrs.pop('javaCompliance', None)
             maven = attrs.pop('maven', True)
             stripConfigFileNames = attrs.pop('strip', None)
@@ -8958,7 +8971,7 @@ class Suite(object):
             d = JARDistribution(self, name, subDir, path, sourcesPath, deps, mainClass, exclLibs, distDeps,
                                 javaCompliance, platformDependent, theLicense, maven=maven,
                                 stripConfigFileNames=stripConfigFileNames, stripMappingFileNames=stripMappingFileNames,
-                                testDistribution=testDistribution, **attrs)
+                                testDistribution=testDistribution, manifestEntries=manifestEntries, **attrs)
         self.dists.append(d)
         return d
 
@@ -11354,7 +11367,7 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
         mavenCommand = join(mavenHome, 'bin', mavenCommand)
     return run([mavenCommand] + extra_args + args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, timeout=timeout, env=env, cwd=cwd)
 
-def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None):
+def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None, timeout=None, env=None, quiet=False):
     """
     Recursively runs mx.
 
@@ -11373,7 +11386,9 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
         else:
             commands += ['-p', suite.dir]
             cwd = suite.dir
-    if get_opts().verbose:
+    if quiet:
+        commands.append('--no-warning')
+    elif get_opts().verbose:
         if get_opts().very_verbose:
             commands.append('-V')
         else:
@@ -11572,6 +11587,7 @@ def add_debug_lib_suffix(name):
 
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
+mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
 
 
@@ -13199,9 +13215,14 @@ def pylint(args):
     args = parser.parse_args(args)
     ver = (-1, -1)
 
+    pylint_exe = 'pylint2'
     try:
-        output = _check_output_str(['pylint', '--version'], stderr=subprocess.STDOUT)
-        m = re.match(r'.*pylint (\d+)\.(\d+)\.(\d+).*', output, re.DOTALL)
+        try:
+            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
+        except OSError as e:
+            pylint_exe = 'pylint'
+            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
+        m = re.search(r'^pylint2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
         if not m:
             log_error('could not determine pylint version from ' + output)
             return -1
@@ -13275,7 +13296,7 @@ def pylint(args):
 
     for pyfile in pyfiles:
         log('Running pylint on ' + pyfile + '...')
-        run(['pylint', '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
+        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
 
     return 0
 
@@ -15778,7 +15799,7 @@ def intellij_read_sdks():
             # Don't know how to convert this into a real path so ignore it
             continue
         versionRE = versionRegexes.get(kind)
-        if not versionRE:
+        if not versionRE or sdk.find("version") is None:
             # ignore unknown kinds
             continue
 
@@ -18442,6 +18463,8 @@ def _remove_unsatisfied_deps():
             depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
             if depJdk is None:
                 note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
+            elif hasattr(dep, "javaVersionExclusion") and getattr(dep, "javaVersionExclusion") == depJdk.javaCompliance:
+                note_removal(dep, 'project {0} was removed due to its "javaVersionExclusion" attribute'.format(dep))
             else:
                 for depDep in list(dep.deps):
                     if depDep in removedDeps:
@@ -19166,7 +19189,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.215.7")  # GR-15074
+version = VersionSpec("5.218.4")  # pylint2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
