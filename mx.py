@@ -1839,7 +1839,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
                 if _opts.very_verbose:
                     strip_command.append('-verbose')
-                elif not _opts.verbose and get_os() != 'windows':
+                elif not (_opts.verbose or is_windows()):
                     strip_command += ['-dontnote', '**']
 
                 run_java(strip_command, jdk=jdk)
@@ -6685,10 +6685,12 @@ class GitConfig(VC):
         return None
 
     def _remote_url(self, vcdir, remote, push=False, abortOnError=True):
-        cmd = ['git', 'ls-remote', '--get-url']
-        if push:
-            # cmd += ['--push']
-            pass
+        if is_windows():
+            cmd = ['git', 'ls-remote', '--get-url']
+        else:
+            cmd = ['git', 'remote', 'get-url']
+            if push:
+                cmd += ['--push']
         cmd += [remote]
         out = OutputCapture()
         rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
@@ -11327,10 +11329,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     add_proxy_property('https.proxyHost', host)
     add_proxy_property('https.proxyPort', port)
     java_no_proxy = _java_no_proxy()
-    # if is_windows():
-    #     # Prevent Windows from getting confused by use of `|` as separator
-    #     java_no_proxy = '"' + java_no_proxy.replace('|', '^|') + '"'
-    if not is_windows():
+    if is_windows():
+        # `no_proxy` is already set in the Maven settings file.
+        # To pass it here we need a reliable way to escape, e.g., the `|` separator
+        pass
+    else:
         add_proxy_property('http.nonProxyHosts', java_no_proxy)
 
     extra_args = []
