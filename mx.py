@@ -2276,6 +2276,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 
 class LayoutDistribution(AbstractDistribution):
     __metaclass__ = ABCMeta
+    _linky = AbstractDistribution
 
     def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
         """
@@ -2303,6 +2304,22 @@ class LayoutDistribution(AbstractDistribution):
         self._removed_deps.add(d.qualifiedName())
         if d.suite == self.suite:
             self._removed_deps.add(d.name)
+
+    @staticmethod
+    def _is_linky(path=None):
+        if LayoutDistribution._linky is AbstractDistribution:
+            value = get_env('LINKY_LAYOUT')
+            if value is None:
+                LayoutDistribution._linky = None
+            else:
+                if is_windows():
+                    raise abort("LINKY_LAYOUT is not supported on Windows")
+                LayoutDistribution._linky = re.compile(fnmatch.translate(value))
+        if not LayoutDistribution._linky:
+            return False
+        if path is None:
+            return True
+        return LayoutDistribution._linky.match(path)
 
     @staticmethod
     def _extract_deps(layout, suite, distribution_name):
@@ -2388,13 +2405,14 @@ class LayoutDistribution(AbstractDistribution):
         source_type = source['source_type']
         provenance = "{}<-{}".format(destination, source['_str_'])
 
-        def add_symlink(source_file, src, abs_dest, archive_dest):
+        def add_symlink(source_file, src, abs_dest, archive_dest, archive=True):
             destination_directory = dirname(abs_dest)
             ensure_dir_exists(destination_directory)
             resolved_output_link_target = normpath(join(destination_directory, src))
-            if not resolved_output_link_target.startswith(output):
-                abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
-            archiver.add_link(src, archive_dest, provenance)
+            if archive:
+                if not resolved_output_link_target.startswith(output):
+                    raise abort("Cannot add symlink that escapes the archive: link from '{}' would point to '{}' which is not in '{}'".format(source_file, resolved_output_link_target, output), context=self)
+                archiver.add_link(src, archive_dest, provenance)
             if is_windows():
                 def strip_suffix(path):
                     return os.path.splitext(path)[0]
@@ -2412,7 +2430,7 @@ class LayoutDistribution(AbstractDistribution):
             else:
                 os.symlink(src, abs_dest)
 
-        def merge_recursive(src, dst, src_arcname, excludes):
+        def merge_recursive(src, dst, src_arcname, excludes, archive=True):
             """
             Copies `src` to `dst`. If `src` is a directory copies recursively.
             """
@@ -2421,19 +2439,25 @@ class LayoutDistribution(AbstractDistribution):
             absolute_destination = _safe_path(join(output, dst))
             if islink(src):
                 link_target = os.readlink(src)
-                if isabs(link_target):
+                if archive and isabs(link_target):
                     abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
-                add_symlink(src, link_target, absolute_destination, dst)
+                add_symlink(src, link_target, absolute_destination, dst, archive=archive)
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
-                    merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes)
+                    merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes, archive=archive)
             else:
                 ensure_dir_exists(dirname(absolute_destination))
-                archiver.add(src, dst, provenance)
-                shutil.copy(src, absolute_destination)
+                if archive:
+                    archiver.add(src, dst, provenance)
+                if LayoutDistribution._is_linky(absolute_destination):
+                    if lexists(absolute_destination):
+                        os.remove(absolute_destination)
+                    os.symlink(os.path.relpath(src, dirname(absolute_destination)), absolute_destination)
+                else:
+                    shutil.copy(src, absolute_destination)
 
-        def _install_source_files(files, include=None, excludes=None, optional=False):
+        def _install_source_files(files, include=None, excludes=None, optional=False, archive=True):
             excludes = excludes or []
             if destination.endswith('/'):
                 ensure_dir_exists(absolute_destination)
@@ -2457,7 +2481,7 @@ class LayoutDistribution(AbstractDistribution):
                     if not first_file:
                         abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
-                merge_recursive(_source_file, _dst, _arcname, excludes)
+                merge_recursive(_source_file, _dst, _arcname, excludes, archive=archive)
                 first_file = False
             if first_file and not optional:
                 abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
@@ -2509,7 +2533,28 @@ class LayoutDistribution(AbstractDistribution):
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
+            output_done = False
+            if isinstance(d, LayoutDistribution) and LayoutDistribution._is_linky():
+                _out_dir = d.get_output()
+                _prefix = join(_out_dir, '')
+                if path:
+                    file_path = join(_out_dir, path)
+                else:
+                    file_path = _out_dir
+
+                def _rel_name(_source_file):
+                    assert _source_file.startswith(_prefix) or _source_file == _prefix[:-1]
+                    return _source_file[len(_prefix):]
+                _install_source_files(((source_file, _rel_name(source_file)) for source_file in glob.iglob(file_path)), include=path, excludes=exclude, archive=False)
+                output_done = True
+
             first_file_box = [True]
+            dest_arcname_prefix = os.path.relpath(unarchiver_dest_directory, output).replace(os.sep, '/')
+
+            def dest_arcname(src_arcname):
+                if not dest_arcname_prefix:
+                    return src_arcname
+                return dest_arcname_prefix + '/' + src_arcname
 
             def _filter_archive_name(name):
                 _root_match = False
@@ -2531,59 +2576,60 @@ class LayoutDistribution(AbstractDistribution):
                 first_file_box[0] = False
                 return name, _root_match
 
-            if ext.endswith('zip') or ext.endswith('jar'):
-                with zipfile.ZipFile(source_archive_file) as zf:
-                    for zipinfo in zf.infolist():
-                        zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
-                        if not zipinfo.filename:
-                            continue
-                        extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                        unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
-                        if unix_attributes != 0:
-                            os.chmod(extracted_file, unix_attributes)
-                        archiver.add(extracted_file, os.path.relpath(extracted_file, output), provenance)
-            elif 'tar' in ext or ext.endswith('tgz'):
-                with tarfile.TarFile.open(source_archive_file) as tf:
-                    # from tarfile.TarFile.extractall:
-                    directories = []
-                    for tarinfo in tf:
-                        tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
-                        if not tarinfo.name:
-                            continue
-                        extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
-                        arcname = os.path.relpath(extracted_file, output)
-                        if tarinfo.issym():
-                            if root_match:
-                                tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
-                                archiver.add(extracted_file, arcname, provenance)
+            with TempDir() if output_done else NoOpContext(unarchiver_dest_directory) as unarchiver_dest_directory:
+                if ext.endswith('zip') or ext.endswith('jar'):
+                    with zipfile.ZipFile(source_archive_file) as zf:
+                        for zipinfo in zf.infolist():
+                            zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
+                            if not zipinfo.filename:
+                                continue
+                            extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                            unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
+                            if unix_attributes != 0:
+                                os.chmod(extracted_file, unix_attributes)
+                            archiver.add(extracted_file, dest_arcname(zipinfo.filename), provenance)
+                elif 'tar' in ext or ext.endswith('tgz'):
+                    with tarfile.TarFile.open(source_archive_file) as tf:
+                        # from tarfile.TarFile.extractall:
+                        directories = []
+                        for tarinfo in tf:
+                            tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
+                            if not tarinfo.name:
+                                continue
+                            extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
+                            arcname = dest_arcname(tarinfo.name)
+                            if tarinfo.issym():
+                                if root_match:
+                                    tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
+                                    archiver.add(extracted_file, arcname, provenance)
+                                else:
+                                    tf.extract(tarinfo, unarchiver_dest_directory)
+                                    archiver.add_link(tarinfo.linkname, arcname, provenance)
                             else:
                                 tf.extract(tarinfo, unarchiver_dest_directory)
-                                archiver.add_link(tarinfo.linkname, arcname, provenance)
-                        else:
-                            tf.extract(tarinfo, unarchiver_dest_directory)
-                            archiver.add(extracted_file, arcname, provenance)
-                            if tarinfo.isdir():
-                                # use a safe mode while extracting, fix later
-                                os.chmod(extracted_file, 0o700)
-                                directories.append(tarinfo)
+                                archiver.add(extracted_file, arcname, provenance)
+                                if tarinfo.isdir():
+                                    # use a safe mode while extracting, fix later
+                                    os.chmod(extracted_file, 0o700)
+                                    directories.append(tarinfo)
 
-                    # Reverse sort directories.
-                    directories.sort(key=operator.attrgetter('name'))
-                    directories.reverse()
+                        # Reverse sort directories.
+                        directories.sort(key=operator.attrgetter('name'))
+                        directories.reverse()
 
-                    # Set correct owner, mtime and filemode on directories.
-                    for tarinfo in directories:
-                        dirpath = join(absolute_destination, tarinfo.name)
-                        try:
-                            tf.chown(tarinfo, dirpath)
-                            tf.utime(tarinfo, dirpath)
-                            tf.chmod(tarinfo, dirpath)
-                        except tarfile.ExtractError as e:
-                            abort("tarfile: " + str(e))
-            else:
-                abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
-            if first_file_box[0] and path is not None and not source['optional']:
-                abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
+                        # Set correct owner, mtime and filemode on directories.
+                        for tarinfo in directories:
+                            dirpath = join(absolute_destination, tarinfo.name)
+                            try:
+                                tf.chown(tarinfo, dirpath)
+                                tf.utime(tarinfo, dirpath)
+                                tf.chmod(tarinfo, dirpath)
+                            except tarfile.ExtractError as e:
+                                abort("tarfile: " + str(e))
+                else:
+                    abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
+                if first_file_box[0] and path is not None and not source['optional']:
+                    abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
         elif source_type == 'file':
             files_root = self.suite.dir
             source_path = source['path']
@@ -2659,6 +2705,7 @@ class LayoutDistribution(AbstractDistribution):
             for destination, source in self._walk_layout():
                 self._install_source(source, output, destination, arc)
         self._persist_layout()
+        self._persist_linky_state()
 
     def needsUpdate(self, newestInput):
         sup = super(LayoutDistribution, self).needsUpdate(newestInput)
@@ -2695,6 +2742,8 @@ class LayoutDistribution(AbstractDistribution):
                 abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=suite)
         if not self._check_persisted_layout():
             return "layout definition has changed"
+        if not self._check_linky_state():
+            return "LINKY_LAYOUT has changed"
         return None
 
     def _persist_layout(self):
@@ -2728,6 +2777,31 @@ class LayoutDistribution(AbstractDistribution):
             return True
         logv("'{}'!='{}'".format(saved_layout, current_layout))
         return False
+
+    def _linky_state_file(self):
+        return join(self.suite.get_mx_output_dir(), 'linkyState', self.name)
+
+    def _persist_linky_state(self):
+        linky_state_file = self._linky_state_file()
+        LayoutDistribution._is_linky()  # force init
+        if LayoutDistribution._linky is None:
+            if exists(linky_state_file):
+                os.unlink(linky_state_file)
+            return
+        ensure_dir_exists(dirname(linky_state_file))
+        with open(linky_state_file, 'w') as fp:
+            fp.write(LayoutDistribution._linky.pattern)
+
+    def _check_linky_state(self):
+        linky_state_file = self._linky_state_file()
+        LayoutDistribution._is_linky()  # force init
+        if not exists(linky_state_file):
+            return LayoutDistribution._linky is None
+        if LayoutDistribution._linky is None:
+            return False
+        with open(linky_state_file) as fp:
+            saved_pattern = fp.read()
+        return saved_pattern == LayoutDistribution._linky.pattern
 
     def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
         locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
@@ -13299,6 +13373,17 @@ def pylint(args):
         run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
 
     return 0
+
+
+class NoOpContext(object):
+    def __init__(self, value=None):
+        self.value = value
+
+    def __enter__(self):
+        return self.value
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
 
 
 class TempDir(object):
