@@ -13289,25 +13289,29 @@ def pylint(args):
     args = parser.parse_args(args)
     ver = (-1, -1)
 
-    pylint_exe = 'pylint2'
-    try:
+    pylint_exe = None
+    output = None
+    exc = None
+    for candidate in ['pylint2', 'pylint-2', 'pylint']:
         try:
-            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
+            output = _check_output_str([candidate, '--version'], stderr=subprocess.STDOUT)
+            pylint_exe = candidate
+            break
         except OSError as e:
-            pylint_exe = 'pylint'
-            output = _check_output_str([pylint_exe, '--version'], stderr=subprocess.STDOUT)
-        m = re.search(r'^pylint2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
-        if not m:
-            log_error('could not determine pylint version from ' + output)
-            return -1
-        major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        log("Detected pylint version: {0}.{1}.{2}".format(major, minor, micro))
-        ver = (major, minor)
-        if ver not in pylint_ver_map:
-            log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
-            return -1
-    except BaseException as e:
-        log_error('pylint is not available: ' + str(e))
+            exc = e
+    else:
+        log_error('pylint is not available: ' + str(exc))
+        return -1
+
+    m = re.search(r'^pylint-?2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
+    if not m:
+        log_error('could not determine pylint version from ' + output)
+        return -1
+    major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    log("Detected pylint version: {0}.{1}.{2}".format(major, minor, micro))
+    ver = (major, minor)
+    if ver not in pylint_ver_map:
+        log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
         return -1
 
     rcfile = join(dirname(__file__), pylint_ver_map[ver]['rcfile'])
@@ -19274,7 +19278,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.219.0")  # LINKY_LAYOUT
+version = VersionSpec("5.219.1")  # pylint-2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
