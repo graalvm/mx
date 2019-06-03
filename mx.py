@@ -18018,6 +18018,10 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
     parser.add_argument('-q', '--quiet', action='store_true', help='Only produce output if something is changed')
     args = parser.parse_args(args)
 
+    if not isinstance(dest_suite, SourceSuite) or not isinstance(base_suite, SourceSuite):
+        raise abort("Can not use verify-ci on binary suites: {0} and {1} need to be source suites".format(
+            base_suite.name, dest_suite.name))
+
     assert extension is not None, "extension cannot be None, must be a string or iterable over strings like '.ext'."
     if isinstance(extension, str):
         extension = [extension]
@@ -19310,7 +19314,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.219.1")  # pylint-2
+version = VersionSpec("5.219.2")  # verify_ci enhancements
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
