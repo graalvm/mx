@@ -17980,21 +17980,55 @@ def verify_library_urls(args):
 _java_package_regex = re.compile(r"^\s*package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
 
 
-def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, extension=".hocon"):
+def suite_ci_files(suite, ci_path=None, extension=(".hocon", ".jsonnet", '.libsonnet')):
+    """
+    Get the list of ci files for the given suite
+
+    :param suite: SourceSuite
+    :param ci_path: str or None
+    :param extension: str | tuple[str] | list[str] | set[str]
+    :return:
+    """
+    assert isinstance(suite, SourceSuite), "suite must be a SourceSuite"
+    assert extension is not None, "extension cannot be None, must be a string or iterable over strings like '.ext'."
+    if isinstance(extension, str):
+        extension = [extension]
+    extension = set(extension)
+
+    ci_files = os.listdir(join(suite.dir, ci_path)) if ci_path else os.listdir(suite.dir)
+    return [join(ci_path, name) if ci_path else name
+            for name in ci_files
+            if os.path.splitext(name)[-1] in extension]
+
+
+def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
+              extension=(".hocon", ".jsonnet", '.libsonnet')):
     """
     Verify CI configuration
 
     :type args: list[str] or None
     :type base_suite: SourceSuite
     :type dest_suite: SourceSuite
-    :type common_file: str | None
+    :type common_file: str | list[str] | None
     :type common_dirs: list[str] | None
-    :type extension: str
+    :type extension: str | tuple[str] | list[str] | set[str]
     """
     parser = ArgumentParser(prog='mx verify-ci')
     parser.add_argument('-s', '--sync', action='store_true', help='synchronize with graal configuration')
     parser.add_argument('-q', '--quiet', action='store_true', help='Only produce output if something is changed')
     args = parser.parse_args(args)
+
+    if not isinstance(dest_suite, SourceSuite) or not isinstance(base_suite, SourceSuite):
+        raise abort("Can not use verify-ci on binary suites: {0} and {1} need to be source suites".format(
+            base_suite.name, dest_suite.name))
+
+    assert extension is not None, "extension cannot be None, must be a string or iterable over strings like '.ext'."
+    if isinstance(extension, str):
+        extension = [extension]
+    extension = set(extension)
+
+    if isinstance(common_file, str):
+        common_file = [common_file]
 
     common_dirs = common_dirs or []
 
@@ -18030,14 +18064,16 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None, 
         for root, _, files in os.walk(base_dir):
             rel_root = os.path.relpath(root, base_dir)
             for f in files:
-                if f.endswith(extension):
+                if os.path.splitext(f)[-1] in extension:
                     community_file = join(base_dir, rel_root, f)
                     enterprise_file = join(dest_dir, rel_root, f)
                     _verify_file(community_file, enterprise_file)
+
     if common_file:
-        base_common = join(base_suite.vc_dir, common_file)
-        dest_common = join(dest_suite.vc_dir, common_file)
-        _verify_file(base_common, dest_common)
+        for f in common_file:
+            base_common = join(base_suite.vc_dir, f)
+            dest_common = join(dest_suite.vc_dir, f)
+            _verify_file(base_common, dest_common)
 
     if not args.quiet:
         log("CI setup is fine.")
@@ -19278,7 +19314,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.219.1")  # pylint-2
+version = VersionSpec("5.219.2")  # verify_ci enhancements
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
