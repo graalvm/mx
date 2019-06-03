@@ -18066,7 +18066,6 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
                     _verify_file(community_file, enterprise_file)
 
     if common_file:
-        log("CI setup checking common file(s): \n\t{0}".format('\n\t'.join(map(str, common_file))))
         for f in common_file:
             base_common = join(base_suite.vc_dir, f)
             dest_common = join(dest_suite.vc_dir, f)
