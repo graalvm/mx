@@ -11005,7 +11005,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if tag is None:
         jdkOpt = get_jdk_option()
         if versionCheck is None and jdkOpt.compliance:
-            versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
+            versionCheck, versionDescription = jdkOpt.compliance.as_version_check()
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
 
     defaultJdk = default_query and not purpose
@@ -11019,7 +11019,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if isinstance(versionCheck, str):
         versionCheck = JavaCompliance(versionCheck)
     if isinstance(versionCheck, JavaCompliance):
-        versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
+        versionCheck, versionDescription = versionCheck.as_version_check()
 
     if tag != DEFAULT_JDK_TAG:
         factory = _getJDKFactory(tag, versionCheck)
@@ -11088,16 +11088,6 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         _canceled_jdk_requests.add((versionDescription, purpose))
     _jdks_cache[cache_key] = jdk
     return jdk
-
-def _convert_compliance_to_version_check(requiredCompliance):
-    if requiredCompliance._is_exact_bound():
-        versionDesc = str(requiredCompliance)
-    elif requiredCompliance._upper_bound is None:
-        versionDesc = '>=' + str(requiredCompliance)
-    else:
-        versionDesc = 'between ' + str(requiredCompliance) + ' and ' + str(requiredCompliance._upper_bound)
-    versionCheck = requiredCompliance._exact_match
-    return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None):
     """
@@ -11730,23 +11720,56 @@ class DuplicateSuppressingStream:
 
 """
 A JavaCompliance simplifies comparing Java compliance values extracted from a JDK version string.
+Example valid version strings and the JDKs they match:
+    "8+"       - jdk8, jdk9, jdk10, ...
+    "1.8"      - jdk8
+    "8..12"    - jdk8, jdk9, jdk10, jdk11, jdk12
+    "8,13+"    - jdk8, jdk13, jdk14, ...
+    "8..9,13+" - jdk8, jdk9, jdk13, jdk14, ...
+There can be at most 2 parts to a version string specifying a non-contiguous range.
+The first part of a 2 part version string must have a strict upper bound (i.e. cannot end with "+").
 """
 class JavaCompliance(Comparable):
+    _version_pattern = re.compile(r'(?:1\.)?(\d+)(.*)')
+
+    @staticmethod
+    def _parse(part, ver):
+        m = JavaCompliance._version_pattern.match(part)
+        if not m:
+            abort('not a recognized version string: ' + ver)
+        value = int(m.group(1))
+        rest = m.group(2)
+        if rest.startswith('..'):
+            if part.endswith('+'):
+                abort('Version range cannot end with "+": ' + part)
+            m = JavaCompliance._version_pattern.match(rest[2:])
+            if not m:
+                abort('not a recognized version string: ' + rest[2:])
+            upper_bound = int(m.group(1))
+        else:
+            upper_bound = value
+            if part.endswith('+'):
+                upper_bound = None
+        return value, upper_bound
+
     def __init__(self, ver):
         ver = str(ver)
-        pattern = r'(?:1\.)?(\d+)(.*)'
-        m = re.match(pattern, ver)
-        assert m is not None, 'not a recognized version string: ' + ver
-        self.value = int(m.group(1))
-        self._upper_bound = self.value
-        if ver.endswith('+'):
-            self._upper_bound = None
+        parts = ver.split(',')
+        if len(parts) > 1:
+            if len(parts) > 2:
+                abort('Version string can have at most 2 parts separated by a comma: ' + ver)
+            value1, upper_bound1 = JavaCompliance._parse(parts[0], ver)
+            value2, upper_bound2 = JavaCompliance._parse(parts[1], ver)
+            if upper_bound1 is None:
+                abort('First part of 2-part version specification must have an upper bound: ' + ver)
+            if value2 <= upper_bound1:
+                abort('First part of 2-part version specification must have an upper bound less than lower bound of second part: ' + ver)
+            self.value = value1
+            self._upper_bound = upper_bound2
+            self._excluded = (upper_bound1 + 1, value2)
         else:
-            rest = m.group(2)
-            if rest.startswith('..'):
-                m = re.match(pattern, rest[2:])
-                assert m is not None, 'not a recognized version range string: ' + ver
-                self._upper_bound = int(m.group(1))
+            self.value, self._upper_bound = JavaCompliance._parse(parts[0], ver)
+            self._excluded = None
 
     def __str__(self):
         if self.value >= 9:
@@ -11754,6 +11777,16 @@ class JavaCompliance(Comparable):
         return '1.' + str(self.value)
 
     def __repr__(self):
+        if self._excluded:
+            upper_bound1 = self._excluded[0] - 1
+            value2 = self._excluded[1]
+            if self.value == upper_bound1:
+                res = str(self.value)
+            else:
+                res = '{}..{}'.format(self.value, upper_bound1)
+            if self._upper_bound is None:
+                return '{},{}+'.format(res, value2)
+            return '{},{}..{}'.format(res, value2, self._upper_bound)
         if self._upper_bound is None:
             return str(self) + '+'
         if self._upper_bound == self.value:
@@ -11770,6 +11803,12 @@ class JavaCompliance(Comparable):
             if other._upper_bound is None:
                 return -1
             r = compare(self._upper_bound, other._upper_bound)
+            if r == 0:
+                if self._excluded is None:
+                    return 0 if other._excluded is None else 1
+                if other._excluded is None:
+                    return -1
+                r = compare(self._excluded, other._excluded)
         return r
 
     def __contains__(self, other):
@@ -11788,7 +11827,11 @@ class JavaCompliance(Comparable):
                 return compare(self._upper_bound, other.value) >= 0
 
     def __hash__(self):
-        return self.value ** (self._upper_bound or 1)
+        h = self.value ** (self._upper_bound or 1)
+        if self._excluded:
+            start, stop = self._excluded
+            h = hash((h, start, stop))
+        return h
 
     def _is_exact_bound(self):
         return self.value == self._upper_bound
@@ -11804,10 +11847,25 @@ class JavaCompliance(Comparable):
                 value = version.parts[0]
 
             if value >= self.value:
+                if self._excluded is not None:
+                    if value >= self._excluded[0] and value < self._excluded[1]:
+                        return False
                 if self._upper_bound is not None:
                     return value <= self._upper_bound
                 return True
         return False
+
+    def as_version_check(self):
+        if self._is_exact_bound():
+            versionDesc = str(self)
+        elif self._upper_bound is None:
+            versionDesc = '>=' + str(self)
+        else:
+            versionDesc = 'between ' + str(self) + ' and ' + str(self._upper_bound)
+        if self._excluded:
+            versionDesc = '{} excluding [{}..{})'.format(versionDesc, *self._excluded)
+        versionCheck = self._exact_match
+        return (versionCheck, versionDesc)
 
 """
 A version specification as defined in JSR-56
