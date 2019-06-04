@@ -11619,6 +11619,14 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
 
     return retcode
 
+def cmd_suffix(name):
+    """
+    Gets the platform specific suffix for a cmd file
+    """
+    if is_windows():
+        return name + '.cmd'
+    return name
+
 def exe_suffix(name):
     """
     Gets the platform specific suffix for an executable
@@ -11662,6 +11670,7 @@ def add_debug_lib_suffix(name):
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
+mx_subst.results_substitutions.register_with_arg('cmd', cmd_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
 
 
@@ -19314,7 +19323,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.219.2")  # verify_ci enhancements
+version = VersionSpec("5.219.3")  # .cmd subst
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
