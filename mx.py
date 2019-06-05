@@ -66,7 +66,7 @@ import json
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError
+from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
 import fnmatch
@@ -17964,6 +17964,38 @@ def show_suites(args):
         _show_section('projects', s.projects)
         _show_section('distributions', s.dists)
 
+
+_show_paths_examples = """
+- `mx paths DEPENDENCY` selects the "main" product of `DEPENDENCY`
+- `mx paths DEPENDENCY/*.zip` selects products of `DEPENDENCY` that match `*.zip`
+- `mx paths suite:DEPENDENCY` selects `DEPENDENCY` in suite `suite`"""
+
+
+def show_paths(args):
+    """usage: mx paths [-h] dependency-spec
+
+Shows on-disk path to dependencies such as libraries, distributions, etc.
+
+positional arguments:
+  dependency-spec  Dependency specification in the same format as `dependency:` sources in a layout distribution.
+
+optional arguments:
+  -h, --help       show this help message and exit"""
+    parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
+    parser.add_argument('dependency-spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.')
+    args = parser.parse_args(args)
+    spec = args.dependency_spec
+    spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
+    d = dependency(spec_dict['dependency'])
+    include = spec_dict.get('path')
+    for source_file, arcname in d.getArchivableResults(single=include is None):
+        if include is None or glob_match(include, arcname):
+            print(source_file)
+
+
+show_paths.__doc__ += '\n' + _show_paths_examples
+
+
 def verify_library_urls(args):
     """verify that all suite libraries are reachable from at least one of the URLs
 
@@ -18473,6 +18505,7 @@ update_commands("mx", {
     'spull': [spull, '[options]'],
     'stip': [stip, ''],
     'suites': [show_suites, ''],
+    'paths': [show_paths, ''],
     'supdate': [supdate, ''],
     'sversions': [sversions, '[options]'],
     'testdownstream': [mx_downstream.testdownstream_cli, '[options]'],
