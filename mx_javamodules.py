@@ -696,7 +696,7 @@ def get_transitive_closure(roots, observable_modules):
     def lookup_module(name):
         m = name_to_module.get(name, None)
         if m is None:
-            mx.abort('{} is not in the set of observable modules {}'.format(name, name_to_module.keys()))
+            mx.abort('{} is not in the set of observable modules {}'.format(name, list(name_to_module.keys())))
         return m
     def add_transitive(mod):
         if mod not in transitive_closure:

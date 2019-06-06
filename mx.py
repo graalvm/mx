@@ -282,6 +282,26 @@ def _function_code(f):
 def _check_output_str(*args, **kwargs):
     return _decode(subprocess.check_output(*args, **kwargs))
 
+def _with_metaclass(meta, *bases):
+    """Create a base class with a metaclass."""
+
+    # Copyright (c) 2010-2018 Benjamin Peterson
+    # Taken from https://github.com/benjaminp/six/blob/8da94b8a153ceb0d6417d76729ba75e80eaa75c1/six.py#L820
+    # MIT license
+
+    # This requires a bit of explanation: the basic idea is to make a dummy
+    # metaclass for one level of class instantiation that replaces itself with
+    # the actual metaclass.
+    class MetaClass(type):
+
+        def __new__(mcs, name, this_bases, d):
+            return meta(name, bases, d)
+
+        @classmethod
+        def __prepare__(mcs, name, this_bases):
+            return meta.__prepare__(name, bases)
+    return type.__new__(MetaClass, 'temporary_class', (), {})
+
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
@@ -1103,9 +1123,7 @@ def primary_suite():
     return _primary_suite
 
 
-class SuiteConstituent(Comparable):
-    __metaclass__ = ABCMeta
-
+class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
     def __init__(self, suite, name):
         """
         :type name: str
@@ -1188,13 +1206,11 @@ class License(SuiteConstituent):
         return self.name, self.url, self.fullname
 
 
-class Dependency(SuiteConstituent):
+class Dependency(_with_metaclass(ABCMeta, SuiteConstituent)):
     """
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
     """
-    __metaclass__ = ABCMeta
-
     def __init__(self, suite, name, theLicense, **kwArgs):
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
@@ -4335,12 +4351,10 @@ def _get_dependency_path(dname):
 mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 
-class ClasspathDependency(Dependency):
+class ClasspathDependency(_with_metaclass(ABCMeta, Dependency)):
     """
     A dependency that can be put on the classpath of a Java commandline.
     """
-    __metaclass__ = ABCMeta
-
     def __init__(self, **kwArgs): # pylint: disable=super-init-not-called
         pass
 
@@ -4383,13 +4397,11 @@ mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 
 ### ~~~~~~~~~~~~~ Build
 
-class BuildTask(object):
+class BuildTask(_with_metaclass(ABCMeta, object)):
     """
     A build task is used to build a dependency.
     :type deps: list[BuildTask]
     """
-    __metaclass__ = ABCMeta
-
     def __init__(self, subject, args, parallelism):
         """
         :param Dependency subject: the dependency built by this task
@@ -4584,8 +4596,7 @@ class DistributionTemplate(SuiteConstituent):
         self.parameters = parameters
 
 
-class Distribution(Dependency):
-    __metaclass__ = ABCMeta
+class Distribution(_with_metaclass(ABCMeta, Dependency)):
     """
     A distribution is a file containing the output of one or more dependencies.
     It is a `Dependency` because a `Project` or another `Distribution` may express a dependency on it.
@@ -5514,9 +5525,7 @@ class JMHArchiveParticipant:
                 self.arc.zf.writestr(filename, content)
 
 
-class AbstractArchiveTask(BuildTask):
-    __metaclass__ = ABCMeta
-
+class AbstractArchiveTask(_with_metaclass(ABCMeta, BuildTask)):
     def __init__(self, args, dist):
         BuildTask.__init__(self, dist, args, 1)
 
@@ -5574,9 +5583,7 @@ class JARArchiveTask(AbstractArchiveTask):
         return False
 
 
-class AbstractDistribution(Distribution):
-    __metaclass__ = ABCMeta
-
+class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
@@ -5607,8 +5614,7 @@ class AbstractDistribution(Distribution):
         return DefaultArchiveTask(args, self)
 
 
-class AbstractTARDistribution(AbstractDistribution):
-    __metaclass__ = ABCMeta
+class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     __gzip_binary = None
 
     def remoteExtension(self):
@@ -5670,9 +5676,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractJARDistribution(AbstractDistribution, ClasspathDependency):
-    __metaclass__ = ABCMeta
-
+class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, ClasspathDependency)):
     def remoteExtension(self):
         return 'jar'
 
@@ -5839,8 +5843,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
         return False, None
 
 
-class LayoutDistribution(AbstractDistribution):
-    __metaclass__ = ABCMeta
+class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     _linky = AbstractDistribution
 
     def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
@@ -6427,8 +6430,7 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
 
 
 ### ~~~~~~~~~~~~~ Project, Dependency
-class Project(Dependency):
-    __metaclass__ = ABCMeta
+class Project(_with_metaclass(ABCMeta, Dependency)):
     """
     A Project is a collection of source code that is built by mx. For historical reasons
     it typically corresponds to an IDE project and the IDE support in mx assumes this.
@@ -6582,21 +6584,18 @@ class Project(Dependency):
         # Workaround for GR-12809
         return (None, None, None)
 
-class ProjectBuildTask(BuildTask):
-    __metaclass__ = ABCMeta
-
+class ProjectBuildTask(_with_metaclass(ABCMeta, BuildTask)):
     def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
 
 
-class ArchivableProject(Project):  # Used from other suites. pylint: disable=r0921
+class ArchivableProject(_with_metaclass(ABCMeta, Project)):  # Used from other suites. pylint: disable=r0921
     """
     A project that can be part of any distribution, native or not.
     Users should subclass this class and implement the nyi() methods.
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
-    __metaclass__ = ABCMeta
     def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
         d = suite.dir
         Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
@@ -7912,7 +7911,7 @@ class ECJCompiler(JavacLikeCompiler):
             def matchNative(line):
                 # simple heuristic to match the keyword 'native' outside of comments or strings
                 return re.match(r'[^"*/]*\bnative\b', line) is not None
-            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
+            nativeClasses = list(project.find_classes_with_matching_source_line(None, matchNative).keys())
             if len(nativeClasses) == 0:
                 abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
             javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + list(nativeClasses)
@@ -8228,8 +8227,7 @@ class ZipExtractor(Extractor):
 
 ### ~~~~~~~~~~~~~ Library
 
-class BaseLibrary(Dependency):
-    __metaclass__ = ABCMeta
+class BaseLibrary(_with_metaclass(ABCMeta, Dependency)):
     """
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
@@ -8714,8 +8712,7 @@ Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
 """
-class VC(object):
-    __metaclass__ = ABCMeta
+class VC(_with_metaclass(ABCMeta, object)):
     """
     base class for all supported Distriuted Version Constrol abstractions
 
@@ -11576,7 +11573,7 @@ def repository(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
     r = _repositories.get(name)
     if r is None and fatalIfMissing:
-        abort('repository named ' + name + ' not found among ' + str(_repositories.keys()), context=context)
+        abort('repository named ' + name + ' not found among ' + str(list(_repositories.keys())), context=context)
     return r
 
 
@@ -14392,7 +14389,7 @@ def pylint(args):
     log("Detected pylint version: {0}.{1}.{2}".format(major, minor, micro))
     ver = (major, minor)
     if ver not in pylint_ver_map:
-        log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
+        log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, list(pylint_ver_map.keys())))
         return -1
 
     rcfile = join(dirname(__file__), pylint_ver_map[ver]['rcfile'])
