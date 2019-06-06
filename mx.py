@@ -4663,7 +4663,7 @@ class Distribution(_with_metaclass(ABCMeta, Dependency)):
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
-        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
@@ -5754,7 +5754,7 @@ class NativeTARDistribution(AbstractTARDistribution):
                                                     theLicense, output, **kwArgs)
         assert not auto_prefix or relpath, "{}: 'auto_prefix' requires 'relpath'".format(name)
         self.relpath = relpath
-        if self.output is not None:
+        if self.output is not None: # pylint: disable=access-member-before-definition
             self.output = mx_subst.results_substitutions.substitute(self.output, dependency=self)
         self.auto_prefix = auto_prefix
 
@@ -6467,7 +6467,7 @@ class Project(_with_metaclass(ABCMeta, Dependency)):
         Resolves symbolic dependency references to be Dependency objects.
         """
         self._resolveDepsHelper(self.deps)
-        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
         if hasattr(self, 'buildDependencies'):
@@ -8240,7 +8240,7 @@ class BaseLibrary(_with_metaclass(ABCMeta, Dependency)):
         pass
 
     def resolveDeps(self):
-        licenseId = self.theLicense
+        licenseId = self.theLicense # pylint: disable=access-member-before-definition
         # do not use suite's default license
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
