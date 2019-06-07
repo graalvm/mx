@@ -17982,9 +17982,9 @@ positional arguments:
 optional arguments:
   -h, --help       show this help message and exit"""
     parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
-    parser.add_argument('dependency-spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.')
+    parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
-    spec = args.dependency_spec
+    spec = args.spec
     spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
     d = dependency(spec_dict['dependency'])
     include = spec_dict.get('path')
@@ -19356,7 +19356,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.220.0")  # paths
+version = VersionSpec("5.220.1")  # mx paths
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
