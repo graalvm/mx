@@ -4608,7 +4608,10 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 if os.path.exists(output) and output != '.':
                     shutil.rmtree(output)
             else:
-                run([gmake_cmd(), 'clean'], cwd=self.subject.dir)
+                env = os.environ.copy()
+                if hasattr(self.subject, "getBuildEnv"):
+                    env.update(self.subject.getBuildEnv())
+                run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
 def _make_absolute(path, prefix):
@@ -19356,7 +19359,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.220.1")  # mx paths
+version = VersionSpec("5.220.2")  # make clean with build env
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
