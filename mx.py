@@ -17983,13 +17983,19 @@ positional arguments:
   dependency-spec  Dependency specification in the same format as `dependency:` sources in a layout distribution.
 
 optional arguments:
-  -h, --help       show this help message and exit"""
+  -h, --help       show this help message and exit
+  --download       Downloads the dependency (only for libraries)."""
     parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
+    parser.add_argument('--download', action='store_true', help='Downloads the dependency (only for libraries).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
     spec = args.spec
     spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
     d = dependency(spec_dict['dependency'])
+    if args.download:
+        if not d.isResourceLibrary() and not d.isLibrary():
+            abort("--download can only be used with libraries")
+        d.get_path(resolve=True)
     include = spec_dict.get('path')
     for source_file, arcname in d.getArchivableResults(single=include is None):
         if include is None or glob_match(include, arcname):
