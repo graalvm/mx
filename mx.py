@@ -8070,9 +8070,9 @@ def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
     build = snapshot.getCurrentSnapshotBuild()
     try:
         url, sha1_url = build.getSubArtifact(extension)
-        log(url)
+        print(url)
         if args.sha1:
-            log(sha1_url)
+            print(sha1_url)
     except MavenSnapshotArtifact.NonUniqueSubArtifactException:
         abort('Multiple {}s found for {} in snapshot {} in repository {}'.format(extension, dist.remoteName(), build.version, maven_repo.repourl))
 
@@ -10705,6 +10705,7 @@ environment variables:
         self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
         self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
         self.add_argument('--no-warning', action='store_false', dest='warn', help='disable warning messages')
+        self.add_argument('--quiet', action='store_true', help='disable log messages')
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
@@ -12309,6 +12310,8 @@ def log(msg=None):
     All script output goes through this method thus allowing a subclass
     to redirect it.
     """
+    if vars(_opts).get('quiet'):
+        return
     if msg is None:
         print()
     else:
@@ -13641,13 +13644,13 @@ def archive(args):
             d.make_archive()
             archives.append(d.path)
             if args.parsable:
-                log('{0}={1}'.format(dname, d.path))
+                print('{0}={1}'.format(dname, d.path))
         else:
             p = project(name)
             path = p.make_archive()
             archives.append(path)
             if args.parsable:
-                log('{0}={1}'.format(name, path))
+                print('{0}={1}'.format(name, path))
 
     if not args.parsable:
         logv("generated archives: " + str(archives))
@@ -17903,9 +17906,9 @@ def show_projects(args):
     """show all projects"""
     for s in suites():
         if len(s.projects) != 0:
-            log(s.suite_py())
+            print(s.suite_py())
             for p in s.projects:
-                log('\t' + p.name)
+                print('\t' + p.name)
 
 def show_suites(args):
     """show all suites
@@ -17935,7 +17938,7 @@ def show_suites(args):
         return None
     def _show_section(name, section):
         if section:
-            log('  ' + name + ':')
+            print('  ' + name + ':')
             for e in section:
                 location = _location(e)
                 out = '    ' + e.name
@@ -17950,17 +17953,17 @@ def show_suites(args):
                     data.append(l)
                 if data:
                     out += ' (' + ', '.join(data) + ')'
-                log(out)
+                print(out)
                 if name == 'distributions' and args.archived_deps:
                     for a in e.archived_deps():
-                        log('      ' + a.name)
+                        print('      ' + a.name)
 
     for s in suites(True):
         location = _location(s)
         if location:
-            log('{} ({})'.format(s.name, location))
+            print('{} ({})'.format(s.name, location))
         else:
-            log(s.name)
+            print(s.name)
         _show_section('libraries', s.libs)
         _show_section('jrelibraries', s.jreLibs)
         _show_section('jdklibraries', s.jdkLibs)
@@ -17983,13 +17986,19 @@ positional arguments:
   dependency-spec  Dependency specification in the same format as `dependency:` sources in a layout distribution.
 
 optional arguments:
-  -h, --help       show this help message and exit"""
+  -h, --help       show this help message and exit
+  --download       Downloads the dependency (only for libraries)."""
     parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
+    parser.add_argument('--download', action='store_true', help='Downloads the dependency (only for libraries).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
     spec = args.spec
     spec_dict = LayoutDistribution._as_source_dict('dependency:' + spec, 'NO_DIST', 'NO_DEST')
     d = dependency(spec_dict['dependency'])
+    if args.download:
+        if not d.isResourceLibrary() and not d.isLibrary():
+            abort("--download can only be used with libraries")
+        d.get_path(resolve=True)
     include = spec_dict.get('path')
     for source_file, arcname in d.getArchivableResults(single=include is None):
         if include is None or glob_match(include, arcname):
@@ -19151,6 +19160,7 @@ def main():
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
     _opts.__dict__['very_verbose'] = '-V' in sys.argv
     _opts.__dict__['warn'] = '--no-warning' not in sys.argv
+    _opts.__dict__['quiet'] = '--quiet' in sys.argv
     global _vc_systems
     _vc_systems = [HgConfig(), GitConfig(), BinaryVC()]
 
@@ -19359,7 +19369,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.220.2")  # make clean with build env
+version = VersionSpec("5.221.0")  # quiet downloads
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
