@@ -300,7 +300,7 @@ def _with_metaclass(meta, *bases):
         @classmethod
         def __prepare__(mcs, name, this_bases):
             return meta.__prepare__(name, bases)
-    return type.__new__(MetaClass, 'temporary_class', (), {})
+    return type.__new__(MetaClass, '_with_metaclass({}, {})'.format(meta, bases), (), {}) #pylint: disable=unused-variable
 
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
@@ -14381,7 +14381,7 @@ def pylint(args):
         log_error('pylint is not available: ' + str(exc))
         return -1
 
-    m = re.search(r'^pylint-?2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
+    m = re.search(r'^pylint-?2? (\d+)\.(\d+)\.(\d+),?', output, re.MULTILINE)
     if not m:
         log_error('could not determine pylint version from ' + output)
         return -1
