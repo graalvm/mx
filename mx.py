@@ -95,6 +95,8 @@ if sys.version_info[0] < 3:
     def _encode(x):
         return x
     _unicode = unicode                         # pylint: disable=undefined-variable
+    def _tarfile_chown(tf, tarinfo, targetpath):
+        tf.chown(tarinfo, targetpath)
 else:
     from io import StringIO
     import builtins                            # pylint: disable=unused-import,no-name-in-module
@@ -106,6 +108,8 @@ else:
     def _encode(x):
         return x.encode()
     _unicode = str
+    def _tarfile_chown(tf, tarinfo, targetpath):
+        tf.chown(tarinfo, targetpath, False) # extra argument in Python 3, False gives use Python 2 behavior
 
 ### ~~~~~~~~~~~~~ _private
 
@@ -6189,7 +6193,7 @@ class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
                         for tarinfo in directories:
                             dirpath = join(absolute_destination, tarinfo.name)
                             try:
-                                tf.chown(tarinfo, dirpath)
+                                _tarfile_chown(tf, tarinfo, dirpath)
                                 tf.utime(tarinfo, dirpath)
                                 tf.chmod(tarinfo, dirpath)
                             except tarfile.ExtractError as e:
