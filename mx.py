@@ -3976,7 +3976,7 @@ def _attempt_download(url, path, jarEntryName=None):
                             sys.stdout.write('\r {} bytes'.format(bytesRead))
                     else:
                         if progress:
-                            sys.stdout.write('\r {} bytes ({}%)'.format(bytesRead, bytesRead * 100 / length))
+                            sys.stdout.write('\r {} bytes ({:.0f}%)'.format(bytesRead, bytesRead * 100 / length))
                         if bytesRead == length:
                             break
                     chunk = conn.read(chunkSize)
