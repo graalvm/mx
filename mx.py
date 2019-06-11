@@ -4282,7 +4282,7 @@ class CompilerDaemon(Daemon):
         if retcode:
             if _opts.verbose:
                 if _opts.very_verbose:
-                    raise subprocess.CalledProcessError(retcode, self.jdk.java + ' '.join(compilerArgs))
+                    raise subprocess.CalledProcessError(retcode, self.jdk.javac + ' ' + ' '.join(compilerArgs))
                 else:
                     log('[exit code: ' + str(retcode) + ']')
             abort(retcode)
