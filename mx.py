@@ -107,6 +107,8 @@ else:
         return x.encode()
     _unicode = str
 
+### _internal
+
 def _function_code(f):
     if hasattr(f, 'func_code'):
         # Python 2
@@ -117,6 +119,8 @@ def _function_code(f):
 def _check_output_str(*args, **kwargs):
     return _decode(subprocess.check_output(*args, **kwargs))
 
+
+### command
 
 def command_function(name, fatalIfMissing=True):
     """
@@ -167,6 +171,8 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
         return mx_command
 
     return mx_command_decorator_factory
+
+### Suite
 
 # Define this machinery early in case other modules want to use them
 
@@ -241,6 +247,7 @@ try:
 except ImportError:
     pass
 
+### Language support
 # Support for comparing objects given removal of `cmp` function in Python 3.
 # https://portingguide.readthedocs.io/en/latest/comparisons.html
 def compare(a, b):
@@ -295,6 +302,9 @@ class DynamicVarScope(object):
 
 
 currently_loading_suite = DynamicVar(None)
+
+
+### OS/Arch/Platform related
 
 def relpath_or_absolute(path, start, prefix=""):
     """
@@ -1033,7 +1043,7 @@ class BuildTask(object):
         """
         nyi('clean', self)
 
-
+### _internal
 def _needsUpdate(newestInput, path):
     """
     Determines if the file denoted by `path` does not exist or `newestInput` is not None
@@ -1048,6 +1058,7 @@ def _needsUpdate(newestInput, path):
             return '{} is older than {}'.format(ts, newestInput)
     return None
 
+### Distribution, Archive
 class DistributionTemplate(SuiteConstituent):
     def __init__(self, suite, name, attrs, parameters):
         SuiteConstituent.__init__(self, suite, name)
@@ -2889,6 +2900,7 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
     def compress_remotely(self):
         return self._remote_compress
 
+### String/expression utils
 
 def glob_match_any(patterns, path):
     return any((glob_match(pattern, path) for pattern in patterns))
@@ -2914,6 +2926,7 @@ def glob_match(pattern, path):
     return '/'.join(path_parts[:len(pattern_parts)])
 
 
+### Project
 class Project(Dependency):
     __metaclass__ = ABCMeta
     """
@@ -3149,6 +3162,8 @@ class ArchivableBuildTask(BuildTask):
 
     def clean(self, forBuild=False):
         pass
+
+#### Maven
 
 class MavenProject(Project, ClasspathDependency):
     """
@@ -3928,6 +3943,8 @@ class JavaBuildTask(ProjectBuildTask):
         if jnigenDir and exists(jnigenDir):
             logv('Cleaning {0}...'.format(jnigenDir))
             rmtree(jnigenDir)
+
+### Java Compiler
 
 class JavaCompiler:
     def name(self):
@@ -4981,6 +4998,8 @@ class ResourceLibrary(BaseLibrary):
         return (self.sha1, self.name)
 
 
+### Unzip / Untar
+
 class Extractor(object):
     __metaclass__ = ABCMeta
 
@@ -5045,6 +5064,8 @@ class ZipExtractor(Extractor):
     def _extractall(self, ar, dst):
         return ar.extractall(dst)
 
+
+### Library
 
 class PackedResourceLibrary(ResourceLibrary):
     """
@@ -5446,6 +5467,7 @@ class LibraryDownloadTask(BuildTask):
     def cleanForbidden(self):
         return True
 
+### Version control
 
 """
 Abstracts the operations of the version control systems
@@ -7260,6 +7282,8 @@ def _hashFromUrl(url):
             hashFile.close()
 
 
+### Maven
+
 def _map_to_maven_dist_name(name):
     return name.lower().replace('_', '-')
 
@@ -8134,6 +8158,8 @@ class MavenConfig:
                 warn(self.missing)
 
         return self if self.has_maven else None
+
+### Suite
 
 class SuiteModel:
     """
@@ -9897,6 +9923,7 @@ class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
 
+### XML
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -9974,6 +10001,8 @@ class XMLDoc(xml.dom.minidom.Document):
         if standalone is not None:
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
+
+### OS/Platform/Arch
 
 """
 A simple timing facility.
@@ -10131,6 +10160,8 @@ def primary_or_specific_suites():
     return [primary_suite()]
 
 
+### Project
+
 def projects_from_names(projectNames):
     """
     Get the list of projects corresponding to projectNames; all projects if None
@@ -10224,6 +10255,8 @@ def _patchTemplateString(s, args, context):
             abort("Unknown parameter {}".format(groupName), context=context)
         return args[groupName]
     return re.sub(r'<(.+?)>', _replaceVar, s)
+
+### Distribution
 
 def instantiatedDistributionName(name, args, context):
     return _patchTemplateString(name, args, context).upper()
@@ -10924,6 +10957,7 @@ class DisableJavaDebuggging(DisableJavaDebugging):
 def is_debug_disabled():
     return DisableJavaDebugging._disabled
 
+### JDK
 
 def addJDKFactory(tag, compliance, factory):
     assert tag != DEFAULT_JDK_TAG
@@ -11248,6 +11282,9 @@ def set_java_command_default_jdk_tag(tag):
     global _java_command_default_jdk_tag
     assert _java_command_default_jdk_tag is None, 'TODO: need policy for multiple attempts to set the default JDK for the "java" command'
     _java_command_default_jdk_tag = tag
+
+
+### Java command
 
 def java_command(args):
     """run the java executable in the selected JDK
