@@ -4,87 +4,87 @@ suite = {
 
     # ------------- Libraries -------------
 
-    "JACOCOCORE_0.8.2" : {
-      "sha1" : "977b33afe2344a9ee801fd3317c54d8e1f9d7a79",
-      "sourceSha1" : "46f38efb779fb08216379e1a196396f4e22bbe41",
+    "JACOCOCORE_0.8.4" : {
+      "sha1" : "53addc878614171ff0fcbc8f78aed12175c22cdb",
+      "sourceSha1" : "9bd1fa334d941005bc9ab3ac92478a590f5b7d73",
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.core",
-        "version" : "0.8.2",
+        "version" : "0.8.4",
       },
-      "dependencies" : ["ASM_6.2.1", "ASM_COMMONS_6.2.1", "ASM_TREE_6.2.1"],
+      "dependencies" : ["ASM_7.1", "ASM_COMMONS_7.1", "ASM_TREE_7.1"],
       "licence": "EPL-1.0",
     },
 
-    "JACOCOAGENT_0.8.2" : {
-      "sha1" : "4806883004063feb978b8811f00d5ea2138750bb",
+    "JACOCOAGENT_0.8.4" : {
+      "sha1" : "869021a6d90cfb008b12e83fccbe42eca29e5355",
       # Cannot download sources for "maven" library with "classifier" attribute
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.agent",
-        "version" : "0.8.2",
+        "version" : "0.8.4",
         "classifier" : "runtime",
       },
       "licence": "EPL-1.0",
     },
 
-    "JACOCOREPORT_0.8.2" : {
-      "sha1" : "50e133cdfd2d31ca5702b73615be70f801d3ae26",
-      "sourceSha1" : "7488cd6e42cc4fa85b51200b7f451465692e033b",
+    "JACOCOREPORT_0.8.4" : {
+      "sha1" : "e5ca9511493b7e3bc2cabdb8ded92e855f3aac32",
+      "sourceSha1" : "eb61e479b35b467954f28a565c094c563b790e19",
       "maven" : {
         "groupId" : "org.jacoco",
         "artifactId" : "org.jacoco.report",
-        "version" : "0.8.2",
+        "version" : "0.8.4",
       },
       "defaultBuild" : False,
-      "dependencies" : ["JACOCOCORE_0.8.2"],
+      "dependencies" : ["JACOCOCORE_0.8.4"],
       "licence": "EPL-1.0",
     },
 
-    "ASM_6.2.1": {
-      "sha1": "c01b6798f81b0fc2c5faa70cbe468c275d4b50c7",
-      "sourceSha1" : "cee28077ac7a63d3de0b205ec314d83944ff6267",
+    "ASM_7.1": {
+      "sha1": "fa29aa438674ff19d5e1386d2c3527a0267f291e",
+      "sourceSha1" : "9d170062d595240da35301362b079e5579c86f49",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm",
-        "version": "6.2.1",
+        "version": "7.1",
       },
       "license": "BSD-new",
     },
 
-    "ASM_ANALYSIS_6.2.1": {
-      "sha1": "e8b876c5ccf226cae2f44ed2c436ad3407d0ec1d",
-      "sourceSha1" : "b0b249bd185677648692e7c57b488b6d7c2a6653",
+    "ASM_ANALYSIS_7.1": {
+      "sha1": "379e0250f7a4a42c66c5e94e14d4c4491b3c2ed3",
+      "sourceSha1" : "36789198124eb075f1a5efa18a0a7812fb16f47f",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-analysis",
-        "version": "6.2.1",
+        "version": "7.1",
       },
-      "dependencies" : ["ASM_TREE_6.2.1"],
+      "dependencies" : ["ASM_TREE_7.1"],
       "license": "BSD-new",
     },
 
-    "ASM_COMMONS_6.2.1": {
-      "sha1": "eaf31376d741a3e2017248a4c759209fe25c77d3",
-      "sourceSha1" : "667fa0f9d370e7848b0e3d173942855a91fd1daf",
+    "ASM_COMMONS_7.1": {
+      "sha1": "431dc677cf5c56660c1c9004870de1ed1ea7ce6c",
+      "sourceSha1" : "a62ff3ae6e37affda7c6fb7d63b89194c6d006ee",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-commons",
-        "version": "6.2.1",
+        "version": "7.1",
       },
-      "dependencies" : ["ASM_6.2.1", "ASM_TREE_6.2.1", "ASM_ANALYSIS_6.2.1"],
+      "dependencies" : ["ASM_7.1", "ASM_TREE_7.1", "ASM_ANALYSIS_7.1"],
       "license": "BSD-new",
     },
 
-    "ASM_TREE_6.2.1": {
-      "sha1": "332b022092ecec53cdb6272dc436884b2d940615",
-      "sourceSha1" : "072bd64989090e4ed58e4657e3d4481d96f643af",
+    "ASM_TREE_7.1": {
+      "sha1": "a3662cf1c1d592893ffe08727f78db35392fa302",
+      "sourceSha1" : "157238292b551de8680505fa2d19590d136e25b9",
       "maven": {
         "groupId": "org.ow2.asm",
         "artifactId": "asm-tree",
-        "version": "6.2.1",
+        "version": "7.1",
       },
-      "dependencies" : ["ASM_6.2.1"],
+      "dependencies" : ["ASM_7.1"],
       "license": "BSD-new",
     },
 
@@ -479,7 +479,7 @@ suite = {
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
       "dependencies" : [
-        "JACOCOREPORT_0.8.2",
+        "JACOCOREPORT_0.8.4",
         "JOPTSIMPLE_4_6",
       ],
     },
