@@ -647,7 +647,7 @@ def _jacoco_excludes_includes():
     return excludes, includes
 
 def get_jacoco_agent_path():
-    return mx.library('JACOCOAGENT_0.8.2', True).get_path(True)
+    return mx.library('JACOCOAGENT_0.8.4', True).get_path(True)
 
 def get_jacoco_agent_args():
     '''
