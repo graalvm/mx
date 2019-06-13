@@ -9560,6 +9560,8 @@ class SourceSuite(Suite):
                             p.declaredAnnotationProcessors = ap
                         if jlintOverrides:
                             p._javac_lint_overrides = jlintOverrides
+                        if hasattr(p, "javaVersionExclusion") and self.getMxCompatibility().supports_disjoint_JavaCompliance_range():
+                            abort('The "javaVersionExclusion" is no longer supported. Use a disjoint range for the "javaCompliance" attribute instead (e.g. "8,13+")', context=p)
                 if self.getMxCompatibility().overwriteProjectAttributes():
                     p.__dict__.update(attrs)
                 else:
