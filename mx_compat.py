@@ -188,6 +188,13 @@ class MxCompatibility500(object):
         """
         return "3.0.0"
 
+    def automatic_overlay_distribution_deps(self):
+        """
+        When a distribution depends on a project that has versioned overlays, are the
+        overlay projects automatically added as dependencies to the distribution?
+        """
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -420,6 +427,14 @@ class MxCompatibility52102(MxCompatibility52061):  # pylint: disable=too-many-an
 
     def spotbugs_version(self):
         return "3.1.11"
+
+class MxCompatibility52220(MxCompatibility52102):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.222.0")
+
+    def automatic_overlay_distribution_deps(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()

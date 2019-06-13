@@ -1103,6 +1103,13 @@ class Distribution(Dependency):
 
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        if self.suite.getMxCompatibility().automatic_overlay_distribution_deps():
+            for d in self.deps:
+                if d.isJavaProject() and d._overlays:
+                    for o in d._overlays:
+                        if o in self.deps:
+                            abort('Distribution must not explicitly specify a dependency on {} as it is derived automatically.'.format(o), context=self)
+                        self.deps.append(o)
         self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
@@ -1158,6 +1165,10 @@ class Distribution(Dependency):
                     return False
                 return dst not in excluded and not dst.isJreLibrary() and not dst.isJdkLibrary()
             self.walk_deps(visit=_visit, preVisit=_preVisit)
+            if self.suite.getMxCompatibility().automatic_overlay_distribution_deps():
+                for d in deps:
+                    if d.isJavaProject() and d._overlays and d not in self.deps:
+                        abort('Distribution must explicitly specify a dependency on {} as it has overlays. {}'.format(d, self), context=self)
             setattr(self, '.archived_deps', deps)
         return getattr(self, '.archived_deps')
 
@@ -1685,7 +1696,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                             manifestEntries['Multi-Release'] = 'true'
                         elif hasattr(p, 'overlayTarget'):
                             if p.javaCompliance.value > 8:
-                                abort('Project with "overlayTarget" attribute must have javaCompliance < 9', context=p)
+                                if p.suite.getMxCompatibility().automatic_overlay_distribution_deps:
+                                    abort('Project with an "overlayTarget" attribute and javaCompliance >= 9 must also have a "multiReleaseJarVersion" attribute', context=p)
+                                abort('Project with an "overlayTarget" attribute must have javaCompliance < 9', context=p)
                             is_overlay = True
                             if archivePrefix:
                                 abort("Project cannot have a 'overlayTarget' attribute if it has an 'archivePrefix' attribute", context=p)
@@ -3163,6 +3176,7 @@ class JavaProject(Project, ClasspathDependency):
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
         self._mismatched_imports = None
+        self._overlays = []
 
     @property
     def include_dirs(self):
@@ -3180,6 +3194,12 @@ class JavaProject(Project, ClasspathDependency):
             for dep in self.deps:
                 if isinstance(dep, Project) and dep.is_test_project():
                     abort('Non-test project {} can not depend on the test project {}'.format(self.name, dep.name))
+        overlayTargetName = getattr(self, 'overlayTarget', None)
+        if hasattr(self, 'multiReleaseJarVersion'):
+            if self.suite.getMxCompatibility().automatic_overlay_distribution_deps() and overlayTargetName is None:
+                abort('Project with "multiReleaseJarVersion" attribute must also have an "overlayTarget" attribute', context=self)
+        if overlayTargetName:
+            project(self.overlayTarget, context=self)._overlays.append(self)
 
     def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         deps = [(DEP_ANNOTATION_PROCESSOR, self.declaredAnnotationProcessors)]
@@ -3553,7 +3573,9 @@ class JavaProject(Project, ClasspathDependency):
 
         :return: an empty map if this is not an overlay or multi-release version project
         """
-        if hasattr(self, 'multiReleaseJarVersion'):
+        if hasattr(self, 'overlayTarget'):
+            base = project(self.overlayTarget, context=self)
+        elif hasattr(self, 'multiReleaseJarVersion'):
             def _find_version_base_project():
                 extended_packages = self.extended_java_packages()
                 if not extended_packages:
@@ -3574,8 +3596,6 @@ class JavaProject(Project, ClasspathDependency):
                     abort('Multi-release jar versioned project {} must extend package(s) from one of its dependencies'.format(self))
                 return base_project
             base = _find_version_base_project()
-        elif hasattr(self, 'overlayTarget'):
-            base = project(self.overlayTarget, context=self)
         else:
             return {}
 
@@ -9402,9 +9422,9 @@ class SourceSuite(Suite):
         return super(SourceSuite, self).dependency(name, fatalIfMissing=fatalIfMissing, context=context)
 
     def _resolve_dependencies(self):
-        super(SourceSuite, self)._resolve_dependencies()
         for d in self.projects:
             d.resolveDeps()
+        super(SourceSuite, self)._resolve_dependencies()
 
     def version(self, abortOnError=True):
         """
@@ -19427,7 +19447,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.222.0")  # Upgrade jacoco from 0.8.2 to 0.8.4.
+version = VersionSpec("5.223.0")  # GR-16369
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
