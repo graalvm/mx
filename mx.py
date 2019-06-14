@@ -1103,6 +1103,13 @@ class Distribution(Dependency):
 
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
+        if self.suite.getMxCompatibility().automatic_overlay_distribution_deps():
+            for d in self.deps:
+                if d.isJavaProject() and d._overlays:
+                    for o in d._overlays:
+                        if o in self.deps:
+                            abort('Distribution must not explicitly specify a dependency on {} as it is derived automatically.'.format(o), context=self)
+                        self.deps.append(o)
         self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
@@ -1158,6 +1165,10 @@ class Distribution(Dependency):
                     return False
                 return dst not in excluded and not dst.isJreLibrary() and not dst.isJdkLibrary()
             self.walk_deps(visit=_visit, preVisit=_preVisit)
+            if self.suite.getMxCompatibility().automatic_overlay_distribution_deps():
+                for d in deps:
+                    if d.isJavaProject() and d._overlays and d not in self.deps:
+                        abort('Distribution must explicitly specify a dependency on {} as it has overlays. {}'.format(d, self), context=self)
             setattr(self, '.archived_deps', deps)
         return getattr(self, '.archived_deps')
 
@@ -1553,22 +1564,23 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
 
-                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None):
+                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
                     assert arcname[-1] != '/'
                     if arcnameCheck is not None and not arcnameCheck(arcname):
                         return
                     if relpath.startswith(join('META-INF', 'services')):
-                        service = basename(relpath)
-                        assert dirname(relpath) == join('META-INF', 'services')
-                        m = versioned_meta_inf_re.match(arcname)
-                        if m:
-                            service_version = int(m.group(1))
-                            services_dict = services.setdefault(service_version, {})
-                        else:
-                            services_dict = services
-                        with open(join(outputDir, relpath), 'r') as fp:
-                            services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                        if includeServices:
+                            service = basename(relpath)
+                            assert dirname(relpath) == join('META-INF', 'services')
+                            m = versioned_meta_inf_re.match(arcname)
+                            if m:
+                                service_version = int(m.group(1))
+                                services_dict = services.setdefault(service_version, {})
+                            else:
+                                services_dict = services
+                            with open(join(outputDir, relpath), 'r') as fp:
+                                services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
@@ -1685,7 +1697,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                             manifestEntries['Multi-Release'] = 'true'
                         elif hasattr(p, 'overlayTarget'):
                             if p.javaCompliance.value > 8:
-                                abort('Project with "overlayTarget" attribute must have javaCompliance < 9', context=p)
+                                if p.suite.getMxCompatibility().automatic_overlay_distribution_deps:
+                                    abort('Project with an "overlayTarget" attribute and javaCompliance >= 9 must also have a "multiReleaseJarVersion" attribute', context=p)
+                                abort('Project with an "overlayTarget" attribute must have javaCompliance < 9', context=p)
                             is_overlay = True
                             if archivePrefix:
                                 abort("Project cannot have a 'overlayTarget' attribute if it has an 'archivePrefix' attribute", context=p)
@@ -1699,18 +1713,33 @@ class JARDistribution(Distribution, ClasspathDependency):
                             else:
                                 return arcname not in overlays
 
-                        for root, _, files in os.walk(outputDir):
-                            reldir = root[len(outputDir) + 1:]
-                            for f in files:
-                                relpath = join(reldir, f)
-                                addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check)
+                        def addClasses(archivePrefix, includeServices):
+                            for root, _, files in os.walk(outputDir):
+                                reldir = root[len(outputDir) + 1:]
+                                for f in files:
+                                    relpath = join(reldir, f)
+                                    addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
 
+                        addClasses(archivePrefix, includeServices=True)
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir, archivePrefix, arcnameCheck=overlay_check)
+
+                        bounds = p.javaCompliance._bounds()
+                        if len(bounds) == 4:
+                            _, _, lower2, _ = bounds
+                            if lower2 > 8:
+                                # Make a multi-release-jar versioned copy of the class files
+                                # for the lower bound of the second range in a disjoint compliance.
+                                # Anything below that version will pick up the class files in the
+                                # root directory of the jar.
+                                if get_jdk(str(JavaCompliance(lower2)), cancel='probing'):
+                                    archivePrefix = 'META-INF/versions/{}/'.format(lower2)
+                                    addClasses(archivePrefix, includeServices=False)
+
                     elif dep.isArchivableProject():
                         logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
                         archivePrefix = dep.archive_prefix()
@@ -3163,6 +3192,7 @@ class JavaProject(Project, ClasspathDependency):
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
         self._mismatched_imports = None
+        self._overlays = []
 
     @property
     def include_dirs(self):
@@ -3180,6 +3210,12 @@ class JavaProject(Project, ClasspathDependency):
             for dep in self.deps:
                 if isinstance(dep, Project) and dep.is_test_project():
                     abort('Non-test project {} can not depend on the test project {}'.format(self.name, dep.name))
+        overlayTargetName = getattr(self, 'overlayTarget', None)
+        if hasattr(self, 'multiReleaseJarVersion'):
+            if self.suite.getMxCompatibility().automatic_overlay_distribution_deps() and overlayTargetName is None:
+                abort('Project with "multiReleaseJarVersion" attribute must also have an "overlayTarget" attribute', context=self)
+        if overlayTargetName:
+            project(self.overlayTarget, context=self)._overlays.append(self)
 
     def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         deps = [(DEP_ANNOTATION_PROCESSOR, self.declaredAnnotationProcessors)]
@@ -3553,7 +3589,9 @@ class JavaProject(Project, ClasspathDependency):
 
         :return: an empty map if this is not an overlay or multi-release version project
         """
-        if hasattr(self, 'multiReleaseJarVersion'):
+        if hasattr(self, 'overlayTarget'):
+            base = project(self.overlayTarget, context=self)
+        elif hasattr(self, 'multiReleaseJarVersion'):
             def _find_version_base_project():
                 extended_packages = self.extended_java_packages()
                 if not extended_packages:
@@ -3574,8 +3612,6 @@ class JavaProject(Project, ClasspathDependency):
                     abort('Multi-release jar versioned project {} must extend package(s) from one of its dependencies'.format(self))
                 return base_project
             base = _find_version_base_project()
-        elif hasattr(self, 'overlayTarget'):
-            base = project(self.overlayTarget, context=self)
         else:
             return {}
 
@@ -9402,9 +9438,9 @@ class SourceSuite(Suite):
         return super(SourceSuite, self).dependency(name, fatalIfMissing=fatalIfMissing, context=context)
 
     def _resolve_dependencies(self):
-        super(SourceSuite, self)._resolve_dependencies()
         for d in self.projects:
             d.resolveDeps()
+        super(SourceSuite, self)._resolve_dependencies()
 
     def version(self, abortOnError=True):
         """
@@ -9540,6 +9576,8 @@ class SourceSuite(Suite):
                             p.declaredAnnotationProcessors = ap
                         if jlintOverrides:
                             p._javac_lint_overrides = jlintOverrides
+                        if hasattr(p, "javaVersionExclusion") and self.getMxCompatibility().supports_disjoint_JavaCompliance_range():
+                            abort('The "javaVersionExclusion" is no longer supported. Use a disjoint range for the "javaCompliance" attribute instead (e.g. "8,13+")', context=p)
                 if self.getMxCompatibility().overwriteProjectAttributes():
                     p.__dict__.update(attrs)
                 else:
@@ -11005,7 +11043,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if tag is None:
         jdkOpt = get_jdk_option()
         if versionCheck is None and jdkOpt.compliance:
-            versionCheck, versionDescription = _convert_compliance_to_version_check(jdkOpt.compliance)
+            versionCheck, versionDescription = jdkOpt.compliance.as_version_check()
         tag = jdkOpt.tag if jdkOpt.tag else DEFAULT_JDK_TAG
 
     defaultJdk = default_query and not purpose
@@ -11019,7 +11057,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     if isinstance(versionCheck, str):
         versionCheck = JavaCompliance(versionCheck)
     if isinstance(versionCheck, JavaCompliance):
-        versionCheck, versionDescription = _convert_compliance_to_version_check(versionCheck)
+        versionCheck, versionDescription = versionCheck.as_version_check()
 
     if tag != DEFAULT_JDK_TAG:
         factory = _getJDKFactory(tag, versionCheck)
@@ -11088,16 +11126,6 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
         _canceled_jdk_requests.add((versionDescription, purpose))
     _jdks_cache[cache_key] = jdk
     return jdk
-
-def _convert_compliance_to_version_check(requiredCompliance):
-    if requiredCompliance._is_exact_bound():
-        versionDesc = str(requiredCompliance)
-    elif requiredCompliance._upper_bound is None:
-        versionDesc = '>=' + str(requiredCompliance)
-    else:
-        versionDesc = 'between ' + str(requiredCompliance) + ' and ' + str(requiredCompliance._upper_bound)
-    versionCheck = requiredCompliance._exact_match
-    return (versionCheck, versionDesc)
 
 def _find_jdk(versionCheck=None, versionDescription=None):
     """
@@ -11730,23 +11758,72 @@ class DuplicateSuppressingStream:
 
 """
 A JavaCompliance simplifies comparing Java compliance values extracted from a JDK version string.
+Example valid version strings and the JDKs they match:
+    "8+"       - jdk8, jdk9, jdk10, ...
+    "1.8"      - jdk8
+    "8..12"    - jdk8, jdk9, jdk10, jdk11, jdk12
+    "8,13+"    - jdk8, jdk13, jdk14, ...
+    "8..9,13+" - jdk8, jdk9, jdk13, jdk14, ...
+There can be at most 2 parts to a version string specifying a non-contiguous range.
+The first part of a 2 part version string must have a strict upper bound (i.e. cannot end with "+").
 """
 class JavaCompliance(Comparable):
+    _version_pattern = re.compile(r'(?:1\.)?(\d+)(.*)')
+
+    @staticmethod
+    def _parse(part, ver):
+        m = JavaCompliance._version_pattern.match(part)
+        if not m:
+            abort('not a recognized version string: ' + ver)
+        value = int(m.group(1))
+        rest = m.group(2)
+        if rest.startswith('..'):
+            if part.endswith('+'):
+                abort('Version range cannot end with "+": ' + part)
+            m = JavaCompliance._version_pattern.match(rest[2:])
+            if not m:
+                abort('not a recognized version string: ' + rest[2:])
+            upper_bound = int(m.group(1))
+        else:
+            upper_bound = value
+            if part.endswith('+'):
+                upper_bound = None
+        return value, upper_bound
+
+    def _bounds(self):
+        """
+        Gets the bounds for the ranges in the compliance.
+        Examples:
+           JavaCompliance("8")        -> (8, 8)
+           JavaCompliance("8+")       -> (8, None)
+           JavaCompliance("8..11")    -> (8, 11)
+           JavaCompliance("8,13+")    -> (8, 8, 13, None)
+           JavaCompliance("8,13..15") -> (8, 8, 13, 15)
+        """
+        if self._excluded:
+            upper_bound1 = self._excluded[0] - 1
+            lower_bound2 = self._excluded[1]
+            return (self.value, upper_bound1, lower_bound2, self._upper_bound)
+        return (self.value, self._upper_bound)
+
     def __init__(self, ver):
         ver = str(ver)
-        pattern = r'(?:1\.)?(\d+)(.*)'
-        m = re.match(pattern, ver)
-        assert m is not None, 'not a recognized version string: ' + ver
-        self.value = int(m.group(1))
-        self._upper_bound = self.value
-        if ver.endswith('+'):
-            self._upper_bound = None
+        parts = ver.split(',')
+        if len(parts) > 1:
+            if len(parts) > 2:
+                abort('Version string can have at most 2 parts separated by a comma: ' + ver)
+            value1, upper_bound1 = JavaCompliance._parse(parts[0], ver)
+            value2, upper_bound2 = JavaCompliance._parse(parts[1], ver)
+            if upper_bound1 is None:
+                abort('First part of 2-part version specification must have an upper bound: ' + ver)
+            if value2 <= upper_bound1:
+                abort('First part of 2-part version specification must have an upper bound less than lower bound of second part: ' + ver)
+            self.value = value1
+            self._upper_bound = upper_bound2
+            self._excluded = (upper_bound1 + 1, value2)
         else:
-            rest = m.group(2)
-            if rest.startswith('..'):
-                m = re.match(pattern, rest[2:])
-                assert m is not None, 'not a recognized version range string: ' + ver
-                self._upper_bound = int(m.group(1))
+            self.value, self._upper_bound = JavaCompliance._parse(parts[0], ver)
+            self._excluded = None
 
     def __str__(self):
         if self.value >= 9:
@@ -11754,11 +11831,22 @@ class JavaCompliance(Comparable):
         return '1.' + str(self.value)
 
     def __repr__(self):
-        if self._upper_bound is None:
-            return str(self) + '+'
-        if self._upper_bound == self.value:
-            return str(self)
-        return str(self) + '..' + str(self._upper_bound)
+        bounds = self._bounds()
+        if len(bounds) == 4:
+            lower1, upper1, lower2, upper2 = bounds
+            if lower1 == upper1:
+                res = str(lower1)
+            else:
+                res = '{}..{}'.format(lower1, upper1)
+            if upper2 is None:
+                return '{},{}+'.format(res, lower2)
+            return '{},{}..{}'.format(res, lower2, upper2)
+        lower, upper = bounds
+        if upper is None:
+            return str(lower) + '+'
+        if upper == lower:
+            return str(lower)
+        return str(lower) + '..' + str(upper)
 
     def __cmp__(self, other):
         if isinstance(other, str):
@@ -11770,6 +11858,12 @@ class JavaCompliance(Comparable):
             if other._upper_bound is None:
                 return -1
             r = compare(self._upper_bound, other._upper_bound)
+            if r == 0:
+                if self._excluded is None:
+                    return 0 if other._excluded is None else 1
+                if other._excluded is None:
+                    return -1
+                r = compare(self._excluded, other._excluded)
         return r
 
     def __contains__(self, other):
@@ -11788,7 +11882,11 @@ class JavaCompliance(Comparable):
                 return compare(self._upper_bound, other.value) >= 0
 
     def __hash__(self):
-        return self.value ** (self._upper_bound or 1)
+        h = self.value ** (self._upper_bound or 1)
+        if self._excluded:
+            start, stop = self._excluded
+            h = hash((h, start, stop))
+        return h
 
     def _is_exact_bound(self):
         return self.value == self._upper_bound
@@ -11804,10 +11902,25 @@ class JavaCompliance(Comparable):
                 value = version.parts[0]
 
             if value >= self.value:
+                if self._excluded is not None:
+                    if value >= self._excluded[0] and value < self._excluded[1]:
+                        return False
                 if self._upper_bound is not None:
                     return value <= self._upper_bound
                 return True
         return False
+
+    def as_version_check(self):
+        if self._is_exact_bound():
+            versionDesc = str(self)
+        elif self._upper_bound is None:
+            versionDesc = '>=' + str(self)
+        else:
+            versionDesc = 'between ' + str(self) + ' and ' + str(self._upper_bound)
+        if self._excluded:
+            versionDesc = '{} excluding [{}..{})'.format(versionDesc, *self._excluded)
+        versionCheck = self._exact_match
+        return (versionCheck, versionDesc)
 
 """
 A version specification as defined in JSR-56
@@ -19369,7 +19482,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.222.0")  # Upgrade jacoco from 0.8.2 to 0.8.4.
+version = VersionSpec("5.223.0")  # GR-16369
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
