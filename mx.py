@@ -1564,22 +1564,23 @@ class JARDistribution(Distribution, ClasspathDependency):
                                             info.flag_bits &= ~0x08
                                             arc.zf.writestr(info, contents)
 
-                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None):
+                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
                     arcname = join(archivePrefix, relpath).replace(os.sep, '/')
                     assert arcname[-1] != '/'
                     if arcnameCheck is not None and not arcnameCheck(arcname):
                         return
                     if relpath.startswith(join('META-INF', 'services')):
-                        service = basename(relpath)
-                        assert dirname(relpath) == join('META-INF', 'services')
-                        m = versioned_meta_inf_re.match(arcname)
-                        if m:
-                            service_version = int(m.group(1))
-                            services_dict = services.setdefault(service_version, {})
-                        else:
-                            services_dict = services
-                        with open(join(outputDir, relpath), 'r') as fp:
-                            services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+                        if includeServices:
+                            service = basename(relpath)
+                            assert dirname(relpath) == join('META-INF', 'services')
+                            m = versioned_meta_inf_re.match(arcname)
+                            if m:
+                                service_version = int(m.group(1))
+                                services_dict = services.setdefault(service_version, {})
+                            else:
+                                services_dict = services
+                            with open(join(outputDir, relpath), 'r') as fp:
+                                services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
                             return
@@ -1712,18 +1713,33 @@ class JARDistribution(Distribution, ClasspathDependency):
                             else:
                                 return arcname not in overlays
 
-                        for root, _, files in os.walk(outputDir):
-                            reldir = root[len(outputDir) + 1:]
-                            for f in files:
-                                relpath = join(reldir, f)
-                                addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check)
+                        def addClasses(archivePrefix, includeServices):
+                            for root, _, files in os.walk(outputDir):
+                                reldir = root[len(outputDir) + 1:]
+                                for f in files:
+                                    relpath = join(reldir, f)
+                                    addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
 
+                        addClasses(archivePrefix, includeServices=True)
                         if srcArc.zf:
                             sourceDirs = p.source_dirs()
                             if p.source_gen_dir():
                                 sourceDirs.append(p.source_gen_dir())
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir, archivePrefix, arcnameCheck=overlay_check)
+
+                        bounds = p.javaCompliance._bounds()
+                        if len(bounds) == 4:
+                            _, _, lower2, _ = bounds
+                            if lower2 > 8:
+                                # Make a multi-release-jar versioned copy of the class files
+                                # for the lower bound of the second range in a disjoint compliance.
+                                # Anything below that version will pick up the class files in the
+                                # root directory of the jar.
+                                if get_jdk(str(JavaCompliance(lower2)), cancel='probing'):
+                                    archivePrefix = 'META-INF/versions/{}/'.format(lower2)
+                                    addClasses(archivePrefix, includeServices=False)
+
                     elif dep.isArchivableProject():
                         logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
                         archivePrefix = dep.archive_prefix()
@@ -11774,6 +11790,22 @@ class JavaCompliance(Comparable):
                 upper_bound = None
         return value, upper_bound
 
+    def _bounds(self):
+        """
+        Gets the bounds for the ranges in the compliance.
+        Examples:
+           JavaCompliance("8")        -> (8, 8)
+           JavaCompliance("8+")       -> (8, None)
+           JavaCompliance("8..11")    -> (8, 11)
+           JavaCompliance("8,13+")    -> (8, 8, 13, None)
+           JavaCompliance("8,13..15") -> (8, 8, 13, 15)
+        """
+        if self._excluded:
+            upper_bound1 = self._excluded[0] - 1
+            lower_bound2 = self._excluded[1]
+            return (self.value, upper_bound1, lower_bound2, self._upper_bound)
+        return (self.value, self._upper_bound)
+
     def __init__(self, ver):
         ver = str(ver)
         parts = ver.split(',')
@@ -11799,21 +11831,22 @@ class JavaCompliance(Comparable):
         return '1.' + str(self.value)
 
     def __repr__(self):
-        if self._excluded:
-            upper_bound1 = self._excluded[0] - 1
-            value2 = self._excluded[1]
-            if self.value == upper_bound1:
-                res = str(self.value)
+        bounds = self._bounds()
+        if len(bounds) == 4:
+            lower1, upper1, lower2, upper2 = bounds
+            if lower1 == upper1:
+                res = str(lower1)
             else:
-                res = '{}..{}'.format(self.value, upper_bound1)
-            if self._upper_bound is None:
-                return '{},{}+'.format(res, value2)
-            return '{},{}..{}'.format(res, value2, self._upper_bound)
-        if self._upper_bound is None:
-            return str(self) + '+'
-        if self._upper_bound == self.value:
-            return str(self)
-        return str(self) + '..' + str(self._upper_bound)
+                res = '{}..{}'.format(lower1, upper1)
+            if upper2 is None:
+                return '{},{}+'.format(res, lower2)
+            return '{},{}..{}'.format(res, lower2, upper2)
+        lower, upper = bounds
+        if upper is None:
+            return str(lower) + '+'
+        if upper == lower:
+            return str(lower)
+        return str(lower) + '..' + str(upper)
 
     def __cmp__(self, other):
         if isinstance(other, str):
