@@ -107,7 +107,7 @@ else:
         return x.encode()
     _unicode = str
 
-### _internal
+### ~~~~~~~~~~~~~ _private
 
 def _function_code(f):
     if hasattr(f, 'func_code'):
@@ -120,7 +120,7 @@ def _check_output_str(*args, **kwargs):
     return _decode(subprocess.check_output(*args, **kwargs))
 
 
-### command
+### ~~~~~~~~~~~~~ command
 
 def command_function(name, fatalIfMissing=True):
     """
@@ -172,7 +172,9 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
 
     return mx_command_decorator_factory
 
-### Suite
+### ~~~~~~~~~~~~~ Suite
+
+### ~~~~~~~~~~~~~ Suite
 
 # Define this machinery early in case other modules want to use them
 
@@ -247,7 +249,8 @@ try:
 except ImportError:
     pass
 
-### Language support
+### ~~~~~~~~~~~~~ Language support
+
 # Support for comparing objects given removal of `cmp` function in Python 3.
 # https://portingguide.readthedocs.io/en/latest/comparisons.html
 def compare(a, b):
@@ -304,7 +307,7 @@ class DynamicVarScope(object):
 currently_loading_suite = DynamicVar(None)
 
 
-### OS/Arch/Platform related
+### ~~~~~~~~~~~~~ OS/Arch/Platform related
 
 def relpath_or_absolute(path, start, prefix=""):
     """
@@ -386,6 +389,8 @@ _jdkProvidedSuites = set()
 # List of functions to run after options have been parsed
 _opts_parsed_deferrables = []
 
+### ~~~~~~~~~~~~~ Suite
+
 _primary_suite_path = None
 _primary_suite = None
 # List of functions to run when the primary suite is initialized
@@ -461,6 +466,7 @@ class DepEdge:
     def path_len(self):
         return 1 + self.prev.path_len() if self.prev else 0
 
+### ~~~~~~~~~~~~~ Suite 
 
 class SuiteConstituent(Comparable):
     __metaclass__ = ABCMeta
@@ -851,6 +857,7 @@ class ClasspathDependency(Dependency):
                 ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
 
+### ~~~~~~~~~~~~~ Build
 
 class BuildTask(object):
     """
@@ -1043,7 +1050,7 @@ class BuildTask(object):
         """
         nyi('clean', self)
 
-### _internal
+### ~~~~~~~~~~~~~ _private
 def _needsUpdate(newestInput, path):
     """
     Determines if the file denoted by `path` does not exist or `newestInput` is not None
@@ -1058,7 +1065,8 @@ def _needsUpdate(newestInput, path):
             return '{} is older than {}'.format(ts, newestInput)
     return None
 
-### Distribution, Archive
+### ~~~~~~~~~~~~~ Distribution, Archive
+
 class DistributionTemplate(SuiteConstituent):
     def __init__(self, suite, name, attrs, parameters):
         SuiteConstituent.__init__(self, suite, name)
@@ -2900,7 +2908,7 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
     def compress_remotely(self):
         return self._remote_compress
 
-### String/expression utils
+### ~~~~~~~~~~~~~ String/expression utils
 
 def glob_match_any(patterns, path):
     return any((glob_match(pattern, path) for pattern in patterns))
@@ -2926,7 +2934,7 @@ def glob_match(pattern, path):
     return '/'.join(path_parts[:len(pattern_parts)])
 
 
-### Project
+### ~~~~~~~~~~~~~ Project
 class Project(Dependency):
     __metaclass__ = ABCMeta
     """
@@ -3163,7 +3171,7 @@ class ArchivableBuildTask(BuildTask):
     def clean(self, forBuild=False):
         pass
 
-#### Maven
+#### ~~~~~~~~~~~~~ Project: Java / Maven
 
 class MavenProject(Project, ClasspathDependency):
     """
@@ -3697,6 +3705,8 @@ class JavaProject(Project, ClasspathDependency):
             setattr(self, cache, concealed)
         return getattr(self, cache)
 
+### ~~~~~~~~~~~~~ Build task
+
 class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk):
         ProjectBuildTask.__init__(self, args, 1, project)
@@ -3944,7 +3954,7 @@ class JavaBuildTask(ProjectBuildTask):
             logv('Cleaning {0}...'.format(jnigenDir))
             rmtree(jnigenDir)
 
-### Java Compiler
+### Compiler / Java Compiler
 
 class JavaCompiler:
     def name(self):
@@ -4458,6 +4468,7 @@ class ECJDaemon(CompilerDaemon):
 def is_debug_lib_file(fn):
     return fn.endswith(add_debug_lib_suffix(""))
 
+### ~~~~~~~~~~~~~ _private
 def _merge_file_contents(input_files, output_file):
     for file_name in input_files:
         with open(file_name, 'r') as input_file:
@@ -4465,6 +4476,7 @@ def _merge_file_contents(input_files, output_file):
         output_file.flush()
 
 
+### ~~~~~~~~~~~~~ Project
 class AbstractNativeProject(Project):
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense=None, **kwargs):
         context = 'project ' + name
@@ -4544,6 +4556,7 @@ class NativeProject(AbstractNativeProject):
                 yield os.path.join(srcdir, h), filename
 
 
+### ~~~~~~~~~~~~~ Build Tasks
 class AbstractNativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
         if hasattr(project, 'max_jobs'):
@@ -4667,6 +4680,8 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
+
+### ~~~~~~~~~~~~~ _private
 def _make_absolute(path, prefix):
     """
     If 'path' is not absolute prefix it with 'prefix'
@@ -4710,6 +4725,7 @@ def dot_mx_dir():
 def is_cache_path(path):
     return path.startswith(_cache_dir())
 
+### ~~~~~~~~~~~~~ _private
 
 def _cache_dir():
     return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
@@ -4880,6 +4896,8 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     return path
 
 
+### ~~~~~~~~~~~~~ _private
+
 def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
     """
     Checks if a file exists and is up to date according to the sha1.
@@ -4925,6 +4943,7 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, l
 
     return True
 
+### ~~~~~~~~~~~~~ Library
 
 class BaseLibrary(Dependency):
     __metaclass__ = ABCMeta
@@ -5194,6 +5213,7 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
+### ~~~~~~~~~~~~~ Task
 
 class NoOpTask(BuildTask):
     def __init__(self, subject, args):
@@ -5214,6 +5234,7 @@ class NoOpTask(BuildTask):
     def clean(self, forBuild=False):
         pass
 
+### ~~~~~~~~~~~~~ Library
 
 class JdkLibrary(BaseLibrary, ClasspathDependency):
     """
@@ -5467,7 +5488,7 @@ class LibraryDownloadTask(BuildTask):
     def cleanForbidden(self):
         return True
 
-### Version control
+### ~~~~~~~~~~~~~ Version control
 
 """
 Abstracts the operations of the version control systems
@@ -7269,6 +7290,7 @@ class BinaryVC(VC):
         if abortOnError:
             abort("A binary VC has no branch")
 
+### ~~~~~~~~~~~~~ _private 
 def _hashFromUrl(url):
     logvv('Retrieving SHA1 from {}'.format(url))
     hashFile = _urllib_request.urlopen(url)
@@ -7282,7 +7304,7 @@ def _hashFromUrl(url):
             hashFile.close()
 
 
-### Maven
+### Maven, _private
 
 def _map_to_maven_dist_name(name):
     return name.lower().replace('_', '-')
@@ -7472,7 +7494,7 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-
+### ~~~~~~~~~~~~~ Repository / Suite
 class Repository(SuiteConstituent):
     """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
     def __init__(self, suite, name, snapshots_url, releases_url, licenses):
@@ -7529,6 +7551,8 @@ def maven_local_repository():  # pylint: disable=invalid-name
 
     return _maven_local_repository
 
+
+### ~~~~~~~~~~~~~ _private
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -7884,6 +7908,8 @@ def _deploy_binary(args, suite):
             else:
                 try_remote_branch_update(deploy_branch_name)
 
+
+### ~~~~~~~~~~~~~ Maven, _private
 
 def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         dryRun=False,
@@ -8503,12 +8529,14 @@ class SuiteImport:
         else:
             abort('unexpected type in SuiteImport.get_source_urls')
 
+### ~~~~~~~~~~~~~ _private
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
     url = _urllib_parse.urlsplit(urlstr)
     return url.scheme and (url.netloc or url.path)
 
+### ~~~~~~~~~~~~~ VC, SCM
 class SCMMetadata(object):
     def __init__(self, url, read, write):
         self.url = url
@@ -8516,6 +8544,7 @@ class SCMMetadata(object):
         self.write = write
 
 
+### ~~~~~~~~~~~~~ Suite
 class Suite(object):
     """
     Command state and methods for all suite subclasses.
@@ -9447,6 +9476,7 @@ def get_dynamic_imports():
                 _dynamic_imports.append((dynamic_import[idx + 1:], True))
     return _dynamic_imports
 
+### ~~~~~~~~~~~~~ Suite
 
 class SourceSuite(Suite):
     """A source suite"""
@@ -9923,7 +9953,7 @@ class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
 
-### XML
+### ~~~~~~~~~~~~~ XML
 
 class XMLElement(xml.dom.minidom.Element):
     def writexml(self, writer, indent="", addindent="", newl=""):
@@ -10002,7 +10032,7 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
-### OS/Platform/Arch
+### ~~~~~~~~~~~~~ Language Support
 
 """
 A simple timing facility.
@@ -10016,6 +10046,8 @@ class Timer():
     def __exit__(self, t, value, traceback):
         elapsed = time.time() - self.start
         print('{} took {} seconds'.format(self.name, elapsed))
+
+### ~~~~~~~~~~~~~ OS/Platform/Arch
 
 def is_darwin():
     return sys.platform.startswith('darwin')
@@ -10055,6 +10087,8 @@ def get_os():
         abort('Unknown operating system ' + sys.platform)
 
 mx_subst.results_substitutions.register_no_arg('os', get_os)
+
+### ~~~~~~~~~~~~~ _private
 
 def _cygpathU2W(p):
     """
@@ -10131,6 +10165,8 @@ def get_opts():
     assert _argParser.parsed is True
     return _opts
 
+### ~~~~~~~~~~~~~ Suite
+
 def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
     Get the list of all loaded suites.
@@ -10160,7 +10196,7 @@ def primary_or_specific_suites():
     return [primary_suite()]
 
 
-### Project
+### ~~~~~~~~~~~~~ Project
 
 def projects_from_names(projectNames):
     """
@@ -10738,6 +10774,7 @@ def _format_commands():
     msg += _mx_commands.list_commands(sorted_commands)
     return msg + '\n'
 
+### ~~~~~~~~~~~~~ Language Support
 
 class ArgParser(ArgumentParser):
     # Override parent to append the list of available commands
@@ -10916,6 +10953,7 @@ environment variables:
             self.parsed = True
             return commandAndArgs
 
+### ~~~~~~~~~~~~~ JDK
 
 """
 A factory for creating JDKConfig objects.
@@ -10927,6 +10965,7 @@ class JDKFactory:
     def description(self):
         nyi('description', self)
 
+### ~~~~~~~~~~~~~ Debugging
 
 class DisableJavaDebugging(object):
     """ Utility for temporarily disabling java remote debugging.
@@ -12434,6 +12473,7 @@ def get_env(key, default=None):
     value = os.getenv(key, default)
     return value
 
+### ~~~~~~~~~~~~~ Logging
 def logv(msg=None):
     if vars(_opts).get('verbose') is None:
         def _deferrable():
@@ -12523,6 +12563,8 @@ def log_error(msg=None):
     else:
         print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
+### ~~~~~~~~~~~~~ Project
+
 def expand_project_in_class_path_arg(cpArg, jdk=None):
     """
     Replaces each "@" prefixed element in the class path `cpArg` with
@@ -12600,6 +12642,7 @@ def expandvars_in_property(value):
         abort('Property contains an undefined environment variable: ' + value)
     return result
 
+### ~~~~~~~~~~~~~ OS/Arch/Platform related
 def _is_process_alive(p):
     if isinstance(p, subprocess.Popen):
         return p.poll() is None
@@ -12715,6 +12758,7 @@ def _suggest_tlsv1_error(e):
         warn('It seems that you have a version of python ({}) that uses an older version of OpenSSL. '.format(sys.executable) +
             'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
 
+### ~~~~~~~~~~~~~ Http / file
 def _attempt_download(url, path, jarEntryName=None):
     """
     Attempts to download content from `url` and save it to `path`.
@@ -14150,6 +14194,7 @@ def _safe_path(path):
         path = _unicode(path)
     return path
 
+### ~~~~~~~~~~~~~ OS/Arch/Platform related
 def getmtime(name):
     """
     Wrapper for builtin open function that handles long path names on Windows.
@@ -14493,6 +14538,8 @@ def _source_locator_memento(deps, jdk=None):
     slm.close('sourceContainers')
     slm.close('sourceLookupDirector')
     return slm, sources
+
+### ~~~~~~~~~~~~~ IDE / Eclipse / Netbeans / IntelliJ
 
 def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     """
@@ -17726,6 +17773,7 @@ def sincoming(args):
 
     _sincoming(primary_suite(), None)
 
+### ~~~~~~~~~~~~~ Mercurial
 
 def _hg_command_import_visitor(s, suite_import, **extra_args):
     _hg_command(suite(suite_import.name), suite_import, **extra_args)
@@ -18183,6 +18231,8 @@ def verify_library_urls(args):
 _java_package_regex = re.compile(r"^\s*package\s+(?P<package>[a-zA-Z_][\w\.]*)\s*;$", re.MULTILINE)
 
 
+### ~~~~~~~~~~~~~ CI
+
 def suite_ci_files(suite, ci_path=None, extension=(".hocon", ".jsonnet", '.libsonnet')):
     """
     Get the list of ci files for the given suite
@@ -18361,6 +18411,8 @@ def checkcopyrights(args):
         result = result if rc == 0 else rc
     return result
 
+### ~~~~~~~~~~~~~ Maven
+
 def mvn_local_install(group_id, artifact_id, path, version, repo=None):
     if not exists(path):
         abort('File ' + path + ' does not exists')
@@ -18434,6 +18486,8 @@ def _copy_eclipse_settings(p, files=None):
         update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
+
+### ~~~~~~~~~~~~~ OS/Arch/Platform related
 
 _tar_compressed_extensions = {'bz2', 'gz', 'lz', 'lzma', 'xz', 'Z'}
 _known_zip_pre_extensions = {'src'}
@@ -18538,6 +18592,8 @@ def update(args):
             print(vc.pull(_mx_home, update=True))
     else:
         print('Cannot update mx as git is unavailable')
+
+### ~~~~~~~~~~~~~ Language support
 
 def remove_doubledash(args):
     if '--' in args:
@@ -18689,6 +18745,8 @@ _argParser = ArgParser()
 def _mxDirName(name):
     return 'mx.' + name
 
+### ~~~~~~~~~~~~~ Distribution, _private
+
 def _mx_binary_distribution_root(name):
     return name + '-mx'
 
@@ -18699,6 +18757,8 @@ def _mx_binary_distribution_jar(name):
 def _mx_binary_distribution_version(name):
     """the (relative) path to the location of the mx binary distribution version file"""
     return join('dists', _mx_binary_distribution_root(name) + '.version')
+
+### ~~~~~~~~~~~~~ Suite
 
 def _suitename(mxDir):
     parts = basename(mxDir).split('.')
