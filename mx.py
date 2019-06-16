@@ -565,6 +565,279 @@ def cpu_count():
     else:
         return cpus
 
+
+### ~~~~~~~~~~~~~ OS/Arch/Platform related
+
+def is_darwin():
+    return sys.platform.startswith('darwin')
+
+
+def is_linux():
+    return sys.platform.startswith('linux')
+
+
+def is_openbsd():
+    return sys.platform.startswith('openbsd')
+
+
+def is_sunos():
+    return sys.platform.startswith('sunos')
+
+
+def is_windows():
+    return sys.platform.startswith('win32')
+
+
+def is_cygwin():
+    return sys.platform.startswith('cygwin')
+
+
+def get_os():
+    """
+    Get a canonical form of sys.platform.
+    """
+    if is_darwin():
+        return 'darwin'
+    elif is_linux():
+        return 'linux'
+    elif is_openbsd():
+        return 'openbsd'
+    elif is_sunos():
+        return 'solaris'
+    elif is_windows():
+        return 'windows'
+    elif is_cygwin():
+        return 'cygwin'
+    else:
+        abort('Unknown operating system ' + sys.platform)
+
+
+def _is_process_alive(p):
+    if isinstance(p, subprocess.Popen):
+        return p.poll() is None
+    assert isinstance(p, multiprocessing.Process), p
+    return p.is_alive()
+
+
+def _send_sigquit():
+    for p, args in _currentSubprocesses:
+
+        def _isJava():
+            if args:
+                name = args[0].split(os.sep)[-1]
+                return name == "java"
+            return False
+
+        if p is not None and _is_process_alive(p) and _isJava():
+            if is_windows():
+                log("mx: implement me! want to send SIGQUIT to my child process")
+            else:
+                # only send SIGQUIT to the child not the process group
+                logv('sending SIGQUIT to ' + str(p.pid))
+                os.kill(p.pid, signal.SIGQUIT)
+            time.sleep(0.1)
+
+
+def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
+    """
+    Aborts the program with a SystemExit exception.
+    If `codeOrMessage` is a plain integer, it specifies the system exit status;
+    if it is None, the exit status is zero; if it has another type (such as a string),
+    the object's value is printed and the exit status is 1.
+
+    The `context` argument can provide extra context for an error message.
+    If `context` is callable, it is called and the returned value is printed.
+    If `context` defines a __abort_context__ method, the latter is called and
+    its return value is printed. Otherwise str(context) is printed.
+    """
+
+    if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+        logv('sending SIGQUIT to subprocesses on abort')
+        _send_sigquit()
+
+    for p, args in _currentSubprocesses:
+        if _is_process_alive(p):
+            if is_windows():
+                p.terminate()
+            else:
+                _kill_process(p.pid, killsig)
+            time.sleep(0.1)
+        if _is_process_alive(p):
+            try:
+                if is_windows():
+                    p.terminate()
+                else:
+                    _kill_process(p.pid, signal.SIGKILL)
+            except BaseException as e:
+                if _is_process_alive(p):
+                    log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
+
+    if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
+        import traceback
+        traceback.print_stack()
+    if context is not None:
+        if callable(context):
+            contextMsg = context()
+        elif hasattr(context, '__abort_context__'):
+            contextMsg = context.__abort_context__()
+        else:
+            contextMsg = str(context)
+    else:
+        contextMsg = ""
+
+    if isinstance(codeOrMessage, int):
+        # Log the context separately so that SystemExit
+        # communicates the intended exit status
+        error_message = contextMsg
+        error_code = codeOrMessage
+    elif contextMsg:
+        error_message = contextMsg + ":\n" + codeOrMessage
+        error_code = 1
+    else:
+        error_message = codeOrMessage
+        error_code = 1
+    log_error(error_message)
+    raise SystemExit(error_code)
+
+
+def abort_or_warn(message, should_abort, context=None):
+    if should_abort:
+        abort(message, context)
+    else:
+        warn(message, context)
+
+
+def _suggest_http_proxy_error(e):
+    """
+    Displays a message related to http proxies that may explain the reason for the exception `e`.
+    """
+    proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
+    proxyDefs = {k: _original_environ[k] for k in proxyVars if k in _original_environ.keys()}
+    if not proxyDefs:
+        warn('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
+             '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
+    else:
+        defs = [i[0] + '=' + i[1] for i in proxyDefs.items()]
+        warn(
+            '** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(
+                defs))
+
+
+def _suggest_tlsv1_error(e):
+    """
+    Displays a message related to TLS errors that can occur when connecting to certain websites
+    (e.g., github) on a version of Python that uses an older implementaiton of OpenSSL.
+    """
+    if 'tlsv1 alert protocol version' in str(e):
+        warn('It seems that you have a version of python ({}) that uses an older version of OpenSSL. '.format(
+            sys.executable) +
+             'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
+
+
+def getmtime(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.path.getmtime(_safe_path(name))
+
+
+def stat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.stat(_safe_path(name))
+
+
+def lstat(name):
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return os.lstat(_safe_path(name))
+
+
+def open(name, mode='r'):  # pylint: disable=redefined-builtin
+    """
+    Wrapper for builtin open function that handles long path names on Windows.
+    """
+    return builtins.open(_safe_path(name), mode=mode)
+
+
+def copytree(src, dst, symlinks=False, ignore=None):
+    shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
+
+
+def rmtree(path, ignore_errors=False):
+    path = _safe_path(path)
+    if ignore_errors:
+        def on_error(*args):
+            pass
+    elif is_windows():
+        def on_error(func, _path, exc_info):
+            os.chmod(_path, S_IWRITE)
+            if isdir(_path):
+                os.rmdir(_path)
+            else:
+                os.unlink(_path)
+    else:
+        def on_error(*args):
+            raise  # pylint: disable=misplaced-bare-raise
+    if isdir(path):
+        shutil.rmtree(path, onerror=on_error)
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            on_error(os.remove, path, sys.exc_info())
+
+
+def clean(args, parser=None):
+    """remove all class files, images, and executables
+
+    Removes all files created by a build, including Java class files, executables, and
+    generated images.
+    """
+
+    suppliedParser = parser is not None
+
+    parser = parser if suppliedParser else ArgumentParser(prog='mx clean')
+    parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
+    parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
+    parser.add_argument('--dependencies', '--projects', action='store',
+                        help='comma separated projects to clean (omit to clean all projects)')
+    parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
+    parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
+
+    args = parser.parse_args(args)
+
+    def _collect_clean_dependencies():
+        if args.all:
+            return dependencies(True)
+        _, roots = defaultDependencies(True)
+        res = []
+        walk_deps(roots, visit=lambda d, e: res.append(d))
+        return _dependencies_opt_limit_to_suites(res)
+
+    if args.dependencies is not None:
+        deps = [dependency(name) for name in args.dependencies.split(',')]
+    else:
+        deps = _collect_clean_dependencies()
+
+    # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
+    for dep in deps:
+        task = dep.getBuildTask(args)
+        if task.cleanForbidden():
+            continue
+        task.logClean()
+        task.clean()
+
+        for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
+            config = TimeStampFile(join(dep.suite.get_mx_output_dir(), configName))
+            if config.exists():
+                os.unlink(config.path)
+
+    if suppliedParser:
+        return args
+
 try: zipfile.ZipFile.__enter__
 except:
     zipfile.ZipFile.__enter__ = lambda self: self
@@ -10270,45 +10543,6 @@ class XMLDoc(xml.dom.minidom.Document):
         return result
 
 
-### ~~~~~~~~~~~~~ OS/Platform/Arch
-
-def is_darwin():
-    return sys.platform.startswith('darwin')
-
-def is_linux():
-    return sys.platform.startswith('linux')
-
-def is_openbsd():
-    return sys.platform.startswith('openbsd')
-
-def is_sunos():
-    return sys.platform.startswith('sunos')
-
-def is_windows():
-    return sys.platform.startswith('win32')
-
-def is_cygwin():
-    return sys.platform.startswith('cygwin')
-
-def get_os():
-    """
-    Get a canonical form of sys.platform.
-    """
-    if is_darwin():
-        return 'darwin'
-    elif is_linux():
-        return 'linux'
-    elif is_openbsd():
-        return 'openbsd'
-    elif is_sunos():
-        return 'solaris'
-    elif is_windows():
-        return 'windows'
-    elif is_cygwin():
-        return 'cygwin'
-    else:
-        abort('Unknown operating system ' + sys.platform)
-
 mx_subst.results_substitutions.register_no_arg('os', get_os)
 
 ### ~~~~~~~~~~~~~ _private
@@ -12687,121 +12921,6 @@ def expandvars_in_property(value):
         abort('Property contains an undefined environment variable: ' + value)
     return result
 
-### ~~~~~~~~~~~~~ OS/Arch/Platform related
-def _is_process_alive(p):
-    if isinstance(p, subprocess.Popen):
-        return p.poll() is None
-    assert isinstance(p, multiprocessing.Process), p
-    return p.is_alive()
-
-def _send_sigquit():
-    for p, args in _currentSubprocesses:
-
-        def _isJava():
-            if args:
-                name = args[0].split(os.sep)[-1]
-                return name == "java"
-            return False
-
-        if p is not None and _is_process_alive(p) and _isJava():
-            if is_windows():
-                log("mx: implement me! want to send SIGQUIT to my child process")
-            else:
-                # only send SIGQUIT to the child not the process group
-                logv('sending SIGQUIT to ' + str(p.pid))
-                os.kill(p.pid, signal.SIGQUIT)
-            time.sleep(0.1)
-
-def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
-    """
-    Aborts the program with a SystemExit exception.
-    If `codeOrMessage` is a plain integer, it specifies the system exit status;
-    if it is None, the exit status is zero; if it has another type (such as a string),
-    the object's value is printed and the exit status is 1.
-
-    The `context` argument can provide extra context for an error message.
-    If `context` is callable, it is called and the returned value is printed.
-    If `context` defines a __abort_context__ method, the latter is called and
-    its return value is printed. Otherwise str(context) is printed.
-    """
-
-    if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
-        logv('sending SIGQUIT to subprocesses on abort')
-        _send_sigquit()
-
-    for p, args in _currentSubprocesses:
-        if _is_process_alive(p):
-            if is_windows():
-                p.terminate()
-            else:
-                _kill_process(p.pid, killsig)
-            time.sleep(0.1)
-        if _is_process_alive(p):
-            try:
-                if is_windows():
-                    p.terminate()
-                else:
-                    _kill_process(p.pid, signal.SIGKILL)
-            except BaseException as e:
-                if _is_process_alive(p):
-                    log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
-
-    if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
-        import traceback
-        traceback.print_stack()
-    if context is not None:
-        if callable(context):
-            contextMsg = context()
-        elif hasattr(context, '__abort_context__'):
-            contextMsg = context.__abort_context__()
-        else:
-            contextMsg = str(context)
-    else:
-        contextMsg = ""
-
-    if isinstance(codeOrMessage, int):
-        # Log the context separately so that SystemExit
-        # communicates the intended exit status
-        error_message = contextMsg
-        error_code = codeOrMessage
-    elif contextMsg:
-        error_message = contextMsg + ":\n" + codeOrMessage
-        error_code = 1
-    else:
-        error_message = codeOrMessage
-        error_code = 1
-    log_error(error_message)
-    raise SystemExit(error_code)
-
-
-def abort_or_warn(message, should_abort, context=None):
-    if should_abort:
-        abort(message, context)
-    else:
-        warn(message, context)
-
-
-def _suggest_http_proxy_error(e):
-    """
-    Displays a message related to http proxies that may explain the reason for the exception `e`.
-    """
-    proxyVars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
-    proxyDefs = {k : _original_environ[k] for k in proxyVars if k in _original_environ.keys()}
-    if not proxyDefs:
-        warn('** If behind a firewall without direct internet access, use the http_proxy environment variable ' \
-            '(e.g. "env http_proxy=proxy.company.com:80 mx ...") or download manually with a web browser.')
-    else:
-        defs = [i[0] + '=' + i[1] for i in proxyDefs.items()]
-        warn('** You have the following environment variable(s) set which may be the cause of the URL error:\n  ' + '\n  '.join(defs))
-
-def _suggest_tlsv1_error(e):
-    """
-    Displays a message related to TLS errors that can occur when connecting to certain websites
-    (e.g., github) on a version of Python that uses an older implementaiton of OpenSSL.
-    """
-    if 'tlsv1 alert protocol version' in str(e):
-        warn('It seems that you have a version of python ({}) that uses an older version of OpenSSL. '.format(sys.executable) +
-            'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
 
 ### ~~~~~~~~~~~~~ Http / file
 def _attempt_download(url, path, jarEntryName=None):
@@ -14239,104 +14358,6 @@ def _safe_path(path):
         path = _unicode(path)
     return path
 
-### ~~~~~~~~~~~~~ OS/Arch/Platform related
-def getmtime(name):
-    """
-    Wrapper for builtin open function that handles long path names on Windows.
-    """
-    return os.path.getmtime(_safe_path(name))
-
-def stat(name):
-    """
-    Wrapper for builtin open function that handles long path names on Windows.
-    """
-    return os.stat(_safe_path(name))
-
-def lstat(name):
-    """
-    Wrapper for builtin open function that handles long path names on Windows.
-    """
-    return os.lstat(_safe_path(name))
-
-def open(name, mode='r'): # pylint: disable=redefined-builtin
-    """
-    Wrapper for builtin open function that handles long path names on Windows.
-    """
-    return builtins.open(_safe_path(name), mode=mode)
-
-def copytree(src, dst, symlinks=False, ignore=None):
-    shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
-
-def rmtree(path, ignore_errors=False):
-    path = _safe_path(path)
-    if ignore_errors:
-        def on_error(*args):
-            pass
-    elif is_windows():
-        def on_error(func, _path, exc_info):
-            os.chmod(_path, S_IWRITE)
-            if isdir(_path):
-                os.rmdir(_path)
-            else:
-                os.unlink(_path)
-    else:
-        def on_error(*args):
-            raise #pylint: disable=misplaced-bare-raise
-    if isdir(path):
-        shutil.rmtree(path, onerror=on_error)
-    else:
-        try:
-            os.remove(path)
-        except OSError:
-            on_error(os.remove, path, sys.exc_info())
-
-def clean(args, parser=None):
-    """remove all class files, images, and executables
-
-    Removes all files created by a build, including Java class files, executables, and
-    generated images.
-    """
-
-    suppliedParser = parser is not None
-
-    parser = parser if suppliedParser else ArgumentParser(prog='mx clean')
-    parser.add_argument('--no-native', action='store_false', dest='native', help='do not clean native projects')
-    parser.add_argument('--no-java', action='store_false', dest='java', help='do not clean Java projects')
-    parser.add_argument('--dependencies', '--projects', action='store', help='comma separated projects to clean (omit to clean all projects)')
-    parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
-    parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
-
-    args = parser.parse_args(args)
-
-
-    def _collect_clean_dependencies():
-        if args.all:
-            return dependencies(True)
-        _, roots = defaultDependencies(True)
-        res = []
-        walk_deps(roots, visit=lambda d, e: res.append(d))
-        return _dependencies_opt_limit_to_suites(res)
-
-    if args.dependencies is not None:
-        deps = [dependency(name) for name in args.dependencies.split(',')]
-    else:
-        deps = _collect_clean_dependencies()
-
-    # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
-    for dep in deps:
-        task = dep.getBuildTask(args)
-        if task.cleanForbidden():
-            continue
-        task.logClean()
-        task.clean()
-
-        for configName in ['netbeans-config.zip', 'eclipse-config.zip']:
-            config = TimeStampFile(join(dep.suite.get_mx_output_dir(), configName))
-            if config.exists():
-                os.unlink(config.path)
-
-    if suppliedParser:
-        return args
 
 def help_(args):
     """show detailed help for mx or a given command
