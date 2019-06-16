@@ -174,8 +174,6 @@ def command(suite_name, command_name, usage_msg='', doc_function=None, props=Non
 
 ### ~~~~~~~~~~~~~ Suite
 
-### ~~~~~~~~~~~~~ Suite
-
 # Define this machinery early in case other modules want to use them
 
 # Names of commands that don't need a primary suite.
@@ -306,6 +304,245 @@ class DynamicVarScope(object):
 
 currently_loading_suite = DynamicVar(None)
 
+
+class ArgParser(ArgumentParser):
+    # Override parent to append the list of available commands
+    def format_help(self):
+        return ArgumentParser.format_help(self) + """
+environment variables:
+  JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
+  EXTRA_JAVA_HOMES      Secondary JDK directories. Can be overridden with --extra-java-homes option.
+  MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
+                        content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
+                        this with the suite level "outputRoot" attribute in suite.py.
+  MX_GIT_CACHE          Use a cache for git objects during clones.
+                         * Setting it to `reference` will clone repositories using the cache and let them
+                           reference the cache (if the cache gets deleted these repositories will be
+                           incomplete).
+                         * Setting it to `dissociated` will clone using the cache but then dissociate the
+                           repository from the cache.
+                         * Setting it to `refcache` will synchronize with server only if a branch is
+                           requested or if a specific revision is requested which does not exist in the
+                           local cache. Hence, remote references will be synchronized occasionally. This
+                           allows cloning without even contacting the git server.
+                        The cache is located at `~/.mx/git-cache`.
+""" + _format_commands()
+
+
+    def __init__(self, parents=None):
+        self.parsed = False
+        if not parents:
+            parents = []
+        ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0, formatter_class=lambda prog: HelpFormatter(prog, max_help_position=32, width=120))
+
+        if len(parents) != 0:
+            # Arguments are inherited from the parents
+            return
+
+        self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
+        self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
+        self.add_argument('--no-warning', action='store_false', dest='warn', help='disable warning messages')
+        self.add_argument('--quiet', action='store_true', help='disable log messages')
+        self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
+        self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
+        self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
+        self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
+        self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
+        self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
+        self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
+        self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
+        self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
+        jargs = self.add_mutually_exclusive_group()
+        jargs.add_argument('-J', dest='java_args', help='Java VM arguments (e.g. "-J-dsa")', metavar='<arg>')
+        jargs.add_argument('--J', dest='java_args_legacy', help='Java VM arguments (e.g. "--J @-dsa")', metavar='@<args>')
+        jpargs = self.add_mutually_exclusive_group()
+        jpargs.add_argument('-P', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. "-P-dsa")', metavar='<arg>', default=[])
+        jpargs.add_argument('--Jp', action='append', dest='java_args_pfx_legacy', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
+        jaargs = self.add_mutually_exclusive_group()
+        jaargs.add_argument('-A', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. "-A-dsa")', metavar='<arg>', default=[])
+        jaargs.add_argument('--Ja', action='append', dest='java_args_sfx_legacy', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
+        self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
+        self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
+        self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
+        self.add_argument('--jacoco-whitelist-package', help='only include classes in the specified package', metavar='<package>', action='append', default=[])
+        self.add_argument('--jacoco-exclude-annotation', help='exclude classes with annotation from JaCoCo instrumentation', metavar='<annotation>', action='append', default=[])
+        self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
+        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='use JDK matching a project\'s Java compliance when compiling (legacy - this is the only supported mode)', default=True)
+        self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
+        self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
+        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to the given suite', metavar='<name>', default=[])
+        self.add_argument('--suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
+        self.add_argument('--primary', action='store_true', help='limit command to primary suite')
+        self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
+        self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
+        self.add_argument('--version', action='store_true', help='print version and exit')
+        self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
+        self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
+        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
+        self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
+        self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
+        self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
+
+        if not is_windows():
+            # Time outs are (currently) implemented with Unix specific functionality
+            self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
+            self.add_argument('--ptimeout', help='timeout (in seconds) for subprocesses', type=int, default=0, metavar='<secs>')
+
+    def _parse_cmd_line(self, opts, firstParse):
+        if firstParse:
+
+            parser = ArgParser(parents=[self])
+            parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
+
+            # Legacy support - these options are recognized during first parse and
+            # appended to the unknown options to be reparsed in the second parse
+            parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
+            parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
+
+            # Parse the known mx global options and preserve the unknown args, command and
+            # command args for the second parse.
+            _, self.unknown = parser.parse_known_args(namespace=opts)
+
+            for deferrable in _opts_parsed_deferrables:
+                deferrable()
+
+            if opts.version:
+                print('mx version ' + str(version))
+                sys.exit(0)
+
+            if opts.vm: self.unknown += ['--vm=' + opts.vm]
+            if opts.vmbuild: self.unknown += ['--vmbuild=' + opts.vmbuild]
+
+            self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
+
+            # For some reason, argparse considers an unknown argument starting with '-'
+            # and containing a space as a positional argument instead of an optional
+            # argument. We need to treat these as unknown optional arguments.
+            while len(self.initialCommandAndArgs) > 0:
+                arg = self.initialCommandAndArgs[0]
+                if arg.startswith('-'):
+                    assert ' ' in arg, arg
+                    self.unknown.append(arg)
+                    del self.initialCommandAndArgs[0]
+                else:
+                    break
+
+            # Give the timeout options a default value to avoid the need for hasattr() tests
+            opts.__dict__.setdefault('timeout', 0)
+            opts.__dict__.setdefault('ptimeout', 0)
+
+            if opts.java_args_legacy:
+                opts.java_args = opts.java_args_legacy.lstrip('@')
+            if opts.java_args_pfx_legacy:
+                opts.java_args_pfx = [s.lstrip('@') for s in opts.java_args_pfx_legacy]
+            if opts.java_args_sfx_legacy:
+                opts.java_args_sfx = [s.lstrip('@') for s in opts.java_args_sfx_legacy]
+
+            if opts.very_verbose:
+                opts.verbose = True
+
+            if opts.user_home is None or opts.user_home == '':
+                abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
+
+            if opts.primary and primary_suite():
+                opts.specific_suites.append(primary_suite().name)
+
+            if opts.java_home is not None:
+                os.environ['JAVA_HOME'] = opts.java_home
+            if opts.extra_java_homes is not None:
+                os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
+            os.environ['HOME'] = opts.user_home
+
+            global _primary_suite_path
+            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
+            if _primary_suite_path:
+                _primary_suite_path = os.path.abspath(_primary_suite_path)
+
+            global _suitemodel
+            _suitemodel = SuiteModel.create_suitemodel(opts)
+
+            # Communicate primary suite path to mx subprocesses
+            if _primary_suite_path:
+                os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
+
+            opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
+
+            mx_gate._jacoco = opts.jacoco
+            mx_gate._jacoco_whitelisted_packages.extend(opts.jacoco_whitelist_package)
+            mx_gate.add_jacoco_excluded_annotations(opts.jacoco_exclude_annotation)
+            mx_gate.Task.verbose = opts.verbose
+        else:
+            parser = ArgParser(parents=[self])
+            parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
+            args = self.unknown + self.initialCommandAndArgs
+            parser.parse_args(args=args, namespace=opts)
+            commandAndArgs = opts.__dict__.pop('commandAndArgs')
+            if self.initialCommandAndArgs != commandAndArgs:
+                abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))
+            self.parsed = True
+            return commandAndArgs
+
+
+def add_argument(*args, **kwargs):
+    """
+    Defines a single command-line argument.
+    """
+    assert _argParser is not None
+    _argParser.add_argument(*args, **kwargs)
+
+def remove_doubledash(args):
+    if '--' in args:
+        args.remove('--')
+
+def ask_question(question, options, default=None, answer=None):
+    """"""
+    assert not default or default in options
+    questionMark = '? ' + options + ': '
+    if default:
+        questionMark = questionMark.replace(default, default.upper())
+    if answer:
+        answer = str(answer)
+        print(question + questionMark + answer)
+    else:
+        if is_interactive():
+            answer = input(question + questionMark) or default
+            while not answer:
+                answer = input(question + questionMark)
+        else:
+            if default:
+                answer = default
+            else:
+                abort("Can not answer '" + question + "?' if stdin is not a tty")
+    return answer.lower()
+
+def ask_yes_no(question, default=None):
+    """"""
+    return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
+
+def warn(msg, context=None):
+    if _opts.warn:
+        if context is not None:
+            if callable(context):
+                contextMsg = context()
+            elif hasattr(context, '__abort_context__'):
+                contextMsg = context.__abort_context__()
+            else:
+                contextMsg = str(context)
+            msg = contextMsg + ":\n" + msg
+        print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
+
+"""
+A simple timing facility.
+"""
+class Timer():
+    def __init__(self, name):
+        self.name = name
+    def __enter__(self):
+        self.start = time.time()
+        return self
+    def __exit__(self, t, value, traceback):
+        elapsed = time.time() - self.start
+        print('{} took {} seconds'.format(self.name, elapsed))
 
 ### ~~~~~~~~~~~~~ OS/Arch/Platform related
 
@@ -10032,20 +10269,6 @@ class XMLDoc(xml.dom.minidom.Document):
             result = result.replace('encoding="UTF-8"?>', 'encoding="UTF-8" standalone="' + str(standalone) + '"?>')
         return result
 
-### ~~~~~~~~~~~~~ Language Support
-
-"""
-A simple timing facility.
-"""
-class Timer():
-    def __init__(self, name):
-        self.name = name
-    def __enter__(self):
-        self.start = time.time()
-        return self
-    def __exit__(self, t, value, traceback):
-        elapsed = time.time() - self.start
-        print('{} took {} seconds'.format(self.name, elapsed))
 
 ### ~~~~~~~~~~~~~ OS/Platform/Arch
 
@@ -10774,184 +10997,6 @@ def _format_commands():
     msg += _mx_commands.list_commands(sorted_commands)
     return msg + '\n'
 
-### ~~~~~~~~~~~~~ Language Support
-
-class ArgParser(ArgumentParser):
-    # Override parent to append the list of available commands
-    def format_help(self):
-        return ArgumentParser.format_help(self) + """
-environment variables:
-  JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
-  EXTRA_JAVA_HOMES      Secondary JDK directories. Can be overridden with --extra-java-homes option.
-  MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
-                        content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
-                        this with the suite level "outputRoot" attribute in suite.py.
-  MX_GIT_CACHE          Use a cache for git objects during clones.
-                         * Setting it to `reference` will clone repositories using the cache and let them
-                           reference the cache (if the cache gets deleted these repositories will be
-                           incomplete).
-                         * Setting it to `dissociated` will clone using the cache but then dissociate the
-                           repository from the cache.
-                         * Setting it to `refcache` will synchronize with server only if a branch is
-                           requested or if a specific revision is requested which does not exist in the
-                           local cache. Hence, remote references will be synchronized occasionally. This
-                           allows cloning without even contacting the git server.
-                        The cache is located at `~/.mx/git-cache`.
-""" + _format_commands()
-
-
-    def __init__(self, parents=None):
-        self.parsed = False
-        if not parents:
-            parents = []
-        ArgumentParser.__init__(self, prog='mx', parents=parents, add_help=len(parents) != 0, formatter_class=lambda prog: HelpFormatter(prog, max_help_position=32, width=120))
-
-        if len(parents) != 0:
-            # Arguments are inherited from the parents
-            return
-
-        self.add_argument('-v', action='store_true', dest='verbose', help='enable verbose output')
-        self.add_argument('-V', action='store_true', dest='very_verbose', help='enable very verbose output')
-        self.add_argument('--no-warning', action='store_false', dest='warn', help='disable warning messages')
-        self.add_argument('--quiet', action='store_true', help='disable log messages')
-        self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
-        self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
-        self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
-        self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
-        self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
-        self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
-        self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
-        self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
-        self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
-        jargs = self.add_mutually_exclusive_group()
-        jargs.add_argument('-J', dest='java_args', help='Java VM arguments (e.g. "-J-dsa")', metavar='<arg>')
-        jargs.add_argument('--J', dest='java_args_legacy', help='Java VM arguments (e.g. "--J @-dsa")', metavar='@<args>')
-        jpargs = self.add_mutually_exclusive_group()
-        jpargs.add_argument('-P', action='append', dest='java_args_pfx', help='prefix Java VM arguments (e.g. "-P-dsa")', metavar='<arg>', default=[])
-        jpargs.add_argument('--Jp', action='append', dest='java_args_pfx_legacy', help='prefix Java VM arguments (e.g. --Jp @-dsa)', metavar='@<args>', default=[])
-        jaargs = self.add_mutually_exclusive_group()
-        jaargs.add_argument('-A', action='append', dest='java_args_sfx', help='suffix Java VM arguments (e.g. "-A-dsa")', metavar='<arg>', default=[])
-        jaargs.add_argument('--Ja', action='append', dest='java_args_sfx_legacy', help='suffix Java VM arguments (e.g. --Ja @-dsa)', metavar='@<args>', default=[])
-        self.add_argument('--user-home', help='users home directory', metavar='<path>', default=os.path.expanduser('~'))
-        self.add_argument('--java-home', help='primary JDK directory (must be JDK 7 or later)', metavar='<path>')
-        self.add_argument('--jacoco', help='instruments selected classes using JaCoCo', default='off', choices=['off', 'on', 'append'])
-        self.add_argument('--jacoco-whitelist-package', help='only include classes in the specified package', metavar='<package>', action='append', default=[])
-        self.add_argument('--jacoco-exclude-annotation', help='exclude classes with annotation from JaCoCo instrumentation', metavar='<annotation>', action='append', default=[])
-        self.add_argument('--extra-java-homes', help='secondary JDK directories separated by "' + os.pathsep + '"', metavar='<path>')
-        self.add_argument('--strict-compliance', action='store_true', dest='strict_compliance', help='use JDK matching a project\'s Java compliance when compiling (legacy - this is the only supported mode)', default=True)
-        self.add_argument('--ignore-project', action='append', dest='ignored_projects', help='name of project to ignore', metavar='<name>', default=[])
-        self.add_argument('--kill-with-sigquit', action='store_true', dest='killwithsigquit', help='send sigquit first before killing child processes')
-        self.add_argument('--suite', action='append', dest='specific_suites', help='limit command to the given suite', metavar='<name>', default=[])
-        self.add_argument('--suitemodel', help='mechanism for locating imported suites', metavar='<arg>')
-        self.add_argument('--primary', action='store_true', help='limit command to primary suite')
-        self.add_argument('--dynamicimports', action='append', dest='dynamic_imports', help='dynamically import suite <name>', metavar='<name>', default=[])
-        self.add_argument('--no-download-progress', action='store_true', help='disable download progress meter')
-        self.add_argument('--version', action='store_true', help='print version and exit')
-        self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
-        self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
-        self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
-        self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
-        self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
-        self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
-
-        if not is_windows():
-            # Time outs are (currently) implemented with Unix specific functionality
-            self.add_argument('--timeout', help='timeout (in seconds) for command', type=int, default=0, metavar='<secs>')
-            self.add_argument('--ptimeout', help='timeout (in seconds) for subprocesses', type=int, default=0, metavar='<secs>')
-
-    def _parse_cmd_line(self, opts, firstParse):
-        if firstParse:
-
-            parser = ArgParser(parents=[self])
-            parser.add_argument('initialCommandAndArgs', nargs=REMAINDER, metavar='command args...')
-
-            # Legacy support - these options are recognized during first parse and
-            # appended to the unknown options to be reparsed in the second parse
-            parser.add_argument('--vm', action='store', dest='vm', help='the VM type to build/run')
-            parser.add_argument('--vmbuild', action='store', dest='vmbuild', help='the VM build to build/run')
-
-            # Parse the known mx global options and preserve the unknown args, command and
-            # command args for the second parse.
-            _, self.unknown = parser.parse_known_args(namespace=opts)
-
-            for deferrable in _opts_parsed_deferrables:
-                deferrable()
-
-            if opts.version:
-                print('mx version ' + str(version))
-                sys.exit(0)
-
-            if opts.vm: self.unknown += ['--vm=' + opts.vm]
-            if opts.vmbuild: self.unknown += ['--vmbuild=' + opts.vmbuild]
-
-            self.initialCommandAndArgs = opts.__dict__.pop('initialCommandAndArgs')
-
-            # For some reason, argparse considers an unknown argument starting with '-'
-            # and containing a space as a positional argument instead of an optional
-            # argument. We need to treat these as unknown optional arguments.
-            while len(self.initialCommandAndArgs) > 0:
-                arg = self.initialCommandAndArgs[0]
-                if arg.startswith('-'):
-                    assert ' ' in arg, arg
-                    self.unknown.append(arg)
-                    del self.initialCommandAndArgs[0]
-                else:
-                    break
-
-            # Give the timeout options a default value to avoid the need for hasattr() tests
-            opts.__dict__.setdefault('timeout', 0)
-            opts.__dict__.setdefault('ptimeout', 0)
-
-            if opts.java_args_legacy:
-                opts.java_args = opts.java_args_legacy.lstrip('@')
-            if opts.java_args_pfx_legacy:
-                opts.java_args_pfx = [s.lstrip('@') for s in opts.java_args_pfx_legacy]
-            if opts.java_args_sfx_legacy:
-                opts.java_args_sfx = [s.lstrip('@') for s in opts.java_args_sfx_legacy]
-
-            if opts.very_verbose:
-                opts.verbose = True
-
-            if opts.user_home is None or opts.user_home == '':
-                abort('Could not find user home. Use --user-home option or ensure HOME environment variable is set.')
-
-            if opts.primary and primary_suite():
-                opts.specific_suites.append(primary_suite().name)
-
-            if opts.java_home is not None:
-                os.environ['JAVA_HOME'] = opts.java_home
-            if opts.extra_java_homes is not None:
-                os.environ['EXTRA_JAVA_HOMES'] = opts.extra_java_homes
-            os.environ['HOME'] = opts.user_home
-
-            global _primary_suite_path
-            _primary_suite_path = opts.primary_suite_path or os.environ.get('MX_PRIMARY_SUITE_PATH')
-            if _primary_suite_path:
-                _primary_suite_path = os.path.abspath(_primary_suite_path)
-
-            global _suitemodel
-            _suitemodel = SuiteModel.create_suitemodel(opts)
-
-            # Communicate primary suite path to mx subprocesses
-            if _primary_suite_path:
-                os.environ['MX_PRIMARY_SUITE_PATH'] = _primary_suite_path
-
-            opts.ignored_projects += os.environ.get('IGNORED_PROJECTS', '').split(',')
-
-            mx_gate._jacoco = opts.jacoco
-            mx_gate._jacoco_whitelisted_packages.extend(opts.jacoco_whitelist_package)
-            mx_gate.add_jacoco_excluded_annotations(opts.jacoco_exclude_annotation)
-            mx_gate.Task.verbose = opts.verbose
-        else:
-            parser = ArgParser(parents=[self])
-            parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
-            args = self.unknown + self.initialCommandAndArgs
-            parser.parse_args(args=args, namespace=opts)
-            commandAndArgs = opts.__dict__.pop('commandAndArgs')
-            if self.initialCommandAndArgs != commandAndArgs:
-                abort('Suite specific global options must use name=value format: {0}={1}'.format(self.unknown[-1], self.initialCommandAndArgs[0]))
-            self.parsed = True
-            return commandAndArgs
 
 ### ~~~~~~~~~~~~~ JDK
 
@@ -18592,57 +18637,6 @@ def update(args):
             print(vc.pull(_mx_home, update=True))
     else:
         print('Cannot update mx as git is unavailable')
-
-### ~~~~~~~~~~~~~ Language support
-
-def remove_doubledash(args):
-    if '--' in args:
-        args.remove('--')
-
-def ask_question(question, options, default=None, answer=None):
-    """"""
-    assert not default or default in options
-    questionMark = '? ' + options + ': '
-    if default:
-        questionMark = questionMark.replace(default, default.upper())
-    if answer:
-        answer = str(answer)
-        print(question + questionMark + answer)
-    else:
-        if is_interactive():
-            answer = input(question + questionMark) or default
-            while not answer:
-                answer = input(question + questionMark)
-        else:
-            if default:
-                answer = default
-            else:
-                abort("Can not answer '" + question + "?' if stdin is not a tty")
-    return answer.lower()
-
-def ask_yes_no(question, default=None):
-    """"""
-    return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
-
-def add_argument(*args, **kwargs):
-    """
-    Defines a single command-line argument.
-    """
-    assert _argParser is not None
-    _argParser.add_argument(*args, **kwargs)
-
-
-def warn(msg, context=None):
-    if _opts.warn:
-        if context is not None:
-            if callable(context):
-                contextMsg = context()
-            elif hasattr(context, '__abort_context__'):
-                contextMsg = context.__abort_context__()
-            else:
-                contextMsg = str(context)
-            msg = contextMsg + ":\n" + msg
-        print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
 
 def print_simple_help():
     print('Welcome to Mx version ' + str(version))
