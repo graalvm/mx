@@ -4566,7 +4566,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         services = {}
         manifestEntries = self.manifestEntries.copy()
         with Archiver(self.original_path()) as arc:
-            with Archiver(None if unified else self.sourcesPath) as srcArcRaw:
+            with Archiver(None if unified else self.sourcesPath, compress=True) as srcArcRaw:
                 srcArc = arc if unified else srcArcRaw
 
                 for a in self.archiveparticipants:
@@ -7497,7 +7497,7 @@ class ECJCompiler(JavacLikeCompiler):
             nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
             if len(nativeClasses) == 0:
                 abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + nativeClasses
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + list(nativeClasses)
 
         return (jdtArgs, javahArgs)
 
@@ -11059,7 +11059,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         tmpJavadocJar.close()
                         javadocPath = tmpJavadocJar.name
                         emptyJavadoc = True
-                        with zipfile.ZipFile(javadocPath, 'w') as arc:
+                        with zipfile.ZipFile(javadocPath, 'w', compression=zipfile.ZIP_DEFLATED) as arc:
                             javadocDir = join(tmpDir, 'javadoc')
                             for (dirpath, _, filenames) in os.walk(javadocDir):
                                 for filename in filenames:
@@ -19587,7 +19587,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.223.0")  # GR-16369
+version = VersionSpec("5.224.1")  # GR-16141
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
