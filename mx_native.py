@@ -554,7 +554,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         return self._source['files'].get('.S', [])
 
     def generate_manifest(self, path):
-        unsupported_source_files = list(self._source['files'].viewkeys() - {'.h', '.c', '.cc', '.S'})
+        unsupported_source_files = set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S'}
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 

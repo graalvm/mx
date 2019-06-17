@@ -107,7 +107,7 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
         # Ensure Java support class is built
         mx.build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.junit'])
 
-        cp = mx.classpath(['com.oracle.mxtool.junit'] + jarsToDists.values(), jdk=jdk)
+        cp = mx.classpath(['com.oracle.mxtool.junit'] + list(jarsToDists.values()), jdk=jdk)
         out = mx.LinesOutputCapture()
         mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jarsToParse, out=out, addDefaultArgs=False)
 

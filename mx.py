@@ -4396,7 +4396,7 @@ class ECJCompiler(JavacLikeCompiler):
             nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
             if len(nativeClasses) == 0:
                 abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + nativeClasses
+            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + list(nativeClasses)
 
         return (jdtArgs, javahArgs)
 
