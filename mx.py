@@ -10562,15 +10562,15 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
             for root, dirs, files in os.walk(entry):
                 for d in dirs:
                     entryPath = join(root[len(entry) + 1:], d)
-                    yield entry, entryPath
+                    yield entry, _encode(entryPath)
                 for f in files:
                     entryPath = join(root[len(entry) + 1:], f)
-                    yield entry, entryPath
+                    yield entry, _encode(entryPath)
         elif entry.endswith('.jar') or entry.endswith('.zip'):
             with zipfile.ZipFile(entry, 'r') as zf:
                 for zi in zf.infolist():
                     entryPath = zi.filename
-                    yield zf, entryPath
+                    yield zf, _encode(entryPath)
 
 
 def read_annotation_processors(path):
