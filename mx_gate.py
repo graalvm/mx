@@ -809,6 +809,8 @@ def coverage_upload(args):
     ])
     def upload_string(content, path):
         mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
+
+    excludes, includes = _jacoco_excludes_includes_projects()
     upload_string(json.dumps({
         'timestamp': time.time(),
         'suite': primary.name,
@@ -817,7 +819,9 @@ def coverage_upload(args):
         'build_name': args.build_name,
         'build_url': args.build_url,
         'build_number': args.build_number,
-        'primary_info': info}), upload_dir + '/description.json')
+        'primary_info': info,
+        'excludes': [str(e) for e in excludes],
+        'includes': [str(i) for i in includes]}), upload_dir + '/description.json')
     mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do cat \$i; echo ,; done; echo null\]) > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
     upload_string("""<html>
 <frameset rows="40,*">
