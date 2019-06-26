@@ -69,6 +69,7 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
+from io import BytesIO
 import fnmatch
 import operator
 import calendar
@@ -14591,11 +14592,12 @@ class Archiver(SafeFileCreation):
 
     def _add_str_tar(self, data, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
+        binary_data = _encode(data)
         tarinfo = self.zf.tarinfo()
         tarinfo.name = archive_name
-        tarinfo.size = len(data)
+        tarinfo.size = len(binary_data)
         tarinfo.mtime = calendar.timegm(datetime.now().utctimetuple())
-        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO(data))
+        self.zf.addfile(self._tarinfo_filter(tarinfo), BytesIO(binary_data))
 
     def _add_link_tar(self, target, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
