@@ -5372,8 +5372,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         jdk9_or_later = jdk.javaCompliance >= '9'
         strip_command = ['-jar', library('PROGUARD_6_1_1').get_path(resolve=True)]
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
                 # add config files from projects
                 assert all((os.path.isabs(f) for f in self.stripConfig))
                 # add mapping files
