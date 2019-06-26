@@ -34,6 +34,7 @@ from os.path import join, exists
 from argparse import ArgumentParser
 
 import mx
+import shutil
 import sys
 
 """
@@ -778,7 +779,23 @@ def coverage_upload(args):
         remote_dir += '_' + args.build_number
     upload_dir = remote_basedir + remote_dir
     jacocoreport(['--omit-excluded'] + other_args)
-    files = [JACOCO_EXEC, 'coverage']
+
+    # Upload jar+sources
+    coverage_sources_dir = 'sources'
+    coverage_jar_dir = 'jars'
+    if not os.path.exists(coverage_sources_dir):
+        os.mkdir(coverage_sources_dir)
+    if not os.path.exists(coverage_jar_dir):
+        os.mkdir(coverage_jar_dir)
+
+    def _visit_deps(dep, edge):
+        if dep.isJARDistribution():
+            shutil.copy(dep.sourcesPath, coverage_sources_dir)
+            shutil.copy(dep.path, coverage_jar_dir)
+
+    mx.walk_deps(primary.dists, visit=_visit_deps)
+
+    files = [JACOCO_EXEC, 'coverage', coverage_sources_dir, coverage_jar_dir]
     print("Syncing {} to {}:{}".format(" ".join(files), remote_host, upload_dir))
     mx.run([
         'bash',
@@ -792,6 +809,8 @@ def coverage_upload(args):
     ])
     def upload_string(content, path):
         mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
+
+    excludes, includes = _jacoco_excludes_includes_projects()
     upload_string(json.dumps({
         'timestamp': time.time(),
         'suite': primary.name,
@@ -800,7 +819,9 @@ def coverage_upload(args):
         'build_name': args.build_name,
         'build_url': args.build_url,
         'build_number': args.build_number,
-        'primary_info': info}), upload_dir + '/description.json')
+        'primary_info': info,
+        'excludes': [str(e) for e in excludes],
+        'includes': [str(i) for i in includes]}), upload_dir + '/description.json')
     mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do cat \$i; echo ,; done; echo null\]) > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
     upload_string("""<html>
 <frameset rows="40,*">
@@ -855,7 +876,7 @@ def coverage_upload(args):
        <button ng-click="step(1)" ng-disabled="data.indexOf(directory) >= data.length-1">&lt;&lt;</button>
        <button ng-click="step(-1)" ng-disabled="data.indexOf(directory) <= 0">&gt;&gt;</button>
        <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.build_number group by i.suite for i in data"></select>
-       <a href="{{directory.build_url}}" ng-if="directory.build_url">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
+       <a href="{{directory.build_url}}" ng-if="directory.build_url" target="_blank">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
     </body>
 </html>""", remote_basedir + '/navigation.html')
 
