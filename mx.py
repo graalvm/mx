@@ -2137,7 +2137,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractJARDistribution(AbstractDistribution):
+class AbstractJARDistribution(AbstractDistribution, ClasspathDependency):
     __metaclass__ = ABCMeta
 
     def remoteExtension(self):
@@ -2145,6 +2145,9 @@ class AbstractJARDistribution(AbstractDistribution):
 
     def localExtension(self):
         return 'jar'
+
+    def classpath_repr(self, resolve=True):
+        return self.path
 
     @abstractmethod
     def compress_locally(self):
@@ -10095,12 +10098,14 @@ def vc_system(kind, abortOnError=True):
     else:
         return None
 
+
 def get_opts():
     """
     Gets the parsed command line options.
     """
     assert _argParser.parsed is True
     return _opts
+
 
 def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
@@ -10112,6 +10117,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     if opt_limit_to_suite and _opts.specific_suites:
         res = [s for s in res if s.name in _opts.specific_suites]
     return res
+
 
 def suite(name, fatalIfMissing=True, context=None):
     """
@@ -10140,6 +10146,7 @@ def projects_from_names(projectNames):
     else:
         return [project(name) for name in projectNames]
 
+
 def projects(opt_limit_to_suite=False, limit_to_primary=False):
     """
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by primary suite if limit_to_primary == True
@@ -10152,11 +10159,13 @@ def projects(opt_limit_to_suite=False, limit_to_primary=False):
         sortedProjects = _dependencies_limited_to_suites(sortedProjects, [primary_suite().name])
     return sortedProjects
 
+
 def projects_opt_limit_to_suites():
     """
     Get the list of all loaded projects optionally limited by --suite option
     """
     return projects(opt_limit_to_suite=True)
+
 
 def _dependencies_limited_to_suites(deps, suites):
     result = []
@@ -10166,11 +10175,13 @@ def _dependencies_limited_to_suites(deps, suites):
             result.append(d)
     return result
 
+
 def _dependencies_opt_limit_to_suites(deps):
     if not _opts.specific_suites:
         return deps
     else:
         return _dependencies_limited_to_suites(deps, _opts.specific_suites)
+
 
 def annotation_processors():
     """
@@ -10185,6 +10196,7 @@ def annotation_processors():
                     aps.add(ap)
         _annotationProcessors = list(aps)
     return _annotationProcessors
+
 
 def get_license(names, fatalIfMissing=True, context=None):
 
@@ -10202,6 +10214,7 @@ def get_license(names, fatalIfMissing=True, context=None):
 
     return [get_single_licence(name) for name in names]
 
+
 def repository(name, fatalIfMissing=True, context=None):
     """ :rtype: Repository"""
     _, name = splitqualname(name)
@@ -10210,12 +10223,14 @@ def repository(name, fatalIfMissing=True, context=None):
         abort('repository named ' + name + ' not found among ' + str(_repositories.keys()), context=context)
     return r
 
+
 def splitqualname(name):
     pname = name.partition(":")
     if pname[0] != name:
         return pname[0], pname[2]
     else:
         return None, name
+
 
 def _patchTemplateString(s, args, context):
     def _replaceVar(m):
@@ -10225,8 +10240,10 @@ def _patchTemplateString(s, args, context):
         return args[groupName]
     return re.sub(r'<(.+?)>', _replaceVar, s)
 
+
 def instantiatedDistributionName(name, args, context):
     return _patchTemplateString(name, args, context).upper()
+
 
 def reInstantiateDistribution(templateName, oldArgs, newArgs):
     _, name = splitqualname(templateName)
@@ -10238,6 +10255,7 @@ def reInstantiateDistribution(templateName, oldArgs, newArgs):
     oldDist = t.suite._unload_unregister_distribution(oldName)
     newDist = instantiateDistribution(templateName, newArgs)
     newDist.update_listeners.update(oldDist.update_listeners)
+
 
 def instantiateDistribution(templateName, args, fatalIfMissing=True, context=None):
     _, name = splitqualname(templateName)
@@ -10267,6 +10285,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
     d.resolveDeps()
     d.post_init()
     return d
+
 
 def _get_reasons_dep_was_removed(name, indent):
     """
@@ -10299,11 +10318,13 @@ def _get_reasons_dep_was_removed(name, indent):
         return causes
     return None
 
+
 def _missing_dep_message(depName, depType):
     reasons = _get_reasons_dep_was_removed(depName, 1)
     if reasons:
         return '{} named {} was removed:\n{}'.format(depType, depName, '\n'.join(reasons))
     return '{} named {} was not found'.format(depType, depName)
+
 
 def distribution(name, fatalIfMissing=True, context=None):
     """
@@ -10317,6 +10338,7 @@ def distribution(name, fatalIfMissing=True, context=None):
     if d is None and fatalIfMissing:
         abort(_missing_dep_message(name, 'distribution'), context=context)
     return d
+
 
 def dependency(name, fatalIfMissing=True, context=None):
     """
@@ -10500,6 +10522,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
+
 def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
@@ -10522,6 +10545,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
                 add_props(project)
 
     return ret
+
 
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
@@ -10547,6 +10571,7 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
                 for zi in zf.infolist():
                     entryPath = zi.filename
                     yield zf, entryPath
+
 
 def read_annotation_processors(path):
     r"""
@@ -10588,6 +10613,7 @@ def read_annotation_processors(path):
                         return parse(fp)
     return None
 
+
 def dependencies(opt_limit_to_suite=False):
     """
     Gets an iterable over all the registered dependencies. If changes are made to the registered
@@ -10598,6 +10624,7 @@ def dependencies(opt_limit_to_suite=False):
     if opt_limit_to_suite and _opts.specific_suites:
         it = filter(lambda d: d.suite.name in _opts.specific_suites, it)
     return it
+
 
 def defaultDependencies(opt_limit_to_suite=False):
     """
@@ -10616,6 +10643,7 @@ def defaultDependencies(opt_limit_to_suite=False):
         else:
             deps.append(d)
     return removedDeps, deps
+
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     """
@@ -10641,6 +10669,7 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdg
     visited = set()
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
+
 
 def sorted_dists():
     """
@@ -19482,7 +19511,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.224.4")  # GR-16614
+version = VersionSpec("5.224.5")  # GR-16706
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
