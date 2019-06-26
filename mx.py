@@ -6071,7 +6071,7 @@ class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
                 try:
                     _install_source_files([next(d.getArchivableResults(single=True))])
                 except ValueError as e:
-                    assert e.message == 'single not supported'
+                    assert e.args[0] == 'single not supported'
                     msg = "Can not use '{}' of type {} without a path.".format(d.name, d.__class__.__name__)
                     if destination.endswith('/'):
                         msg += "\nDid you mean '{}/*'".format(source['_str_'])
@@ -6089,7 +6089,7 @@ class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
             try:
                 source_archive_file, _ = next(d.getArchivableResults(single=True))
             except ValueError as e:
-                assert e.message == 'single not supported'
+                assert e.args[0] == 'single not supported'
                 raise abort("Can not use '{}' of type {} for an 'extracted-dependency' ('{}').".format(d.name, d.__class__.__name__, destination))
 
             unarchiver_dest_directory = absolute_destination
@@ -12430,7 +12430,7 @@ def _filtered_jdk_configs(candidates, versionCheck, missingIsError=False, source
         jdk = _probe_JDK(candidate)
         if isinstance(jdk, JDKConfigException):
             if source:
-                message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
+                message = 'Path in ' + source + ' is not pointing to a JDK (' + str(jdk) + '): ' + candidate
                 if is_darwin():
                     candidate = join(candidate, 'Contents', 'Home')
                     if not isinstance(_probe_JDK(candidate), JDKConfigException):
