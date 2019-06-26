@@ -11261,7 +11261,7 @@ def maven_deploy(args):
             return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
             return False
-        return getattr(d, 'maven', False) and not dist.is_test_distribution() #pylint: disable=undefined-variable
+        return getattr(dist, 'maven', False) and not dist.is_test_distribution()
 
     has_deployed_dist = False
     for s in _suites:
