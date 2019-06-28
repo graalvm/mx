@@ -593,6 +593,9 @@ class Dependency(SuiteConstituent):
     def isLayoutJARDistribution(self):
         return isinstance(self, LayoutJARDistribution)
 
+    def isClasspathDependency(self):
+        return isinstance(self, ClasspathDependency)
+
     def isTARDistribution(self):
         return isinstance(self, AbstractTARDistribution)
 
@@ -13960,6 +13963,8 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
+            if not os.path.exists(f):
+                return True
             if getmtime(f) > self.timestamp:
                 return True
         return False
@@ -15835,7 +15840,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     javacClasspath = []
 
     def newDepsCollector(into):
-        return lambda dep, edge: into.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None
+        return lambda dep, edge: into.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() or dep.isClasspathDependency() else None
 
     deps = []
     p.walk_deps(visit=newDepsCollector(deps))
@@ -15890,6 +15895,24 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
             ref = 'reference.' + n + '.jar'
             print('project.' + n + '=' + relDepPath, file=out)
             print(ref + '=${project.' + n + '}/' + depBuildPath, file=out)
+        elif dep.isClasspathDependency():
+            extra = [di for di in dep.deps if di not in deps]
+            if dep.isDistribution() and dep.deps and not extra:
+                # ignore distribution classpath dependencies that only contain other explicit depedencies
+                continue
+            path = dep.classpath_repr(resolve=True)
+            sourcePath = dep.get_source_path(jdk) if hasattr(dep, 'get_source_path') else None
+            if path:
+                if os.sep == '\\':
+                    path = path.replace('\\', '\\\\')
+                ref = 'file.reference.' + dep.name + '-bin'
+                print(ref + '=' + path, file=out)
+                if libFiles:
+                    libFiles.append(path)
+                if sourcePath:
+                    if os.sep == '\\':
+                        sourcePath = sourcePath.replace('\\', '\\\\')
+                    print('source.reference.' + dep.name + '-bin=' + sourcePath, file=out)
 
         if not dep in annotationProcessorOnlyDeps:
             javacClasspath.append('${' + ref + '}')
@@ -16288,6 +16311,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
+                elif dep.isClasspathDependency():
+                    moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
@@ -16451,6 +16476,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 path = library.path
                 if library.sourcesPath:
                     sourcePath = library.sourcesPath
+            elif library.isClasspathDependency():
+                path = library.classpath_repr()
             else:
                 abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
             make_library(library.name, path, sourcePath, s.dir)
@@ -16869,7 +16896,7 @@ def fsckprojects(args):
                 def processDep(dep, edge):
                     if dep is p:
                         return
-                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject():
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject() or dep.isClasspathDependency():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
             neededLibraryFiles = frozenset([_intellij_library_file_name(l.name, unique_library_file_names) for l in neededLibraries])
@@ -19511,7 +19538,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.224.7")  # GR-16615
+version = VersionSpec("5.224.8")  # GR-16706
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
