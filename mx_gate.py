@@ -34,7 +34,6 @@ from os.path import join, exists
 from argparse import ArgumentParser
 
 import mx
-import shutil
 import sys
 
 """
@@ -781,21 +780,20 @@ def coverage_upload(args):
     jacocoreport(['--omit-excluded'] + other_args)
 
     # Upload jar+sources
-    coverage_sources_dir = 'sources'
-    coverage_jar_dir = 'jars'
-    if not os.path.exists(coverage_sources_dir):
-        os.mkdir(coverage_sources_dir)
-    if not os.path.exists(coverage_jar_dir):
-        os.mkdir(coverage_jar_dir)
+    coverage_sources = 'java_sources.tar.gz'
+    coverage_binaries = 'java_binaries.tar.gz'
 
-    def _visit_deps(dep, edge):
-        if dep.isJARDistribution():
-            shutil.copy(dep.sourcesPath, coverage_sources_dir)
-            shutil.copy(dep.path, coverage_jar_dir)
+    with mx.Archiver(os.path.realpath(coverage_sources), kind='tgz') as sources, mx.Archiver(os.path.realpath(coverage_binaries), kind='tgz') as binaries:
+        def _visit_deps(dep, edge):
+            if dep.isJavaProject() and not dep.is_test_project():
+                binaries.zf.add(dep.output_dir(), dep.name)
+                for d in dep.source_dirs():
+                    sources.zf.add(d, dep.name)
+                if os.path.exists(dep.source_gen_dir()):
+                    sources.zf.add(dep.source_gen_dir(), dep.name)
+        mx.walk_deps(mx.projects(), visit=_visit_deps)
 
-    mx.walk_deps(primary.dists, visit=_visit_deps)
-
-    files = [JACOCO_EXEC, 'coverage', coverage_sources_dir, coverage_jar_dir]
+    files = [JACOCO_EXEC, 'coverage', coverage_sources, coverage_binaries]
     print("Syncing {} to {}:{}".format(" ".join(files), remote_host, upload_dir))
     mx.run([
         'bash',
@@ -810,7 +808,7 @@ def coverage_upload(args):
     def upload_string(content, path):
         mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
 
-    excludes, includes = _jacoco_excludes_includes_projects()
+    excludes, includes = _jacoco_excludes_includes()
     upload_string(json.dumps({
         'timestamp': time.time(),
         'suite': primary.name,
