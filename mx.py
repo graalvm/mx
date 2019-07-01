@@ -5276,6 +5276,10 @@ class JARDistribution(Distribution, ClasspathDependency):
                         for f in dep.getResults():
                             relpath = dep.get_relpath(f, outputDir)
                             addFile(outputDir, relpath, archivePrefix)
+                    elif dep.isClasspathDependency():
+                        logv('[' + self.original_path() + ': adding classpath ' + dep.name + ']')
+                        jarPath = dep.classpath_repr(resolve=True)
+                        addFromJAR(jarPath)
                     else:
                         abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
 
@@ -19638,7 +19642,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.225.3")  # GR-16893
+version = VersionSpec("5.225.4")  # GR-16706
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
