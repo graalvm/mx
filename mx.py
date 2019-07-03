@@ -1028,6 +1028,9 @@ class Dependency(SuiteConstituent):
     def isLayoutJARDistribution(self):
         return isinstance(self, LayoutJARDistribution)
 
+    def isClasspathDependency(self):
+        return isinstance(self, ClasspathDependency)
+
     def isTARDistribution(self):
         return isinstance(self, AbstractTARDistribution)
 
@@ -5230,7 +5233,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractJARDistribution(AbstractDistribution):
+class AbstractJARDistribution(AbstractDistribution, ClasspathDependency):
     __metaclass__ = ABCMeta
 
     def remoteExtension(self):
@@ -5238,6 +5241,9 @@ class AbstractJARDistribution(AbstractDistribution):
 
     def localExtension(self):
         return 'jar'
+
+    def classpath_repr(self, resolve=True):
+        return self.path
 
     @abstractmethod
     def compress_locally(self):
@@ -11456,6 +11462,7 @@ def vc_system(kind, abortOnError=True):
     else:
         return None
 
+
 def get_opts():
     """
     Gets the parsed command line options.
@@ -11475,6 +11482,7 @@ def projects_from_names(projectNames):
     else:
         return [project(name) for name in projectNames]
 
+
 def projects(opt_limit_to_suite=False, limit_to_primary=False):
     """
     Get the list of all loaded projects limited by --suite option if opt_limit_to_suite == True and by primary suite if limit_to_primary == True
@@ -11487,11 +11495,13 @@ def projects(opt_limit_to_suite=False, limit_to_primary=False):
         sortedProjects = _dependencies_limited_to_suites(sortedProjects, [primary_suite().name])
     return sortedProjects
 
+
 def projects_opt_limit_to_suites():
     """
     Get the list of all loaded projects optionally limited by --suite option
     """
     return projects(opt_limit_to_suite=True)
+
 
 def _dependencies_limited_to_suites(deps, suites):
     result = []
@@ -11501,11 +11511,13 @@ def _dependencies_limited_to_suites(deps, suites):
             result.append(d)
     return result
 
+
 def _dependencies_opt_limit_to_suites(deps):
     if not _opts.specific_suites:
         return deps
     else:
         return _dependencies_limited_to_suites(deps, _opts.specific_suites)
+
 
 def annotation_processors():
     """
@@ -11520,6 +11532,7 @@ def annotation_processors():
                     aps.add(ap)
         _annotationProcessors = list(aps)
     return _annotationProcessors
+
 
 def get_license(names, fatalIfMissing=True, context=None):
 
@@ -11537,6 +11550,7 @@ def get_license(names, fatalIfMissing=True, context=None):
 
     return [get_single_licence(name) for name in names]
 
+
 def repository(name, fatalIfMissing=True, context=None):
     """ :rtype: Repository"""
     _, name = splitqualname(name)
@@ -11545,12 +11559,14 @@ def repository(name, fatalIfMissing=True, context=None):
         abort('repository named ' + name + ' not found among ' + str(_repositories.keys()), context=context)
     return r
 
+
 def splitqualname(name):
     pname = name.partition(":")
     if pname[0] != name:
         return pname[0], pname[2]
     else:
         return None, name
+
 
 def _patchTemplateString(s, args, context):
     def _replaceVar(m):
@@ -11565,6 +11581,7 @@ def _patchTemplateString(s, args, context):
 def instantiatedDistributionName(name, args, context):
     return _patchTemplateString(name, args, context).upper()
 
+
 def reInstantiateDistribution(templateName, oldArgs, newArgs):
     _, name = splitqualname(templateName)
     context = "Template distribution " + name
@@ -11575,6 +11592,7 @@ def reInstantiateDistribution(templateName, oldArgs, newArgs):
     oldDist = t.suite._unload_unregister_distribution(oldName)
     newDist = instantiateDistribution(templateName, newArgs)
     newDist.update_listeners.update(oldDist.update_listeners)
+
 
 def instantiateDistribution(templateName, args, fatalIfMissing=True, context=None):
     _, name = splitqualname(templateName)
@@ -11604,6 +11622,7 @@ def instantiateDistribution(templateName, args, fatalIfMissing=True, context=Non
     d.resolveDeps()
     d.post_init()
     return d
+
 
 def _get_reasons_dep_was_removed(name, indent):
     """
@@ -11636,11 +11655,13 @@ def _get_reasons_dep_was_removed(name, indent):
         return causes
     return None
 
+
 def _missing_dep_message(depName, depType):
     reasons = _get_reasons_dep_was_removed(depName, 1)
     if reasons:
         return '{} named {} was removed:\n{}'.format(depType, depName, '\n'.join(reasons))
     return '{} named {} was not found'.format(depType, depName)
+
 
 def distribution(name, fatalIfMissing=True, context=None):
     """
@@ -11654,6 +11675,7 @@ def distribution(name, fatalIfMissing=True, context=None):
     if d is None and fatalIfMissing:
         abort(_missing_dep_message(name, 'distribution'), context=context)
     return d
+
 
 def dependency(name, fatalIfMissing=True, context=None):
     """
@@ -11837,6 +11859,7 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     cpEntries = classpath_entries(names=names, includeSelf=includeSelf, preferProjects=preferProjects)
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
+
 def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
@@ -11860,6 +11883,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
 
     return ret
 
+
 def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClasspath=False, jdk=None):
     """
     Walks the resources available in a given classpath, yielding a tuple for each resource
@@ -11875,15 +11899,16 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
             for root, dirs, files in os.walk(entry):
                 for d in dirs:
                     entryPath = join(root[len(entry) + 1:], d)
-                    yield entry, entryPath
+                    yield entry, _encode(entryPath)
                 for f in files:
                     entryPath = join(root[len(entry) + 1:], f)
-                    yield entry, entryPath
+                    yield entry, _encode(entryPath)
         elif entry.endswith('.jar') or entry.endswith('.zip'):
             with zipfile.ZipFile(entry, 'r') as zf:
                 for zi in zf.infolist():
                     entryPath = zi.filename
-                    yield zf, entryPath
+                    yield zf, _encode(entryPath)
+
 
 def read_annotation_processors(path):
     r"""
@@ -11925,6 +11950,7 @@ def read_annotation_processors(path):
                         return parse(fp)
     return None
 
+
 def dependencies(opt_limit_to_suite=False):
     """
     Gets an iterable over all the registered dependencies. If changes are made to the registered
@@ -11935,6 +11961,7 @@ def dependencies(opt_limit_to_suite=False):
     if opt_limit_to_suite and _opts.specific_suites:
         it = filter(lambda d: d.suite.name in _opts.specific_suites, it)
     return it
+
 
 def defaultDependencies(opt_limit_to_suite=False):
     """
@@ -11953,6 +11980,7 @@ def defaultDependencies(opt_limit_to_suite=False):
         else:
             deps.append(d)
     return removedDeps, deps
+
 
 def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
     """
@@ -11978,6 +12006,7 @@ def walk_deps(roots=None, preVisit=None, visit=None, ignoredEdges=None, visitEdg
     visited = set()
     for dep in dependencies() if not roots else roots:
         dep.walk_deps(preVisit, visit, visited, ignoredEdges, visitEdge)
+
 
 def sorted_dists():
     """
@@ -14830,6 +14859,8 @@ class TimeStampFile:
         else:
             files = [arg]
         for f in files:
+            if not os.path.exists(f):
+                return True
             if getmtime(f) > self.timestamp:
                 return True
         return False
@@ -16610,7 +16641,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     javacClasspath = []
 
     def newDepsCollector(into):
-        return lambda dep, edge: into.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() else None
+        return lambda dep, edge: into.append(dep) if dep.isLibrary() or dep.isJdkLibrary() or dep.isProject() or dep.isClasspathDependency() else None
 
     deps = []
     p.walk_deps(visit=newDepsCollector(deps))
@@ -16665,6 +16696,24 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
             ref = 'reference.' + n + '.jar'
             print('project.' + n + '=' + relDepPath, file=out)
             print(ref + '=${project.' + n + '}/' + depBuildPath, file=out)
+        elif dep.isClasspathDependency():
+            extra = [di for di in dep.deps if di not in deps]
+            if dep.isDistribution() and dep.deps and not extra:
+                # ignore distribution classpath dependencies that only contain other explicit depedencies
+                continue
+            path = dep.classpath_repr(resolve=True)
+            sourcePath = dep.get_source_path(jdk) if hasattr(dep, 'get_source_path') else None
+            if path:
+                if os.sep == '\\':
+                    path = path.replace('\\', '\\\\')
+                ref = 'file.reference.' + dep.name + '-bin'
+                print(ref + '=' + path, file=out)
+                if libFiles:
+                    libFiles.append(path)
+                if sourcePath:
+                    if os.sep == '\\':
+                        sourcePath = sourcePath.replace('\\', '\\\\')
+                    print('source.reference.' + dep.name + '-bin=' + sourcePath, file=out)
 
         if not dep in annotationProcessorOnlyDeps:
             javacClasspath.append('${' + ref + '}')
@@ -17063,6 +17112,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                         logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
+                elif dep.isClasspathDependency():
+                    moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 else:
                     abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
@@ -17226,6 +17277,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 path = library.path
                 if library.sourcesPath:
                     sourcePath = library.sourcesPath
+            elif library.isClasspathDependency():
+                path = library.classpath_repr()
             else:
                 abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
             make_library(library.name, path, sourcePath, s.dir)
@@ -17644,7 +17697,7 @@ def fsckprojects(args):
                 def processDep(dep, edge):
                     if dep is p:
                         return
-                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject():
+                    if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject() or dep.isClasspathDependency():
                         neededLibraries.add(dep)
                 p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
             neededLibraryFiles = frozenset([_intellij_library_file_name(l.name, unique_library_file_names) for l in neededLibraries])
@@ -19587,7 +19640,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.224.1")  # GR-16141
+version = VersionSpec("5.224.10")  # GR-16801
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -1905,10 +1905,7 @@ class BenchmarkExecutor(object):
                         partialResults = self.execute(
                             suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
                         results.extend(partialResults)
-                    except BenchmarkFailureError:
-                        failures_seen = True
-                        mx.log(traceback.format_exc())
-                    except RuntimeError:
+                    except (BenchmarkFailureError, RuntimeError):
                         failures_seen = True
                         mx.log(traceback.format_exc())
             end_time = time.time()
@@ -1930,6 +1927,7 @@ class BenchmarkExecutor(object):
         with open(mxBenchmarkArgs.results_file, "w") as txtfile:
             txtfile.write(dump)
         if failures_seen:
+            mx.log_error("Failures happened during benchmark(s) execution !")
             return 1
         return 0
 
