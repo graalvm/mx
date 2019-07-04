@@ -1109,8 +1109,11 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
             code, out, _ = self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
             if code == 0:
                 output_lines = out.splitlines()
-                assert "version" in output_lines[0]
                 assert len(output_lines) >= 3
+                if len(output_lines) > 3:
+                    # in case the VM starts with warnings or "Picked up : <ENV VAR>"
+                    output_lines = output_lines[-3:]
+                assert "version" in output_lines[0]
                 jdk_version_number = output_lines[0].split("\"")[1]
                 jdk_major_version = mx.JavaCompliance(jdk_version_number).value
                 jdk_version_string = output_lines[2]
