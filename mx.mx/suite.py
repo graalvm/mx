@@ -421,27 +421,27 @@ suite = {
   "licenses" : {
     "GPLv2-CPE" : {
       "name" : "GNU General Public License, version 2, with the Classpath Exception",
-      "url" : "https://openjdk.java.net/legal/gplv2+ce.html"
+      "url" : "http://openjdk.java.net/legal/gplv2+ce.html"
     },
     "BSD-new" : {
       "name" : "New BSD License (3-clause BSD license)",
-      "url" : "https://opensource.org/licenses/BSD-3-Clause"
+      "url" : "http://opensource.org/licenses/BSD-3-Clause"
     },
     "CPL" : {
       "name" : "Common Public License Version 1.0",
-      "url" : "https://opensource.org/licenses/cpl1.0.txt"
+      "url" : "http://opensource.org/licenses/cpl1.0.txt"
     },
     "LGPLv21" : {
       "name" : "GNU Lesser General Public License, version 2.1",
-      "url" : "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"
+      "url" : "http://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"
     },
     "LGPLv30": {
       "name": "GNU Lesser General Public License, version 3.0",
-      "url": "https://www.gnu.org/licenses/lgpl-3.0.en.html"
+      "url": "http://www.gnu.org/licenses/lgpl-3.0.en.html"
     },
     "MIT" : {
       "name" : "MIT License",
-      "url" : "https://opensource.org/licenses/MIT"
+      "url" : "http://opensource.org/licenses/MIT"
     },
     "Apache-2.0" : {
       "name" : "Apache License 2.0",
