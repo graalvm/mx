@@ -4,7 +4,7 @@ java = {
     JAVA_HOME: {name: 'oraclejdk', version: "8u212", platformspecific: true}
   }
 },
-oraclejdk_jvmci = {name: 'oraclejdk', version: "8u212-jvmci-20-b04", platformspecific: true},
+oraclejdk_jvmci = {name: 'oraclejdk', version: "8u212-jvmci-19.2-b01", platformspecific: true},
 gate = java + {
   targets: ['gate'],
   packages+: {
