@@ -109,6 +109,169 @@ else:
 
 ### ~~~~~~~~~~~~~ _private
 
+def _hashFromUrl(url):
+    logvv('Retrieving SHA1 from {}'.format(url))
+    hashFile = _urllib_request.urlopen(url)
+    try:
+        return hashFile.read()
+    except _urllib_error.URLError as e:
+        _suggest_http_proxy_error(e)
+        abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
+    finally:
+        if hashFile:
+            hashFile.close()
+
+def _merge_file_contents(input_files, output_file):
+    for file_name in input_files:
+        with open(file_name, 'r') as input_file:
+            shutil.copyfileobj(input_file, output_file)
+        output_file.flush()
+
+def _make_absolute(path, prefix):
+    """
+    If 'path' is not absolute prefix it with 'prefix'
+    """
+    return join(prefix, path)
+
+
+def _cache_dir():
+    return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
+
+
+def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
+    """
+    Gets the path an artifact has (or would have) in the download cache.
+    """
+    assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
+    if ext is None:
+        for url in urls:
+            # Use extension of first URL whose path component ends with a non-empty extension
+            o = _urllib_parse.urlparse(url)
+            if o.path == "/remotecontent" and o.query.startswith("filepath"):
+                path = o.query
+            else:
+                path = o.path
+            ext = get_file_extension(path)
+            if ext:
+                ext = '.' + ext
+                break
+        if not ext:
+            abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
+    assert os.sep not in name, name + ' cannot contain ' + os.sep
+    assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
+    if oldPath:
+        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)  # mx < 5.176.0
+    filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
+    return join(_cache_dir(), name + '_' + sha1 + ('.dir' if not ext else ''), filename)
+
+
+def _urlopen(*args, **kwargs):
+    timeout_attempts = [0]
+    timeout_retries = kwargs.pop('timeout_retries', 3)
+
+    def on_timeout():
+        if timeout_attempts[0] <= timeout_retries:
+            timeout_attempts[0] += 1
+            kwargs['timeout'] = kwargs.get('timeout', 5) * 2
+            warn("urlopen() timed out! Retrying with timeout of {}s.".format(kwargs['timeout']))
+            return True
+        return False
+
+    error500_attempts = 0
+    error500_limit = 5
+
+    while True:
+        try:
+            return _urllib_request.urlopen(*args, **kwargs)
+        except (_urllib_error.HTTPError) as e:
+            if e.code == 500:
+                if error500_attempts < error500_limit:
+                    error500_attempts += 1
+                    url = '?' if len(args) == 0 else args[0]
+                    warn("Retrying after error reading from " + url + ": " + str(e))
+                    time.sleep(0.2)
+                    continue
+            raise
+        except _urllib_error.URLError as e:
+            if isinstance(e.reason, socket.error):
+                if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
+                    warn("urlopen() failed with EINTR. Retrying without timeout.")
+                    del kwargs['timeout']
+                    return _urllib_request.urlopen(*args, **kwargs)
+                if e.reason.errno == errno.EINPROGRESS:
+                    if on_timeout():
+                        continue
+            if isinstance(e.reason, socket.timeout):
+                if on_timeout():
+                    continue
+            raise
+        except socket.timeout:
+            if on_timeout():
+                continue
+            raise
+        abort("should not reach here")
+
+
+def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+    """
+    Checks if a file exists and is up to date according to the sha1.
+    Returns False if the file is not there or does not have the right checksum.
+    """
+    sha1Check = sha1 and sha1 != 'NOCHECK'
+
+    def _sha1CachedValid():
+        if not exists(sha1path):
+            return False
+        if TimeStampFile(path, followSymlinks=True).isNewerThan(sha1path):
+            return False
+        return True
+
+    def _sha1Cached():
+        with open(sha1path, 'r') as f:
+            return f.read()[0:40]
+
+    def _writeSha1Cached(value=None):
+        with SafeFileCreation(sha1path) as sfc, open(sfc.tmpPath, 'w') as f:
+            f.write(value or sha1OfFile(path))
+
+    if exists(path):
+        if sha1Check and sha1:
+            if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
+                logv('Create/update SHA1 cache file ' + sha1path)
+                _writeSha1Cached()
+
+            if sha1 != _sha1Cached():
+                computedSha1 = sha1OfFile(path)
+                if sha1 == computedSha1:
+                    warn('Fixing corrupt SHA1 cache file ' + sha1path)
+                    _writeSha1Cached(computedSha1)
+                    return True
+                if logErrors:
+                    size = os.path.getsize(path)
+                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1))
+                return False
+    elif mustExist:
+        if logErrors:
+            log_error("'{}' does not exist".format(path))
+        return False
+
+    return True
+
+
+def _needsUpdate(newestInput, path):
+    """
+    Determines if the file denoted by `path` does not exist or `newestInput` is not None
+    and `path`'s latest modification time is older than the `newestInput` TimeStampFile.
+    Returns a string describing why `path` needs updating or None if it does not need updating.
+    """
+    if not exists(path):
+        return path + ' does not exist'
+    if newestInput:
+        ts = TimeStampFile(path, followSymlinks=False)
+        if ts.isOlderThan(newestInput):
+            return '{} is older than {}'.format(ts, newestInput)
+    return None
+
 def _function_code(f):
     if hasattr(f, 'func_code'):
         # Python 2
@@ -119,6 +282,37 @@ def _function_code(f):
 def _check_output_str(*args, **kwargs):
     return _decode(subprocess.check_output(*args, **kwargs))
 
+def _validate_abolute_url(urlstr, acceptNone=False):
+    if urlstr is None:
+        return acceptNone
+    url = _urllib_parse.urlsplit(urlstr)
+    return url.scheme and (url.netloc or url.path)
+
+def _safe_path(path):
+    """
+    If not on Windows, this function returns `path`.
+    Otherwise, it return a potentially transformed path that is safe for file operations.
+    This works around the MAX_PATH limit on Windows:
+    https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
+    """
+    if is_windows():
+        if _opts.verbose and '/' in path:
+            warn("Forward slash in path on windows: {}".format(path))
+            import traceback
+            traceback.print_stack()
+        path = normpath(path)
+        if isabs(path):
+            if path.startswith('\\\\'):
+                if path[2:].startswith('?\\'):
+                    # if it already has a \\?\ don't do the prefix
+                    pass
+                else:
+                    # only a UNC path has a double slash prefix
+                    path = '\\\\?\\UNC' + path
+            else:
+                path = '\\\\?\\' + path
+        path = _unicode(path)
+    return path
 
 ### ~~~~~~~~~~~~~ command
 
@@ -225,9 +419,6 @@ class DynamicVarScope(object):
         self.dynvar.value = self.oldvalue
         self.oldvalue = None
         self.newvalue = None
-
-
-currently_loading_suite = DynamicVar(None)
 
 
 class ArgParser(ArgumentParser):
@@ -469,6 +660,28 @@ class Timer():
         elapsed = time.time() - self.start
         print('{} took {} seconds'.format(self.name, elapsed))
 
+def glob_match_any(patterns, path):
+    return any((glob_match(pattern, path) for pattern in patterns))
+
+
+def glob_match(pattern, path):
+    """
+    Matches a path against a pattern using glob's special rules. In particular, the pattern is checked for each part
+    of the path and files starting with `.` are not matched unless the pattern also starts with a `.`.
+    :param str pattern: The pattern to match with glob syntax
+    :param str path: The path to be checked against the pattern
+    :return: The part of the path that matches or None if the path does not match
+    """
+    pattern_parts = pattern.replace(os.path.sep, '/').split('/')
+    path_parts = path.replace(os.path.sep, '/').split('/')
+    if len(path_parts) < len(pattern_parts):
+        return None
+    for pattern_part, path_part in zip(pattern_parts, path_parts):
+        if len(pattern_part) > 0 and pattern_part[0] != '.' and len(path_part) > 0 and path_part[0] == '.':
+            return None
+        if not fnmatch.fnmatch(path_part, pattern_part):
+            return None
+    return '/'.join(path_parts[:len(pattern_parts)])
 
 ### ~~~~~~~~~~~~~ Suite
 
@@ -476,6 +689,9 @@ class Timer():
 
 # Names of commands that don't need a primary suite.
 # This cannot be used outside of mx because of implementation restrictions
+
+currently_loading_suite = DynamicVar(None)
+
 _suite_context_free = ['init', 'version', 'urlrewrite']
 
 
@@ -2111,6 +2327,28 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             abort("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
     return None
 
+### ~~~~~~~~~~~~~ Repository / Suite
+class Repository(SuiteConstituent):
+    """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
+    def __init__(self, suite, name, snapshots_url, releases_url, licenses):
+        SuiteConstituent.__init__(self, suite, name)
+        self.snapshots_url = snapshots_url
+        self.releases_url = releases_url
+        self.licenses = licenses
+        self.url = snapshots_url  # for compatibility
+
+    def get_url(self, version, rewrite=True):
+        url = self.snapshots_url if version.endswith('-SNAPSHOT') else self.releases_url
+        if rewrite:
+            url = mx_urlrewrites.rewriteurl(url)
+        return url
+
+    def _comparison_key(self):
+        return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
+
+    def resolveLicenses(self):
+        self.licenses = get_license(self.licenses)
+
 class SourceSuite(Suite):
     """A source suite"""
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
@@ -2586,6 +2824,7 @@ class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
 
+
 def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
     Get the list of all loaded suites.
@@ -2596,6 +2835,7 @@ def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     if opt_limit_to_suite and _opts.specific_suites:
         res = [s for s in res if s.name in _opts.specific_suites]
     return res
+
 
 def suite(name, fatalIfMissing=True, context=None):
     """
@@ -2663,118 +2903,6 @@ def _findPrimarySuiteMxDir():
     if mxDir is not None:
         return mxDir
     return None
-
-def _check_dependency_cycles():
-    """
-    Checks for cycles in the dependency graph.
-    """
-    path = []
-    def _visitEdge(src, dst, edge):
-        if dst in path:
-            abort('dependency cycle detected: ' + ' -> '.join([d.name for d in path] + [dst.name]), context=dst)
-    def _preVisit(dep, edge):
-        path.append(dep)
-        return True
-    def _visit(dep, edge):
-        last = path.pop(-1)
-        assert last is dep
-    walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
-
-
-def _remove_unsatisfied_deps():
-    """
-    Remove projects and libraries that (recursively) depend on an optional library
-    whose artifact does not exist or on a JRE library that is not present in the
-    JDK for a project. Also remove projects whose Java compliance requirement
-    cannot be satisfied by the configured JDKs. Removed projects and libraries are
-    also removed from distributions in which they are listed as dependencies.
-    Returns a map from the name of a removed dependency to the reason it was removed.
-    A reason may be the name of another removed dependency.
-    """
-    removedDeps = OrderedDict()
-
-    def visit(dep, edge):
-        if dep.isLibrary():
-            if dep.optional:
-                if not dep.is_available():
-                    note_removal(dep, 'optional library {0} was removed as it is not available'.format(dep))
-            for depDep in list(dep.deps):
-                if depDep in removedDeps:
-                    note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
-        elif dep.isJavaProject():
-            # TODO this lookup should be the same as the one used in build
-            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
-            if depJdk is None:
-                note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
-            elif hasattr(dep, "javaVersionExclusion") and getattr(dep, "javaVersionExclusion") == depJdk.javaCompliance:
-                note_removal(dep, 'project {0} was removed due to its "javaVersionExclusion" attribute'.format(dep))
-            else:
-                for depDep in list(dep.deps):
-                    if depDep in removedDeps:
-                        note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
-                    elif depDep.isJreLibrary() or depDep.isJdkLibrary():
-                        lib = depDep
-                        if not lib.is_provided_by(depJdk):
-                            if lib.optional:
-                                note_removal(dep, 'project {} was removed as dependency {} is missing'.format(dep, lib))
-                            else:
-                                abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
-        elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
-            prune(dep, discard=lambda d: not any(dd.isProject()
-                                                 or (dd.isBaseLibrary()
-                                                     and not dd.isJdkLibrary()
-                                                     and not dd.isJreLibrary()
-                                                     and dd not in d.excludedLibs)
-                                                 for dd in d.deps))
-        elif dep.isTARDistribution():
-            prune(dep)
-
-        if hasattr(dep, 'ignore'):
-            reasonAttr = getattr(dep, 'ignore')
-            if isinstance(reasonAttr, bool):
-                if reasonAttr:
-                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
-            else:
-                assert isinstance(reasonAttr, str)
-                strippedReason = reasonAttr.strip()
-                if len(strippedReason) != 0:
-                    if not strippedReason == "false":
-                        note_removal(dep, '{} removed: {}'.format(dep, strippedReason))
-                else:
-                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
-        if hasattr(dep, 'buildDependencies'):
-            for buildDep in list(dep.buildDependencies):
-                if buildDep in removedDeps:
-                    note_removal(dep, 'removed {} because {} was removed'.format(dep, buildDep))
-
-    def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
-        assert dist.isDistribution()
-        if dist.deps or dist.buildDependencies:
-            distRemovedDeps = []
-            for distDep in list(dist.deps) + list(dist.buildDependencies):
-                if distDep in removedDeps:
-                    logv('[{} was removed from distribution {}]'.format(distDep, dist))
-                    dist.removeDependency(distDep)
-                    distRemovedDeps.append(distDep)
-
-            if discard(dist):
-                note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
-                             details=[e.name for e in distRemovedDeps])
-
-    def note_removal(dep, reason, details=None):
-        logv('[' + reason + ']')
-        removedDeps[dep] = reason if details is None else (reason, details)
-
-    walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
-
-    res = OrderedDict()
-    for dep, reason in removedDeps.items():
-        if not isinstance(reason, str):
-            assert isinstance(reason, tuple)
-        res[dep.name] = reason
-        dep.getSuiteRegistry().remove(dep)
-        dep.getGlobalRegistry().pop(dep.name)
-    return res
 
 
 def _register_suite(s):
@@ -3223,7 +3351,211 @@ except ImportError:
     pass
 
 
-### ~~~~~~~~~~~~~ OS/Arch/Platform related
+### ~~~~~~~~~~~~~ OS/Arch/Platform/System related
+
+def download_file_exists(urls):
+    """
+    Returns true if one of the given urls denotes an existing resource.
+    """
+    for url in urls:
+        try:
+            _urlopen(url, timeout=0.5).close()
+            return True
+        except:
+            pass
+    return False
+
+
+def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
+    """
+    Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
+    checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
+    Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
+    in which case it copies the cache entry.
+    """
+    sha1Check = sha1 and sha1 != 'NOCHECK'
+    canSymlink = canSymlink and not (is_windows() or is_cygwin())
+
+    if len(urls) == 0 and not sha1Check:
+        return path
+
+    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
+        if len(urls) == 0:
+            abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
+
+        if is_cache_path(path):
+            cachePath = path
+        else:
+            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources)
+
+        def _copy_or_symlink(source, link_name):
+            ensure_dirname_exists(link_name)
+            if canSymlink and 'symlink' in dir(os):
+                logvv('Symlinking {} to {}'.format(link_name, source))
+                if os.path.lexists(link_name):
+                    os.unlink(link_name)
+                try:
+                    os.symlink(source, link_name)
+                except OSError as e:
+                    # When doing parallel building, the symlink can fail
+                    # if another thread wins the race to create the symlink
+                    if not os.path.lexists(link_name):
+                        # It was some other error
+                        raise Exception(link_name, e)
+            else:
+                # If we can't symlink, then atomically copy. Never move as that
+                # can cause problems in the context of multiple processes/threads.
+                with SafeFileCreation(link_name) as sfc:
+                    logvv('Copying {} to {}'.format(source, link_name))
+                    shutil.copy(source, sfc.tmpPath)
+
+        cache_path_parent = dirname(cachePath)
+        if is_cache_path(cache_path_parent):
+            if exists(cache_path_parent) and not isdir(cache_path_parent):
+                logv('Wiping bad cache file: {}'.format(cache_path_parent))
+                # Some old version created bad files at this location, wipe it!
+                try:
+                    os.unlink(cache_path_parent)
+                except OSError as e:
+                    # we don't care about races, only about getting rid of this file
+                    if exists(cache_path_parent) and not isdir(cache_path_parent):
+                        raise e
+
+        if not exists(cachePath):
+            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
+            if exists(oldCachePath):
+                logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
+                _copy_or_symlink(oldCachePath, cachePath)
+                _copy_or_symlink(oldCachePath + '.sha1', cachePath + '.sha1')
+
+        if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
+            if exists(cachePath):
+                log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
+
+            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
+            download(cachePath, urls)
+
+        if path != cachePath:
+            _copy_or_symlink(cachePath, path)
+
+        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
+            abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
+
+    return path
+
+
+def dir_contains_files_recursively(directory, file_pattern):
+    for file_name in os.listdir(directory):
+        file_path = join(directory, file_name)
+        found = dir_contains_files_recursively(file_path, file_pattern) if isdir(file_path) \
+            else re.match(file_pattern, file_name)
+        if found:
+            return True
+    return False
+
+def _cygpathU2W(p):
+    """
+    Translate a path from unix-style to windows-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or not is_cygwin():
+        return p
+    return _check_output_str(['cygpath', '-a', '-w', p]).strip()
+
+def _cygpathW2U(p):
+    """
+    Translate a path from windows-style to unix-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or not is_cygwin():
+        return p
+    return _check_output_str(['cygpath', '-a', '-u', p]).strip()
+
+def _separatedCygpathU2W(p):
+    """
+    Translate a group of paths, separated by a path separator.
+    unix-style to windows-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or p == "" or not is_cygwin():
+        return p
+    return ';'.join(map(_cygpathU2W, p.split(os.pathsep)))
+
+def _separatedCygpathW2U(p):
+    """
+    Translate a group of paths, separated by a path separator.
+    windows-style to unix-style.
+    This method has no effects on other platforms than cygwin.
+    """
+    if p is None or p == "" or not is_cygwin():
+        return p
+    return os.pathsep.join(map(_cygpathW2U, p.split(';')))
+
+def get_arch():
+    machine = platform.uname()[4]
+    if machine in ['aarch64']:
+        return 'aarch64'
+    if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
+        return 'amd64'
+    if machine in ['sun4v', 'sun4u', 'sparc64']:
+        return 'sparcv9'
+    if machine == 'i386' and is_darwin():
+        try:
+            # Support for Snow Leopard and earlier version of MacOSX
+            if _check_output_str(['sysctl', '-n', 'hw.cpu64bit_capable']).strip() == '1':
+                return 'amd64'
+        except OSError:
+            # sysctl is not available
+            pass
+    abort('unknown or unsupported architecture: os=' + get_os() + ', machine=' + machine)
+
+mx_subst.results_substitutions.register_no_arg('arch', get_arch)
+
+def vc_system(kind, abortOnError=True):
+    for vc in _vc_systems:
+        if vc.kind == kind:
+            vc.check()
+            return vc
+    if abortOnError:
+        abort('no VC system named ' + kind)
+    else:
+        return None
+
+@suite_context_free
+def sha1(args):
+    """generate sha1 digest for given file"""
+    parser = ArgumentParser(prog='sha1')
+    parser.add_argument('--path', action='store', help='path to file', metavar='<path>', required=True)
+    parser.add_argument('--plain', action='store_true', help='just the 40 chars', )
+    args = parser.parse_args(args)
+    value = sha1OfFile(args.path)
+    if args.plain:
+        sys.stdout.write(value)
+    else:
+        print('sha1 of ' + args.path + ': ' + value)
+
+
+def sha1OfFile(path):
+    with open(path, 'rb') as f:
+        d = hashlib.sha1()
+        while True:
+            buf = f.read(4096)
+            if not buf:
+                break
+            d.update(buf)
+        return d.hexdigest()
+
+
+def user_home():
+    return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
+
+
+def dot_mx_dir():
+    return join(user_home(), '.mx')
+
+
+def is_cache_path(path):
+    return path.startswith(_cache_dir())
 
 def relpath_or_absolute(path, start, prefix=""):
     """
@@ -3773,13 +4105,6 @@ _mavenRepoBaseURLs = [
     "https://search.maven.org/remotecontent?filepath="
 ]
 
-
-"""
-Map from the name of a removed dependency to the reason it was removed.
-A reason may be the name of another removed dependency, forming a causality chain.
-"""
-_removedDeps = {}
-
 _suites = dict()
 """
 Map of the environment variables loaded by parsing the suites.
@@ -3811,6 +4136,126 @@ _opts_parsed_deferrables = []
 def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
     raise NotImplementedError()
+
+### Dependencies
+
+"""
+Map from the name of a removed dependency to the reason it was removed.
+A reason may be the name of another removed dependency, forming a causality chain.
+"""
+_removedDeps = {}
+
+def _check_dependency_cycles():
+    """
+    Checks for cycles in the dependency graph.
+    """
+    path = []
+    def _visitEdge(src, dst, edge):
+        if dst in path:
+            abort('dependency cycle detected: ' + ' -> '.join([d.name for d in path] + [dst.name]), context=dst)
+    def _preVisit(dep, edge):
+        path.append(dep)
+        return True
+    def _visit(dep, edge):
+        last = path.pop(-1)
+        assert last is dep
+    walk_deps(ignoredEdges=[DEP_EXCLUDED], preVisit=_preVisit, visitEdge=_visitEdge, visit=_visit)
+
+
+def _remove_unsatisfied_deps():
+    """
+    Remove projects and libraries that (recursively) depend on an optional library
+    whose artifact does not exist or on a JRE library that is not present in the
+    JDK for a project. Also remove projects whose Java compliance requirement
+    cannot be satisfied by the configured JDKs. Removed projects and libraries are
+    also removed from distributions in which they are listed as dependencies.
+    Returns a map from the name of a removed dependency to the reason it was removed.
+    A reason may be the name of another removed dependency.
+    """
+    removedDeps = OrderedDict()
+
+    def visit(dep, edge):
+        if dep.isLibrary():
+            if dep.optional:
+                if not dep.is_available():
+                    note_removal(dep, 'optional library {0} was removed as it is not available'.format(dep))
+            for depDep in list(dep.deps):
+                if depDep in removedDeps:
+                    note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
+        elif dep.isJavaProject():
+            # TODO this lookup should be the same as the one used in build
+            depJdk = get_jdk(dep.javaCompliance, cancel='some projects will be removed which may result in errors', purpose="building projects with compliance " + repr(dep.javaCompliance), tag=DEFAULT_JDK_TAG)
+            if depJdk is None:
+                note_removal(dep, 'project {0} was removed as JDK {0.javaCompliance} is not available'.format(dep))
+            elif hasattr(dep, "javaVersionExclusion") and getattr(dep, "javaVersionExclusion") == depJdk.javaCompliance:
+                note_removal(dep, 'project {0} was removed due to its "javaVersionExclusion" attribute'.format(dep))
+            else:
+                for depDep in list(dep.deps):
+                    if depDep in removedDeps:
+                        note_removal(dep, 'removed {} because {} was removed'.format(dep, depDep))
+                    elif depDep.isJreLibrary() or depDep.isJdkLibrary():
+                        lib = depDep
+                        if not lib.is_provided_by(depJdk):
+                            if lib.optional:
+                                note_removal(dep, 'project {} was removed as dependency {} is missing'.format(dep, lib))
+                            else:
+                                abort('{} library {} required by {} not provided by {}'.format('JDK' if lib.isJdkLibrary() else 'JRE', lib, dep, depJdk), context=dep)
+        elif dep.isJARDistribution() and not dep.suite.isBinarySuite():
+            prune(dep, discard=lambda d: not any(dd.isProject()
+                                                 or (dd.isBaseLibrary()
+                                                     and not dd.isJdkLibrary()
+                                                     and not dd.isJreLibrary()
+                                                     and dd not in d.excludedLibs)
+                                                 for dd in d.deps))
+        elif dep.isTARDistribution():
+            prune(dep)
+
+        if hasattr(dep, 'ignore'):
+            reasonAttr = getattr(dep, 'ignore')
+            if isinstance(reasonAttr, bool):
+                if reasonAttr:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
+            else:
+                assert isinstance(reasonAttr, str)
+                strippedReason = reasonAttr.strip()
+                if len(strippedReason) != 0:
+                    if not strippedReason == "false":
+                        note_removal(dep, '{} removed: {}'.format(dep, strippedReason))
+                else:
+                    abort('"ignore" attribute must be False/"false" or a non-empty string providing the reason the dependency is ignored', context=dep)
+        if hasattr(dep, 'buildDependencies'):
+            for buildDep in list(dep.buildDependencies):
+                if buildDep in removedDeps:
+                    note_removal(dep, 'removed {} because {} was removed'.format(dep, buildDep))
+
+    def prune(dist, discard=lambda d: not (d.deps or d.buildDependencies)):
+        assert dist.isDistribution()
+        if dist.deps or dist.buildDependencies:
+            distRemovedDeps = []
+            for distDep in list(dist.deps) + list(dist.buildDependencies):
+                if distDep in removedDeps:
+                    logv('[{} was removed from distribution {}]'.format(distDep, dist))
+                    dist.removeDependency(distDep)
+                    distRemovedDeps.append(distDep)
+
+            if discard(dist):
+                note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
+                             details=[e.name for e in distRemovedDeps])
+
+    def note_removal(dep, reason, details=None):
+        logv('[' + reason + ']')
+        removedDeps[dep] = reason if details is None else (reason, details)
+
+    walk_deps(visit=visit, ignoredEdges=[DEP_EXCLUDED])
+
+    res = OrderedDict()
+    for dep, reason in removedDeps.items():
+        if not isinstance(reason, str):
+            assert isinstance(reason, tuple)
+        res[dep.name] = reason
+        dep.getSuiteRegistry().remove(dep)
+        dep.getGlobalRegistry().pop(dep.name)
+    return res
 
 DEP_STANDARD = "standard dependency"
 DEP_BUILD = "a build dependency"
@@ -3890,15 +4335,6 @@ def _get_dependency_path(dname):
 mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 
-def _get_jni_gen(pname):
-    p = project(pname)
-    if p.jni_gen_dir() is None:
-        abort("Project {0} does not produce JNI headers, it can not be used in <jnigen:{0}> substitution.".format(pname))
-    return join(p.suite.dir, p.jni_gen_dir())
-
-mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
-
-
 class ClasspathDependency(Dependency):
     """
     A dependency that can be put on the classpath of a Java commandline.
@@ -3933,6 +4369,17 @@ class ClasspathDependency(Dependency):
             for key, value in self.javaProperties.items():
                 ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
+
+
+### JNI
+
+def _get_jni_gen(pname):
+    p = project(pname)
+    if p.jni_gen_dir() is None:
+        abort("Project {0} does not produce JNI headers, it can not be used in <jnigen:{0}> substitution.".format(pname))
+    return join(p.suite.dir, p.jni_gen_dir())
+
+mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 
 ### ~~~~~~~~~~~~~ Build
 
@@ -4127,22 +4574,8 @@ class BuildTask(object):
         """
         nyi('clean', self)
 
-### ~~~~~~~~~~~~~ _private
-def _needsUpdate(newestInput, path):
-    """
-    Determines if the file denoted by `path` does not exist or `newestInput` is not None
-    and `path`'s latest modification time is older than the `newestInput` TimeStampFile.
-    Returns a string describing why `path` needs updating or None if it does not need updating.
-    """
-    if not exists(path):
-        return path + ' does not exist'
-    if newestInput:
-        ts = TimeStampFile(path, followSymlinks=False)
-        if ts.isOlderThan(newestInput):
-            return '{} is older than {}'.format(ts, newestInput)
-    return None
 
-### ~~~~~~~~~~~~~ Distribution, Archive
+### ~~~~~~~~~~~~~ Distribution, Archive, Dependency
 
 class DistributionTemplate(SuiteConstituent):
     def __init__(self, suite, name, attrs, parameters):
@@ -5988,33 +6421,8 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
     def compress_remotely(self):
         return self._remote_compress
 
-### ~~~~~~~~~~~~~ String/expression utils
 
-def glob_match_any(patterns, path):
-    return any((glob_match(pattern, path) for pattern in patterns))
-
-
-def glob_match(pattern, path):
-    """
-    Matches a path against a pattern using glob's special rules. In particular, the pattern is checked for each part
-    of the path and files starting with `.` are not matched unless the pattern also starts with a `.`.
-    :param str pattern: The pattern to match with glob syntax
-    :param str path: The path to be checked against the pattern
-    :return: The part of the path that matches or None if the path does not match
-    """
-    pattern_parts = pattern.replace(os.path.sep, '/').split('/')
-    path_parts = path.replace(os.path.sep, '/').split('/')
-    if len(path_parts) < len(pattern_parts):
-        return None
-    for pattern_part, path_part in zip(pattern_parts, path_parts):
-        if len(pattern_part) > 0 and pattern_part[0] != '.' and len(path_part) > 0 and path_part[0] == '.':
-            return None
-        if not fnmatch.fnmatch(path_part, pattern_part):
-            return None
-    return '/'.join(path_parts[:len(pattern_parts)])
-
-
-### ~~~~~~~~~~~~~ Project
+### ~~~~~~~~~~~~~ Project, Dependency
 class Project(Dependency):
     __metaclass__ = ABCMeta
     """
@@ -7545,16 +7953,6 @@ class ECJDaemon(CompilerDaemon):
     def name(self):
         return 'ecj-daemon-server(JDK {})'.format(self.jdk.javaCompliance)
 
-def is_debug_lib_file(fn):
-    return fn.endswith(add_debug_lib_suffix(""))
-
-### ~~~~~~~~~~~~~ _private
-def _merge_file_contents(input_files, output_file):
-    for file_name in input_files:
-        with open(file_name, 'r') as input_file:
-            shutil.copyfileobj(input_file, output_file)
-        output_file.flush()
-
 
 ### ~~~~~~~~~~~~~ Project
 class AbstractNativeProject(Project):
@@ -7760,268 +8158,69 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
+class Extractor(object):
+    __metaclass__ = ABCMeta
 
-### ~~~~~~~~~~~~~ _private
-def _make_absolute(path, prefix):
-    """
-    If 'path' is not absolute prefix it with 'prefix'
-    """
-    return join(prefix, path)
+    def __init__(self, src):
+        self.src = src
 
+    def extract(self, dst):
+        logv("Extracting {} to {}".format(self.src, dst))
+        with self._open() as ar:
+            logv("Sanity checking archive...")
+            if any((m for m in self._getnames(ar) if not self._is_sane_name(m, dst))):
+                abort("Refusing to create files outside of the destination folder.\n" +
+                      "Reasons might be entries with absolute paths or paths pointing to the parent directory (starting with `..`).\n" +
+                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join((m for m in self._getnames(ar) if not self._is_sane_name(m, dst)))
+                ))
+            self._extractall(ar, dst)
 
-@suite_context_free
-def sha1(args):
-    """generate sha1 digest for given file"""
-    parser = ArgumentParser(prog='sha1')
-    parser.add_argument('--path', action='store', help='path to file', metavar='<path>', required=True)
-    parser.add_argument('--plain', action='store_true', help='just the 40 chars', )
-    args = parser.parse_args(args)
-    value = sha1OfFile(args.path)
-    if args.plain:
-        sys.stdout.write(value)
-    else:
-        print('sha1 of ' + args.path + ': ' + value)
+    @abstractmethod
+    def _open(self):
+        pass
 
+    @abstractmethod
+    def _getnames(self, ar):
+        pass
 
-def sha1OfFile(path):
-    with open(path, 'rb') as f:
-        d = hashlib.sha1()
-        while True:
-            buf = f.read(4096)
-            if not buf:
-                break
-            d.update(buf)
-        return d.hexdigest()
+    @abstractmethod
+    def _extractall(self, ar, dst):
+        pass
 
+    def _is_sane_name(self, m, dst):
+        return os.path.realpath(os.path.join(dst, m)).startswith(os.path.realpath(dst))
 
-def user_home():
-    return _opts.user_home if hasattr(_opts, 'user_home') else os.path.expanduser('~')
-
-
-def dot_mx_dir():
-    return join(user_home(), '.mx')
-
-
-def is_cache_path(path):
-    return path.startswith(_cache_dir())
-
-### ~~~~~~~~~~~~~ _private
-
-def _cache_dir():
-    return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
+    @staticmethod
+    def create(src):
+        if src.endswith(".tar") or src.endswith(".tar.gz"):
+            return TarExtractor(src)
+        if src.endswith(".zip"):
+            return ZipExtractor(src)
+        abort("Don't know how to extract the archive: " + src)
 
 
-def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
-    """
-    Gets the path an artifact has (or would have) in the download cache.
-    """
-    assert sha1 != 'NOCHECK', 'artifact for ' + name + ' cannot be cached since its sha1 is NOCHECK'
-    if ext is None:
-        for url in urls:
-            # Use extension of first URL whose path component ends with a non-empty extension
-            o = _urllib_parse.urlparse(url)
-            if o.path == "/remotecontent" and o.query.startswith("filepath"):
-                path = o.query
-            else:
-                path = o.path
-            ext = get_file_extension(path)
-            if ext:
-                ext = '.' + ext
-                break
-        if not ext:
-            abort('Could not determine a file extension from URL(s):\n  ' + '\n  '.join(urls))
-    assert os.sep not in name, name + ' cannot contain ' + os.sep
-    assert os.pathsep not in name, name + ' cannot contain ' + os.pathsep
-    if oldPath:
-        return join(_cache_dir(), name + ('.sources' if sources else '') + '_' + sha1 + ext)  # mx < 5.176.0
-    filename = _map_to_maven_dist_name(name) + ('.sources' if sources else '') + ext
-    return join(_cache_dir(), name + '_' + sha1 + ('.dir' if not ext else ''), filename)
+class TarExtractor(Extractor):
+
+    def _open(self):
+        return tarfile.open(self.src)
+
+    def _getnames(self, ar):
+        return ar.getnames()
+
+    def _extractall(self, ar, dst):
+        return ar.extractall(dst)
 
 
-def _urlopen(*args, **kwargs):
-    timeout_attempts = [0]
-    timeout_retries = kwargs.pop('timeout_retries', 3)
+class ZipExtractor(Extractor):
 
-    def on_timeout():
-        if timeout_attempts[0] <= timeout_retries:
-            timeout_attempts[0] += 1
-            kwargs['timeout'] = kwargs.get('timeout', 5) * 2
-            warn("urlopen() timed out! Retrying with timeout of {}s.".format(kwargs['timeout']))
-            return True
-        return False
+    def _open(self):
+        return zipfile.ZipFile(self.src)
 
-    error500_attempts = 0
-    error500_limit = 5
+    def _getnames(self, ar):
+        return ar.namelist()
 
-    while True:
-        try:
-            return _urllib_request.urlopen(*args, **kwargs)
-        except (_urllib_error.HTTPError) as e:
-            if e.code == 500:
-                if error500_attempts < error500_limit:
-                    error500_attempts += 1
-                    url = '?' if len(args) == 0 else args[0]
-                    warn("Retrying after error reading from " + url + ": " + str(e))
-                    time.sleep(0.2)
-                    continue
-            raise
-        except _urllib_error.URLError as e:
-            if isinstance(e.reason, socket.error):
-                if e.reason.errno == errno.EINTR and 'timeout' in kwargs and is_interactive():
-                    warn("urlopen() failed with EINTR. Retrying without timeout.")
-                    del kwargs['timeout']
-                    return _urllib_request.urlopen(*args, **kwargs)
-                if e.reason.errno == errno.EINPROGRESS:
-                    if on_timeout():
-                        continue
-            if isinstance(e.reason, socket.timeout):
-                if on_timeout():
-                    continue
-            raise
-        except socket.timeout:
-            if on_timeout():
-                continue
-            raise
-        abort("should not reach here")
-
-
-def download_file_exists(urls):
-    """
-    Returns true if one of the given urls denotes an existing resource.
-    """
-    for url in urls:
-        try:
-            _urlopen(url, timeout=0.5).close()
-            return True
-        except:
-            pass
-    return False
-
-
-def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
-    """
-    Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
-    checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
-    Manages an internal cache of downloads and will link path to the cache entry unless 'canSymLink=False'
-    in which case it copies the cache entry.
-    """
-    sha1Check = sha1 and sha1 != 'NOCHECK'
-    canSymlink = canSymlink and not (is_windows() or is_cygwin())
-
-    if len(urls) == 0 and not sha1Check:
-        return path
-
-    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
-        if len(urls) == 0:
-            abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
-
-        if is_cache_path(path):
-            cachePath = path
-        else:
-            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources)
-
-        def _copy_or_symlink(source, link_name):
-            ensure_dirname_exists(link_name)
-            if canSymlink and 'symlink' in dir(os):
-                logvv('Symlinking {} to {}'.format(link_name, source))
-                if os.path.lexists(link_name):
-                    os.unlink(link_name)
-                try:
-                    os.symlink(source, link_name)
-                except OSError as e:
-                    # When doing parallel building, the symlink can fail
-                    # if another thread wins the race to create the symlink
-                    if not os.path.lexists(link_name):
-                        # It was some other error
-                        raise Exception(link_name, e)
-            else:
-                # If we can't symlink, then atomically copy. Never move as that
-                # can cause problems in the context of multiple processes/threads.
-                with SafeFileCreation(link_name) as sfc:
-                    logvv('Copying {} to {}'.format(source, link_name))
-                    shutil.copy(source, sfc.tmpPath)
-
-        cache_path_parent = dirname(cachePath)
-        if is_cache_path(cache_path_parent):
-            if exists(cache_path_parent) and not isdir(cache_path_parent):
-                logv('Wiping bad cache file: {}'.format(cache_path_parent))
-                # Some old version created bad files at this location, wipe it!
-                try:
-                    os.unlink(cache_path_parent)
-                except OSError as e:
-                    # we don't care about races, only about getting rid of this file
-                    if exists(cache_path_parent) and not isdir(cache_path_parent):
-                        raise e
-
-        if not exists(cachePath):
-            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
-            if exists(oldCachePath):
-                logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
-                _copy_or_symlink(oldCachePath, cachePath)
-                _copy_or_symlink(oldCachePath + '.sha1', cachePath + '.sha1')
-
-        if not exists(cachePath) or (sha1Check and sha1OfFile(cachePath) != sha1):
-            if exists(cachePath):
-                log('SHA1 of ' + cachePath + ' does not match expected value (' + sha1 + ') - found ' + sha1OfFile(cachePath) + ' - re-downloading')
-
-            log('Downloading ' + ("sources " if sources else "") + name + ' from ' + str(urls))
-            download(cachePath, urls)
-
-        if path != cachePath:
-            _copy_or_symlink(cachePath, path)
-
-        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
-            abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
-
-    return path
-
-
-### ~~~~~~~~~~~~~ _private
-
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
-    """
-    Checks if a file exists and is up to date according to the sha1.
-    Returns False if the file is not there or does not have the right checksum.
-    """
-    sha1Check = sha1 and sha1 != 'NOCHECK'
-
-    def _sha1CachedValid():
-        if not exists(sha1path):
-            return False
-        if TimeStampFile(path, followSymlinks=True).isNewerThan(sha1path):
-            return False
-        return True
-
-    def _sha1Cached():
-        with open(sha1path, 'r') as f:
-            return f.read()[0:40]
-
-    def _writeSha1Cached(value=None):
-        with SafeFileCreation(sha1path) as sfc, open(sfc.tmpPath, 'w') as f:
-            f.write(value or sha1OfFile(path))
-
-    if exists(path):
-        if sha1Check and sha1:
-            if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
-                logv('Create/update SHA1 cache file ' + sha1path)
-                _writeSha1Cached()
-
-            if sha1 != _sha1Cached():
-                computedSha1 = sha1OfFile(path)
-                if sha1 == computedSha1:
-                    warn('Fixing corrupt SHA1 cache file ' + sha1path)
-                    _writeSha1Cached(computedSha1)
-                    return True
-                if logErrors:
-                    size = os.path.getsize(path)
-                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1))
-                return False
-    elif mustExist:
-        if logErrors:
-            log_error("'{}' does not exist".format(path))
-        return False
-
-    return True
+    def _extractall(self, ar, dst):
+        return ar.extractall(dst)
 
 ### ~~~~~~~~~~~~~ Library
 
@@ -8096,75 +8295,6 @@ class ResourceLibrary(BaseLibrary):
     def _comparison_key(self):
         return (self.sha1, self.name)
 
-
-### Unzip / Untar
-
-class Extractor(object):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, src):
-        self.src = src
-
-    def extract(self, dst):
-        logv("Extracting {} to {}".format(self.src, dst))
-        with self._open() as ar:
-            logv("Sanity checking archive...")
-            if any((m for m in self._getnames(ar) if not self._is_sane_name(m, dst))):
-                abort("Refusing to create files outside of the destination folder.\n" +
-                      "Reasons might be entries with absolute paths or paths pointing to the parent directory (starting with `..`).\n" +
-                      "Archive: {} \nProblematic files:\n{}".format(self.src, "\n".join((m for m in self._getnames(ar) if not self._is_sane_name(m, dst)))
-                ))
-            self._extractall(ar, dst)
-
-    @abstractmethod
-    def _open(self):
-        pass
-
-    @abstractmethod
-    def _getnames(self, ar):
-        pass
-
-    @abstractmethod
-    def _extractall(self, ar, dst):
-        pass
-
-    def _is_sane_name(self, m, dst):
-        return os.path.realpath(os.path.join(dst, m)).startswith(os.path.realpath(dst))
-
-    @staticmethod
-    def create(src):
-        if src.endswith(".tar") or src.endswith(".tar.gz"):
-            return TarExtractor(src)
-        if src.endswith(".zip"):
-            return ZipExtractor(src)
-        abort("Don't know how to extract the archive: " + src)
-
-
-class TarExtractor(Extractor):
-
-    def _open(self):
-        return tarfile.open(self.src)
-
-    def _getnames(self, ar):
-        return ar.getnames()
-
-    def _extractall(self, ar, dst):
-        return ar.extractall(dst)
-
-
-class ZipExtractor(Extractor):
-
-    def _open(self):
-        return zipfile.ZipFile(self.src)
-
-    def _getnames(self, ar):
-        return ar.namelist()
-
-    def _extractall(self, ar, dst):
-        return ar.extractall(dst)
-
-
-### Library
 
 class PackedResourceLibrary(ResourceLibrary):
     """
@@ -10370,19 +10500,6 @@ class BinaryVC(VC):
         if abortOnError:
             abort("A binary VC has no branch")
 
-### ~~~~~~~~~~~~~ _private
-def _hashFromUrl(url):
-    logvv('Retrieving SHA1 from {}'.format(url))
-    hashFile = _urllib_request.urlopen(url)
-    try:
-        return hashFile.read()
-    except _urllib_error.URLError as e:
-        _suggest_http_proxy_error(e)
-        abort('Error while retrieving sha1 {}: {}'.format(url, str(e)))
-    finally:
-        if hashFile:
-            hashFile.close()
-
 
 ### Maven, _private
 
@@ -10574,28 +10691,6 @@ class MavenRepo:
             if metadataFile:
                 metadataFile.close()
 
-### ~~~~~~~~~~~~~ Repository / Suite
-class Repository(SuiteConstituent):
-    """A Repository is a remote binary repository that can be used to upload binaries with deploy_binary."""
-    def __init__(self, suite, name, snapshots_url, releases_url, licenses):
-        SuiteConstituent.__init__(self, suite, name)
-        self.snapshots_url = snapshots_url
-        self.releases_url = releases_url
-        self.licenses = licenses
-        self.url = snapshots_url  # for compatibility
-
-    def get_url(self, version, rewrite=True):
-        url = self.snapshots_url if version.endswith('-SNAPSHOT') else self.releases_url
-        if rewrite:
-            url = mx_urlrewrites.rewriteurl(url)
-        return url
-
-    def _comparison_key(self):
-        return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
-
-    def resolveLicenses(self):
-        self.licenses = get_license(self.licenses)
-
 
 _maven_local_repository = None
 
@@ -10632,7 +10727,7 @@ def maven_local_repository():  # pylint: disable=invalid-name
     return _maven_local_repository
 
 
-### ~~~~~~~~~~~~~ _private
+### ~~~~~~~~~~~~~ Maven, _private
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -10989,8 +11084,6 @@ def _deploy_binary(args, suite):
                 try_remote_branch_update(deploy_branch_name)
 
 
-### ~~~~~~~~~~~~~ Maven, _private
-
 def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         dryRun=False,
                         validateMetadata='none',
@@ -11266,13 +11359,6 @@ class MavenConfig:
         return self if self.has_maven else None
 
 
-### ~~~~~~~~~~~~~ _private
-def _validate_abolute_url(urlstr, acceptNone=False):
-    if urlstr is None:
-        return acceptNone
-    url = _urllib_parse.urlsplit(urlstr)
-    return url.scheme and (url.netloc or url.path)
-
 ### ~~~~~~~~~~~~~ VC, SCM
 class SCMMetadata(object):
     def __init__(self, url, read, write):
@@ -11391,76 +11477,6 @@ class XMLDoc(xml.dom.minidom.Document):
 
 
 mx_subst.results_substitutions.register_no_arg('os', get_os)
-
-### ~~~~~~~~~~~~~ _private
-
-def _cygpathU2W(p):
-    """
-    Translate a path from unix-style to windows-style.
-    This method has no effects on other platforms than cygwin.
-    """
-    if p is None or not is_cygwin():
-        return p
-    return _check_output_str(['cygpath', '-a', '-w', p]).strip()
-
-def _cygpathW2U(p):
-    """
-    Translate a path from windows-style to unix-style.
-    This method has no effects on other platforms than cygwin.
-    """
-    if p is None or not is_cygwin():
-        return p
-    return _check_output_str(['cygpath', '-a', '-u', p]).strip()
-
-def _separatedCygpathU2W(p):
-    """
-    Translate a group of paths, separated by a path separator.
-    unix-style to windows-style.
-    This method has no effects on other platforms than cygwin.
-    """
-    if p is None or p == "" or not is_cygwin():
-        return p
-    return ';'.join(map(_cygpathU2W, p.split(os.pathsep)))
-
-def _separatedCygpathW2U(p):
-    """
-    Translate a group of paths, separated by a path separator.
-    windows-style to unix-style.
-    This method has no effects on other platforms than cygwin.
-    """
-    if p is None or p == "" or not is_cygwin():
-        return p
-    return os.pathsep.join(map(_cygpathW2U, p.split(';')))
-
-def get_arch():
-    machine = platform.uname()[4]
-    if machine in ['aarch64']:
-        return 'aarch64'
-    if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
-        return 'amd64'
-    if machine in ['sun4v', 'sun4u', 'sparc64']:
-        return 'sparcv9'
-    if machine == 'i386' and is_darwin():
-        try:
-            # Support for Snow Leopard and earlier version of MacOSX
-            if _check_output_str(['sysctl', '-n', 'hw.cpu64bit_capable']).strip() == '1':
-                return 'amd64'
-        except OSError:
-            # sysctl is not available
-            pass
-    abort('unknown or unsupported architecture: os=' + get_os() + ', machine=' + machine)
-
-mx_subst.results_substitutions.register_no_arg('arch', get_arch)
-
-def vc_system(kind, abortOnError=True):
-    for vc in _vc_systems:
-        if vc.kind == kind:
-            vc.check()
-            return vc
-    if abortOnError:
-        abort('no VC system named ' + kind)
-    else:
-        return None
 
 
 def get_opts():
@@ -12085,6 +12101,9 @@ class JDKFactory:
         nyi('description', self)
 
 ### ~~~~~~~~~~~~~ Debugging
+
+def is_debug_lib_file(fn):
+    return fn.endswith(add_debug_lib_suffix(""))
 
 class DisableJavaDebugging(object):
     """ Utility for temporarily disabling java remote debugging.
@@ -13762,6 +13781,8 @@ def expandvars_in_property(value):
     return result
 
 
+### ~~~~~~~~~~~~~ commands
+
 # Builtin commands
 
 def _defaultEcjPath():
@@ -14902,6 +14923,8 @@ class TimeStampFile:
             open(self.path, 'a')
         self.timestamp = getmtime(self.path)
 
+### ~~~~~~~~~~~~~ commands
+
 def checkstyle(args):
     """run Checkstyle on the Java sources
 
@@ -15016,33 +15039,6 @@ def checkstyle(args):
             if exists(auditfileName):
                 os.unlink(auditfileName)
     return totalErrors
-
-def _safe_path(path):
-    """
-    If not on Windows, this function returns `path`.
-    Otherwise, it return a potentially transformed path that is safe for file operations.
-    This works around the MAX_PATH limit on Windows:
-    https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx#maxpath
-    """
-    if is_windows():
-        if _opts.verbose and '/' in path:
-            warn("Forward slash in path on windows: {}".format(path))
-            import traceback
-            traceback.print_stack()
-        path = normpath(path)
-        if isabs(path):
-            if path.startswith('\\\\'):
-                if path[2:].startswith('?\\'):
-                    # if it already has a \\?\ don't do the prefix
-                    pass
-                else:
-                    # only a UNC path has a double slash prefix
-                    path = '\\\\?\\UNC' + path
-            else:
-                path = '\\\\?\\' + path
-        path = _unicode(path)
-    return path
-
 
 def help_(args):
     """show detailed help for mx or a given command
@@ -17587,15 +17583,7 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
-
-def dir_contains_files_recursively(directory, file_pattern):
-    for file_name in os.listdir(directory):
-        file_path = join(directory, file_name)
-        found = dir_contains_files_recursively(file_path, file_pattern) if isdir(file_path) \
-            else re.match(file_pattern, file_name)
-        if found:
-            return True
-    return False
+### ~~~~~~~~~~~~~ IDE, IntelliJ
 
 def ideclean(args):
     """remove all IDE project configurations"""
@@ -18624,6 +18612,7 @@ def sversions(args):
     if not isinstance(primary_suite(), MXSuite):
         _sversions(primary_suite(), None)
 
+### ~~~~~~~~~~~~~ Java Compiler
 
 def findclass(args, logToConsole=True, resolve=True, matcher=lambda string, classname: string in classname):
     """find all classes matching a given substring"""
@@ -18814,6 +18803,7 @@ def javap(args):
         selection = select_items(candidates)
         run([javapExe, '-private', '-verbose', '-classpath', classpath(resolve=args.resolve, jdk=jdk)] + selection)
 
+### ~~~~~~~~~~~~~ commands
 
 def suite_init_cmd(args):
     """create a suite
@@ -18873,7 +18863,6 @@ def suite_init_cmd(args):
 """.replace('NAME', args.name).replace('VERSION', str(version))
     with open(suite_py, 'w') as f:
         f.write(suite_skeleton_str)
-
 
 def show_projects(args):
     """show all projects"""
@@ -19106,6 +19095,7 @@ def verify_ci(args, base_suite, dest_suite, common_file=None, common_dirs=None,
     if not args.quiet:
         log("CI setup is fine.")
 
+### ~~~~~~~~~~~~~ Java Compiler
 __compile_mx_class_lock = multiprocessing.Lock()
 def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extraJavacArgs=None, as_jar=False):
     if not isinstance(javaClassNames, list):
@@ -19151,6 +19141,8 @@ def _compile_mx_class(javaClassNames, classpath=None, jdk=None, myDir=None, extr
 
 def _add_command_primary_option(parser):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+
+### ~~~~~~~~~~~~~ commands
 
 def checkcopyrights(args):
     """run copyright check on the sources"""
@@ -19238,6 +19230,9 @@ def maven_install(args):
         for dist in arcdists:
             print('name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir))
 
+
+### ~~~~~~~~~~~~~ _private, eclipse
+
 def _copy_eclipse_settings(p, files=None):
     processors = p.annotation_processors()
 
@@ -19262,6 +19257,7 @@ def _copy_eclipse_settings(p, files=None):
         if files:
             files.append(join(settingsDir, name))
 
+### ~~~~~~~~~~~~~ commands
 
 def show_version(args):
     """print mx version"""
