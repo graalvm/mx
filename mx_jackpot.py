@@ -86,7 +86,11 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
         mx.warn('Skipping Jackpot since JDK 8 is not available')
         return 0
     else:
-        return mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+        ret = mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+        if ret != 0:
+            mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
+            mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
+        return ret
 
 def _escape_string(s):
     return s.replace("\\", "\\\\").replace(" ", "\\ ")
