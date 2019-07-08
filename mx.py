@@ -13053,7 +13053,7 @@ class JavaCompliance(Comparable):
     def __repr__(self):
         bounds = self._bounds()
         if len(bounds) == 4:
-            lower1, upper1, lower2, upper2 = bounds
+            lower1, upper1, lower2, upper2 = bounds # pylint: disable=unbalanced-tuple-unpacking
             if lower1 == upper1:
                 res = str(lower1)
             else:
@@ -13061,7 +13061,7 @@ class JavaCompliance(Comparable):
             if upper2 is None:
                 return '{},{}+'.format(res, lower2)
             return '{},{}..{}'.format(res, lower2, upper2)
-        lower, upper = bounds
+        lower, upper = bounds # pylint: disable=unbalanced-tuple-unpacking
         if upper is None:
             return str(lower) + '+'
         if upper == lower:
@@ -13104,7 +13104,7 @@ class JavaCompliance(Comparable):
     def __hash__(self):
         h = self.value ** (self._upper_bound or 1)
         if self._excluded:
-            start, stop = self._excluded
+            start, stop = self._excluded # pylint: disable=unpacking-non-sequence
             h = hash((h, start, stop))
         return h
 
@@ -13123,7 +13123,7 @@ class JavaCompliance(Comparable):
 
             if value >= self.value:
                 if self._excluded is not None:
-                    if value >= self._excluded[0] and value < self._excluded[1]:
+                    if self._excluded[0] <= value < self._excluded[1]:
                         return False
                 if self._upper_bound is not None:
                     return value <= self._upper_bound
