@@ -19638,7 +19638,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.225.1")  # GR-16561 reorganize mx.py
+version = VersionSpec("5.225.2")  # GR-16861 - update CI to jvmci-19.2-b01
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
