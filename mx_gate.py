@@ -667,10 +667,15 @@ def get_jacoco_agent_args():
     return None
 
 def jacocoreport(args):
+    _jacocoreport(args)
+
+def _jacocoreport(args):
     """create a JaCoCo coverage report
 
     Creates the report from the 'jacoco.exec' file in the current directory.
-    Default output directory is 'coverage', but an alternative can be provided as an argument."""
+    Default output directory is 'coverage', but an alternative can be provided as an argument.
+
+    This function returns the included projects and excludes used for this report"""
 
     dist_name = "MX_JACOCO_REPORT"
     mx.command_function("build")(['--dependencies', dist_name])
@@ -685,6 +690,7 @@ def jacocoreport(args):
 
     # list of strings of the form "project-dir:binary-dir"
     includedirs = []
+    includedprojects = []
     for p in mx.projects():
         projsetting = getattr(p, 'jacoco', '')
         if projsetting in ('include', '') and _jacoco_is_package_whitelisted(p.name):
@@ -695,6 +701,7 @@ def jacocoreport(args):
                 if p.isJavaProject():
                     source_dirs += p.source_dirs() + [p.source_gen_dir()]
                 includedirs.append(":".join([p.dir, p.classpath_repr(jdk)] + source_dirs))
+                includedprojects.append(p.name)
 
     def _run_reporter(extra_args=None):
         mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', JACOCO_EXEC, '--out',
@@ -705,12 +712,14 @@ def jacocoreport(args):
 
     if not args.omit_excluded:
         _run_reporter()
+        excludes = []
     else:
         with tempfile.NamedTemporaryFile(suffix="jacoco-report-exclude", mode="w") as fp:
             excludes, _ = _jacoco_excludes_includes()
             fp.writelines((e + "\n" for e in excludes))
             fp.flush()
             _run_reporter(['--exclude-file', fp.name])
+    return includedprojects, excludes
 
 
 def _parse_java_properties(args):
@@ -777,7 +786,7 @@ def coverage_upload(args):
     if args.build_number:
         remote_dir += '_' + args.build_number
     upload_dir = remote_basedir + remote_dir
-    jacocoreport(['--omit-excluded'] + other_args)
+    includes, excludes = _jacocoreport(['--omit-excluded'] + other_args)
 
     # Upload jar+sources
     coverage_sources = 'java_sources.tar.gz'
@@ -808,7 +817,6 @@ def coverage_upload(args):
     def upload_string(content, path):
         mx.run(['ssh', remote_host, 'bash', '-c', 'cat > "' + path + '"'], stdin=content)
 
-    excludes, includes = _jacoco_excludes_includes()
     upload_string(json.dumps({
         'timestamp': time.time(),
         'suite': primary.name,
