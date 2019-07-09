@@ -480,8 +480,10 @@ def make_java_module(dist, jdk):
                     mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
                 res.update(mx._find_packages(project_scope, onlyPublic=True))
             else:
-                if spec not in available_packages:
-                    mx.abort('cannot export package {} from {} as it is not defined by any project in the module {}'.format(spec, moduleName, moduleName), context=dist)
+                if spec not in module_packages:
+                    mx.abort('Cannot export package {} from {} as it is not defined by any project in the module {}'.format(spec, moduleName, moduleName), context=dist)
+                if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
+                    mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
                 res.add(spec)
         return res
 
