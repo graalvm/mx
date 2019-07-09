@@ -3365,7 +3365,6 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
 import mx_spotbugs
 import mx_sigtest
 import mx_gate
-import mx_jackpot
 import mx_compat
 import mx_urlrewrites
 import mx_benchmark
@@ -19385,7 +19384,6 @@ update_commands("mx", {
     'ideclean': [ideclean, ''],
     'ideinit': [ideinit, ''],
     'init' : [suite_init_cmd, '[options] name'],
-    'jackpot': [mx_jackpot.jackpot, ''],
     'jacocoreport' : [mx_gate.jacocoreport, '[--format {html,xml}] [output directory]'],
     'java': [java_command, '[-options] class [args...]'],
     'javadoc': [javadoc, '[options]'],
@@ -19425,8 +19423,10 @@ update_commands("mx", {
 })
 
 from mx_unittest import unittest
+from mx_jackpot import jackpot
 _mx_commands.add_commands([
     unittest,
+    jackpot,
 ])
 
 _argParser = ArgParser()
@@ -19680,7 +19680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.228.0")  # GR-17179
+version = VersionSpec("5.228.1")  # GR-16683 - @mx.command for jackpot
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
