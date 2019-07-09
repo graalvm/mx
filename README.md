@@ -67,6 +67,121 @@ open range (e.g. `8+`). Otherwise, a JDK matching the exact version or range is 
 
 The `multiReleaseJarVersion` attribute is explained in the "Versioning sources for different JDK releases" section below.
 
+### Java modules support
+
+A distribution that has a `moduleInfo` attribute will result in a [Java module](https://openjdk.java.net/projects/jigsaw/quick-start) being
+built from the distribution. The `moduleInfo` attribute must specify the name of the module and can include
+other parts of a [module descriptor](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/module/ModuleDescriptor.html).
+
+This is best shown with examples from [Truffle](https://github.com/oracle/graal/blob/master/truffle/mx.truffle/suite.py) and [Graal](https://github.com/oracle/graal/blob/master/compiler/mx.compiler/suite.py):
+
+Here is an extract from the definition of the `TRUFFLE_API` distribution which produces the
+`org.graavm.truffle` module:
+```
+"TRUFFLE_API" : {
+    "moduleInfo" : {
+        "name" : "org.graalvm.truffle",
+        "requires" : [
+            "static java.desktop"
+        ],
+        "exports" : [
+            "com.oracle.truffle.api.nodes to jdk.internal.vm.compiler",
+            "com.oracle.truffle.api.impl to jdk.internal.vm.compiler, org.graalvm.locator",
+            "com.oracle.truffle.api to jdk.internal.vm.compiler, org.graalvm.locator, com.oracle.graal.graal_enterprise",
+            "com.oracle.truffle.api.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
+            "com.oracle.truffle.object to jdk.internal.vm.compiler, com.oracle.graal.graal_enterprise",
+        ],
+        "uses" : [
+          "com.oracle.truffle.api.TruffleRuntimeAccess",
+          "java.nio.file.spi.FileTypeDetector",
+          "com.oracle.truffle.api.impl.TruffleLocator",
+        ],
+    },
+    ...
+    "distDependencies" : [
+        # These distributions must also have `moduleInfo` attributes and the corresponding
+        # modules will be added to the set of `requires` for this module.
+        "sdk:GRAAL_SDK"
+    ],
+}
+```
+
+The `module-info.java` created by `mx` from the above is:
+```
+module org.graalvm.truffle {
+    requires java.base;
+    requires static java.desktop;
+    requires java.logging;
+    requires jdk.unsupported;
+    requires transitive org.graalvm.sdk;
+    exports com.oracle.truffle.api to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler, org.graalvm.locator;
+    exports com.oracle.truffle.api.impl to jdk.internal.vm.compiler, org.graalvm.locator;
+    exports com.oracle.truffle.api.nodes to jdk.internal.vm.compiler;
+    exports com.oracle.truffle.api.object to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler;
+    exports com.oracle.truffle.object to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler;
+    uses com.oracle.truffle.api.TruffleRuntimeAccess;
+    uses com.oracle.truffle.api.impl.TruffleLocator;
+    uses com.oracle.truffle.api.object.LayoutFactory;
+    uses java.nio.file.spi.FileTypeDetector;
+    provides com.oracle.truffle.api.object.LayoutFactory with com.oracle.truffle.object.basic.DefaultLayoutFactory;
+    provides org.graalvm.polyglot.impl.AbstractPolyglotImpl with com.oracle.truffle.polyglot.PolyglotImpl;
+    // conceals: com.oracle.truffle.api.debug
+    // conceals: com.oracle.truffle.api.debug.impl
+    // conceals: com.oracle.truffle.api.dsl
+    // conceals: com.oracle.truffle.api.frame
+    // conceals: com.oracle.truffle.api.instrumentation
+    // conceals: com.oracle.truffle.api.interop
+    // conceals: com.oracle.truffle.api.interop.impl
+    // conceals: com.oracle.truffle.api.io
+    // conceals: com.oracle.truffle.api.library
+    // conceals: com.oracle.truffle.api.object.dsl
+    // conceals: com.oracle.truffle.api.profilesLayoutFactory
+    // conceals: com.oracle.truffle.api.source
+    // conceals: com.oracle.truffle.api.utilities
+    // conceals: com.oracle.truffle.object.basic
+    // conceals: com.oracle.truffle.polyglot
+    // jarpath: /Users/dnsimon/hs/graal/truffle/mxbuild/dists/jdk11/truffle-api.jar
+    // dist: TRUFFLE_API
+    // modulepath: org.graalvm.sdk
+}
+```
+
+The `provides` clauses are automatically derived from the `META-INF/services/` directory in the distribution's jar file.
+
+The GRAAL distribution shows how a single `exports` attribute can be used to specify multiple `exports` clauses:
+
+```
+"GRAAL" : {
+    "moduleInfo" : {
+        "name" : "jdk.internal.vm.compiler",
+        "exports" : [
+            # Qualified exports of all packages in GRAAL to modules built from
+            # ENTERPRISE_GRAAL and GRAAL_MANAGEMENT distributions
+            "* to com.oracle.graal.graal_enterprise,jdk.internal.vm.compiler.management",
+        ],
+        ...
+    },
+    ...
+},
+```
+
+This results info a `module-info.java` as that contains qualified exports, a small subset of which are shown below:
+```
+module jdk.internal.vm.compiler {
+    ...
+    exports org.graalvm.compiler.api.directives to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports org.graalvm.compiler.api.replacements to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports org.graalvm.compiler.api.runtime to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports org.graalvm.compiler.asm to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports org.graalvm.compiler.asm.aarch64 to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    exports org.graalvm.compiler.asm.amd64 to com.oracle.graal.graal_enterprise, jdk.internal.vm.compiler.management;
+    ...
+```
+
+The jars build for a distribution are in `<suite>/mxbuild/dists/jdk*/`. The modular jars are in the `jdk<N>` directories
+where `N >= 9`. There is a modular jar built for each JDK version denoted by the `javaCompliance` values of the distribution's
+constituent projects.
+
 ### Selecting JDKs
 
 Specifying JDKs to mx is done via the `--java-home` and `--extra-java-homes` options or
