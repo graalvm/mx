@@ -39,6 +39,10 @@ def _should_test_project(p):
         return p.jackpot.lower() == 'true' or p.jackpot is True
     return True
 
+@mx.command(suite_name="mx",
+            command_name='jackpot',
+            usage_msg='[--apply]',
+            auto_add=False)
 def jackpot(args, suite=None, nonZeroIsFatal=False):
     """run Jackpot 3.0 against non-test Java projects"""
     jackpotHome = mx.get_env('JACKPOT_HOME', None)
