@@ -39,6 +39,10 @@ def _should_test_project(p):
         return p.jackpot.lower() == 'true' or p.jackpot is True
     return True
 
+@mx.command(suite_name="mx",
+            command_name='jackpot',
+            usage_msg='[--apply]',
+            auto_add=False)
 def jackpot(args, suite=None, nonZeroIsFatal=False):
     """run Jackpot 3.0 against non-test Java projects"""
     jackpotHome = mx.get_env('JACKPOT_HOME', None)
@@ -86,7 +90,11 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
         mx.warn('Skipping Jackpot since JDK 8 is not available')
         return 0
     else:
-        return mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+        ret = mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+        if ret != 0:
+            mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
+            mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
+        return ret
 
 def _escape_string(s):
     return s.replace("\\", "\\\\").replace(" ", "\\ ")
