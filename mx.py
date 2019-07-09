@@ -4855,7 +4855,7 @@ class JARDistribution(Distribution, ClasspathDependency):
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
-            self.buildDependencies.append("mx:PROGUARD_6_0_3")
+            self.buildDependencies.append("mx:PROGUARD_6_1_1")
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
@@ -5349,12 +5349,12 @@ class JARDistribution(Distribution, ClasspathDependency):
         assert _opts.strip_jars, "Only works under the flag --strip-jars"
 
         jdk = get_jdk(self.maxJavaCompliance())
-        if jdk.javaCompliance >= '11':
+        if jdk.javaCompliance > '13':
             abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
 
         logv('Stripping {}...'.format(self.name))
         jdk9_or_later = jdk.javaCompliance >= '9'
-        strip_command = ['-jar', library('PROGUARD_6_0_3').get_path(resolve=True)]
+        strip_command = ['-jar', library('PROGUARD_6_1_1').get_path(resolve=True)]
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
             with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
@@ -14674,7 +14674,7 @@ def _unstrip(args):
     return 0
 
 def unstrip(args):
-    proguard_cp = library('PROGUARD_RETRACE_6_0_3').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_0_3').get_path(resolve=True)
+    proguard_cp = library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True)
     unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
     mapfiles = []
     inputfiles = []
@@ -19642,7 +19642,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.225.6")  # GR-15446
+version = VersionSpec("5.226.0")  # GR-8329 - improved Java module support
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

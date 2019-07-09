@@ -253,10 +253,15 @@ def as_java_module(dist, jdk, fatalIfNotCreated=True):
 def get_module_name(dist):
     if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
         module_name = getattr(dist, 'moduleName', None)
-        if not module_name:
-
-            return None
-        assert len(module_name) > 0, '"moduleName" attribute of distribution ' + dist.name + ' cannot be empty'
+        mi = getattr(dist, 'moduleInfo', None)
+        if mi is not None:
+            if module_name:
+                mx.abort('The "moduleName" and "moduleInfo" attributes are mutually exclusive', context=dist)
+            module_name = mi.get('name', None)
+            if not module_name:
+                mx.abort('"moduleInfo" attribute requires non-empty "name" attribute', context=dist)
+        elif module_name is not None and len(module_name) == 0:
+            mx.abort('"moduleName" attribute cannot be empty', context=dist)
     else:
         if not get_module_deps(dist):
             return None
@@ -279,20 +284,6 @@ def get_java_module_info(dist, fatalIfNotModule=False):
             mx.abort('Distribution ' + dist.name + ' does not define a module')
         return None
     return module_name, dist.path + '-module.pickled', dist.path
-
-
-def _expand_package_info(dep, packages):
-    """
-    Converts a list of package names to a unique set of package names,
-    expanding any '<package-info>' entry in the list to the set of
-    packages in the project that contain a ``package-info.java`` file.
-    """
-    if '<package-info>' in packages:
-        result = set((e for e in packages if e != '<package-info>'))
-        result.update(mx._find_packages(dep, onlyPublic=True))
-    else:
-        result = set(packages)
-    return result
 
 
 def get_library_as_module(dep, jdk):
@@ -462,20 +453,72 @@ def make_java_module(dist, jdk):
     javaprojects = [d for d in moduledeps if d.isJavaProject()]
 
     # Collect packages in the module first
-    packages = set()
+    module_packages = set()
     for dep in javaprojects:
-        packages.update(dep.defined_java_packages())
+        module_packages.update(dep.defined_java_packages())
+
+    def _parse_packages_spec(packages_spec, available_packages, project_scope):
+        """
+        Parses a packages specification against a set of available packages:
+          "org.graalvm.foo,org.graalvm.bar" -> set("org.graalvm.foo", "org.graalvm.bar")
+          "<package-info>" -> set of all entries in `available_packages` denoting a package with a package-info.java file
+          "org.graalvm.*" -> set of all entries in `available_packages` that start with "org.graalvm."
+          "org.graalvm.compiler.code" -> set("org.graalvm.compiler.code")
+        """
+        if not packages_spec:
+            mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
+        res = set()
+        for spec in packages_spec.split(','):
+            if spec.endswith('*'):
+                prefix = spec[0:-1]
+                selection = set((p for p in available_packages if p.startswith(prefix)))
+                if not selection:
+                    mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
+                res.update(selection)
+            elif spec == '<package-info>':
+                if not project_scope:
+                    mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
+                res.update(mx._find_packages(project_scope, onlyPublic=True))
+            else:
+                if spec not in available_packages:
+                    mx.abort('cannot export package {} from {} as it is not defined by any project in the module {}'.format(spec, moduleName, moduleName), context=dist)
+                res.add(spec)
+        return res
+
+    def _process_exports(export_specs, available_packages, project_scope=None):
+        for export in export_specs:
+            if ' to ' in export:
+                splitpackage = export.split(' to ')
+                packages_spec = splitpackage[0].strip()
+                targets = [n.strip() for n in splitpackage[1].split(',')]
+                if not targets:
+                    mx.abort('exports attribute must have at least one target for qualified export', context=dist)
+                for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
+                    exports.setdefault(p, targets)
+            else:
+                for p in _parse_packages_spec(export, available_packages, project_scope):
+                    exports.setdefault(p, [])
+
+    module_info = getattr(dist, 'moduleInfo', None)
+    if module_info:
+        for entry in module_info.get("requires", []):
+            parts = entry.split()
+            qualifiers = parts[0:-1]
+            name = parts[-1]
+            requires.setdefault(name, set()).update(qualifiers)
+        base_uses.update(module_info.get('uses', []))
+        _process_exports(module_info.get('exports', []), module_packages)
 
     for dep in javaprojects:
         base_uses.update(getattr(dep, 'uses', []))
-        for pkg in getattr(dep, 'runtimeDeps', []):
-            requires.setdefault(pkg, {'static'})
+        for m in getattr(dep, 'runtimeDeps', []):
+            requires.setdefault(m, set()).add('static')
 
         for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
             # Only consider packages not defined by the module we're creating. This handles the
             # case where we're creating a module that will upgrade an existing upgradeable
             # module in the JDK such as jdk.internal.vm.compiler.
-            if pkg not in packages:
+            if pkg not in module_packages:
                 depModule, visibility = lookup_package(allmodules, pkg, moduleName)
                 if depModule and depModule.name != moduleName:
                     requires.setdefault(depModule.name, set())
@@ -487,19 +530,11 @@ def make_java_module(dist, jdk):
                         concealedRequires.setdefault(depModule.name, set()).add(pkg)
                         usedModules.add(depModule)
 
-        # If an "exports" attribute is not present, all packages are exported
-        for package in _expand_package_info(dep, getattr(dep, 'exports', dep.defined_java_packages())):
-            if ' to ' in package:
-                splitpackage = package.split(' to ')
-                package = splitpackage[0].strip()
-                if not package:
-                    mx.abort('exports attribute cannot have empty package value', context=dist)
-                targets = [n.strip() for n in splitpackage[1].split(',')]
-                if not targets:
-                    mx.abort('exports attribute must have at least one target for qualified export', context=dist)
-                exports.setdefault(package, targets)
-            else:
-                exports.setdefault(package, [])
+        if not module_info:
+            # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
+            # all packages are exported.
+            default_exported_java_packages = [] if module_info else dep.defined_java_packages()
+            _process_exports(getattr(dep, 'exports', default_exported_java_packages), dep.defined_java_packages(), dep)
 
     work_directory = mkdtemp()
     try:
@@ -588,7 +623,7 @@ def make_java_module(dist, jdk):
                                 if exists(join(dest_dir, serviceClassfile)):
                                     uses.add(service)
 
-            jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=packages, concealedRequires=concealedRequires,
+            jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
                                        jarpath=moduleJar, dist=dist, modulepath=modulepath)
 
             # Compile module-info.class
@@ -608,8 +643,8 @@ def make_java_module(dist, jdk):
                 javacCmd.append('--upgrade-module-path')
                 javacCmd.append(os.pathsep.join(upgrademodulepathJars))
             if concealedRequires:
-                for module, packages_ in concealedRequires.items():
-                    for package in packages_:
+                for module, packages in concealedRequires.items():
+                    for package in packages:
                         javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
             # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
             # Disable the "bootstrap class path not set in conjunction with -source N" warning

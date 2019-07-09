@@ -345,6 +345,24 @@ suite = {
       }
     },
 
+    "PROGUARD_6_1_1" : {
+      "sha1" : "1d351efe6ada35a40cd1a0fdad4a255229e1c41b",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-base",
+        "version" : "6.1.1",
+      }
+    },
+
+    "PROGUARD_RETRACE_6_1_1" : {
+      "sha1" : "8b86348867593bd221521b01554724411f939d3c",
+      "maven" : {
+        "groupId" : "net.sf.proguard",
+        "artifactId" : "proguard-retrace",
+        "version" : "6.1.1",
+      }
+    },
+
     "NINJA" : {
       "packedResource" : True,
       "version" : "1.8.2",
