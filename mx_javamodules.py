@@ -481,7 +481,7 @@ def make_java_module(dist, jdk):
                 res.update(mx._find_packages(project_scope, onlyPublic=True))
             else:
                 if spec not in module_packages:
-                    mx.abort('Cannot export package {} from {} as it is not defined by any project in the module {}'.format(spec, moduleName, moduleName), context=dist)
+                    mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
                 if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
                     mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
                 res.add(spec)

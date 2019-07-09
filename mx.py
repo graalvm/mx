@@ -8166,10 +8166,8 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
-class Extractor(object):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, src):
+class Extractor(_with_metaclass(ABCMeta, object)):
+    def __init__(self, src): # pylint: disable=super-init-not-called
         self.src = src
 
     def extract(self, dst):

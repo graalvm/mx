@@ -5,8 +5,16 @@ from __future__ import print_function
 
 from argparse import ArgumentParser
 import os
-import urllib
 import mx
+
+import sys
+
+if sys.version_info[0] < 3:
+    from HTMLParser import HTMLParser
+    from urllib import urlopen # pylint: disable=no-name-in-module
+else:
+    from html.parser import HTMLParser
+    from urllib.request import urlopen # pylint: disable=no-name-in-module
 
 _suite = mx.suite('mxtests')
 
@@ -59,8 +67,6 @@ def _alldeps(args):
     for d in deps:
         print(d.__class__.__name__, ":", d.name)
 
-from HTMLParser import HTMLParser
-
 class MyHTMLParser(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
@@ -92,7 +98,7 @@ def _readurl(args):
         for f in os.listdir(args.url.replace('file://', '')):
             print(f)
     else:
-        f = urllib.urlopen(args.url)
+        f = urlopen(args.url)
         text = f.read()
         parser = MyHTMLParser() if args.print_tags else DirHTMLParser()
         parser.feed(text)
