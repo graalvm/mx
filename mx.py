@@ -19642,7 +19642,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.225.5")  # GR-16683 - hint mx jackpot
+version = VersionSpec("5.225.5")  # GR-16683 - @mx.command for jackpot
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
