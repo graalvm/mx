@@ -1129,7 +1129,7 @@ def primary_suite():
 
 
 class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
-    def __init__(self, suite, name):
+    def __init__(self, suite, name): # pylint: disable=super-init-not-called
         """
         :type name: str
         :type suite: Suite
@@ -1216,7 +1216,7 @@ class Dependency(_with_metaclass(ABCMeta, SuiteConstituent)):
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
     """
-    def __init__(self, suite, name, theLicense, **kwArgs):
+    def __init__(self, suite, name, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
             theLicense = [theLicense]
@@ -4407,7 +4407,7 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
     A build task is used to build a dependency.
     :type deps: list[BuildTask]
     """
-    def __init__(self, subject, args, parallelism):
+    def __init__(self, subject, args, parallelism): # pylint: disable=super-init-not-called
         """
         :param Dependency subject: the dependency built by this task
         :param list[str] args: arguments to the build comment
@@ -4614,7 +4614,7 @@ class Distribution(_with_metaclass(ABCMeta, Dependency)):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs): # pylint: disable=super-init-not-called
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
@@ -5531,7 +5531,7 @@ class JMHArchiveParticipant:
 
 
 class AbstractArchiveTask(_with_metaclass(ABCMeta, BuildTask)):
-    def __init__(self, args, dist):
+    def __init__(self, args, dist): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, dist, args, 1)
 
     def needsBuild(self, newestInput):
@@ -5589,7 +5589,7 @@ class JARArchiveTask(AbstractArchiveTask):
 
 
 class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs): # pylint: disable=super-init-not-called
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
         self.output = output
@@ -5851,7 +5851,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args): # pylint: disable=super-init-not-called
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -6440,7 +6440,7 @@ class Project(_with_metaclass(ABCMeta, Dependency)):
     A Project is a collection of source code that is built by mx. For historical reasons
     it typically corresponds to an IDE project and the IDE support in mx assumes this.
     """
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs): # pylint: disable=super-init-not-called
         """
         :param list[str] srcDirs: subdirectories of name containing sources to build
         :param list[str] | list[Dependency] deps: list of dependencies, Project, Library or Distribution
@@ -6590,7 +6590,7 @@ class Project(_with_metaclass(ABCMeta, Dependency)):
         return (None, None, None)
 
 class ProjectBuildTask(_with_metaclass(ABCMeta, BuildTask)):
-    def __init__(self, args, parallelism, project):
+    def __init__(self, args, parallelism, project): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, project, args, parallelism)
 
 
@@ -6601,7 +6601,7 @@ class ArchivableProject(_with_metaclass(ABCMeta, Project)):  # Used from other s
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
-    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
+    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         d = suite.dir
         Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
 
@@ -8237,7 +8237,7 @@ class BaseLibrary(_with_metaclass(ABCMeta, Dependency)):
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
     """
-    def __init__(self, suite, name, optional, theLicense, **kwArgs):
+    def __init__(self, suite, name, optional, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.optional = optional
 
@@ -8725,7 +8725,7 @@ class VC(_with_metaclass(ABCMeta, object)):
     :ivar str proper_name: the long name descriptor of the VCS
     """
 
-    def __init__(self, kind, proper_name):
+    def __init__(self, kind, proper_name): # pylint: disable=super-init-not-called
         self.kind = kind
         self.proper_name = proper_name
 
