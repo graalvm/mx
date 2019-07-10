@@ -704,7 +704,7 @@ def suite_context_free(func):
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
 # This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help']
+_optional_suite_context = ['help', 'paths']
 
 
 def optional_suite_context(func):
@@ -19642,7 +19642,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.226.1")  # GR-16969
+version = VersionSpec("5.226.2")  # paths optional-suite-context
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
