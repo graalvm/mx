@@ -268,9 +268,8 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         os.close(_)
 
     mainClass = 'com.oracle.mxtool.junit.MxJUnitWrapper'
-    if not exists(join(mx.project('com.oracle.mxtool.junit').output_dir(), mainClass.replace('.', os.sep) + '.class')):
-        mx.build(['--only', 'com.oracle.mxtool.junit'])
-    coreCp = mx.classpath(['com.oracle.mxtool.junit'])
+    mx.build(['--no-daemon', '--dependencies', 'JUNIT_TOOL'])
+    coreCp = mx.classpath(['JUNIT_TOOL'])
 
     def harness(unittestDeps, vmLauncher, vmArgs):
         prefixArgs = ['-esa', '-ea']
@@ -313,7 +312,7 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             os.remove(testfile)
 
 unittestHelpSuffix = """
-    To avoid conflicts with VM options '--' can be used as delimiter.
+    To avoid conflicts with VM options, '--' can be used as delimiter.
 
     If test filters are supplied, only tests whose fully qualified name
     includes a filter as a substring are run.
@@ -331,12 +330,38 @@ unittestHelpSuffix = """
     JUnit class names to be executed are written to a file that a
     custom JUnit wrapper reads and passes onto JUnit proper. The
     MX_TESTFILE environment variable can be set to specify a
-    file which will not be deleted once the unittests are done
+    file which will not be deleted once the unit tests are done
     (unlike the temporary file otherwise used).
 
     As with all other commands, using the global '-v' before 'unittest'
     command will cause mx to show the complete command line
     it uses to run the VM.
+    
+    The grammar for the argument to the --open-packages option is:
+
+      export_spec  ::= module_spec "/" package_spec [ "=" target_spec [ "," target_spec ]* ]
+      module_spec  ::= name [ "*" ]
+      package_spec ::= name [ "*" ] | "*"
+      target_spec  ::= "ALL-UNNAMED" | name [ "*" ] | "*"
+      
+    Examples:
+
+    Export and open all packages in jdk.internal.vm.compiler to all unnamed modules:
+    
+      --open-packages jdk.internal.vm.compiler/*=ALL-UNNAMED
+    
+    Equivalent shorthand form:
+    
+      --open-packages jdk.internal.vm.compiler/*
+    
+    Export and open all packages starting with "org.graalvm.compiler." in all
+    modules whose name starts with "jdk.internal.vm." to all unnamed modules:
+    
+      --open-packages jdk.internal.vm.*/org.graalvm.compiler.*
+    
+    Same as above but also export and open to the org.graalvm.enterprise module:
+    
+      --open-packages jdk.internal.vm.*/org.graalvm.compiler.*=ALL-UNNAMED,org.graalvm.enterprise
 """
 
 def is_strictly_positive(value):
@@ -394,6 +419,8 @@ def unittest(args):
     parser.add_argument('--record-results', help='record test class results to passed.txt and failed.txt', dest='JUnitRecordResults', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
     parser.add_argument('--repeat', help='run each test <n> times', dest='JUnitRepeat', action=MxJUnitWrapperArg, type=is_strictly_positive, metavar='<n>')
+    parser.add_argument('--open-packages', dest='JUnitOpenPackages', action=MxJUnitWrapperArg, metavar='<module>/<package>[=<target-module>(,<target-module>)*]',
+                        help="export and open packages regardless of module declarations (see more detail and examples below)")
     eagerStacktrace = parser.add_mutually_exclusive_group()
     eagerStacktrace.add_argument('--eager-stacktrace', action='store_const', const=True, dest='eager_stacktrace', help='print test errors as they occur (default)')
     eagerStacktrace.add_argument('--no-eager-stacktrace', action='store_const', const=False, dest='eager_stacktrace', help='print test errors after all tests have run')

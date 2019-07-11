@@ -477,6 +477,20 @@ suite = {
       "checkstyleVersion" : "8.8",
     },
 
+    "com.oracle.mxtool.junit.jdk9" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "dependencies" : [
+      ],
+      "imports" : [
+        "jdk.internal.module",
+      ],
+      "multiReleaseJarVersion": "9",
+      "overlayTarget" : "com.oracle.mxtool.junit",
+      "javaCompliance" : "9+",
+      "checkstyle" : "com.oracle.mxtool.junit",
+    },
+
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
