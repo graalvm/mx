@@ -4070,7 +4070,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 if _attempt_download(url, path, jarEntryName):
                     return True # Download was successful
 
-    if verifyOnly and len(verify_errors) == 0: # verify-mode and no errors -> success
+    if verifyOnly and len(verify_errors) < len(urls): # verify-mode at least one success -> success
         return True
     else: # Either verification error or no download was successful
         msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
@@ -8315,6 +8315,9 @@ class ResourceLibrary(BaseLibrary):
         self.urls = urls
         self.sha1 = sha1
 
+    def get_urls(self):
+        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
@@ -8330,7 +8333,7 @@ class ResourceLibrary(BaseLibrary):
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        urls = [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        urls = self.get_urls()
         return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
 
     def _check_download_needed(self):
@@ -19052,7 +19055,7 @@ def verify_library_urls(args):
         _suites.append(_mx_suite)
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
