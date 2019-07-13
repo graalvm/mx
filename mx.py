@@ -5346,7 +5346,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.notify_updated()
 
         compliance = self._compliance_for_build()
-        if compliance >= '9':
+        if compliance is not None and compliance >= '9':
             jmd = make_java_module(self, get_jdk(compliance))
             if jmd:
                 setattr(self, '.javaModule', jmd)
@@ -5475,7 +5475,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                 return res
         if self.suite.isBinarySuite():
             return None
-        if self._compliance_for_build() >= '9':
+        compliance = self._compliance_for_build()
+        if compliance is not None and compliance >= '9':
             info = get_java_module_info(self)
             if info:
                 _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
