@@ -96,8 +96,6 @@ if sys.version_info[0] < 3:
     def _encode(x):
         return x
     _unicode = unicode                         # pylint: disable=undefined-variable
-    def _tarfile_chown(tf, tarinfo, targetpath):
-        tf.chown(tarinfo, targetpath)
 else:
     from io import StringIO
     import builtins                            # pylint: disable=unused-import,no-name-in-module
@@ -109,8 +107,6 @@ else:
     def _encode(x):
         return x.encode()
     _unicode = str
-    def _tarfile_chown(tf, tarinfo, targetpath):
-        tf.chown(tarinfo, targetpath, False) # extra argument in Python 3, False gives use Python 2 behavior
 
 ### ~~~~~~~~~~~~~ _private
 
@@ -338,6 +334,12 @@ def _safe_path(path):
                 path = '\\\\?\\' + path
         path = _unicode(path)
     return path
+
+def _tarfile_chown(tf, tarinfo, targetpath):
+    if sys.version_info < (3, 5):
+        tf.chown(tarinfo, targetpath)
+    else:
+        tf.chown(tarinfo, targetpath, False) # extra argument in Python 3.5, False gives previous behavior
 
 ### ~~~~~~~~~~~~~ command
 
