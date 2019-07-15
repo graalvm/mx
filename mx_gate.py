@@ -807,7 +807,7 @@ def coverage_upload(args):
     mx.run([
         'bash',
         '-c',
-        r'tar -czf - {files} | ssh {remote} bash -c \'"mkdir -p {remotedir} && cd {remotedir} && cat | tar -x{verbose}z"\''
+        r'tar -czf - {files} | ssh {remote} bash -c \'"mkdir -p {remotedir} && cd {remotedir} && cat | tar -x{verbose}z && chmod -R 755 ."\''
             .format(
                 files=" ".join(files),
                 remote=remote_host,
