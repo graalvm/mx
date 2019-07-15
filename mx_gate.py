@@ -399,7 +399,7 @@ def gate(args):
         sys.stderr.flush()
 
     def command_in_gate_message(command, command_args, kwargs):
-        one_list = len(command_args) == 1 and isinstance(command_args[0], (list,))
+        one_list = len(command_args) == 1 and isinstance(command_args[0], list)
         kwargs_absent = len(kwargs) == 0
         if one_list and kwargs_absent:  # gate command reproducible on the command line
             quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
@@ -991,7 +991,7 @@ def sonarqube_upload(args):
     _add_default_prop('sonar.java.libraries', ','.join(java_libs))
     exclude_patterns = [os.path.relpath(e, basedir) + '**' for e in exclude_dirs] + \
                        overlayed_sources + \
-                       list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.iteritems()]))
+                       list(set([os.path.relpath(match[0], basedir) for _, match in exclude_classes.items()]))
     if exclude_patterns:
         _add_default_prop('sonar.exclusions', ','.join(exclude_patterns))
         _add_default_prop('sonar.coverage.exclusions', ','.join(exclude_patterns))

@@ -193,7 +193,7 @@ class VmRegistry(object):
         return self._vms[key]
 
     def get_vms(self):
-        return self._vms.values()
+        return list(self._vms.values())
 
 # JMH suite parsers.
 add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(

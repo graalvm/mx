@@ -175,7 +175,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
 
     classes = []
     if len(tests) == 0:
-        classes = candidates.keys()
+        classes = list(candidates.keys())
         depsContainingTests = set(candidates.values())
     else:
         depsContainingTests = set()

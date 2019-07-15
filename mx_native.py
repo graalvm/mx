@@ -502,7 +502,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         try:
             self._kind = self._kinds[kind]
         except KeyError:
-            mx.abort('"native" should be one of {}, but "{}" is given'.format(self._kinds.keys(), kind))
+            mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
@@ -554,7 +554,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         return self._source['files'].get('.S', [])
 
     def generate_manifest(self, path):
-        unsupported_source_files = set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S'}
+        unsupported_source_files = list(set(self._source['files'].keys()) - {'.h', '.c', '.cc', '.S'})
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 

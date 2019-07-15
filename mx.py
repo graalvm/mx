@@ -69,6 +69,7 @@ from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
 from tempfile import mkdtemp, mkstemp
+from io import BytesIO
 import fnmatch
 import operator
 import calendar
@@ -282,6 +283,26 @@ def _function_code(f):
 def _check_output_str(*args, **kwargs):
     return _decode(subprocess.check_output(*args, **kwargs))
 
+def _with_metaclass(meta, *bases):
+    """Create a base class with a metaclass."""
+
+    # Copyright (c) 2010-2018 Benjamin Peterson
+    # Taken from https://github.com/benjaminp/six/blob/8da94b8a153ceb0d6417d76729ba75e80eaa75c1/six.py#L820
+    # MIT license
+
+    # This requires a bit of explanation: the basic idea is to make a dummy
+    # metaclass for one level of class instantiation that replaces itself with
+    # the actual metaclass.
+    class MetaClass(type):
+
+        def __new__(mcs, name, this_bases, d):
+            return meta(name, bases, d)
+
+        @classmethod
+        def __prepare__(mcs, name, this_bases):
+            return meta.__prepare__(name, bases)
+    return type.__new__(MetaClass, '_with_metaclass({}, {})'.format(meta, bases), (), {}) #pylint: disable=unused-variable
+
 def _validate_abolute_url(urlstr, acceptNone=False):
     if urlstr is None:
         return acceptNone
@@ -313,6 +334,12 @@ def _safe_path(path):
                 path = '\\\\?\\' + path
         path = _unicode(path)
     return path
+
+def _tarfile_chown(tf, tarinfo, targetpath):
+    if sys.version_info < (3, 5):
+        tf.chown(tarinfo, targetpath)
+    else:
+        tf.chown(tarinfo, targetpath, False) # extra argument in Python 3.5, False gives previous behavior
 
 ### ~~~~~~~~~~~~~ command
 
@@ -1103,10 +1130,8 @@ def primary_suite():
     return _primary_suite
 
 
-class SuiteConstituent(Comparable):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, suite, name):
+class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
+    def __init__(self, suite, name): # pylint: disable=super-init-not-called
         """
         :type name: str
         :type suite: Suite
@@ -1188,14 +1213,12 @@ class License(SuiteConstituent):
         return self.name, self.url, self.fullname
 
 
-class Dependency(SuiteConstituent):
+class Dependency(_with_metaclass(ABCMeta, SuiteConstituent)):
     """
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
     """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, suite, name, theLicense, **kwArgs):
+    def __init__(self, suite, name, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
             theLicense = [theLicense]
@@ -3960,7 +3983,7 @@ def _attempt_download(url, path, jarEntryName=None):
                             sys.stdout.write('\r {} bytes'.format(bytesRead))
                     else:
                         if progress:
-                            sys.stdout.write('\r {} bytes ({}%)'.format(bytesRead, bytesRead * 100 / length))
+                            sys.stdout.write('\r {} bytes ({:.0f}%)'.format(bytesRead, bytesRead * 100 / length))
                         if bytesRead == length:
                             break
                     chunk = conn.read(chunkSize)
@@ -4335,12 +4358,10 @@ def _get_dependency_path(dname):
 mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 
-class ClasspathDependency(Dependency):
+class ClasspathDependency(_with_metaclass(ABCMeta, Dependency)):
     """
     A dependency that can be put on the classpath of a Java commandline.
     """
-    __metaclass__ = ABCMeta
-
     def __init__(self, **kwArgs): # pylint: disable=super-init-not-called
         pass
 
@@ -4383,14 +4404,12 @@ mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 
 ### ~~~~~~~~~~~~~ Build
 
-class BuildTask(object):
+class BuildTask(_with_metaclass(ABCMeta, object)):
     """
     A build task is used to build a dependency.
     :type deps: list[BuildTask]
     """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, subject, args, parallelism):
+    def __init__(self, subject, args, parallelism): # pylint: disable=super-init-not-called
         """
         :param Dependency subject: the dependency built by this task
         :param list[str] args: arguments to the build comment
@@ -4584,8 +4603,7 @@ class DistributionTemplate(SuiteConstituent):
         self.parameters = parameters
 
 
-class Distribution(Dependency):
-    __metaclass__ = ABCMeta
+class Distribution(_with_metaclass(ABCMeta, Dependency)):
     """
     A distribution is a file containing the output of one or more dependencies.
     It is a `Dependency` because a `Project` or another `Distribution` may express a dependency on it.
@@ -4598,7 +4616,7 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs): # pylint: disable=super-init-not-called
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
@@ -4652,7 +4670,7 @@ class Distribution(Dependency):
         for l in self.excludedLibs:
             if not l.isBaseLibrary():
                 abort('"exclude" attribute can only contain libraries: ' + l.name, context=self)
-        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
 
@@ -5328,7 +5346,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         self.notify_updated()
 
         compliance = self._compliance_for_build()
-        if compliance >= '9':
+        if compliance is not None and compliance >= '9':
             jmd = make_java_module(self, get_jdk(compliance))
             if jmd:
                 setattr(self, '.javaModule', jmd)
@@ -5356,8 +5374,8 @@ class JARDistribution(Distribution, ClasspathDependency):
         jdk9_or_later = jdk.javaCompliance >= '9'
         strip_command = ['-jar', library('PROGUARD_6_1_1').get_path(resolve=True)]
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
                 # add config files from projects
                 assert all((os.path.isabs(f) for f in self.stripConfig))
                 # add mapping files
@@ -5457,7 +5475,8 @@ class JARDistribution(Distribution, ClasspathDependency):
                 return res
         if self.suite.isBinarySuite():
             return None
-        if self._compliance_for_build() >= '9':
+        compliance = self._compliance_for_build()
+        if compliance is not None and compliance >= '9':
             info = get_java_module_info(self)
             if info:
                 _, pickle_path, _ = info  # pylint: disable=unpacking-non-sequence
@@ -5514,10 +5533,8 @@ class JMHArchiveParticipant:
                 self.arc.zf.writestr(filename, content)
 
 
-class AbstractArchiveTask(BuildTask):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, args, dist):
+class AbstractArchiveTask(_with_metaclass(ABCMeta, BuildTask)):
+    def __init__(self, args, dist): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, dist, args, 1)
 
     def needsBuild(self, newestInput):
@@ -5574,10 +5591,8 @@ class JARArchiveTask(AbstractArchiveTask):
         return False
 
 
-class AbstractDistribution(Distribution):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
+class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs): # pylint: disable=super-init-not-called
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
         self.output = output
@@ -5607,8 +5622,7 @@ class AbstractDistribution(Distribution):
         return DefaultArchiveTask(args, self)
 
 
-class AbstractTARDistribution(AbstractDistribution):
-    __metaclass__ = ABCMeta
+class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     __gzip_binary = None
 
     def remoteExtension(self):
@@ -5670,9 +5684,7 @@ class AbstractTARDistribution(AbstractDistribution):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractJARDistribution(AbstractDistribution, ClasspathDependency):
-    __metaclass__ = ABCMeta
-
+class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, ClasspathDependency)):
     def remoteExtension(self):
         return 'jar'
 
@@ -5714,7 +5726,7 @@ class AbstractJARDistribution(AbstractDistribution, ClasspathDependency):
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmpdir)
         tmp_fd, tmp_file = mkstemp(".jar", self.name)
-        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        with os.fdopen(tmp_fd, 'wb') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmpdir):
                 arc_dir = os.path.relpath(root, tmpdir)
                 for f_ in files:
@@ -5750,7 +5762,7 @@ class NativeTARDistribution(AbstractTARDistribution):
                                                     theLicense, output, **kwArgs)
         assert not auto_prefix or relpath, "{}: 'auto_prefix' requires 'relpath'".format(name)
         self.relpath = relpath
-        if self.output is not None:
+        if self.output is not None: # pylint: disable=access-member-before-definition
             self.output = mx_subst.results_substitutions.substitute(self.output, dependency=self)
         self.auto_prefix = auto_prefix
 
@@ -5839,11 +5851,10 @@ class LayoutArchiveTask(DefaultArchiveTask):
         return False, None
 
 
-class LayoutDistribution(AbstractDistribution):
-    __metaclass__ = ABCMeta
+class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args): # pylint: disable=super-init-not-called
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -6063,7 +6074,7 @@ class LayoutDistribution(AbstractDistribution):
                 try:
                     _install_source_files([next(d.getArchivableResults(single=True))])
                 except ValueError as e:
-                    assert e.message == 'single not supported'
+                    assert e.args[0] == 'single not supported'
                     msg = "Can not use '{}' of type {} without a path.".format(d.name, d.__class__.__name__)
                     if destination.endswith('/'):
                         msg += "\nDid you mean '{}/*'".format(source['_str_'])
@@ -6081,7 +6092,7 @@ class LayoutDistribution(AbstractDistribution):
             try:
                 source_archive_file, _ = next(d.getArchivableResults(single=True))
             except ValueError as e:
-                assert e.message == 'single not supported'
+                assert e.args[0] == 'single not supported'
                 raise abort("Can not use '{}' of type {} for an 'extracted-dependency' ('{}').".format(d.name, d.__class__.__name__, destination))
 
             unarchiver_dest_directory = absolute_destination
@@ -6186,7 +6197,7 @@ class LayoutDistribution(AbstractDistribution):
                         for tarinfo in directories:
                             dirpath = join(absolute_destination, tarinfo.name)
                             try:
-                                tf.chown(tarinfo, dirpath)
+                                _tarfile_chown(tf, tarinfo, dirpath)
                                 tf.utime(tarinfo, dirpath)
                                 tf.chmod(tarinfo, dirpath)
                             except tarfile.ExtractError as e:
@@ -6427,13 +6438,12 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
 
 
 ### ~~~~~~~~~~~~~ Project, Dependency
-class Project(Dependency):
-    __metaclass__ = ABCMeta
+class Project(_with_metaclass(ABCMeta, Dependency)):
     """
     A Project is a collection of source code that is built by mx. For historical reasons
     it typically corresponds to an IDE project and the IDE support in mx assumes this.
     """
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs):
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs): # pylint: disable=super-init-not-called
         """
         :param list[str] srcDirs: subdirectories of name containing sources to build
         :param list[str] | list[Dependency] deps: list of dependencies, Project, Library or Distribution
@@ -6465,7 +6475,7 @@ class Project(Dependency):
         Resolves symbolic dependency references to be Dependency objects.
         """
         self._resolveDepsHelper(self.deps)
-        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense
+        licenseId = self.theLicense if self.theLicense else self.suite.defaultLicense # pylint: disable=access-member-before-definition
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
         if hasattr(self, 'buildDependencies'):
@@ -6582,22 +6592,19 @@ class Project(Dependency):
         # Workaround for GR-12809
         return (None, None, None)
 
-class ProjectBuildTask(BuildTask):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, args, parallelism, project):
+class ProjectBuildTask(_with_metaclass(ABCMeta, BuildTask)):
+    def __init__(self, args, parallelism, project): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, project, args, parallelism)
 
 
-class ArchivableProject(Project):  # Used from other suites. pylint: disable=r0921
+class ArchivableProject(_with_metaclass(ABCMeta, Project)):  # Used from other suites. pylint: disable=r0921
     """
     A project that can be part of any distribution, native or not.
     Users should subclass this class and implement the nyi() methods.
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
-    __metaclass__ = ABCMeta
-    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
+    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         d = suite.dir
         Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
 
@@ -7912,7 +7919,7 @@ class ECJCompiler(JavacLikeCompiler):
             def matchNative(line):
                 # simple heuristic to match the keyword 'native' outside of comments or strings
                 return re.match(r'[^"*/]*\bnative\b', line) is not None
-            nativeClasses = project.find_classes_with_matching_source_line(None, matchNative).keys()
+            nativeClasses = list(project.find_classes_with_matching_source_line(None, matchNative).keys())
             if len(nativeClasses) == 0:
                 abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
             javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + list(nativeClasses)
@@ -8162,10 +8169,8 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
-class Extractor(object):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, src):
+class Extractor(_with_metaclass(ABCMeta, object)):
+    def __init__(self, src): # pylint: disable=super-init-not-called
         self.src = src
 
     def extract(self, dst):
@@ -8228,13 +8233,12 @@ class ZipExtractor(Extractor):
 
 ### ~~~~~~~~~~~~~ Library
 
-class BaseLibrary(Dependency):
-    __metaclass__ = ABCMeta
+class BaseLibrary(_with_metaclass(ABCMeta, Dependency)):
     """
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
     """
-    def __init__(self, suite, name, optional, theLicense, **kwArgs):
+    def __init__(self, suite, name, optional, theLicense, **kwArgs): # pylint: disable=super-init-not-called
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.optional = optional
 
@@ -8242,7 +8246,7 @@ class BaseLibrary(Dependency):
         pass
 
     def resolveDeps(self):
-        licenseId = self.theLicense
+        licenseId = self.theLicense # pylint: disable=access-member-before-definition
         # do not use suite's default license
         if licenseId:
             self.theLicense = get_license(licenseId, context=self)
@@ -8714,8 +8718,7 @@ Potentially long running operations should log the command. If '-v' is set
 'run'  will log the actual VC command. If '-V' is set the output from
 the command should be logged.
 """
-class VC(object):
-    __metaclass__ = ABCMeta
+class VC(_with_metaclass(ABCMeta, object)):
     """
     base class for all supported Distriuted Version Constrol abstractions
 
@@ -8723,7 +8726,7 @@ class VC(object):
     :ivar str proper_name: the long name descriptor of the VCS
     """
 
-    def __init__(self, kind, proper_name):
+    def __init__(self, kind, proper_name): # pylint: disable=super-init-not-called
         self.kind = kind
         self.proper_name = proper_name
 
@@ -11260,7 +11263,7 @@ def maven_deploy(args):
             return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
             return False
-        return getattr(d, 'maven', False) and not dist.is_test_distribution() #pylint: disable=undefined-variable
+        return getattr(dist, 'maven', False) and not dist.is_test_distribution()
 
     has_deployed_dist = False
     for s in _suites:
@@ -11576,7 +11579,7 @@ def repository(name, fatalIfMissing=True, context=None):
     _, name = splitqualname(name)
     r = _repositories.get(name)
     if r is None and fatalIfMissing:
-        abort('repository named ' + name + ' not found among ' + str(_repositories.keys()), context=context)
+        abort('repository named ' + name + ' not found among ' + str(list(_repositories.keys())), context=context)
     return r
 
 
@@ -12428,7 +12431,7 @@ def _filtered_jdk_configs(candidates, versionCheck, missingIsError=False, source
         jdk = _probe_JDK(candidate)
         if isinstance(jdk, JDKConfigException):
             if source:
-                message = 'Path in ' + source + ' is not pointing to a JDK (' + jdk.message + '): ' + candidate
+                message = 'Path in ' + source + ' is not pointing to a JDK (' + str(jdk) + '): ' + candidate
                 if is_darwin():
                     candidate = join(candidate, 'Contents', 'Home')
                     if not isinstance(_probe_JDK(candidate), JDKConfigException):
@@ -13051,7 +13054,7 @@ class JavaCompliance(Comparable):
     def __repr__(self):
         bounds = self._bounds()
         if len(bounds) == 4:
-            lower1, upper1, lower2, upper2 = bounds
+            lower1, upper1, lower2, upper2 = bounds # pylint: disable=unbalanced-tuple-unpacking
             if lower1 == upper1:
                 res = str(lower1)
             else:
@@ -13059,7 +13062,7 @@ class JavaCompliance(Comparable):
             if upper2 is None:
                 return '{},{}+'.format(res, lower2)
             return '{},{}..{}'.format(res, lower2, upper2)
-        lower, upper = bounds
+        lower, upper = bounds # pylint: disable=unbalanced-tuple-unpacking
         if upper is None:
             return str(lower) + '+'
         if upper == lower:
@@ -13102,7 +13105,7 @@ class JavaCompliance(Comparable):
     def __hash__(self):
         h = self.value ** (self._upper_bound or 1)
         if self._excluded:
-            start, stop = self._excluded
+            start, stop = self._excluded # pylint: disable=unpacking-non-sequence
             h = hash((h, start, stop))
         return h
 
@@ -13121,7 +13124,7 @@ class JavaCompliance(Comparable):
 
             if value >= self.value:
                 if self._excluded is not None:
-                    if value >= self._excluded[0] and value < self._excluded[1]:
+                    if self._excluded[0] <= value < self._excluded[1]:
                         return False
                 if self._upper_bound is not None:
                     return value <= self._upper_bound
@@ -14384,7 +14387,7 @@ def pylint(args):
         log_error('pylint is not available: ' + str(exc))
         return -1
 
-    m = re.search(r'^pylint-?2? (\d+)\.(\d+)\.(\d+),', output, re.MULTILINE)
+    m = re.search(r'^pylint-?2? (\d+)\.(\d+)\.(\d+),?', output, re.MULTILINE)
     if not m:
         log_error('could not determine pylint version from ' + output)
         return -1
@@ -14392,7 +14395,7 @@ def pylint(args):
     log("Detected pylint version: {0}.{1}.{2}".format(major, minor, micro))
     ver = (major, minor)
     if ver not in pylint_ver_map:
-        log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, pylint_ver_map.keys()))
+        log_error('pylint version must be one of {3} (got {0}.{1}.{2})'.format(major, minor, micro, list(pylint_ver_map.keys())))
         return -1
 
     rcfile = join(dirname(__file__), pylint_ver_map[ver]['rcfile'])
@@ -14590,11 +14593,12 @@ class Archiver(SafeFileCreation):
 
     def _add_str_tar(self, data, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
+        binary_data = _encode(data)
         tarinfo = self.zf.tarinfo()
         tarinfo.name = archive_name
-        tarinfo.size = len(data)
+        tarinfo.size = len(binary_data)
         tarinfo.mtime = calendar.timegm(datetime.now().utctimetuple())
-        self.zf.addfile(self._tarinfo_filter(tarinfo), StringIO(data))
+        self.zf.addfile(self._tarinfo_filter(tarinfo), BytesIO(binary_data))
 
     def _add_link_tar(self, target, archive_name, provenance):
         self._add_provenance(archive_name, provenance)
@@ -19642,7 +19646,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.226.4")  # GR-17070
+version = VersionSpec("5.226.5")  # GR-13299
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

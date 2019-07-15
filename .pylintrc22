@@ -50,7 +50,9 @@ disable=attribute-defined-outside-init,arguments-differ,
         multiple-imports,no-else-return,cell-var-from-loop,inconsistent-return-statements,
         too-many-nested-blocks,consider-using-enumerate,
         invalid-unary-operand-type,not-callable,unsubscriptable-object,
-        useless-object-inheritance,assignment-from-none
+        useless-object-inheritance,assignment-from-none,
+        consider-using-set-comprehension, # Not available on Python 2
+        unnecessary-pass # Does not allow marking abstract methods with pass if they have a docstring
 
 # F0401: http://www.logilab.org/ticket/9386
 
