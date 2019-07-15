@@ -5726,7 +5726,7 @@ class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, Cla
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmpdir)
         tmp_fd, tmp_file = mkstemp(".jar", self.name)
-        with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        with os.fdopen(tmp_fd, 'wb') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmpdir):
                 arc_dir = os.path.relpath(root, tmpdir)
                 for f_ in files:
