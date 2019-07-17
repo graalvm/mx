@@ -199,7 +199,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
             if not found:
-                mx.warn('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
+                mx.abort('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
             elif len(classes) != 1:
                 mx.abort('More than one test matches substring {0} {1}'.format(t, classes))
 
@@ -214,7 +214,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         classes.append(c)
                         depsContainingTests.add(p)
                 if not found:
-                    mx.warn('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
+                    mx.abort('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
 
     if blacklist:
         classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
