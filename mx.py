@@ -7715,6 +7715,8 @@ class JavacLikeCompiler(JavaCompiler):
 
         fileList = join(project.get_output_root(), 'javafilelist.txt')
         with open(fileList, 'w') as fp:
+            if get_os() == 'windows':
+                sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
             fp.write(os.linesep.join(sourceFiles))
         javacArgs.append('@' + _cygpathU2W(fileList))
 
