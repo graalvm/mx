@@ -14005,6 +14005,9 @@ def build(cmd_args, parser=None):
                 _removeSubprocess(t.sub)
                 if t.proc.exitcode != 0:
                     failed.append(t)
+                # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                if hasattr(t.proc, 'close'):
+                    t.proc.close()
             return failed
 
         def checkTasks(tasks):
@@ -14018,11 +14021,14 @@ def build(cmd_args, parser=None):
                     t._finished = True
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
+                    # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                    if hasattr(t.proc, 'close'):
+                        t.proc.close()
             return (active, [])
 
         def remainingDepsDepth(task):
             if task._d is None:
-                incompleteDeps = [d for d in task.deps if d.proc is None or d.proc.is_alive()]
+                incompleteDeps = [d for d in task.deps if d.proc is None or not d._finished]
                 if len(incompleteDeps) == 0:
                     task._d = 0
                 else:
@@ -19674,7 +19680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.227.1")  # [GR-17141]
+version = VersionSpec("5.227.2")  # closing pipe file descriptors early
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
