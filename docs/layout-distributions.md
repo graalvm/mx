@@ -84,6 +84,18 @@ It is a glob pattern or a list of glob patterns.
 If any pattern matches, the element is excluded.
 The pattern is rooted at the same level as the inclusion pattern.
 
+## Archive types
+
+By default, the distribution containing the `layout` will be a JAR. If it has `native` attribute set to `True`, it will be a TAR.
+The type of archive can also be set explicitly with the `type` attribute. It can be set to `"zip"`, `"jar"`, or `"tar"`.
+
+TAR distributions are kept locally uncompressed and are uploaded (`mx maven-deploy` etc.) in gzip form (`tar.gz`).
+JAR and ZIP distributions have two attributes to control compression: `localCompress` and `remoteCompress`.
+* If `localCompress` is `True` then the archive contains deflated entries. It defaults to `False`.
+* If `remoteCompress` is `True`, then the archive is compressed when it is uploaded. It defaults to `True`.
+
+Note that local compression requires remote compression.
+
 ## Example
 Putting all this together, here is a more complete example: 
 ```python

@@ -2009,19 +2009,31 @@ class Suite(object):
         testDistribution = attrs.pop('testDistribution', None)
         path = attrs.pop('path', None)
         layout = attrs.pop('layout', None)
+
+        def create_layout(default_type):
+            layout_type = attrs.pop('type', default_type)
+            if layout_type == 'tar':
+                layout_class = LayoutTARDistribution
+            elif layout_type == 'jar':
+                layout_class = LayoutJARDistribution
+            elif layout_type == 'zip':
+                layout_class = LayoutZIPDistribution
+            else:
+                raise abort("Unknown layout distribution type: {}".format(layout_type), context=context)
+            return layout_class(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
         if className:
             if not self.extensions or not hasattr(self.extensions, className):
-                abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
+                raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
             d = getattr(self.extensions, className)(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
         elif native:
             if layout is not None:
-                d = LayoutTARDistribution(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
+                d = create_layout('tar')
             else:
                 relpath = attrs.pop('relpath', False)
                 output = attrs.pop('output', None)
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         elif layout is not None:
-            d = LayoutJARDistribution(self, name, deps, layout, path, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
+            d = create_layout('jar')
         else:
             subDir = attrs.pop('subDir', None)
             sourcesPath = attrs.pop('sourcesPath', None)
@@ -5684,12 +5696,12 @@ class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, ClasspathDependency)):
+class AbstractZIPDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     def remoteExtension(self):
-        return 'jar'
+        return 'zip'
 
     def localExtension(self):
-        return 'jar'
+        return 'zip'
 
     def classpath_repr(self, resolve=True):
         return self.path
@@ -5706,10 +5718,10 @@ class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, Cla
         if self.compress_locally() or not self.compress_remotely():
             return None
         logv('Uncompressing {}...'.format(f))
-        tmp_dir = mkdtemp(".jar", self.name)
+        tmp_dir = mkdtemp("." + self.localExtension(), self.name)
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmp_dir)
-        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        tmp_fd, tmp_file = mkstemp("." + self.localExtension(), self.name)
         with os.fdopen(tmp_fd, 'w') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_STORED) as zf:
             for root, _, files in os.walk(tmp_dir):
                 arc_dir = os.path.relpath(root, tmp_dir)
@@ -5722,10 +5734,10 @@ class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, Cla
         if not self.compress_remotely() or self.compress_locally():
             return f
         logv('Compressing {}...'.format(f))
-        tmpdir = mkdtemp(".jar", self.name)
+        tmpdir = mkdtemp("." + self.remoteExtension(), self.name)
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmpdir)
-        tmp_fd, tmp_file = mkstemp(".jar", self.name)
+        tmp_fd, tmp_file = mkstemp("." + self.remoteExtension(), self.name)
         with os.fdopen(tmp_fd, 'wb') as tmp_f, zipfile.ZipFile(tmp_f, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(tmpdir):
                 arc_dir = os.path.relpath(root, tmpdir)
@@ -5733,6 +5745,14 @@ class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractDistribution, Cla
                     zf.write(join(root, f_), join(arc_dir, f_))
         rmtree(tmpdir)
         return tmp_file
+
+
+class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractZIPDistribution, ClasspathDependency)):
+    def remoteExtension(self):
+        return 'jar'
+
+    def localExtension(self):
+        return 'jar'
 
 
 class NativeTARDistribution(AbstractTARDistribution):
@@ -5962,13 +5982,13 @@ class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
             if not isinstance(sources, list):
                 sources = [sources]
             for source in sources:
-                source_dict = LayoutTARDistribution._as_source_dict(source, distribution_name, destination, path_substitutions, string_substitutions, distribution_object, context)
+                source_dict = LayoutDistribution._as_source_dict(source, distribution_name, destination, path_substitutions, string_substitutions, distribution_object, context)
                 if substs:
                     destination = substs.substitute(destination)
                 yield destination, source_dict
 
     def _walk_layout(self):
-        for (destination, source_dict) in LayoutTARDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
+        for (destination, source_dict) in LayoutDistribution._walk_static_layout(self.layout, self.name, self.path_substitutions, self.string_substitutions, self, self):
             dep = source_dict.get("dependency")
             if dep not in self._removed_deps:
                 yield (destination, source_dict)
@@ -6415,11 +6435,11 @@ class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
         return self._source_location_cache[source]
 
 
-class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution): #pylint: disable=too-many-ancestors
+class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):  # pylint: disable=too-many-ancestors
     pass
 
 
-class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylint: disable=too-many-ancestors
+class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):  # pylint: disable=too-many-ancestors
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
@@ -6428,13 +6448,17 @@ class LayoutJARDistribution(LayoutDistribution, AbstractJARDistribution): #pylin
         self._remote_compress = kw_args.pop('remoteCompress', True)
         if self._local_compress and not self._remote_compress:
             abort("Incompatible local/remote compression settings: local compression requires remote compression")
-        super(LayoutJARDistribution, self).__init__(*args, compress=self._local_compress, **kw_args)
+        super(LayoutZIPDistribution, self).__init__(*args, compress=self._local_compress, **kw_args)
 
     def compress_locally(self):
         return self._local_compress
 
     def compress_remotely(self):
         return self._remote_compress
+
+
+class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):  # pylint: disable=too-many-ancestors
+    pass
 
 
 ### ~~~~~~~~~~~~~ Project, Dependency
@@ -19646,7 +19670,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.226.6")  # GR-15053
+version = VersionSpec("5.227.0")  # Layout zip
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
