@@ -19680,7 +19680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.227.2")  # closing pipe file descriptors early
+version = VersionSpec("5.228.0")  # GR-17179
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
