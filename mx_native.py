@@ -491,6 +491,9 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
         shared_lib=dict(
             target=lambda name: mx.add_lib_suffix(mx.add_lib_prefix(name)),
         ),
+        executable=dict(
+            target=mx.exe_suffix,
+        ),
     )
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
