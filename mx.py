@@ -7629,7 +7629,7 @@ class JavacCompiler(JavacLikeCompiler):
                 Gets the JDK module, if any, declaring at least one package in `dep`.
                 """
                 if dep.isJARDistribution():
-                    return getattr(dep, 'moduleName', None)
+                    return get_module_name(dep)
                 if not dep.isJavaProject() and not dep.isJARDistribution():
                     return None
                 proj = dep
@@ -7637,7 +7637,7 @@ class JavacCompiler(JavacLikeCompiler):
                 if m is None:
                     # Look in modules declared in distributions first
                     for dist in sorted_dists():
-                        moduleName = getattr(dist, 'moduleName', None)
+                        moduleName = get_module_name(dist)
                         if moduleName and proj in dist.archived_deps():
                             m = moduleName
                             break
@@ -19680,7 +19680,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.228.1")  # GR-16683 - @mx.command for jackpot
+version = VersionSpec("5.228.2")  # GR-17186
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
