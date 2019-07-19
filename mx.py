@@ -14916,7 +14916,7 @@ class TimeStampFile:
                 return False
             else:
                 return arg.timestamp > self.timestamp
-        elif isinstance(arg, list):
+        if isinstance(arg, list):
             files = arg
         else:
             files = [arg]
@@ -14928,6 +14928,11 @@ class TimeStampFile:
         return False
 
     def isNewerThan(self, arg):
+        """
+        Returns True if self represents an existing file whose modification time
+        is more recent than the modification time(s) represented by `arg`. If `arg`
+        is a list, then it's treated as a list of path names.
+        """
         if not self.timestamp:
             return False
         if isinstance(arg, (int, float)):
@@ -14937,14 +14942,14 @@ class TimeStampFile:
                 return False
             else:
                 return arg.timestamp < self.timestamp
-        elif isinstance(arg, list):
+        if isinstance(arg, list):
             files = arg
         else:
             files = [arg]
         for f in files:
-            if getmtime(f) < self.timestamp:
-                return True
-        return False
+            if self.timestamp < getmtime(f):
+                return False
+        return True
 
     def exists(self):
         return exists(self.path)
@@ -19680,7 +19685,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.228.3")  # GR-17187
+version = VersionSpec("5.228.4")  # GR-17189
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
