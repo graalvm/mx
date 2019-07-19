@@ -210,8 +210,12 @@ public class MxJUnitWrapper {
         MxJUnitRequest request = builder.build();
         moduleSupport.processAddExportsAnnotations(request.classes, opened, exported);
 
-        System.setProperty(OPENED_PACKAGES_PROPERTY_NAME, String.join(System.lineSeparator(), opened));
-        System.setProperty(EXPORTED_PACKAGES_PROPERTY_NAME, String.join(System.lineSeparator(), exported));
+        if (!opened.isEmpty()) {
+            System.setProperty(OPENED_PACKAGES_PROPERTY_NAME, String.join(System.lineSeparator(), opened));
+        }
+        if (!exported.isEmpty()) {
+            System.setProperty(EXPORTED_PACKAGES_PROPERTY_NAME, String.join(System.lineSeparator(), exported));
+        }
 
         for (RunListener p : ServiceLoader.load(RunListener.class)) {
             junitCore.addListener(p);
