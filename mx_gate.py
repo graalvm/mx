@@ -35,6 +35,8 @@ from argparse import ArgumentParser
 
 import mx
 import sys
+from mx_urlrewrites import rewriteurl
+
 
 """
 Predefined Task tags.
@@ -835,9 +837,10 @@ def coverage_upload(args):
   <frame id="content" src=""/>
 </frameset>
 </html>""", remote_basedir + '/index.html')
+    js_library_url = rewriteurl("https://ajax.googleapis.com/ajax/libs/angularjs/1.7.7/angular.js")
     upload_string("""<html>
     <head>
-        <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.7.7/angular.js"></script>
+        <script src="%js_library_url"></script>
         <script language="javascript">
         var App = angular.module('myApp', [])
             .controller('IndexCtrl', function IndexCtrl($scope, $http) {
@@ -884,7 +887,7 @@ def coverage_upload(args):
        <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.build_number group by i.suite for i in data"></select>
        <a href="{{directory.build_url}}" ng-if="directory.build_url" target="_blank">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
     </body>
-</html>""", remote_basedir + '/navigation.html')
+</html>""".replace("%js_library_url", js_library_url), remote_basedir + '/navigation.html')
 
 def sonarqube_upload(args):
     """run SonarQube scanner and upload JaCoCo results"""
