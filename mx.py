@@ -5636,6 +5636,16 @@ class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
 class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     __gzip_binary = None
 
+    @property
+    def include_dirs(self):
+        """Directories with headers provided by this archive."""
+        includes = getattr(self, "includes", None)
+        if includes:
+            if not self.output:
+                raise abort("Distributions with 'includes' must have an output directory")
+            return [join(self.get_output(), i) for i in includes]
+        return []
+
     def remoteExtension(self):
         return 'tar.gz'
 

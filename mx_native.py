@@ -32,6 +32,7 @@ import subprocess
 import sys
 
 import mx
+import mx_subst
 
 
 class lazy_default(object):  # pylint: disable=invalid-name
@@ -218,11 +219,11 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
 
     @property
     def cflags(self):
-        return self._cflags
+        return [mx_subst.path_substitutions.substitute(cflag) for cflag in self._cflags]
 
     @property
     def ldflags(self):
-        return self._ldflags
+        return [mx_subst.path_substitutions.substitute(ldflag) for ldflag in self._ldflags]
 
     @property
     def ldlibs(self):
