@@ -219,11 +219,11 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
 
     @property
     def cflags(self):
-        return [mx_subst.path_substitutions.substitute(cflag) for cflag in self._cflags]
+        return self._cflags
 
     @property
     def ldflags(self):
-        return [mx_subst.path_substitutions.substitute(ldflag) for ldflag in self._ldflags]
+        return self._ldflags
 
     @property
     def ldlibs(self):
@@ -579,8 +579,8 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
                 link = gen.link_rule(cxx=bool(self.cxx_files))
 
             gen.variables(
-                cflags=self.cflags,
-                ldflags=self.ldflags if link else None,
+                cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags],
+                ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags] if link else None,
                 ldlibs=self.ldlibs if link else None,
             )
             gen.include(collections.OrderedDict.fromkeys(
