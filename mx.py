@@ -5636,6 +5636,15 @@ class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
 class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
     __gzip_binary = None
 
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output=None, **kw_args):
+        self._include_dirs = kw_args.pop("include_dirs", [])
+        super(AbstractTARDistribution, self).__init__(suite, name, deps, path, excludedLibs, platformDependent, theLicense, output=output, **kw_args)
+
+    @property
+    def include_dirs(self):
+        """Directories with headers provided by this archive."""
+        return [join(self.get_output(), i) for i in self._include_dirs]
+
     def remoteExtension(self):
         return 'tar.gz'
 
@@ -19685,7 +19694,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.228.4")  # GR-17189
+version = VersionSpec("5.228.5")  # GR-17180
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

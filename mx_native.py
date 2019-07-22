@@ -32,6 +32,7 @@ import subprocess
 import sys
 
 import mx
+import mx_subst
 
 
 class lazy_default(object):  # pylint: disable=invalid-name
@@ -578,8 +579,8 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
                 link = gen.link_rule(cxx=bool(self.cxx_files))
 
             gen.variables(
-                cflags=self.cflags,
-                ldflags=self.ldflags if link else None,
+                cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags],
+                ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags] if link else None,
                 ldlibs=self.ldlibs if link else None,
             )
             gen.include(collections.OrderedDict.fromkeys(
