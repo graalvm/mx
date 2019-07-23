@@ -1273,6 +1273,9 @@ class Dependency(_with_metaclass(ABCMeta, SuiteConstituent)):
     def isTARDistribution(self):
         return isinstance(self, AbstractTARDistribution)
 
+    def isZIPDistribution(self):
+        return isinstance(self, AbstractZIPDistribution)
+
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
 
@@ -11237,7 +11240,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         os.unlink(pushed_src_file)
                     if javadocPath:
                         os.unlink(javadocPath)
-                elif dist.isTARDistribution() or dist.isLayoutJARDistribution():
+                elif dist.isTARDistribution() or dist.isZIPDistribution():
                     extraFiles = []
                     if repo_metadata_name:
                         extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
@@ -11249,7 +11252,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                          gpg=gpg, keyid=keyid,
                                          extraFiles=extraFiles)
                 else:
-                    warn('Unsupported distribution: ' + dist.name)
+                    abort_or_warn('Unsupported distribution: ' + dist.name, dist.suite.getMxCompatibility().maven_deploy_unsupported_is_error())
                 os.unlink(pomFile)
     if repo_metadata_name:
         os.unlink(repo_metadata_name)
@@ -19694,7 +19697,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.228.5")  # GR-17180
+version = VersionSpec("5.229.0")  # deploy zips
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
