@@ -16915,7 +16915,10 @@ def intellij_read_sdks():
     versionRegexes = {}
     versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^([\d._]+)$')
     versionRegexes[intellij_python_sdk_type] = re.compile(r'^Python\s+(.+)$')
-    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^ver\.([^\s]+)\s+.*$')
+    # Examples:
+    #   truffleruby 19.2.0-dev-2b2a7f81, like ruby 2.6.2, Interpreted JVM [x86_64-linux]
+    #   ver.2.2.4p230 ( revision 53155) p230
+    versionRegexes[intellij_ruby_sdk_type] = re.compile(r'^\D*(\d[^ ,]+)')
 
     for sdk in etreeParse(xmlSdk).getroot().findall("component[@name='ProjectJdkTable']/jdk[@version='2']"):
         name = sdk.find("name").get("value")
@@ -16954,6 +16957,9 @@ def intellij_get_python_sdk_name(sdks):
     return "Python {v[0]}.{v[1]} ({exe})".format(v=sys.version_info, exe=exe)
 
 def intellij_get_ruby_sdk_name(sdks):
+    for sdk in sdks.values():
+        if sdk['type'] == intellij_ruby_sdk_type and 'truffleruby-jvm' in sdk['name']:
+            return sdk['name']
     for sdk in sdks.values():
         if sdk['type'] == intellij_ruby_sdk_type:
             return sdk['name']
@@ -19697,7 +19703,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.229.1") #GR-17096
+version = VersionSpec("5.229.2") # GR-16446
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
