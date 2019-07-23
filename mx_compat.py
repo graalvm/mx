@@ -201,6 +201,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def maven_deploy_unsupported_is_error(self):
+        """
+        Specifies if trying to deploy a distribution whose type is not supported is an error.
+        """
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -444,6 +450,16 @@ class MxCompatibility52230(MxCompatibility52102):  # pylint: disable=too-many-an
 
     def supports_disjoint_JavaCompliance_range(self):
         return True
+
+
+class MxCompatibility52290(MxCompatibility52230):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.229.0")
+
+    def maven_deploy_unsupported_is_error(self):
+        return True
+
 
 def minVersion():
     _ensureCompatLoaded()
