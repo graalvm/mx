@@ -1219,7 +1219,7 @@ class Dependency(SuiteConstituent):
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
     """
-    def __init__(self, suite, name, theLicense, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, theLicense, **kwArgs):
         SuiteConstituent.__init__(self, suite, name)
         if isinstance(theLicense, str):
             theLicense = [theLicense]
@@ -4379,7 +4379,7 @@ class ClasspathDependency(Dependency):
     """
     A dependency that can be put on the classpath of a Java commandline.
     """
-    def __init__(self, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, **kwArgs):  # pylint: disable=super-init-not-called
         pass
 
     def classpath_repr(self, resolve=True):
@@ -4633,7 +4633,7 @@ class Distribution(Dependency):
     :param bool platformDependent: specifies if the built artifact is platform dependent
     :param str theLicense: license applicable when redistributing the built artifact of the distribution
     """
-    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, deps, excludedLibs, platformDependent, theLicense, testDistribution=False, platforms=None, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.deps = deps
         self.update_listeners = set()
@@ -5551,7 +5551,7 @@ class JMHArchiveParticipant:
 
 
 class AbstractArchiveTask(BuildTask):
-    def __init__(self, args, dist): # pylint: disable=super-init-not-called
+    def __init__(self, args, dist):
         BuildTask.__init__(self, dist, args, 1)
 
     def needsBuild(self, newestInput):
@@ -5609,7 +5609,7 @@ class JARArchiveTask(AbstractArchiveTask):
 
 
 class AbstractDistribution(Distribution):
-    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
         self.output = output
@@ -5888,7 +5888,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
 class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
-    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args):
         """
         See docs/layout-distribution.md
         :type layout: dict[str, str]
@@ -6483,7 +6483,7 @@ class Project(Dependency):
     A Project is a collection of source code that is built by mx. For historical reasons
     it typically corresponds to an IDE project and the IDE support in mx assumes this.
     """
-    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, theLicense, testProject=False, **kwArgs):
         """
         :param list[str] srcDirs: subdirectories of name containing sources to build
         :param list[str] | list[Dependency] deps: list of dependencies, Project, Library or Distribution
@@ -6634,7 +6634,7 @@ class Project(Dependency):
 
 
 class ProjectBuildTask(BuildTask):
-    def __init__(self, args, parallelism, project): # pylint: disable=super-init-not-called
+    def __init__(self, args, parallelism, project):
         BuildTask.__init__(self, project, args, parallelism)
 
 
@@ -6645,7 +6645,7 @@ class ArchivableProject(Project):  # Used from other suites. pylint: disable=r09
     The files listed by getResults(), which must be under output_dir(),
     will be included in the archive under the prefix archive_prefix().
     """
-    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, deps, workingSets, theLicense, **kwArgs):
         d = suite.dir
         Project.__init__(self, suite, name, "", [], deps, workingSets, d, theLicense, **kwArgs)
 
@@ -8280,7 +8280,7 @@ class BaseLibrary(Dependency):
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
     """
-    def __init__(self, suite, name, optional, theLicense, **kwArgs): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, optional, theLicense, **kwArgs):
         Dependency.__init__(self, suite, name, theLicense, **kwArgs)
         self.optional = optional
 
