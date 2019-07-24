@@ -1214,7 +1214,7 @@ class License(SuiteConstituent):
         return self.name, self.url, self.fullname
 
 
-class Dependency(_with_metaclass(ABCMeta, SuiteConstituent)):
+class Dependency(SuiteConstituent):
     """
     A dependency is a library, distribution or project specified in a suite.
     The name must be unique across all Dependency instances.
@@ -4375,7 +4375,7 @@ def _get_dependency_path(dname):
 mx_subst.path_substitutions.register_with_arg('path', _get_dependency_path)
 
 
-class ClasspathDependency(_with_metaclass(ABCMeta, Dependency)):
+class ClasspathDependency(Dependency):
     """
     A dependency that can be put on the classpath of a Java commandline.
     """
@@ -4620,7 +4620,7 @@ class DistributionTemplate(SuiteConstituent):
         self.parameters = parameters
 
 
-class Distribution(_with_metaclass(ABCMeta, Dependency)):
+class Distribution(Dependency):
     """
     A distribution is a file containing the output of one or more dependencies.
     It is a `Dependency` because a `Project` or another `Distribution` may express a dependency on it.
@@ -5550,7 +5550,7 @@ class JMHArchiveParticipant:
                 self.arc.zf.writestr(filename, content)
 
 
-class AbstractArchiveTask(_with_metaclass(ABCMeta, BuildTask)):
+class AbstractArchiveTask(BuildTask):
     def __init__(self, args, dist): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, dist, args, 1)
 
@@ -5608,7 +5608,7 @@ class JARArchiveTask(AbstractArchiveTask):
         return False
 
 
-class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
+class AbstractDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs): # pylint: disable=super-init-not-called
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep) if path else self._default_path(), suite.dir)
@@ -5639,7 +5639,7 @@ class AbstractDistribution(_with_metaclass(ABCMeta, Distribution)):
         return DefaultArchiveTask(args, self)
 
 
-class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
+class AbstractTARDistribution(AbstractDistribution):
     __gzip_binary = None
 
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output=None, **kw_args):
@@ -5710,7 +5710,7 @@ class AbstractTARDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
         return AbstractTARDistribution.__gzip_binary is not None
 
 
-class AbstractZIPDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
+class AbstractZIPDistribution(AbstractDistribution):
     def remoteExtension(self):
         return 'zip'
 
@@ -5761,7 +5761,7 @@ class AbstractZIPDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
         return tmp_file
 
 
-class AbstractJARDistribution(_with_metaclass(ABCMeta, AbstractZIPDistribution, ClasspathDependency)):
+class AbstractJARDistribution(AbstractZIPDistribution, ClasspathDependency):
     def remoteExtension(self):
         return 'jar'
 
@@ -5885,7 +5885,7 @@ class LayoutArchiveTask(DefaultArchiveTask):
         return False, None
 
 
-class LayoutDistribution(_with_metaclass(ABCMeta, AbstractDistribution)):
+class LayoutDistribution(AbstractDistribution):
     _linky = AbstractDistribution
 
     def __init__(self, suite, name, deps, layout, path, platformDependent, theLicense, excludedLibs=None, path_substitutions=None, string_substitutions=None, archive_factory=None, compress=False, **kw_args): # pylint: disable=super-init-not-called
@@ -6476,7 +6476,9 @@ class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):  # 
 
 
 ### ~~~~~~~~~~~~~ Project, Dependency
-class Project(_with_metaclass(ABCMeta, Dependency)):
+
+
+class Project(Dependency):
     """
     A Project is a collection of source code that is built by mx. For historical reasons
     it typically corresponds to an IDE project and the IDE support in mx assumes this.
@@ -6630,12 +6632,13 @@ class Project(_with_metaclass(ABCMeta, Dependency)):
         # Workaround for GR-12809
         return (None, None, None)
 
-class ProjectBuildTask(_with_metaclass(ABCMeta, BuildTask)):
+
+class ProjectBuildTask(BuildTask):
     def __init__(self, args, parallelism, project): # pylint: disable=super-init-not-called
         BuildTask.__init__(self, project, args, parallelism)
 
 
-class ArchivableProject(_with_metaclass(ABCMeta, Project)):  # Used from other suites. pylint: disable=r0921
+class ArchivableProject(Project):  # Used from other suites. pylint: disable=r0921
     """
     A project that can be part of any distribution, native or not.
     Users should subclass this class and implement the nyi() methods.
@@ -8271,7 +8274,8 @@ class ZipExtractor(Extractor):
 
 ### ~~~~~~~~~~~~~ Library
 
-class BaseLibrary(_with_metaclass(ABCMeta, Dependency)):
+
+class BaseLibrary(Dependency):
     """
     A library that has no structure understood by mx, typically a jar file.
     It is used "as is".
