@@ -525,6 +525,7 @@ environment variables:
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
+        self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -4051,34 +4052,36 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
             url = m.group(1)
             jarEntryName = m.group(2)
 
+        if not _opts.trust_http and (url.lower().startswith('http://') or url.lower().startswith('ftp://')):
+            warn('Downloading from non-https URL {}. Use --trust-http mx option to suppress this warning.'.format(url))
+
         if verifyOnly:
             try:
                 conn = _urlopen(url, timeout=10)
                 conn.close()
-                return True
             except (IOError, socket.timeout) as e:
                 _suggest_tlsv1_error(e)
                 verify_errors[url] = e
-            continue
+        else:
+            for i in range(4):
+                if i != 0:
+                    time.sleep(1)
+                    warn('Retry {} to download from {}'.format(i, url))
+                if _attempt_download(url, path, jarEntryName):
+                    return True # Download was successful
 
-        for i in range(4):
-            if i != 0:
-                time.sleep(1)
-                warn('Retry {} to download from {}'.format(i, url))
-            res = _attempt_download(url, path, jarEntryName)
-            if res is True:
-                return True
-            if res is False:
-                break
-
-    if abortOnError:
+    if verifyOnly and len(verify_errors) < len(urls): # verify-mode at least one success -> success
+        return True
+    else: # Either verification error or no download was successful
         msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
-        if verifyOnly:
+        if verifyOnly: # verify-mode -> print error details
             for url, e in verify_errors.items():
                 msg += '\n  ' + url + ': ' + str(e)
-        abort(msg)
-    else:
-        return False
+        if abortOnError:
+            abort(msg)
+        else:
+            warn(msg)
+            return False
 
 def update_file(path, content, showDiff=False):
     """
@@ -8312,6 +8315,9 @@ class ResourceLibrary(BaseLibrary):
         self.urls = urls
         self.sha1 = sha1
 
+    def get_urls(self):
+        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
         yield path, _map_to_maven_dist_name(self.name) + '.' + get_file_extension(path)
@@ -8327,7 +8333,7 @@ class ResourceLibrary(BaseLibrary):
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        urls = [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        urls = self.get_urls()
         return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
 
     def _check_download_needed(self):
@@ -19049,7 +19055,7 @@ def verify_library_urls(args):
         _suites.append(_mx_suite)
     for s in _suites:
         for lib in s.libs:
-            if isinstance(lib, Library) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -19703,7 +19709,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.229.2") # GR-16446
+version = VersionSpec("5.229.3")  # GR-15501
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

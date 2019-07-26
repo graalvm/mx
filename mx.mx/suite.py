@@ -137,7 +137,7 @@ suite = {
     "SPOTBUGS_3.0.0" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/findbugs-3.0.0.zip",
-        "http://sourceforge.net/projects/findbugs/files/findbugs/3.0.0/findbugs-3.0.0.zip/download",
+        "https://sourceforge.net/projects/findbugs/files/findbugs/3.0.0/findbugs-3.0.0.zip/download",
       ],
       "sha1" : "6e56d67f238dbcd60acb88a81655749aa6419c5b",
     },
@@ -183,7 +183,7 @@ suite = {
     "CHECKSTYLE_6.0" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-6.0-all.jar",
-        "jar:http://sourceforge.net/projects/checkstyle/files/checkstyle/6.0/checkstyle-6.0-bin.zip/download!/checkstyle-6.0/checkstyle-6.0-all.jar",
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-6.0/checkstyle-6.0-all.jar",
       ],
       "sha1" : "2bedc7feded58b5fd65595323bfaf7b9bb6a3c7a",
       "licence" : "LGPLv21",
@@ -197,7 +197,7 @@ suite = {
     "CHECKSTYLE_6.15" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-6.15-all.jar",
-        "http://sourceforge.net/projects/checkstyle/files/checkstyle/6.15/checkstyle-6.15-all.jar",
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-6.15/checkstyle-6.15-all.jar",
       ],
       "sha1" : "db9ade7f4ef4ecb48e3f522873946f9b48f949ee",
       "licence" : "LGPLv21",
@@ -211,7 +211,7 @@ suite = {
     "CHECKSTYLE_8.8" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-8.8-all.jar",
-        "http://sourceforge.net/projects/checkstyle/files/checkstyle/8.8/checkstyle-8.8-all.jar",
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-8.8/checkstyle-8.8-all.jar",
       ],
       "sha1" : "9712a8124c40298015f04a74f61b3d81a51513af",
       "licence" : "LGPLv21",
