@@ -561,11 +561,11 @@ environment variables:
 
             # For some reason, argparse considers an unknown argument starting with '-'
             # and containing a space as a positional argument instead of an optional
-            # argument. We need to treat these as unknown optional arguments.
+            # argument. Subsequent arguments starting with '-' are also considered as
+            # positional. We need to treat all of these as unknown optional arguments.
             while len(self.initialCommandAndArgs) > 0:
                 arg = self.initialCommandAndArgs[0]
                 if arg.startswith('-'):
-                    assert ' ' in arg, arg
                     self.unknown.append(arg)
                     del self.initialCommandAndArgs[0]
                 else:
@@ -19713,7 +19713,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.229.4")  # GR-17368
+version = VersionSpec("5.229.5")  # GR-17422
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
