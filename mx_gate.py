@@ -648,8 +648,8 @@ def _jacoco_excludes_includes():
     excludes += [package + '.*' for package in baseExcludes]
     return excludes, includes
 
-def get_jacoco_agent_path():
-    return mx.library('JACOCOAGENT_0.8.4', True).get_path(True)
+def get_jacoco_agent_path(resolve):
+    return mx.library('JACOCOAGENT_0.8.4', True).get_path(resolve)
 
 def get_jacoco_agent_args():
     '''
@@ -665,7 +665,7 @@ def get_jacoco_agent_args():
                         'excludes' : ':'.join(excludes),
                         'destfile' : JACOCO_EXEC,
         }
-        return ['-javaagent:' + get_jacoco_agent_path() + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
+        return ['-javaagent:' + get_jacoco_agent_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
     return None
 
 def jacocoreport(args):
