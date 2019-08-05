@@ -13372,7 +13372,7 @@ class JDKConfig(Comparable):
             return self.debug_args
 
         def add_coverage_args(args):
-            agent_path = mx_gate.get_jacoco_agent_path()
+            agent_path = mx_gate.get_jacoco_agent_path(False)
             if any(arg.startswith('-javaagent') and agent_path in arg for arg in args):
                 return []
             # jacoco flags might change in-process -> do not cache
@@ -19713,7 +19713,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.229.5")  # GR-17422
+version = VersionSpec("5.229.6")  # lazy JaCoCo downloading
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
