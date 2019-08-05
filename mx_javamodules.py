@@ -31,7 +31,6 @@ import re
 import zipfile
 import pickle
 import shutil
-import itertools
 from os.path import join, exists, dirname, basename
 from tempfile import mkdtemp
 
@@ -41,6 +40,7 @@ import mx
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 import sys
+import itertools
 if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
@@ -58,7 +58,7 @@ class JavaModuleDescriptor(object):
     :param set uses: the service types used by this module
     :param dict provides: dict from a service name to the set of providers of the service defined by this module
     :param iterable packages: the packages defined by this module
-    :param set conceals: the packages defined but not exported to everyone by this module
+    :param set conceals: the packages defined but not exported to anyone by this module
     :param str jarpath: path to module jar file
     :param JARDistribution dist: distribution from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
@@ -177,25 +177,38 @@ class JavaModuleDescriptor(object):
         print('}', file=out)
         return out.getvalue()
 
+    def get_package_visibility(self, package, importer):
+        """
+        Gets the visibility of `package` in this module.
+
+        :param str package: a package name
+        :param str importer: the name of the module importing the package (use "<unnamed>" or None for the unnamed module)
+        :return: if `package` is in this module, then return 'concealed' or 'exported' depending on the
+                 visibility of the package with respect to `importer` otherwise return None
+        """
+        targets = self.exports.get(package, None)
+        if targets is not None:
+            if len(targets) == 0 or importer in targets:
+                return 'exported'
+            return 'concealed'
+        elif package in self.conceals:
+            return 'concealed'
+
 def lookup_package(modulepath, package, importer):
     """
-    Searches a given module path for the module defining a given package.
+    Searches `modulepath` for the module defining `package`.
 
-    :param list modulepath: a list of `JavaModuleDescriptors`
-    :param str package: the name of the package to lookup
-    :param str importer: the name of the module importing the package (use "<unnamed>" for the unnamed module)
+    :param list modulepath: an iterable of `JavaModuleDescriptors`
+    :param str package: a package name
+    :param str importer: the name of the module importing the package (use "<unnamed>" or None for the unnamed module)
     :return: if the package is found, then a tuple containing the defining module
              and a value of 'concealed' or 'exported' denoting the visibility of the package.
              Otherwise (None, None) is returned.
     """
     for jmd in modulepath:
-        targets = jmd.exports.get(package, None)
-        if targets is not None:
-            if len(targets) == 0 or importer in targets:
-                return jmd, 'exported'
-            return jmd, 'concealed'
-        elif package in jmd.conceals:
-            return jmd, 'concealed'
+        visibility = jmd.get_package_visibility(package, importer)
+        if visibility is not None:
+            return jmd, visibility
     return (None, None)
 
 def get_module_deps(dist):
@@ -424,10 +437,9 @@ def make_java_module(dist, jdk):
     base_uses = set()
 
     modulepath = list()
-    usedModules = set()
 
     if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
-        moduledeps = dist.archived_deps()
+        module_deps = dist.archived_deps()
         for dep in mx.classpath_entries(dist, includeSelf=False):
             if dep.isJARDistribution():
                 jmd = as_java_module(dep, jdk)
@@ -442,20 +454,25 @@ def make_java_module(dist, jdk):
             else:
                 mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
     else:
-        moduledeps = get_module_deps(dist)
+        module_deps = get_module_deps(dist)
 
     # Append JDK modules to module path
-    jdkModules = jdk.get_modules()
-    if not isinstance(jdkModules, list):
-        jdkModules = list(jdkModules)
-    allmodules = modulepath + jdkModules
+    jdk_modules = jdk.get_modules()
+    if not isinstance(jdk_modules, list):
+        jdk_modules = list(jdk_modules)
 
-    javaprojects = [d for d in moduledeps if d.isJavaProject()]
+    java_projects = [d for d in module_deps if d.isJavaProject()]
 
     # Collect packages in the module first
     module_packages = set()
-    for dep in javaprojects:
-        module_packages.update(dep.defined_java_packages())
+    for project in java_projects:
+        module_packages.update(project.defined_java_packages())
+
+        entries = mx.classpath_entries(project, includeSelf=False)
+        for e in entries:
+            e_module_name = e.get_declaring_module_name()
+            if e_module_name and e_module_name != moduleName:
+                requires.setdefault(e_module_name, set())
 
     def _parse_packages_spec(packages_spec, available_packages, project_scope):
         """
@@ -511,32 +528,40 @@ def make_java_module(dist, jdk):
         base_uses.update(module_info.get('uses', []))
         _process_exports(module_info.get('exports', []), module_packages)
 
-    for dep in javaprojects:
-        base_uses.update(getattr(dep, 'uses', []))
-        for m in getattr(dep, 'runtimeDeps', []):
+    enhanced_module_usage_info = dist.suite.getMxCompatibility().enhanced_module_usage_info()
+
+    for project in java_projects:
+        base_uses.update(getattr(project, 'uses', []))
+        for m in getattr(project, 'runtimeDeps', []):
             requires.setdefault(m, set()).add('static')
 
-        for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
-            # Only consider packages not defined by the module we're creating. This handles the
-            # case where we're creating a module that will upgrade an existing upgradeable
-            # module in the JDK such as jdk.internal.vm.compiler.
-            if pkg not in module_packages:
-                depModule, visibility = lookup_package(allmodules, pkg, moduleName)
-                if depModule and depModule.name != moduleName:
-                    requires.setdefault(depModule.name, set())
-                    if visibility == 'exported':
-                        # A distribution based module does not re-export its imported JDK packages
-                        usedModules.add(depModule)
-                    else:
-                        assert visibility == 'concealed'
-                        concealedRequires.setdefault(depModule.name, set()).add(pkg)
-                        usedModules.add(depModule)
+        if not enhanced_module_usage_info:
+            # In the absence of "compileAddExports" and "compileRequires" attributes, the import statements
+            # in the Java sources need to be scanned to determine what modules are
+            # required and what concealed packages are used.
+            allmodules = modulepath + jdk_modules
+            for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
+                # Only consider packages not defined by the module we're creating. This handles the
+                # case where we're creating a module that will upgrade an existing upgradeable
+                # module in the JDK such as jdk.internal.vm.compiler.
+                if pkg not in module_packages:
+                    module, visibility = lookup_package(allmodules, pkg, moduleName)
+                    if module and module.name != moduleName:
+                        requires.setdefault(module.name, set())
+                        if visibility != 'exported':
+                            assert visibility == 'concealed'
+                            concealedRequires.setdefault(module.name, set()).add(pkg)
+        else:
+            for module, packages in project.get_concealed_imported_packages(jdk).items():
+                concealedRequires.setdefault(module, set()).update(packages)
+            for module in getattr(project, 'compileRequires', []):
+                requires.setdefault(module, set())
 
         if not module_info:
             # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
             # all packages are exported.
-            default_exported_java_packages = [] if module_info else dep.defined_java_packages()
-            _process_exports(getattr(dep, 'exports', default_exported_java_packages), dep.defined_java_packages(), dep)
+            default_exported_java_packages = [] if module_info else project.defined_java_packages()
+            _process_exports(getattr(project, 'exports', default_exported_java_packages), project.defined_java_packages(), project)
 
     work_directory = mkdtemp()
     try:
@@ -547,7 +572,7 @@ def make_java_module(dist, jdk):
         # As such, the jar file for each constituent distribution must be unpacked
         # in the output directory.
         versions = {}
-        for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+        for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
             if d.isJARDistribution():
                 with zipfile.ZipFile(d.original_path(), 'r') as zf:
                     for arcname in sorted(zf.namelist()):
@@ -582,7 +607,7 @@ def make_java_module(dist, jdk):
             dest_dir = join(work_directory, version)
             int_version = int(version) if version != 'common' else -1
 
-            for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+            for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
                 if d.isJARDistribution():
                     with zipfile.ZipFile(d.original_path(), 'r') as zf:
                         for name in zf.namelist():
@@ -633,7 +658,7 @@ def make_java_module(dist, jdk):
             with open(module_info_java, 'w') as fp:
                 print(jmd.as_module_info(), file=fp)
             javacCmd = [jdk.javac, '-d', dest_dir]
-            jdkModuleNames = [m.name for m in jdkModules]
+            jdkModuleNames = [m.name for m in jdk_modules]
             modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
             upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
             # TODO we should rather use the right JDK
@@ -708,3 +733,38 @@ def get_transitive_closure(roots, observable_modules):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure
+
+def parse_compileAddExports_attribute(jdk, imports, concealed, self_module, context):
+    jdk_modules = jdk.get_modules()
+    for module, packages in imports.items():
+        matches = [jmd for jmd in jdk_modules if jmd.name == module]
+        if not matches:
+            mx.abort('Module {} in "compileAddExports" attribute does not exist in {}'.format(module, jdk), context=context)
+        jmd = matches[0]
+
+        package_set = concealed.setdefault(module, set())
+
+        if packages == '*':
+            star = True
+            packages = jmd.packages
+        else:
+            star = False
+            if not isinstance(packages, list):
+                mx.abort('Packages for module {} in "compileAddExports" attribute must be either "*" or a list of package names'.format(module), context=context)
+        for package in packages:
+            if package.endswith('?'):
+                optional = True
+                package = package[0:-1]
+            else:
+                optional = False
+            visibility = jmd.get_package_visibility(package, self_module)
+            if visibility == 'concealed':
+                package_set.add(package)
+            elif visibility == 'exported':
+                if not star:
+                    suffix = '' if not self_module else ' from module {}'.format(self_module)
+                    mx.warn('Package {} is not concealed in module {}{}'.format(package, module, suffix), context=context)
+            elif not optional:
+                m, _ = lookup_package(jdk_modules, package, self_module)
+                suffix = '' if not m else ' but in module {}'.format(m.name)
+                mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)

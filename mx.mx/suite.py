@@ -482,9 +482,11 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [
       ],
-      "imports" : [
-        "jdk.internal.module",
-      ],
+      "compileAddExports" : {
+        "java.base" : [
+          "jdk.internal.module",
+        ],
+      },
       "multiReleaseJarVersion": "9",
       "overlayTarget" : "com.oracle.mxtool.junit",
       "javaCompliance" : "9+",

@@ -182,6 +182,55 @@ The jars build for a distribution are in `<suite>/mxbuild/dists/jdk*/`. The modu
 where `N >= 9`. There is a modular jar built for each JDK version denoted by the `javaCompliance` values of the distribution's
 constituent projects.
 
+#### Specifying module usage
+
+If a project uses packages that are not exported by their containing module(s) as of JDK 9,
+it must specify a `compileAddExports` attribute denoting the concealed packages it wants to access. For example:
+```
+"org.graalvm.compiler.lir.aarch64.jdk11" : {
+    "compileAddExports" : {
+        "jdk.internal.vm.ci" : [
+            "jdk.vm.ci.aarch64",
+            "jdk.vm.ci.code",
+        ],
+    },
+    "javaCompliance" : "11+",
+},
+```
+This will result in `--add-exports=jdk.internal.vm.ci/jdk.vm.ci.aarch64=ALL-UNNAMED` and
+`--add-exports=jdk.internal.vm.ci/jdk.vm.ci.code=ALL-UNNAMED` being added to the `javac`
+command line when the `org.graalvm.compiler.lir.aarch64.jdk11` project is compiled by a
+JDK 9+ `javac`.
+
+In addition, if a project uses a package from a module other than `java.base` or a module
+implied by a dependency (e.g., the [`JVMCI_API` library](https://github.com/oracle/graal/blob/1655543b5670948e56333827f3a8f65e1ba8f3c6/compiler/mx.compiler/suite.py#L46-L55)
+defined by Graal), it must specify these additional modules with a `compileRequires` attribute.
+For example:
+```
+"org.graalvm.compiler.hotspot.management.jdk11" : {
+    ...
+    "compileRequires" : [
+        "jdk.management"
+    ],
+    "javaCompliance" : "11+",
+    ...
+},
+```
+The `compileRequires` attribute is used for two purposes:
+* To derive a value for the `requires` attribute of the descriptor for the module
+  encapsulating the project.
+* To derive a value for the `--limit-modules` javac option
+  to restrict the modules observable during compilation. This is required to support
+  separate compilation of projects that are part of a JDK module. For example,
+  `org.graalvm.compiler.hotspot.amd64` depends on `org.graalvm.compiler.hotspot`
+  and the classes of both these projects are contained in the `jdk.internal.vm.compiler`
+  module. When compiling `org.graalvm.compiler.hotspot.amd64`, we must resolve against
+  classes in `org.graalvm.compiler.hotspot` as they might be different (i.e., newer)
+  than the classes in `jdk.internal.vm.compiler`. The value of `--limit-modules` will
+  omit `jdk.internal.vm.compiler` in this case to achieve this hiding. In the absence
+  of a `compileRequires` attribute, only the `java.base` module is observable when compiling
+  on JDK 9+.
+
 ### Selecting JDKs
 
 Specifying JDKs to mx is done via the `--java-home` and `--extra-java-homes` options or

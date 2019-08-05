@@ -3376,7 +3376,8 @@ import mx_benchplot
 import mx_downstream
 import mx_subst
 
-from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, get_transitive_closure, get_module_name
+from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, \
+                           get_transitive_closure, get_module_name, parse_compileAddExports_attribute
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -4408,6 +4409,13 @@ class ClasspathDependency(Dependency):
                 ret[key] = replaceVar.substitute(value, dependency=self)
         return ret
 
+    def get_declaring_module_name(self):
+        """
+        Gets the name of the module corresponding to this ClasspathDependency.
+
+        :rtype: str | None
+        """
+        return None
 
 ### JNI
 
@@ -5516,6 +5524,9 @@ class JARDistribution(Distribution, ClasspathDependency):
                 if ts.isNewerThan(self.path):
                     return '{} is newer than {}'.format(ts, self.path)
         return None
+
+    def get_declaring_module_name(self):
+        return get_module_name(self)
 
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
@@ -7195,9 +7206,9 @@ class JavaProject(Project, ClasspathDependency):
         jdk = get_jdk(self.javaCompliance, tag=DEFAULT_JDK_TAG, purpose='building ' + self.name)
         return JavaBuildTask(args, self, jdk)
 
-    def get_concealed_imported_packages(self, jdk=None, modulepath=None):
+    def get_concealed_imported_packages(self, jdk=None):
         """
-        Gets the concealed packages imported by this Java project and its transitive project dependencies.
+        Gets the concealed packages imported by this Java project.
 
         :param JDKConfig jdk: the JDK whose modules are to be searched for concealed packages
         :param list modulepath: extra modules to be searched for concealed packages
@@ -7205,45 +7216,85 @@ class JavaProject(Project, ClasspathDependency):
         """
         if jdk is None:
             jdk = get_jdk(self.javaCompliance)
-        if modulepath is None:
-            modulepath = []
-        else:
-            assert isinstance(modulepath, list)
-        cache = '.concealed_imported_packages@' + str(jdk.version) + '@' + ':'.join([m.name for m in modulepath])
+        cache = '.concealed_imported_packages@' + str(jdk.version)
         if getattr(self, cache, None) is None:
             concealed = {}
             if jdk.javaCompliance >= '9':
-                modulepath = list(jdk.get_modules()) + modulepath
-                def visit(dep, edge):
-                    if dep is not self and dep.isJavaProject():
-                        dep_concealed = dep.get_concealed_imported_packages(jdk=jdk, modulepath=modulepath)
-                        for module, packages in dep_concealed.items():
-                            concealed.setdefault(module, set()).update(packages)
-                self.walk_deps(visit=visit)
+                compat = self.suite.getMxCompatibility()
+                if not compat.enhanced_module_usage_info():
+                    imports = getattr(self, 'imports', [])
 
-                imports = getattr(self, 'imports', [])
-                if imports:
-                    # This regex does not detect all legal packages names. No regex can tell you if a.b.C.D is
-                    # a class D in the package a.b.C, a class C.D in the package a.b or even a class b.C.D in
-                    # the package a. As such mx uses the convention that package names start with a lowercase
-                    # letter and class names with a uppercase letter.
-                    packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
-                    for imported in imports:
-                        m = packageRe.match(imported)
-                        if not m:
-                            abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
-                imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
-                for package in imported:
-                    jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
-                    if visibility == 'concealed':
-                        if self.defined_java_packages().isdisjoint(jmd.packages):
-                            concealed.setdefault(jmd.name, set()).add(package)
-                        else:
-                            # This project is part of the module defining the concealed package
-                            pass
+                    # Include conceals from transitive project dependencies
+                    def visit(dep, edge):
+                        if dep is not self and dep.isJavaProject():
+                            dep_concealed = dep.get_concealed_imported_packages(jdk=jdk)
+                            for module, packages in dep_concealed.items():
+                                concealed.setdefault(module, set()).update(packages)
+                    self.walk_deps(visit=visit)
+
+                    if imports:
+                        # This regex does not detect all legal packages names. No regex can tell you if a.b.C.D is
+                        # a class D in the package a.b.C, a class C.D in the package a.b or even a class b.C.D in
+                        # the package a. As such mx uses the convention that package names start with a lowercase
+                        # letter and class names with a uppercase letter.
+                        packageRe = re.compile(r'(?:[a-z][a-zA-Z\d_$]*\.)*[a-z][a-zA-Z\d_$]*$')
+                        for imported in imports:
+                            m = packageRe.match(imported)
+                            if not m:
+                                abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
+
+                    imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
+                    modulepath = jdk.get_modules()
+                    for package in imported:
+                        jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
+                        if visibility == 'concealed':
+                            if self.defined_java_packages().isdisjoint(jmd.packages):
+                                concealed.setdefault(jmd.name, set()).add(package)
+                            else:
+                                # This project is part of the module defining the concealed package
+                                pass
+                else:
+                    if hasattr(self, 'imports'):
+                        self.abort('As of mx {}, the "imports" attribute has been replaced by the "compileAddExports" attribute. '.format(compat.version()) + \
+                              'See {} for more information.'.format(join(_mx_home, 'README.md')))
+
+                    imports = getattr(self, 'compileAddExports', None)
+                    if imports is not None:
+                        parse_compileAddExports_attribute(jdk, imports, concealed, None, self)
+
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
         return getattr(self, cache)
+
+    def get_declaring_module_name(self):
+        module_dist = self.get_declaring_module_distribution()
+        if module_dist is None:
+            return None
+        return get_module_name(module_dist)
+
+    def get_declaring_module_distribution(self):
+        """
+        Gets the distribution that defines a Java module and contains this project.
+
+        :rtype: JARDistribution | None
+        """
+        if not hasattr(self, '.declaring_module_dist'):
+            declaring_module_dist = None
+            compat = self.suite.getMxCompatibility()
+            for dist in sorted_dists():
+                module_name = get_module_name(dist)
+                if module_name and self in dist.archived_deps():
+                    assert isinstance(dist, JARDistribution)
+                    if declaring_module_dist is not None:
+                        if compat.enhanced_module_usage_info():
+                            raise abort("{} is part of multiple modules: {} and {}".format(self, get_module_name(declaring_module_dist), module_name))
+                    declaring_module_dist = dist
+                    if not compat.enhanced_module_usage_info():
+                        # Earlier versions of mx were less strict and just returned the
+                        # first module containing a project
+                        break
+            setattr(self, '.declaring_module_dist', declaring_module_dist)
+        return getattr(self, '.declaring_module_dist')
 
 ### ~~~~~~~~~~~~~ Build task
 
@@ -7640,57 +7691,18 @@ class JavacCompiler(JavacLikeCompiler):
 
         if jdk.javaCompliance >= '9':
             jdk_modules_overridden_on_classpath = set()  # pylint: disable=C0103
-            declaringJdkModule = None
 
-            def getDeclaringJDKModule(dep):
-                """
-                Gets the JDK module, if any, declaring at least one package in `dep`.
-                """
-                if dep.isJARDistribution():
-                    return get_module_name(dep)
-                if not dep.isJavaProject() and not dep.isJARDistribution():
-                    return None
-                proj = dep
-                m = getattr(proj, '.declaringJDKModule', None)
-                if m is None:
-                    # Look in modules declared in distributions first
-                    for dist in sorted_dists():
-                        moduleName = get_module_name(dist)
-                        if moduleName and proj in dist.archived_deps():
-                            m = moduleName
-                            break
-
-                    if m is None:
-                        # Now look in modules of the JDK
-                        modulepath = jdk.get_modules()
-                        java_packages = proj.defined_java_packages() | proj.extended_java_packages()
-                        for package in java_packages:
-                            jmd, _ = lookup_package(modulepath, package, "<unnamed>")
-                            if jmd:
-                                m = jmd.name
-                                break
-                    if m is None:
-                        # Use proj to denote that proj is not declared by any JDK module
-                        m = proj
-                    setattr(proj, '.declaringJDKModule', m)
-                if m is proj:
-                    return None
-                return m
-
-            declaringJdkModule = getDeclaringJDKModule(project)
-            if declaringJdkModule is not None:
-                jdk_modules_overridden_on_classpath.add(declaringJdkModule)
-                # If compiling sources for a JDK module, javac needs to know this via -Xmodule
-                if jdk._javacXModuleOptionExists:
-                    javacArgs.append('-Xmodule:' + declaringJdkModule)
+            declaring_module = project.get_declaring_module_name()
+            if declaring_module is not None:
+                jdk_modules_overridden_on_classpath.add(declaring_module)
 
             def addExportArgs(dep, exports=None, prefix='', jdk=None, observable_modules=None):
                 """
                 Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
                 `javacArgs` for the non-public JDK modules required by `dep`.
 
-                :param mx.JavaProject dep: a Java project that may be dependent on private JDK modules
-                :param dict exports: a set of exports per module for which ``--add-exports`` args
+                :param mx.JavaProject dep: a Java project
+                :param dict exports: module exports for which ``--add-exports`` args
                    have already been added to `javacArgs`
                 :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
                 :param JDKConfig jdk: the JDK to be searched for concealed packages
@@ -7700,7 +7712,7 @@ class JavacCompiler(JavacLikeCompiler):
                     if observable_modules is not None and module not in observable_modules:
                         continue
                     if module in jdk_modules_overridden_on_classpath:
-                        # If the classes in a JDK module declaring the dependency are also
+                        # If the classes in a module declaring the dependency are also
                         # resolvable on the class path, then do not export the module
                         # as the class path classes are more recent than the module classes
                         continue
@@ -7724,13 +7736,35 @@ class JavacCompiler(JavacLikeCompiler):
 
             if compliance >= '9':
                 exports = {}
-                entries = classpath_entries(project.name, includeSelf=False)
+                compat = project.suite.getMxCompatibility()
+                if compat.enhanced_module_usage_info():
+                    required_modules = set(getattr(project, 'compileRequires', []))
+                    required_modules.add('java.base')
+                else:
+                    required_modules = None
+                entries = classpath_entries(project, includeSelf=False)
                 for e in entries:
-                    m = getDeclaringJDKModule(e)
-                    if m:
-                        jdk_modules_overridden_on_classpath.add(m)
-                addExportArgs(project, exports)
+                    e_module_name = e.get_declaring_module_name()
+                    if e.isJdkLibrary():
+                        if required_modules is not None and jdk.javaCompliance >= e.jdkStandardizedSince:
+                            # this will not be on the classpath, and is needed from a JDK module
+                            if not e_module_name:
+                                abort('JDK library standardized since {} must have a "module" attribute'.format(e.jdkStandardizedSince), context=e)
+                            required_modules.add(e_module_name)
+                    else:
+                        if e_module_name:
+                            jdk_modules_overridden_on_classpath.add(e_module_name)
+                            if required_modules and e_module_name in required_modules:
+                                abort('Project must not specify {} in a "compileRequires" attribute as it conflicts with the dependency {}'.format(e_module_name, e),
+                                       context=project)
+                        elif e.isJavaProject():
+                            addExportArgs(e, exports)
+
+                addExportArgs(project, exports, '', jdk, required_modules)
                 addRootModules(exports, '')
+                if required_modules:
+                    javacArgs.append('--limit-modules=' + ','.join(required_modules))
+
             aps = project.annotation_processors()
             if aps:
                 # We want annotation processors to use classes on the class path
@@ -7741,16 +7775,16 @@ class JavacCompiler(JavacLikeCompiler):
                 # We limit module observability to those required by javac and
                 # the module declaring sun.misc.Unsafe which is used by annotation
                 # processors such as JMH.
-                observable_modules = frozenset(['jdk.compiler', 'java.compiler', 'jdk.zipfs', 'jdk.unsupported'])
+                observable_modules = frozenset(['jdk.compiler', 'jdk.zipfs', 'jdk.unsupported'])
 
                 exports = {}
                 entries = classpath_entries(aps, preferProjects=True)
-                for dep in entries:
-                    m = getDeclaringJDKModule(dep)
-                    if m:
-                        jdk_modules_overridden_on_classpath.add(m)
-                    elif dep.isJavaProject():
-                        addExportArgs(dep, exports, '-J', jdk, observable_modules)
+                for e in entries:
+                    e_module_name = e.get_declaring_module_name()
+                    if e_module_name:
+                        jdk_modules_overridden_on_classpath.add(e_module_name)
+                    elif e.isJavaProject():
+                        addExportArgs(e, exports, '-J', jdk, observable_modules)
 
                 # An annotation processor may have a dependency on other annotation
                 # processors. The latter might need extra exports.
@@ -7758,9 +7792,9 @@ class JavacCompiler(JavacLikeCompiler):
                 for dep in entries:
                     if dep.isJARDistribution() and dep.definedAnnotationProcessors:
                         for apDep in dep.deps:
-                            m = getDeclaringJDKModule(apDep)
-                            if m:
-                                jdk_modules_overridden_on_classpath.add(m)
+                            module_name = apDep.get_declaring_module_name()
+                            if module_name:
+                                jdk_modules_overridden_on_classpath.add(module_name)
                             elif apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk, observable_modules)
 
@@ -8514,7 +8548,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     :param sourcePath: a path where the sources for this library are located. A relative path is resolved against a JDK.
     :param JavaCompliance jdkStandardizedSince: the JDK version in which the resources represented by this library are automatically
            available at compile and runtime without augmenting the class path. If not provided, ``1.2`` is used.
-    :param module: If this JAR has been transferred to a module since JDK 9, the name of the module that contains the same classes as the JAR used to.
+    :param module: If this JAR has become a module since JDK 9, the name of the module that contains the same classes as the JAR used to.
     """
     def __init__(self, suite, name, path, deps, optional, theLicense, sourcePath=None, jdkStandardizedSince=None, module=None, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
@@ -8600,6 +8634,9 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     def _walk_deps_visit_edges(self, visited, in_edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         deps = [(DEP_STANDARD, self.deps)]
         self._walk_deps_visit_edges_helper(deps, visited, in_edge, preVisit, visit, ignoredEdges, visitEdge)
+
+    def get_declaring_module_name(self):
+        return getattr(self, 'module')
 
 class Library(BaseLibrary, ClasspathDependency):
     """
@@ -13487,11 +13524,11 @@ class JDKConfig(Comparable):
         """
         Gets the modules in this JDK.
 
-        :return: a list of `JavaModuleDescriptor` objects for modules in this JDK
-        :rtype: list
+        :return: a tuple of `JavaModuleDescriptor` objects for modules in this JDK
+        :rtype: tuple
         """
         if self.javaCompliance < '9':
-            return []
+            return ()
         if not hasattr(self, '.modules'):
             jdkModules = join(self.home, 'lib', 'modules')
             cache = join(ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk' + str(self.version))), 'listmodules')
@@ -19713,7 +19750,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.229.6")  # lazy JaCoCo downloading
+version = VersionSpec("5.231.0")  # GR-17414
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

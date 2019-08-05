@@ -207,6 +207,14 @@ class MxCompatibility500(object):
         """
         return False
 
+    def enhanced_module_usage_info(self):
+        """
+        Returns True if a Java project must specify its use of concealed packages with
+        a "compileAddExports" attribute and use of modules other than java.base with
+        a "compileRequires" attribute.
+        """
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -460,6 +468,13 @@ class MxCompatibility52290(MxCompatibility52230):  # pylint: disable=too-many-an
     def maven_deploy_unsupported_is_error(self):
         return True
 
+class MxCompatibility52310(MxCompatibility52290):  # pylint: disable=too-many-ancestors
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.231.0")
+
+    def enhanced_module_usage_info(self):
+        return True
 
 def minVersion():
     _ensureCompatLoaded()
