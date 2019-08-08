@@ -213,7 +213,6 @@ The `requires` attribute is used for two purposes:
   of a `requires` attribute, only the `java.base` module is observable when compiling
   on JDK 9+.
 
-
 #### Use of concealed packages
 
 Concealed packages are those defined by a module but not exported by the module.
@@ -234,6 +233,26 @@ This will result in `--add-exports=jdk.internal.vm.ci/jdk.vm.ci.aarch64=ALL-UNNA
 `--add-exports=jdk.internal.vm.ci/jdk.vm.ci.code=ALL-UNNAMED` being added to the `javac`
 command line when the `org.graalvm.compiler.lir.aarch64.jdk11` project is compiled by a
 JDK 9+ `javac`.
+
+Note that the `requires` and `requiresConcealed` attributes only apply to projects with
+a minimum `javaCompliance` value of 9 or greater. When `javac` from jdk 9+ is used in
+conjunction with `-source 8` (as will be the case for projects with a minimum `javaCompliance`
+of 8 or less), all classes in the JDK are observable. However, if an 8 project would need a
+`requires` or `requiresConcealed` attribute were it a 9+ project, then these attributes must be
+applied to any module containing the project. For example,
+`org.graalvm.compiler.serviceprovider` has `"javaCompliance" : "8+"` and contains
+code that imports `sun.misc.Unsafe`. Since `org.graalvm.compiler.serviceprovider`
+is part of the `jdk.internal.vm.compiler` module defined by the `GRAAL` distribution,
+`GRAAL` must include a `requires` attribute in its `moduleInfo` attribute:
+```
+"GRAAL" : {
+    "moduleInfo" : {
+        "name" : "jdk.internal.vm.compiler",
+        "requires" : ["jdk.unsupported"],
+        ...
+    }
+}
+```
 
 ### Selecting JDKs
 
