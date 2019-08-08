@@ -7258,9 +7258,9 @@ class JavaProject(Project, ClasspathDependency):
                         self.abort('As of mx {}, the "imports" attribute has been replaced by the "requiresConcealed" attribute. '.format(compat.version()) + \
                               'See {} for more information.'.format(join(_mx_home, 'README.md')))
 
-                    imports = getattr(self, 'requiresConcealed', None)
-                    if imports is not None:
-                        parse_requiresConcealed_attribute(jdk, imports, concealed, None, self)
+                    requires_concealed = getattr(self, 'requiresConcealed', None)
+                    if requires_concealed is not None:
+                        parse_requiresConcealed_attribute(jdk, requires_concealed, concealed, None, self)
 
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)

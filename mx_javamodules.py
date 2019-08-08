@@ -468,6 +468,7 @@ def make_java_module(dist, jdk):
     for project in java_projects:
         module_packages.update(project.defined_java_packages())
 
+        # Collect the required modules denoted by the dependencies of each project
         entries = mx.classpath_entries(project, includeSelf=False)
         for e in entries:
             e_module_name = e.get_declaring_module_name()
@@ -734,15 +735,22 @@ def get_transitive_closure(roots, observable_modules):
         add_transitive(root)
     return transitive_closure
 
-def parse_requiresConcealed_attribute(jdk, imports, concealed, self_module, context):
+def parse_requiresConcealed_attribute(jdk, value, result, importer, context):
+    """
+    Parses the "requiresConcealed" attribute value in `value` and updates `result`
+    which is a dict from module name to set of package names.
+
+    :param str importer: the name of the module importing the packages ("<unnamed>" or None denotes the unnamed module)
+    :param context: context value to use when reporting errors
+    """
     jdk_modules = jdk.get_modules()
-    for module, packages in imports.items():
+    for module, packages in value.items():
         matches = [jmd for jmd in jdk_modules if jmd.name == module]
         if not matches:
             mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
         jmd = matches[0]
 
-        package_set = concealed.setdefault(module, set())
+        package_set = result.setdefault(module, set())
 
         if packages == '*':
             star = True
@@ -757,14 +765,14 @@ def parse_requiresConcealed_attribute(jdk, imports, concealed, self_module, cont
                 package = package[0:-1]
             else:
                 optional = False
-            visibility = jmd.get_package_visibility(package, self_module)
+            visibility = jmd.get_package_visibility(package, importer)
             if visibility == 'concealed':
                 package_set.add(package)
             elif visibility == 'exported':
                 if not star:
-                    suffix = '' if not self_module else ' from module {}'.format(self_module)
+                    suffix = '' if not importer else ' from module {}'.format(importer)
                     mx.warn('Package {} is not concealed in module {}{}'.format(package, module, suffix), context=context)
             elif not optional:
-                m, _ = lookup_package(jdk_modules, package, self_module)
+                m, _ = lookup_package(jdk_modules, package, importer)
                 suffix = '' if not m else ' but in module {}'.format(m.name)
                 mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)
