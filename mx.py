@@ -13532,20 +13532,38 @@ class JDKConfig(Comparable):
         if not hasattr(self, '.modules'):
             jdkModules = join(self.home, 'lib', 'modules')
             cache = join(ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk' + str(self.version))), 'listmodules')
+            cache_source = cache + '.source'
             isJDKImage = exists(jdkModules)
-            if not exists(cache) or not isJDKImage or TimeStampFile(jdkModules).isNewerThan(cache) or TimeStampFile(__file__).isNewerThan(cache):
+
+            def _use_cache():
+                if not isJDKImage:
+                    return False
+                if not exists(cache):
+                    return False
+                if not exists(cache_source):
+                    return False
+                with open(cache_source) as fp:
+                    source = fp.read()
+                    if source != self.home:
+                        return False
+                if TimeStampFile(jdkModules).isNewerThan(cache) or TimeStampFile(__file__).isNewerThan(cache):
+                    return False
+                return True
+
+            if not _use_cache():
                 addExportsArg = '--add-exports=java.base/jdk.internal.module=ALL-UNNAMED'
                 _, binDir = _compile_mx_class('ListModules', jdk=self, extraJavacArgs=[addExportsArg])
                 out = LinesOutputCapture()
                 run([self.java, '-cp', _cygpathU2W(binDir), addExportsArg, 'ListModules'], out=out)
                 lines = out.lines
                 if isJDKImage:
-                    try:
-                        with open(cache, 'w') as fp:
-                            fp.write('\n'.join(lines))
-                    except IOError as e:
-                        warn('Error writing to ' + cache + ': ' + str(e))
-                        os.remove(cache)
+                    for dst, content in [(cache_source, self.home), (cache, '\n'.join(lines))]:
+                        try:
+                            with open(dst, 'w') as fp:
+                                fp.write(content)
+                        except IOError as e:
+                            warn('Error writing to ' + dst + ': ' + str(e))
+                            os.remove(dst)
             else:
                 with open(cache) as fp:
                     lines = fp.read().split('\n')
