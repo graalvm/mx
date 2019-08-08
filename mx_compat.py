@@ -210,8 +210,8 @@ class MxCompatibility500(object):
     def enhanced_module_usage_info(self):
         """
         Returns True if a Java project must specify its use of concealed packages with
-        a "compileAddExports" attribute and use of modules other than java.base with
-        a "compileRequires" attribute.
+        a "requiresConcealed" attribute and use of modules other than java.base with
+        a "requires" attribute.
         """
         return False
 

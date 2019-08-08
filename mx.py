@@ -3377,7 +3377,7 @@ import mx_downstream
 import mx_subst
 
 from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, \
-                           get_transitive_closure, get_module_name, parse_compileAddExports_attribute
+                           get_transitive_closure, get_module_name, parse_requiresConcealed_attribute
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -7255,12 +7255,12 @@ class JavaProject(Project, ClasspathDependency):
                                 pass
                 else:
                     if hasattr(self, 'imports'):
-                        self.abort('As of mx {}, the "imports" attribute has been replaced by the "compileAddExports" attribute. '.format(compat.version()) + \
+                        self.abort('As of mx {}, the "imports" attribute has been replaced by the "requiresConcealed" attribute. '.format(compat.version()) + \
                               'See {} for more information.'.format(join(_mx_home, 'README.md')))
 
-                    imports = getattr(self, 'compileAddExports', None)
+                    imports = getattr(self, 'requiresConcealed', None)
                     if imports is not None:
-                        parse_compileAddExports_attribute(jdk, imports, concealed, None, self)
+                        parse_requiresConcealed_attribute(jdk, imports, concealed, None, self)
 
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
@@ -7738,7 +7738,7 @@ class JavacCompiler(JavacLikeCompiler):
                 exports = {}
                 compat = project.suite.getMxCompatibility()
                 if compat.enhanced_module_usage_info():
-                    required_modules = set(getattr(project, 'compileRequires', []))
+                    required_modules = set(getattr(project, 'requires', []))
                     required_modules.add('java.base')
                 else:
                     required_modules = None
@@ -7755,7 +7755,7 @@ class JavacCompiler(JavacLikeCompiler):
                         if e_module_name:
                             jdk_modules_overridden_on_classpath.add(e_module_name)
                             if required_modules and e_module_name in required_modules:
-                                abort('Project must not specify {} in a "compileRequires" attribute as it conflicts with the dependency {}'.format(e_module_name, e),
+                                abort('Project must not specify {} in a "requires" attribute as it conflicts with the dependency {}'.format(e_module_name, e),
                                        context=project)
                         elif e.isJavaProject():
                             addExportArgs(e, exports)

@@ -482,7 +482,7 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [
       ],
-      "compileAddExports" : {
+      "requiresConcealed" : {
         "java.base" : [
           "jdk.internal.module",
         ],

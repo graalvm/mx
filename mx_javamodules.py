@@ -536,7 +536,7 @@ def make_java_module(dist, jdk):
             requires.setdefault(m, set()).add('static')
 
         if not enhanced_module_usage_info:
-            # In the absence of "compileAddExports" and "compileRequires" attributes, the import statements
+            # In the absence of "requiresConcealed" and "requires" attributes, the import statements
             # in the Java sources need to be scanned to determine what modules are
             # required and what concealed packages are used.
             allmodules = modulepath + jdk_modules
@@ -554,7 +554,7 @@ def make_java_module(dist, jdk):
         else:
             for module, packages in project.get_concealed_imported_packages(jdk).items():
                 concealedRequires.setdefault(module, set()).update(packages)
-            for module in getattr(project, 'compileRequires', []):
+            for module in getattr(project, 'requires', []):
                 requires.setdefault(module, set())
 
         if not module_info:
@@ -734,12 +734,12 @@ def get_transitive_closure(roots, observable_modules):
         add_transitive(root)
     return transitive_closure
 
-def parse_compileAddExports_attribute(jdk, imports, concealed, self_module, context):
+def parse_requiresConcealed_attribute(jdk, imports, concealed, self_module, context):
     jdk_modules = jdk.get_modules()
     for module, packages in imports.items():
         matches = [jmd for jmd in jdk_modules if jmd.name == module]
         if not matches:
-            mx.abort('Module {} in "compileAddExports" attribute does not exist in {}'.format(module, jdk), context=context)
+            mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
         jmd = matches[0]
 
         package_set = concealed.setdefault(module, set())
@@ -750,7 +750,7 @@ def parse_compileAddExports_attribute(jdk, imports, concealed, self_module, cont
         else:
             star = False
             if not isinstance(packages, list):
-                mx.abort('Packages for module {} in "compileAddExports" attribute must be either "*" or a list of package names'.format(module), context=context)
+                mx.abort('Packages for module {} in "requiresConcealed" attribute must be either "*" or a list of package names'.format(module), context=context)
         for package in packages:
             if package.endswith('?'):
                 optional = True
