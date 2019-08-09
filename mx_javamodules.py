@@ -514,10 +514,10 @@ def make_java_module(dist, jdk):
                 if not targets:
                     mx.abort('exports attribute must have at least one target for qualified export', context=dist)
                 for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
-                    exports.setdefault(p, targets)
+                    exports.setdefault(p, set()).update(targets)
             else:
                 for p in _parse_packages_spec(export, available_packages, project_scope):
-                    exports.setdefault(p, [])
+                    exports.setdefault(p, set())
 
     module_info = getattr(dist, 'moduleInfo', None)
     if module_info:
