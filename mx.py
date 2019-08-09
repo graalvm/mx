@@ -7217,13 +7217,25 @@ class JavaProject(Project, ClasspathDependency):
         if jdk is None:
             jdk = get_jdk(self.javaCompliance)
         cache = '.concealed_imported_packages@' + str(jdk.version)
+
+        def _process_imports(imports, concealed):
+            imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
+            modulepath = jdk.get_modules()
+            for package in imported:
+                jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
+                if visibility == 'concealed':
+                    if self.defined_java_packages().isdisjoint(jmd.packages):
+                        concealed.setdefault(jmd.name, set()).add(package)
+                    else:
+                        # This project is part of the module defining the concealed package
+                        pass
+
         if getattr(self, cache, None) is None:
             concealed = {}
             if jdk.javaCompliance >= '9':
                 compat = self.suite.getMxCompatibility()
                 if not compat.enhanced_module_usage_info():
                     imports = getattr(self, 'imports', [])
-
                     # Include conceals from transitive project dependencies
                     def visit(dep, edge):
                         if dep is not self and dep.isJavaProject():
@@ -7243,20 +7255,17 @@ class JavaProject(Project, ClasspathDependency):
                             if not m:
                                 abort('"imports" contains an entry that does not match expected pattern for package name: ' + imported, self)
 
-                    imported = itertools.chain(imports, self.imported_java_packages(projectDepsOnly=False))
-                    modulepath = jdk.get_modules()
-                    for package in imported:
-                        jmd, visibility = lookup_package(modulepath, package, "<unnamed>")
-                        if visibility == 'concealed':
-                            if self.defined_java_packages().isdisjoint(jmd.packages):
-                                concealed.setdefault(jmd.name, set()).add(package)
-                            else:
-                                # This project is part of the module defining the concealed package
-                                pass
+                    _process_imports(imports, concealed)
                 else:
                     if hasattr(self, 'imports'):
-                        self.abort('As of mx {}, the "imports" attribute has been replaced by the "requiresConcealed" attribute. '.format(compat.version()) + \
-                              'See {} for more information.'.format(join(_mx_home, 'README.md')))
+                        _process_imports(getattr(self, 'imports'), concealed)
+                        nl = os.linesep
+                        msg = 'As of mx {}, the "imports" attribute has been replaced by the "requiresConcealed" attribute:{}{}'.format(compat.version(), nl, nl)
+                        msg += '  "requiresConcealed" : {' + nl
+                        for module, packages in concealed.items():
+                            msg += '    "{}" : ["{}"],{}'.format(module, '", "'.join(packages), nl)
+                        msg += '  }' + nl + nl +'See {} for more information.'.format(join(_mx_home, 'README.md'))
+                        self.abort(msg)
 
                     requires_concealed = getattr(self, 'requiresConcealed', None)
                     if requires_concealed is not None:
