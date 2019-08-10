@@ -32,7 +32,6 @@ import zipfile
 import pickle
 import shutil
 from os.path import join, exists, dirname, basename
-from tempfile import mkdtemp
 
 from zipfile import ZipFile
 
@@ -665,17 +664,21 @@ def make_java_module(dist, jdk):
             with open(module_info_java, 'w') as fp:
                 print(jmd.as_module_info(), file=fp)
             javacCmd = [jdk.javac, '-d', dest_dir]
-            jdkModuleNames = [m.name for m in jdk_modules]
-            modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
-            upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
+            modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
             # TODO we should rather use the right JDK
             javacCmd += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
-            if modulepathJars:
-                javacCmd.append('--module-path')
-                javacCmd.append(os.pathsep.join(modulepathJars))
-            if upgrademodulepathJars:
-                javacCmd.append('--upgrade-module-path')
-                javacCmd.append(os.pathsep.join(upgrademodulepathJars))
+
+            # The --system=none and --limit-modules options are used to support distribution defined modules
+            # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
+            # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
+            javacCmd.append('--system=none')
+            javacCmd.append('--limit-modules=' + ','.join(requires.keys()))
+            jdk_jmods = join(jdk.home, 'jmods')
+            if not exists(jdk_jmods):
+                mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
+            modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
+            javacCmd.append('--module-path=' + os.pathsep.join(modulepath_jars))
+
             if concealedRequires:
                 for module, packages in concealedRequires.items():
                     for package in packages:
@@ -744,7 +747,7 @@ def get_transitive_closure(roots, observable_modules):
         add_transitive(root)
     return transitive_closure
 
-def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=[]):
+def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=None):
     """
     Parses the "requiresConcealed" attribute value in `value` and updates `result`
     which is a dict from module name to set of package names.
@@ -752,7 +755,7 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
     :param str importer: the name of the module importing the packages ("<unnamed>" or None denotes the unnamed module)
     :param context: context value to use when reporting errors
     """
-    all_modules = modulepath + list(jdk.get_modules())
+    all_modules = (modulepath or []) + list(jdk.get_modules())
     for module, packages in value.items():
         matches = [jmd for jmd in all_modules if jmd.name == module]
         if not matches:
