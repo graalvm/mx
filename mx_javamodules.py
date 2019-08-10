@@ -565,7 +565,7 @@ def make_java_module(dist, jdk):
             default_exported_java_packages = [] if module_info else project.defined_java_packages()
             _process_exports(getattr(project, 'exports', default_exported_java_packages), project.defined_java_packages(), project)
 
-    work_directory = mkdtemp()
+    build_directory = mx.ensure_dir_exists(moduleJar + ".build")
     try:
         files_to_remove = set()
 
@@ -606,7 +606,12 @@ def make_java_module(dist, jdk):
         for version in all_versions:
             uses = base_uses.copy()
             provides = {}
-            dest_dir = join(work_directory, version)
+            dest_dir = join(build_directory, version)
+
+            if exists(dest_dir):
+                # Clean up any earlier build artifacts
+                shutil.rmtree(dest_dir)
+
             int_version = int(version) if version != 'common' else -1
 
             for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
@@ -704,7 +709,10 @@ def make_java_module(dist, jdk):
                         if info.filename not in files_to_remove:
                             outzf.writestr(info, inzf.read(info))
     finally:
-        shutil.rmtree(work_directory)
+        if not mx.get_opts().verbose:
+            # Preserve build directory so that javac command can be re-executed
+            # by cutting and pasting verbose output.
+            shutil.rmtree(build_directory)
     default_jmd.save()
     return default_jmd
 
