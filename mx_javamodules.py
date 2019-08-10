@@ -456,10 +456,7 @@ def make_java_module(dist, jdk):
     else:
         module_deps = get_module_deps(dist)
 
-    # Append JDK modules to module path
-    jdk_modules = jdk.get_modules()
-    if not isinstance(jdk_modules, list):
-        jdk_modules = list(jdk_modules)
+    jdk_modules = list(jdk.get_modules())
 
     java_projects = [d for d in module_deps if d.isJavaProject()]
 
@@ -528,6 +525,10 @@ def make_java_module(dist, jdk):
             requires.setdefault(name, set()).update(qualifiers)
         base_uses.update(module_info.get('uses', []))
         _process_exports(module_info.get('exports', []), module_packages)
+
+        requires_concealed = module_info.get('requiresConcealed', None)
+        if requires_concealed is not None:
+            parse_requiresConcealed_attribute(jdk, requires_concealed, concealedRequires, None, dist, modulepath)
 
     enhanced_module_usage_info = dist.suite.getMxCompatibility().enhanced_module_usage_info()
 
@@ -735,7 +736,7 @@ def get_transitive_closure(roots, observable_modules):
         add_transitive(root)
     return transitive_closure
 
-def parse_requiresConcealed_attribute(jdk, value, result, importer, context):
+def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=[]):
     """
     Parses the "requiresConcealed" attribute value in `value` and updates `result`
     which is a dict from module name to set of package names.
@@ -743,9 +744,9 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context):
     :param str importer: the name of the module importing the packages ("<unnamed>" or None denotes the unnamed module)
     :param context: context value to use when reporting errors
     """
-    jdk_modules = jdk.get_modules()
+    all_modules = modulepath + list(jdk.get_modules())
     for module, packages in value.items():
-        matches = [jmd for jmd in jdk_modules if jmd.name == module]
+        matches = [jmd for jmd in all_modules if jmd.name == module]
         if not matches:
             mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
         jmd = matches[0]
@@ -773,6 +774,6 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context):
                     suffix = '' if not importer else ' from module {}'.format(importer)
                     mx.warn('Package {} is not concealed in module {}{}'.format(package, module, suffix), context=context)
             elif not optional:
-                m, _ = lookup_package(jdk_modules, package, importer)
+                m, _ = lookup_package(all_modules, package, importer)
                 suffix = '' if not m else ' but in module {}'.format(m.name)
                 mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)
