@@ -89,6 +89,11 @@ class JavaModuleDescriptor(object):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
+    def get_jmod_path(self):
+        if self.jarpath:
+            return join(dirname(self.jarpath), self.name + '.jmod')
+        return None
+
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
         """
@@ -601,10 +606,15 @@ def make_java_module(dist, jdk):
             # 9 is the first version that supports modules and can be versioned in the JAR:
             # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
             # so that the module works on JDK 9.
-            all_versions = all_versions | {'common'}
             default_version = 'common'
+            if all_versions:
+                max_version = str(max((int(v) for v in all_versions)))
+            else:
+                max_version = default_version
+            all_versions = all_versions | {'common'}
         else:
-            default_version = str(max((int(v) for v in all_versions)))
+            max_version = str(max((int(v) for v in all_versions)))
+            default_version = max_version
 
         for version in all_versions:
             uses = base_uses.copy()
@@ -697,6 +707,12 @@ def make_java_module(dist, jdk):
             javacCmd.append(module_info_java)
             mx.run(javacCmd)
             module_info_class = join(dest_dir, 'module-info.class')
+
+            # Create .jmod for module
+            if version == max_version:
+                if exists(jmd.get_jmod_path()):
+                    os.remove(jmd.get_jmod_path())
+                mx.run([jdk.javac.replace('javac', 'jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
 
             # Append the module-info.class
             module_info_arc_dir = ''
