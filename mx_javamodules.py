@@ -145,9 +145,12 @@ class JavaModuleDescriptor(object):
             self.dist = dist
             self.jarpath = jarpath
 
-    def as_module_info(self):
+    def as_module_info(self, extras_as_comments=True):
         """
         Gets this module descriptor expressed as the contents of a ``module-info.java`` file.
+
+        :param bool extras_as_comments: whether to emit comments documenting attributes not supported
+                    by the module-info.java format
         """
         out = StringIO()
         print('module ' + self.name + ' {', file=out)
@@ -161,18 +164,19 @@ class JavaModuleDescriptor(object):
             print('    uses ' + use + ';', file=out)
         for service, providers in sorted(self.provides.items()):
             print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
-        for pkg in sorted(self.conceals):
-            print('    // conceals: ' + pkg, file=out)
-        if self.jarpath:
-            print('    // jarpath: ' + self.jarpath.replace('\\', '\\\\'), file=out)
-        if self.dist:
-            print('    // dist: ' + self.dist.name, file=out)
-        if self.modulepath:
-            print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
-        if self.concealedRequires:
-            for dependency, packages in sorted(self.concealedRequires.items()):
-                for package in sorted(packages):
-                    print('    // concealed-requires: ' + dependency + '/' + package, file=out)
+        if extras_as_comments:
+            for pkg in sorted(self.conceals):
+                print('    // conceals: ' + pkg, file=out)
+            if self.jarpath:
+                print('    // jarpath: ' + self.jarpath.replace('\\', '\\\\'), file=out)
+            if self.dist:
+                print('    // dist: ' + self.dist.name, file=out)
+            if self.modulepath:
+                print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
+            if self.concealedRequires:
+                for dependency, packages in sorted(self.concealedRequires.items()):
+                    for package in sorted(packages):
+                        print('    // concealed-requires: ' + dependency + '/' + package, file=out)
         print('}', file=out)
         return out.getvalue()
 
