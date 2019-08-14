@@ -679,14 +679,18 @@ def warn(msg, context=None):
 A simple timing facility.
 """
 class Timer():
-    def __init__(self, name):
+    def __init__(self, name, times=None):
         self.name = name
+        self.times = times
     def __enter__(self):
         self.start = time.time()
         return self
     def __exit__(self, t, value, traceback):
         elapsed = time.time() - self.start
-        print('{} took {} seconds'.format(self.name, elapsed))
+        if self.times is None:
+            print('{} took {} seconds'.format(self.name, elapsed))
+        else:
+            self.times.append((self.name, elapsed))
 
 def glob_match_any(patterns, path):
     return any((glob_match(pattern, path) for pattern in patterns))
@@ -5027,7 +5031,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         else:
             return join(self.suite.dir, self.name + '.dist')
 
-    def make_archive(self):
+    def make_archive(self, javac_daemon=None):
         """
         Creates the jar file(s) defined by this JARDistribution.
         """
@@ -5372,7 +5376,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
-            jmd = make_java_module(self, get_jdk(compliance))
+            jmd = make_java_module(self, get_jdk(compliance), javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
 
@@ -5622,6 +5626,22 @@ class JARArchiveTask(AbstractArchiveTask):
             return True
         return False
 
+    def build(self):
+        self.subject.make_archive(getattr(self, 'javac_daemon', None))
+
+    def prepare(self, daemons):
+        if self.args.no_daemon:
+            return
+        compliance = self.subject._compliance_for_build()
+        if compliance is not None and compliance >= '9':
+            info = get_java_module_info(self.subject)
+            if info:
+                jdk = get_jdk(compliance)
+                key = 'javac-daemon:' + jdk.java + ' '.join(jdk.java_args)
+                self.javac_daemon = daemons.get(key)
+                if not self.javac_daemon:
+                    self.javac_daemon = JavacDaemon(jdk, jdk.java_args)
+                    daemons[key] = self.javac_daemon
 
 class AbstractDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
@@ -7078,7 +7098,7 @@ class JavaProject(Project, ClasspathDependency):
 
             self._mismatched_imports = mismatched_imports
             self._imported_packages = frozenset(imports)
-            self._imported_packages_from_java_projects = frozenset(importedPackagesFromProjects)
+            self._imported_packages_from_java_projects = frozenset(importedPackagesFromProjects) # pylint: disable=invalid-name
 
     def defined_java_packages(self):
         """Get the immutable set of Java packages defined by the Java sources of this project"""
@@ -7850,7 +7870,7 @@ class JavacDaemonCompiler(JavacCompiler):
 
     def prepare_daemon(self, daemons, compileArgs):
         jvmArgs = self.jdk.java_args + [a[2:] for a in compileArgs if a.startswith('-J')]
-        key = 'javac-daemon:' + self.jdk.java + ' ' + ' '.join(jvmArgs)
+        key = 'javac-daemon:' + self.jdk.java + ' '.join(jvmArgs)
         self.daemon = daemons.get(key)
         if not self.daemon:
             self.daemon = JavacDaemon(self.jdk, jvmArgs)
@@ -8053,7 +8073,7 @@ class ECJDaemonCompiler(ECJCompiler):
 
     def prepare_daemon(self, daemons, compileArgs):
         jvmArgs = self.jdk.java_args
-        key = 'ecj-daemon:' + self.jdk.java + ' ' + ' '.join(jvmArgs)
+        key = 'ecj-daemon:' + self.jdk.java + ' '.join(jvmArgs)
         self.daemon = daemons.get(key)
         if not self.daemon:
             self.daemon = ECJDaemon(self.jdk, jvmArgs, self.jdtJar)
@@ -13390,7 +13410,7 @@ class JDKConfig(Comparable):
         Gets the full path to the executable in this JDK whose base name is `name`
         and is located in `sub_dir` (relative to self.home).
 
-        :param str sub_dir: 
+        :param str sub_dir:
         """
         return exe_suffix(join(self.home, sub_dir, name))
 
