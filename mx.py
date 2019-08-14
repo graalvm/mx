@@ -13316,13 +13316,13 @@ class JDKConfig(Comparable):
         home = realpath(home)
         self.home = home
         self.tag = tag
-        self.jar = exe_suffix(join(self.home, 'bin', 'jar'))
-        self.java = exe_suffix(join(self.home, 'bin', 'java'))
-        self.javac = exe_suffix(join(self.home, 'bin', 'javac'))
-        self.javah = exe_suffix(join(self.home, 'bin', 'javah'))
-        self.javap = exe_suffix(join(self.home, 'bin', 'javap'))
-        self.javadoc = exe_suffix(join(self.home, 'bin', 'javadoc'))
-        self.pack200 = exe_suffix(join(self.home, 'bin', 'pack200'))
+        self.jar = self.exe_path('jar')
+        self.java = self.exe_path('java')
+        self.javac = self.exe_path('javac')
+        self.javah = self.exe_path('javah')
+        self.javap = self.exe_path('javap')
+        self.javadoc = self.exe_path('javadoc')
+        self.pack200 = self.exe_path('pack200')
         self.include_dirs = [join(self.home, 'include'),
                              join(self.home, 'include', 'win32' if is_windows() else get_os())]
         self.toolsjar = join(self.home, 'lib', 'tools.jar')
@@ -13384,6 +13384,15 @@ class JDKConfig(Comparable):
         self.javaCompliance = JavaCompliance(self.version.versionString)
 
         self.debug_args = java_debug_args()
+
+    def exe_path(self, name, sub_dir='bin'):
+        """
+        Gets the full path to the executable in this JDK whose base name is `name`
+        and is located in `sub_dir` (relative to self.home).
+
+        :param str sub_dir: 
+        """
+        return exe_suffix(join(self.home, sub_dir, name))
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:

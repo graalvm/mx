@@ -713,7 +713,7 @@ def make_java_module(dist, jdk):
             if version == max_version:
                 if exists(jmd.get_jmod_path()):
                     os.remove(jmd.get_jmod_path())
-                mx.run([jdk.javac.replace('javac', 'jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
+                mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
 
             # Append the module-info.class
             module_info_arc_dir = ''
