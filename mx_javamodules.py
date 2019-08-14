@@ -686,7 +686,8 @@ def make_java_module(dist, jdk):
             # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
             # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
             javacCmd.append('--system=none')
-            javacCmd.append('--limit-modules=' + ','.join(requires.keys()))
+            if requires:
+                javacCmd.append('--limit-modules=' + ','.join(requires.keys()))
             jdk_jmods = join(jdk.home, 'jmods')
             if not exists(jdk_jmods):
                 mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)

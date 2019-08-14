@@ -6991,10 +6991,31 @@ class JavaProject(Project, ClasspathDependency):
                                                 result[className] = (source, matchingLineFound)
         return result
 
-    def _init_packages_and_imports(self):
+    def _init_java_packages(self):
         if not hasattr(self, '_defined_java_packages'):
             packages = set()
             extendedPackages = set()
+            depPackages = set()
+            def visit(dep, edge):
+                if dep is not self and dep.isProject():
+                    depPackages.update(dep.defined_java_packages())
+            self.walk_deps(visit=visit)
+            for sourceDir in self.source_dirs():
+                for root, _, files in os.walk(sourceDir):
+                    javaSources = [name for name in files if name.endswith('.java')]
+                    if len(javaSources) != 0:
+                        path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
+                        if path_package not in depPackages:
+                            packages.add(path_package)
+                        else:
+                            # A project extends a package already defined by one of it dependencies
+                            extendedPackages.add(path_package)
+
+            self._defined_java_packages = frozenset(packages)
+            self._extended_java_packages = frozenset(extendedPackages)
+
+    def _init_java_imports(self):
+        if not hasattr(self, '_imported_packages'):
             depPackages = set()
             def visit(dep, edge):
                 if dep is not self and dep.isProject():
@@ -7011,11 +7032,7 @@ class JavaProject(Project, ClasspathDependency):
                     javaSources = [name for name in files if name.endswith('.java')]
                     if len(javaSources) != 0:
                         path_package = root[len(sourceDir) + 1:].replace(os.sep, '.')
-                        if path_package not in depPackages:
-                            packages.add(path_package)
-                        else:
-                            # A project extends a package already defined by one of it dependencies
-                            extendedPackages.add(path_package)
+                        if path_package in depPackages:
                             imports.add(path_package)
 
                         for n in javaSources:
@@ -7038,10 +7055,6 @@ class JavaProject(Project, ClasspathDependency):
                             if java_package != path_package:
                                 mismatched_imports[java_source] = java_package
 
-            self._defined_java_packages = frozenset(packages)
-            self._extended_java_packages = frozenset(extendedPackages)
-            self._mismatched_imports = mismatched_imports
-
             importedPackagesFromProjects = set()
             compat = self.suite.getMxCompatibility()
             for package in imports:
@@ -7059,17 +7072,18 @@ class JavaProject(Project, ClasspathDependency):
                     if name is not None:
                         importedPackagesFromProjects.add(name)
 
-            setattr(self, '.importedPackages', frozenset(imports))
-            setattr(self, '.importedPackagesFromJavaProjects', frozenset(importedPackagesFromProjects))
+            self._mismatched_imports = mismatched_imports
+            self._imported_packages = frozenset(imports)
+            self._imported_packages_from_java_projects = frozenset(importedPackagesFromProjects)
 
     def defined_java_packages(self):
         """Get the immutable set of Java packages defined by the Java sources of this project"""
-        self._init_packages_and_imports()
+        self._init_java_packages()
         return self._defined_java_packages
 
     def extended_java_packages(self):
         """Get the immutable set of Java packages extended by the Java sources of this project"""
-        self._init_packages_and_imports()
+        self._init_java_packages()
         return self._extended_java_packages
 
     def imported_java_packages(self, projectDepsOnly=True):
@@ -7080,12 +7094,12 @@ class JavaProject(Project, ClasspathDependency):
         :return: the packages imported by this Java project, filtered as per `projectDepsOnly`
         :rtype: frozenset
         """
-        self._init_packages_and_imports()
-        return getattr(self, '.importedPackagesFromJavaProjects') if projectDepsOnly else getattr(self, '.importedPackages')
+        self._init_java_imports()
+        return self._imported_packages_from_java_projects if projectDepsOnly else self._imported_packages
 
     def mismatched_imports(self):
         """Get a dictionary of source files whose package declaration does not match their source location"""
-        self._init_packages_and_imports()
+        self._init_java_imports()
         return self._mismatched_imports
 
     def annotation_processors(self):
