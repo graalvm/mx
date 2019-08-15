@@ -104,4 +104,4 @@ if new_version and old_version:
         subprocess.check_call(['git', 'tag', tag, args.descendant])
         subprocess.check_call(['git', 'push', 'origin', tag])
 else:
-    raise SystemExit('Could not find mx version update in the diff between {} and {}:\n{}'.format(with_hash(args.ancestor), with_hash(args.descendant), diff))
+    raise SystemExit('Could not find mx version update in the diff between {} and {}:\n{}\n\nPlease bump the value of the `version` field near the bottom of mx.py.'.format(with_hash(args.ancestor), with_hash(args.descendant), diff))
