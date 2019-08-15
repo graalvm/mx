@@ -31,9 +31,7 @@ import re
 import zipfile
 import pickle
 import shutil
-import itertools
 from os.path import join, exists, dirname, basename
-from tempfile import mkdtemp
 
 from zipfile import ZipFile
 
@@ -41,6 +39,7 @@ import mx
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 import sys
+import itertools
 if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
@@ -58,7 +57,7 @@ class JavaModuleDescriptor(object):
     :param set uses: the service types used by this module
     :param dict provides: dict from a service name to the set of providers of the service defined by this module
     :param iterable packages: the packages defined by this module
-    :param set conceals: the packages defined but not exported to everyone by this module
+    :param set conceals: the packages defined but not exported to anyone by this module
     :param str jarpath: path to module jar file
     :param JARDistribution dist: distribution from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
@@ -89,6 +88,11 @@ class JavaModuleDescriptor(object):
     def __cmp__(self, other):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
+
+    def get_jmod_path(self):
+        if self.jarpath:
+            return join(dirname(self.jarpath), self.name + '.jmod')
+        return None
 
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
@@ -146,9 +150,12 @@ class JavaModuleDescriptor(object):
             self.dist = dist
             self.jarpath = jarpath
 
-    def as_module_info(self):
+    def as_module_info(self, extras_as_comments=True):
         """
         Gets this module descriptor expressed as the contents of a ``module-info.java`` file.
+
+        :param bool extras_as_comments: whether to emit comments documenting attributes not supported
+                    by the module-info.java format
         """
         out = StringIO()
         print('module ' + self.name + ' {', file=out)
@@ -162,40 +169,54 @@ class JavaModuleDescriptor(object):
             print('    uses ' + use + ';', file=out)
         for service, providers in sorted(self.provides.items()):
             print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
-        for pkg in sorted(self.conceals):
-            print('    // conceals: ' + pkg, file=out)
-        if self.jarpath:
-            print('    // jarpath: ' + self.jarpath.replace('\\', '\\\\'), file=out)
-        if self.dist:
-            print('    // dist: ' + self.dist.name, file=out)
-        if self.modulepath:
-            print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
-        if self.concealedRequires:
-            for dependency, packages in sorted(self.concealedRequires.items()):
-                for package in sorted(packages):
-                    print('    // concealed-requires: ' + dependency + '/' + package, file=out)
+        if extras_as_comments:
+            for pkg in sorted(self.conceals):
+                print('    // conceals: ' + pkg, file=out)
+            if self.jarpath:
+                print('    // jarpath: ' + self.jarpath.replace('\\', '\\\\'), file=out)
+            if self.dist:
+                print('    // dist: ' + self.dist.name, file=out)
+            if self.modulepath:
+                print('    // modulepath: ' + ', '.join([jmd.name for jmd in self.modulepath]), file=out)
+            if self.concealedRequires:
+                for dependency, packages in sorted(self.concealedRequires.items()):
+                    for package in sorted(packages):
+                        print('    // concealed-requires: ' + dependency + '/' + package, file=out)
         print('}', file=out)
         return out.getvalue()
 
+    def get_package_visibility(self, package, importer):
+        """
+        Gets the visibility of `package` in this module.
+
+        :param str package: a package name
+        :param str importer: the name of the module importing the package (use "<unnamed>" or None for the unnamed module)
+        :return: if `package` is in this module, then return 'concealed' or 'exported' depending on the
+                 visibility of the package with respect to `importer` otherwise return None
+        """
+        targets = self.exports.get(package, None)
+        if targets is not None:
+            if len(targets) == 0 or importer in targets:
+                return 'exported'
+            return 'concealed'
+        elif package in self.conceals:
+            return 'concealed'
+
 def lookup_package(modulepath, package, importer):
     """
-    Searches a given module path for the module defining a given package.
+    Searches `modulepath` for the module defining `package`.
 
-    :param list modulepath: a list of `JavaModuleDescriptors`
-    :param str package: the name of the package to lookup
-    :param str importer: the name of the module importing the package (use "<unnamed>" for the unnamed module)
+    :param list modulepath: an iterable of `JavaModuleDescriptors`
+    :param str package: a package name
+    :param str importer: the name of the module importing the package (use "<unnamed>" or None for the unnamed module)
     :return: if the package is found, then a tuple containing the defining module
              and a value of 'concealed' or 'exported' denoting the visibility of the package.
              Otherwise (None, None) is returned.
     """
     for jmd in modulepath:
-        targets = jmd.exports.get(package, None)
-        if targets is not None:
-            if len(targets) == 0 or importer in targets:
-                return jmd, 'exported'
-            return jmd, 'concealed'
-        elif package in jmd.conceals:
-            return jmd, 'concealed'
+        visibility = jmd.get_package_visibility(package, importer)
+        if visibility is not None:
+            return jmd, visibility
     return (None, None)
 
 def get_module_deps(dist):
@@ -379,7 +400,7 @@ _special_versioned_prefix = 'META-INF/_versions/'  # used for versioned services
 _versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
 
 
-def make_java_module(dist, jdk):
+def make_java_module(dist, jdk, javac_daemon=None):
     """
     Creates a Java module from a distribution.
     This updates the JAR by adding `module-info` classes.
@@ -416,271 +437,366 @@ def make_java_module(dist, jdk):
     if info is None:
         return None
 
-    moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-    mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
-    exports = {}
-    requires = {}
-    concealedRequires = {}
-    base_uses = set()
+    times = []
+    with mx.Timer('total', times):
+        moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
+        mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
+        exports = {}
+        requires = {}
+        concealedRequires = {}
+        base_uses = set()
 
-    modulepath = list()
-    usedModules = set()
-
-    if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
-        moduledeps = dist.archived_deps()
-        for dep in mx.classpath_entries(dist, includeSelf=False):
-            if dep.isJARDistribution():
-                jmd = as_java_module(dep, jdk)
-                modulepath.append(jmd)
-                requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
-            elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
-                pass
-            elif dep.isLibrary():
-                jmd = get_library_as_module(dep, jdk)
-                modulepath.append(jmd)
-                requires[jmd.name] = set()
-            else:
-                mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
-    else:
-        moduledeps = get_module_deps(dist)
-
-    # Append JDK modules to module path
-    jdkModules = jdk.get_modules()
-    if not isinstance(jdkModules, list):
-        jdkModules = list(jdkModules)
-    allmodules = modulepath + jdkModules
-
-    javaprojects = [d for d in moduledeps if d.isJavaProject()]
-
-    # Collect packages in the module first
-    module_packages = set()
-    for dep in javaprojects:
-        module_packages.update(dep.defined_java_packages())
-
-    def _parse_packages_spec(packages_spec, available_packages, project_scope):
-        """
-        Parses a packages specification against a set of available packages:
-          "org.graalvm.foo,org.graalvm.bar" -> set("org.graalvm.foo", "org.graalvm.bar")
-          "<package-info>" -> set of all entries in `available_packages` denoting a package with a package-info.java file
-          "org.graalvm.*" -> set of all entries in `available_packages` that start with "org.graalvm."
-          "org.graalvm.compiler.code" -> set("org.graalvm.compiler.code")
-        """
-        if not packages_spec:
-            mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
-        res = set()
-        for spec in packages_spec.split(','):
-            if spec.endswith('*'):
-                prefix = spec[0:-1]
-                selection = set((p for p in available_packages if p.startswith(prefix)))
-                if not selection:
-                    mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
-                res.update(selection)
-            elif spec == '<package-info>':
-                if not project_scope:
-                    mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
-                res.update(mx._find_packages(project_scope, onlyPublic=True))
-            else:
-                if spec not in module_packages:
-                    mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
-                if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
-                    mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
-                res.add(spec)
-        return res
-
-    def _process_exports(export_specs, available_packages, project_scope=None):
-        for export in export_specs:
-            if ' to ' in export:
-                splitpackage = export.split(' to ')
-                packages_spec = splitpackage[0].strip()
-                targets = [n.strip() for n in splitpackage[1].split(',')]
-                if not targets:
-                    mx.abort('exports attribute must have at least one target for qualified export', context=dist)
-                for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
-                    exports.setdefault(p, targets)
-            else:
-                for p in _parse_packages_spec(export, available_packages, project_scope):
-                    exports.setdefault(p, [])
-
-    module_info = getattr(dist, 'moduleInfo', None)
-    if module_info:
-        for entry in module_info.get("requires", []):
-            parts = entry.split()
-            qualifiers = parts[0:-1]
-            name = parts[-1]
-            requires.setdefault(name, set()).update(qualifiers)
-        base_uses.update(module_info.get('uses', []))
-        _process_exports(module_info.get('exports', []), module_packages)
-
-    for dep in javaprojects:
-        base_uses.update(getattr(dep, 'uses', []))
-        for m in getattr(dep, 'runtimeDeps', []):
-            requires.setdefault(m, set()).add('static')
-
-        for pkg in itertools.chain(dep.imported_java_packages(projectDepsOnly=False), getattr(dep, 'imports', [])):
-            # Only consider packages not defined by the module we're creating. This handles the
-            # case where we're creating a module that will upgrade an existing upgradeable
-            # module in the JDK such as jdk.internal.vm.compiler.
-            if pkg not in module_packages:
-                depModule, visibility = lookup_package(allmodules, pkg, moduleName)
-                if depModule and depModule.name != moduleName:
-                    requires.setdefault(depModule.name, set())
-                    if visibility == 'exported':
-                        # A distribution based module does not re-export its imported JDK packages
-                        usedModules.add(depModule)
+        modulepath = list()
+        with mx.Timer('requires', times):
+            if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
+                module_deps = dist.archived_deps()
+                for dep in mx.classpath_entries(dist, includeSelf=False):
+                    if dep.isJARDistribution():
+                        jmd = as_java_module(dep, jdk)
+                        modulepath.append(jmd)
+                        requires[jmd.name] = {jdk.get_transitive_requires_keyword()}
+                    elif (dep.isJdkLibrary() or dep.isJreLibrary()) and dep.is_provided_by(jdk):
+                        pass
+                    elif dep.isLibrary():
+                        jmd = get_library_as_module(dep, jdk)
+                        modulepath.append(jmd)
+                        requires[jmd.name] = set()
                     else:
-                        assert visibility == 'concealed'
-                        concealedRequires.setdefault(depModule.name, set()).add(pkg)
-                        usedModules.add(depModule)
+                        mx.abort(dist.name + ' cannot depend on ' + dep.name + ' as it does not define a module')
+            else:
+                module_deps = get_module_deps(dist)
 
-        if not module_info:
-            # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
-            # all packages are exported.
-            default_exported_java_packages = [] if module_info else dep.defined_java_packages()
-            _process_exports(getattr(dep, 'exports', default_exported_java_packages), dep.defined_java_packages(), dep)
+        jdk_modules = list(jdk.get_modules())
+        java_projects = [d for d in module_deps if d.isJavaProject()]
 
-    work_directory = mkdtemp()
-    try:
-        files_to_remove = set()
+        # Collect packages in the module first
+        with mx.Timer('packages', times):
+            module_packages = set()
+            for project in java_projects:
+                module_packages.update(project.defined_java_packages())
 
-        # To compile module-info.java, all classes it references must either be given
-        # as Java source files or already exist as class files in the output directory.
-        # As such, the jar file for each constituent distribution must be unpacked
-        # in the output directory.
-        versions = {}
-        for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
-            if d.isJARDistribution():
-                with zipfile.ZipFile(d.original_path(), 'r') as zf:
-                    for arcname in sorted(zf.namelist()):
-                        m = _versioned_re.match(arcname)
-                        if m:
-                            version = m.group(1)
-                            unversioned_name = m.group(2)
-                            if version <= jdk.javaCompliance:
-                                versions.setdefault(version, {})[unversioned_name] = arcname
-                            else:
-                                # Ignore resource whose version is too high
-                                pass
-                            if unversioned_name.startswith('META-INF/services/'):
-                                files_to_remove.add(arcname)
-                            elif unversioned_name.startswith('META-INF/'):
-                                mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
-        default_jmd = None
+                # Collect the required modules denoted by the dependencies of each project
+                entries = mx.classpath_entries(project, includeSelf=False)
+                for e in entries:
+                    e_module_name = e.get_declaring_module_name()
+                    if e_module_name and e_module_name != moduleName:
+                        requires.setdefault(e_module_name, set())
 
-        all_versions = set(versions.keys())
-        if '9' not in all_versions:
-            # 9 is the first version that supports modules and can be versioned in the JAR:
-            # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
-            # so that the module works on JDK 9.
-            all_versions = all_versions | {'common'}
-            default_version = 'common'
-        else:
-            default_version = str(max((int(v) for v in all_versions)))
+        def _parse_packages_spec(packages_spec, available_packages, project_scope):
+            """
+            Parses a packages specification against a set of available packages:
+              "org.graalvm.foo,org.graalvm.bar" -> set("org.graalvm.foo", "org.graalvm.bar")
+              "<package-info>" -> set of all entries in `available_packages` denoting a package with a package-info.java file
+              "org.graalvm.*" -> set of all entries in `available_packages` that start with "org.graalvm."
+              "org.graalvm.compiler.code" -> set("org.graalvm.compiler.code")
+            """
+            if not packages_spec:
+                mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
+            res = set()
+            for spec in packages_spec.split(','):
+                if spec.endswith('*'):
+                    prefix = spec[0:-1]
+                    selection = set((p for p in available_packages if p.startswith(prefix)))
+                    if not selection:
+                        mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
+                    res.update(selection)
+                elif spec == '<package-info>':
+                    if not project_scope:
+                        mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
+                    res.update(mx._find_packages(project_scope, onlyPublic=True))
+                else:
+                    if spec not in module_packages:
+                        mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
+                    if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
+                        mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
+                    res.add(spec)
+            return res
 
-        for version in all_versions:
-            uses = base_uses.copy()
-            provides = {}
-            dest_dir = join(work_directory, version)
-            int_version = int(version) if version != 'common' else -1
+        def _process_exports(export_specs, available_packages, project_scope=None):
+            for export in export_specs:
+                if ' to ' in export:
+                    splitpackage = export.split(' to ')
+                    packages_spec = splitpackage[0].strip()
+                    targets = [n.strip() for n in splitpackage[1].split(',')]
+                    if not targets:
+                        mx.abort('exports attribute must have at least one target for qualified export', context=dist)
+                    for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
+                        exports.setdefault(p, set()).update(targets)
+                else:
+                    for p in _parse_packages_spec(export, available_packages, project_scope):
+                        exports.setdefault(p, set())
 
-            for d in [dist] + [md for md in moduledeps if md.isJARDistribution()]:
+        module_info = getattr(dist, 'moduleInfo', None)
+        if module_info:
+            for entry in module_info.get("requires", []):
+                parts = entry.split()
+                qualifiers = parts[0:-1]
+                name = parts[-1]
+                requires.setdefault(name, set()).update(qualifiers)
+            base_uses.update(module_info.get('uses', []))
+            _process_exports(module_info.get('exports', []), module_packages)
+
+            requires_concealed = module_info.get('requiresConcealed', None)
+            if requires_concealed is not None:
+                parse_requiresConcealed_attribute(jdk, requires_concealed, concealedRequires, None, dist, modulepath)
+
+        enhanced_module_usage_info = dist.suite.getMxCompatibility().enhanced_module_usage_info()
+
+        with mx.Timer('projects', times):
+            for project in java_projects:
+                base_uses.update(getattr(project, 'uses', []))
+                for m in getattr(project, 'runtimeDeps', []):
+                    requires.setdefault(m, set()).add('static')
+
+                if not enhanced_module_usage_info:
+                    # In the absence of "requiresConcealed" and "requires" attributes, the import statements
+                    # in the Java sources need to be scanned to determine what modules are
+                    # required and what concealed packages are used.
+                    allmodules = modulepath + jdk_modules
+                    for pkg in itertools.chain(project.imported_java_packages(projectDepsOnly=False), getattr(project, 'imports', [])):
+                        # Only consider packages not defined by the module we're creating. This handles the
+                        # case where we're creating a module that will upgrade an existing upgradeable
+                        # module in the JDK such as jdk.internal.vm.compiler.
+                        if pkg not in module_packages:
+                            module, visibility = lookup_package(allmodules, pkg, moduleName)
+                            if module and module.name != moduleName:
+                                requires.setdefault(module.name, set())
+                                if visibility != 'exported':
+                                    assert visibility == 'concealed'
+                                    concealedRequires.setdefault(module.name, set()).add(pkg)
+                else:
+                    for module, packages in project.get_concealed_imported_packages(jdk).items():
+                        concealedRequires.setdefault(module, set()).update(packages)
+                    for module in getattr(project, 'requires', []):
+                        requires.setdefault(module, set())
+
+                if not module_info:
+                    # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
+                    # all packages are exported.
+                    default_exported_java_packages = [] if module_info else project.defined_java_packages()
+                    _process_exports(getattr(project, 'exports', default_exported_java_packages), project.defined_java_packages(), project)
+
+        build_directory = mx.ensure_dir_exists(moduleJar + ".build")
+        try:
+            files_to_remove = set()
+
+            # To compile module-info.java, all classes it references must either be given
+            # as Java source files or already exist as class files in the output directory.
+            # As such, the jar file for each constituent distribution must be unpacked
+            # in the output directory.
+            versions = {}
+            for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
                 if d.isJARDistribution():
                     with zipfile.ZipFile(d.original_path(), 'r') as zf:
-                        for name in zf.namelist():
-                            m = _versioned_re.match(name)
+                        for arcname in sorted(zf.namelist()):
+                            m = _versioned_re.match(arcname)
                             if m:
-                                file_version = int(m.group(1))
-                                if file_version > int_version:
-                                    continue
+                                version = m.group(1)
                                 unversioned_name = m.group(2)
-                                if name.startswith(_special_versioned_prefix):
-                                    if not unversioned_name.startswith('META-INF/services'):
-                                        raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
-                                if unversioned_name:
-                                    dst = join(dest_dir, unversioned_name)
-                                    parent = dirname(dst)
-                                    if parent and not exists(parent):
-                                        os.makedirs(parent)
-                                    with open(dst, 'wb') as fp:
-                                        fp.write(zf.read(name))
+                                if version <= jdk.javaCompliance:
+                                    versions.setdefault(version, {})[unversioned_name] = arcname
+                                else:
+                                    # Ignore resource whose version is too high
+                                    pass
+                                if unversioned_name.startswith('META-INF/services/'):
+                                    files_to_remove.add(arcname)
+                                elif unversioned_name.startswith('META-INF/'):
+                                    mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
+            default_jmd = None
+
+            all_versions = set(versions.keys())
+            if '9' not in all_versions:
+                # 9 is the first version that supports modules and can be versioned in the JAR:
+                # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
+                # so that the module works on JDK 9.
+                default_version = 'common'
+                if all_versions:
+                    max_version = str(max((int(v) for v in all_versions)))
+                else:
+                    max_version = default_version
+                all_versions = all_versions | {'common'}
+            else:
+                max_version = str(max((int(v) for v in all_versions)))
+                default_version = max_version
+
+            last_dest_dir = None
+            unversioned_resources = set()
+            for version in all_versions:
+                unversioned_resources_backup = {}
+                with mx.Timer('jmd@' + version, times):
+                    uses = base_uses.copy()
+                    provides = {}
+                    dest_dir = join(build_directory, version)
+                    if exists(dest_dir):
+                        # Clean up any earlier build artifacts
+                        shutil.rmtree(dest_dir)
+
+                    if last_dest_dir:
+                        # The unversioned resources have been preserved from the
+                        # last dest_dir so we can simply reuse last_dest_dir by
+                        # renaming it. This avoids the need for extracting the
+                        # unversioned resources for each version.
+                        os.rename(last_dest_dir, dest_dir)
+
+                    int_version = int(version) if version != 'common' else -1
+
+                    for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
+                        if d.isJARDistribution():
+                            with zipfile.ZipFile(d.original_path(), 'r') as zf:
+                                # Extract unversioned resources first
+                                if not last_dest_dir:
+                                    for name in zf.namelist():
+                                        m = _versioned_re.match(name)
+                                        if not m:
+                                            zf.extract(name, dest_dir)
+                                            rel_name = name if os.sep == '/' else name.replace('/', os.sep)
+                                            unversioned_resources.add(rel_name)
+
+                                # Extract versioned resources second
+                                for name in zf.namelist():
+                                    m = _versioned_re.match(name)
+                                    if m:
+                                        file_version = int(m.group(1))
+                                        if file_version > int_version:
+                                            continue
+                                        unversioned_name = m.group(2)
+                                        if name.startswith(_special_versioned_prefix):
+                                            if not unversioned_name.startswith('META-INF/services'):
+                                                raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
+                                        if unversioned_name:
+                                            contents = zf.read(name)
+                                            dst = join(dest_dir, unversioned_name)
+                                            if exists(dst) and dst not in unversioned_resources_backup:
+                                                with open(dst) as fp:
+                                                    unversioned_contents = fp.read()
+                                                    if unversioned_contents != contents:
+                                                        unversioned_resources_backup[dst] = unversioned_contents
+                                            parent = dirname(dst)
+                                            if parent and not exists(parent):
+                                                os.makedirs(parent)
+                                            with open(dst, 'wb') as fp:
+                                                fp.write(contents)
+
+                                servicesDir = join(dest_dir, 'META-INF', 'services')
+                                if exists(servicesDir):
+                                    for servicePathName in os.listdir(servicesDir):
+                                        # While a META-INF provider configuration file must use a fully qualified binary
+                                        # name[1] of the service, a provides directive in a module descriptor must use
+                                        # the fully qualified non-binary name[2] of the service.
+                                        #
+                                        # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
+                                        # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
+                                        service = servicePathName.replace('$', '.')
+
+                                        assert '/' not in service
+                                        with open(join(servicesDir, servicePathName)) as fp:
+                                            serviceContent = fp.read()
+                                        provides.setdefault(service, set()).update(serviceContent.splitlines())
+                                        # Service types defined in the module are assumed to be used by the module
+                                        serviceClassfile = service.replace('.', '/') + '.class'
+                                        if exists(join(dest_dir, serviceClassfile)):
+                                            uses.add(service)
+
+                    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
+                                               jarpath=moduleJar, dist=dist, modulepath=modulepath)
+
+                    # Compile module-info.class
+                    module_info_java = join(dest_dir, 'module-info.java')
+                    with open(module_info_java, 'w') as fp:
+                        print(jmd.as_module_info(), file=fp)
+
+                last_dest_dir = dest_dir
+
+                with mx.Timer('compile@' + version, times):
+                    javac_args = ['-d', dest_dir]
+                    modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
+                    # TODO we should rather use the right JDK
+                    javac_args += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
+
+                    # The --system=none and --limit-modules options are used to support distribution defined modules
+                    # that override non-upgradeable modules in the source JDK (e.g. org.graalvm.sdk is part of a
+                    # GraalVM JDK). This means --module-path needs to contain the jmods for the JDK modules.
+                    javac_args.append('--system=none')
+                    if requires:
+                        javac_args.append('--limit-modules=' + ','.join(requires.keys()))
+                    jdk_jmods = join(jdk.home, 'jmods')
+                    if not exists(jdk_jmods):
+                        mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
+                    modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
+                    javac_args.append('--module-path=' + os.pathsep.join(modulepath_jars))
+
+                    if concealedRequires:
+                        for module, packages in concealedRequires.items():
+                            for package in packages:
+                                javac_args.append('--add-exports=' + module + '/' + package + '=' + moduleName)
+                    # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
+                    # Disable the "bootstrap class path not set in conjunction with -source N" warning
+                    # as we're relying on the Java compliance of project to correctly specify a JDK range
+                    # providing the API required by the project. Also disable the warning about unknown
+                    # modules in qualified exports (not sure how to avoid these since we build modules
+                    # separately).
+                    javac_args.append('-Xlint:-options,-module')
+                    javac_args.append(module_info_java)
+                    if javac_daemon:
+                        javac_daemon.compile(javac_args)
+                    else:
+                        mx.run([jdk.javac] + javac_args)
+
+                module_info_class = join(dest_dir, 'module-info.class')
+
+                # Create .jmod for module
+                if version == max_version:
+                    if exists(jmd.get_jmod_path()):
+                        os.remove(jmd.get_jmod_path())
+                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
+
+                # Append the module-info.class
+                module_info_arc_dir = ''
+                if version != 'common':
+                    module_info_arc_dir = _versioned_prefix + version + '/'
+                if version == default_version:
+                    default_jmd = jmd
+
+                with mx.Timer('jar@' + version, times):
+                    with ZipFile(moduleJar, 'a') as zf:
+                        zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
+                        zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
+
+                with mx.Timer('cleanup@' + version, times):
+                    if unversioned_resources_backup:
+                        for dst, contents in unversioned_resources_backup.items():
+                            with open(dst, 'w') as fp:
+                                fp.write(contents)
+                    for dirpath, dirnames, filenames in os.walk(dest_dir, topdown=False):
+                        del_dirpath = True
+                        for filename in filenames:
+                            abs_filename = join(dirpath, filename)
+                            rel_filename = os.path.relpath(abs_filename, dest_dir)
+                            if rel_filename not in unversioned_resources:
+                                os.remove(abs_filename)
                             else:
-                                zf.extract(name, dest_dir)
+                                del_dirpath = False
+                        for dname in dirnames:
+                            if exists(join(dirpath, dname)):
+                                del_dirpath = False
+                        if del_dirpath:
+                            os.rmdir(dirpath)
 
-                        servicesDir = join(dest_dir, 'META-INF', 'services')
-                        if exists(servicesDir):
-                            for servicePathName in os.listdir(servicesDir):
-                                # While a META-INF provider configuration file must use a fully qualified binary
-                                # name[1] of the service, a provides directive in a module descriptor must use
-                                # the fully qualified non-binary name[2] of the service.
-                                #
-                                # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
-                                # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
-                                service = servicePathName.replace('$', '.')
+            if files_to_remove:
+                with mx.Timer('cleanup', times), mx.SafeFileCreation(moduleJar) as sfc:
+                    with ZipFile(moduleJar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
+                        for info in inzf.infolist():
+                            if info.filename not in files_to_remove:
+                                outzf.writestr(info, inzf.read(info))
+        finally:
+            if not mx.get_opts().verbose:
+                # Preserve build directory so that javac command can be re-executed
+                # by cutting and pasting verbose output.
+                shutil.rmtree(build_directory)
+        default_jmd.save()
 
-                                assert '/' not in service
-                                with open(join(servicesDir, servicePathName)) as fp:
-                                    serviceContent = fp.read()
-                                provides.setdefault(service, set()).update(serviceContent.splitlines())
-                                # Service types defined in the module are assumed to be used by the module
-                                serviceClassfile = service.replace('.', '/') + '.class'
-                                if exists(join(dest_dir, serviceClassfile)):
-                                    uses.add(service)
-
-            jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
-                                       jarpath=moduleJar, dist=dist, modulepath=modulepath)
-
-            # Compile module-info.class
-            module_info_java = join(dest_dir, 'module-info.java')
-            with open(module_info_java, 'w') as fp:
-                print(jmd.as_module_info(), file=fp)
-            javacCmd = [jdk.javac, '-d', dest_dir]
-            jdkModuleNames = [m.name for m in jdkModules]
-            modulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name not in jdkModuleNames]
-            upgrademodulepathJars = [m.jarpath for m in jmd.modulepath if m.jarpath and m.name in jdkModuleNames]
-            # TODO we should rather use the right JDK
-            javacCmd += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
-            if modulepathJars:
-                javacCmd.append('--module-path')
-                javacCmd.append(os.pathsep.join(modulepathJars))
-            if upgrademodulepathJars:
-                javacCmd.append('--upgrade-module-path')
-                javacCmd.append(os.pathsep.join(upgrademodulepathJars))
-            if concealedRequires:
-                for module, packages in concealedRequires.items():
-                    for package in packages:
-                        javacCmd.append('--add-exports=' + module + '/' + package + '=' + moduleName)
-            # https://blogs.oracle.com/darcy/new-javac-warning-for-setting-an-older-source-without-bootclasspath
-            # Disable the "bootstrap class path not set in conjunction with -source N" warning
-            # as we're relying on the Java compliance of project to correctly specify a JDK range
-            # providing the API required by the project. Also disable the warning about unknown
-            # modules in qualified exports (not sure how to avoid these since we build modules
-            # separately).
-            javacCmd.append('-Xlint:-options,-module')
-            javacCmd.append(module_info_java)
-            mx.run(javacCmd)
-            module_info_class = join(dest_dir, 'module-info.class')
-
-            # Append the module-info.class
-            module_info_arc_dir = ''
-            if version != 'common':
-                module_info_arc_dir = _versioned_prefix + version + '/'
-            if version == default_version:
-                default_jmd = jmd
-
-            with ZipFile(moduleJar, 'a') as zf:
-                zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
-                zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
-
-        if files_to_remove:
-            with mx.SafeFileCreation(moduleJar) as sfc:
-                with ZipFile(moduleJar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
-                    for info in inzf.infolist():
-                        if info.filename not in files_to_remove:
-                            outzf.writestr(info, inzf.read(info))
-    finally:
-        shutil.rmtree(work_directory)
-    default_jmd.save()
+    mx.logv('[' + moduleName + ' times: ' + ', '.join(['{}={:.3f}s'.format(name, secs) for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
     return default_jmd
-
 
 def get_transitive_closure(roots, observable_modules):
     """
@@ -708,3 +824,45 @@ def get_transitive_closure(roots, observable_modules):
             root = lookup_module(root)
         add_transitive(root)
     return transitive_closure
+
+def parse_requiresConcealed_attribute(jdk, value, result, importer, context, modulepath=None):
+    """
+    Parses the "requiresConcealed" attribute value in `value` and updates `result`
+    which is a dict from module name to set of package names.
+
+    :param str importer: the name of the module importing the packages ("<unnamed>" or None denotes the unnamed module)
+    :param context: context value to use when reporting errors
+    """
+    all_modules = (modulepath or []) + list(jdk.get_modules())
+    for module, packages in value.items():
+        matches = [jmd for jmd in all_modules if jmd.name == module]
+        if not matches:
+            mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
+        jmd = matches[0]
+
+        package_set = result.setdefault(module, set())
+
+        if packages == '*':
+            star = True
+            packages = jmd.packages
+        else:
+            star = False
+            if not isinstance(packages, list):
+                mx.abort('Packages for module {} in "requiresConcealed" attribute must be either "*" or a list of package names'.format(module), context=context)
+        for package in packages:
+            if package.endswith('?'):
+                optional = True
+                package = package[0:-1]
+            else:
+                optional = False
+            visibility = jmd.get_package_visibility(package, importer)
+            if visibility == 'concealed':
+                package_set.add(package)
+            elif visibility == 'exported':
+                if not star:
+                    suffix = '' if not importer else ' from module {}'.format(importer)
+                    mx.warn('Package {} is not concealed in module {}{}'.format(package, module, suffix), context=context)
+            elif not optional:
+                m, _ = lookup_package(all_modules, package, importer)
+                suffix = '' if not m else ' but in module {}'.format(m.name)
+                mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)

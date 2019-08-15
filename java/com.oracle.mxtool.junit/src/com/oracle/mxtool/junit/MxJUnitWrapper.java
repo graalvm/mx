@@ -149,6 +149,7 @@ public class MxJUnitWrapper {
                 // command line arguments
                 if (each.contentEquals("-JUnitVerbose")) {
                     config.verbose = true;
+                    config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitOpenPackages")) {
                     if (i + 1 >= expandedArgs.length) {
                         system.out().println("Must include argument for -JUnitAddExports");
@@ -158,6 +159,7 @@ public class MxJUnitWrapper {
                 } else if (each.contentEquals("-JUnitVeryVerbose")) {
                     config.verbose = true;
                     config.veryVerbose = true;
+                    config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitFailFast")) {
                     config.failFast = true;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
