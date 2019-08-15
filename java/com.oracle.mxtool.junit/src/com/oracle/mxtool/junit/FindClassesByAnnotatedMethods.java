@@ -133,7 +133,7 @@ public class FindClassesByAnnotatedMethods {
     /*
      * Small bytecode parser that extract annotations.
      */
-    private static final int MAJOR_VERSION_JAVA7 = 51;
+    private static final int MAJOR_VERSION_JAVA6 = 50;
     private static final int MAJOR_VERSION_OFFSET = 44;
     private static final byte CONSTANT_Utf8 = 1;
     private static final byte CONSTANT_Integer = 3;
@@ -160,7 +160,7 @@ public class FindClassesByAnnotatedMethods {
 
         int minor = stream.readUnsignedShort();
         int major = stream.readUnsignedShort();
-        if (major < MAJOR_VERSION_JAVA7) {
+        if (major < MAJOR_VERSION_JAVA6) {
             throw new UnsupportedClassVersionError("Unsupported class file version: " + major + "." + minor);
         }
         // Starting with JDK8, ignore a classfile that has a newer format than the current JDK.
