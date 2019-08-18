@@ -6003,7 +6003,7 @@ class LayoutDistribution(AbstractDistribution):
             source_dict = source
             source_type = source_dict['source_type']
             # TODO check structure
-            if source_type in ('dependency', 'extracted-dependency'):
+            if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
@@ -6015,6 +6015,8 @@ class LayoutDistribution(AbstractDistribution):
                 source_dict['_str_'] = "link:" + source_dict['path']
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
+            else:
+                abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
         if 'exclude' in source_dict:
             if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
@@ -6203,11 +6205,11 @@ class LayoutDistribution(AbstractDistribution):
 
             def _filter_archive_name(name):
                 _root_match = False
+                if exclude and glob_match_any(exclude, name):
+                    return None, False
                 if path is not None:
                     matched = glob_match(path, name)
                     if not matched:
-                        return None, False
-                    if glob_match_any(exclude, name):
                         return None, False
                     _root_match = len(matched.split('/')) == len(name.split('/'))
                     strip_prefix = dirname(matched)
@@ -19824,7 +19826,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.231.1")  # GR-17631
+version = VersionSpec("5.231.2")  # exclude extracted-dependency
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
