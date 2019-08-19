@@ -300,15 +300,15 @@ def get_java_module_info(dist, fatalIfNotModule=False):
     :param JARDistribution dist: a distribution possibly defining a module
     :param bool fatalIfNotModule: specifies whether to abort if `dist` does not define a module
     :return: None if `dist` does not define a module otherwise a tuple containing
-             the name of the module, the descriptor pickle path, and finally the path to the jar file containing the built module
+             the name of the module, the descriptor pickle path, and finally the path to the
+             (unstripped) modular jar file
     """
     module_name = get_module_name(dist)
     if not module_name:
         if fatalIfNotModule:
             mx.abort('Distribution ' + dist.name + ' does not define a module')
         return None
-    return module_name, dist.path + '-module.pickled', dist.path
-
+    return module_name, dist.path + '-module.pickled', dist.original_path()
 
 def get_library_as_module(dep, jdk):
     """
