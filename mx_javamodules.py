@@ -81,6 +81,8 @@ class JavaModuleDescriptor(object):
         self.modulepath = modulepath
         self.boot = boot
         self.jdk = jdk
+        if not self.dist and not self.jarpath and not self.jdk:
+            mx.abort('JavaModuleDescriptor requires at least one of the "dist", "jarpath" or "jdk" attributes: ' + self.name)
 
     def __str__(self):
         return 'module:' + self.name
@@ -92,10 +94,23 @@ class JavaModuleDescriptor(object):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
-    def get_jmod_path(self):
+    def get_jmod_path(self, respect_stripping=False):
+        """
+        Gets the path to the .jmod file corresponding to this module descriptor.
+
+        :param bool respect_stripping: Specifies whether or not to return a path
+               to a stripped .jmod file if this module is based on a dist
+        """
+        if respect_stripping and self.dist is not None:
+            return join(dirname(self.dist.path), self.name + '.jmod')
+        if self.dist is not None:
+            return join(dirname(self.dist.original_path()), self.name + '.jmod')
         if self.jarpath:
             return join(dirname(self.jarpath), self.name + '.jmod')
-        return None
+        assert self.jdk, self.name
+        p = join(self.jdk.home, 'jmods', self.name + '.jmod')
+        assert exists(p), p
+        return p
 
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
