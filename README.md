@@ -67,6 +67,17 @@ open range (e.g. `8+`). Otherwise, a JDK matching the exact version or range is 
 
 The `multiReleaseJarVersion` attribute is explained in the "Versioning sources for different JDK releases" section below.
 
+### Java distributions
+
+A distribution encompasses one or more Java projects and enables the class files and related resources from projects
+to be packaged into a jar file. If a distribution declares itself as a module (see [Java modules support](#java-modules-support)),
+a JMOD file will also be produced when the distribution is built. The path to the jar file for a distribution is given
+by `mx paths <distribution name>`. For example:
+```
+> mx paths GRAAL
+/Users/dnsimon/graal/graal/compiler/mxbuild/dists/jdk11/graal.jar
+```
+
 ### Java modules support
 
 A distribution that has a `moduleInfo` attribute will result in a [Java module](https://openjdk.java.net/projects/jigsaw/quick-start) being
