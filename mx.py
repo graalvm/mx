@@ -5450,12 +5450,16 @@ class JARDistribution(Distribution, ClasspathDependency):
                 elif not (_opts.verbose or is_windows()):
                     prefix += ['-dontnote', '**']
 
+                # https://sourceforge.net/p/proguard/bugs/671/#56b4
+                # https://sourceforge.net/p/proguard/bugs/704/#d392
+                jar_filter = '(!META-INF/versions/**,!module-info.class)'
+
                 if not jdk9_or_later:
                     libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
                     strip_command = prefix + [
                         '-injars', self.original_path(),
                         '-outjars', self.path,
-                        '-libraryjars', os.pathsep.join(libraryjars),
+                        '-libraryjars', os.pathsep.join((e + jar_filter for e in libraryjars)),
                         '-printmapping', self.strip_mapping_file(),
                     ]
 
@@ -5463,10 +5467,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                     with open(self.strip_config_dependency_file(), 'w') as f:
                         f.writelines((l + os.linesep for l in self.stripConfig))
                 else:
-                    # https://sourceforge.net/p/proguard/bugs/671/#56b4
-                    # https://sourceforge.net/p/proguard/bugs/704/#d392
-                    jar_filter = '(!META-INF/versions/**,!module-info.class)'
-
                     cp_entries = classpath_entries(self, includeSelf=False)
                     self_jmd = as_java_module(self, jdk) if get_java_module_info(self) else None
                     dep_modules = frozenset(e for e in cp_entries if e.isJARDistribution() and get_java_module_info(e))
