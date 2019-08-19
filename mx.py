@@ -12874,7 +12874,7 @@ def _get_new_progress_group_args():
         preexec_fn = os.setsid
     return preexec_fn, creationflags
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, **kwargs):
+def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
@@ -12918,7 +12918,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
-    if _opts.verbose:
+    if _opts.verbose or cmdlinefile:
         if _opts.very_verbose:
             log('Environment variables:')
             for key in sorted(env.keys()):
@@ -12927,11 +12927,17 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if cwd is not None and cwd != _original_directory:
                 log('Directory: ' + cwd)
+            s = ''
             if env is not None:
                 env_diff = [(k, env[k]) for k in env if k not in _original_environ]
                 if len(env_diff):
-                    log('env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\')
-            log(' '.join(map(pipes.quote, args)))
+                    s = 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+            s = s + ' '.join(map(pipes.quote, args))
+            if _opts.verbose:
+                log(s)
+            if cmdlinefile:
+                with open(cmdlinefile, 'w') as fp:
+                    fp.write(s)
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
