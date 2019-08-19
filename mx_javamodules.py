@@ -667,7 +667,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                                             contents = zf.read(name)
                                             dst = join(dest_dir, unversioned_name)
                                             if exists(dst) and dst not in unversioned_resources_backup:
-                                                with open(dst) as fp:
+                                                with open(dst, 'rb') as fp:
                                                     unversioned_contents = fp.read()
                                                     if unversioned_contents != contents:
                                                         unversioned_resources_backup[dst] = unversioned_contents
@@ -765,7 +765,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                 with mx.Timer('cleanup@' + version, times):
                     if unversioned_resources_backup:
                         for dst, contents in unversioned_resources_backup.items():
-                            with open(dst, 'w') as fp:
+                            with open(dst, 'wb') as fp:
                                 fp.write(contents)
                     for dirpath, dirnames, filenames in os.walk(dest_dir, topdown=False):
                         del_dirpath = True
