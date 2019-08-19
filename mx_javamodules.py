@@ -743,15 +743,16 @@ def make_java_module(dist, jdk, javac_daemon=None):
                     if javac_daemon:
                         javac_daemon.compile(javac_args)
                     else:
-                        mx.run([jdk.javac] + javac_args)
-
-                module_info_class = join(dest_dir, 'module-info.class')
+                        mx.run([jdk.javac] + javac_args, cmdlinefile=dest_dir + '.cmdline')
 
                 # Create .jmod for module
                 if version == max_version:
-                    if exists(jmd.get_jmod_path()):
-                        os.remove(jmd.get_jmod_path())
-                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
+                    # Delete module-info.java so that it does not get included in the .jmod file
+                    os.remove(module_info_java)
+                    jmod_path = jmd.get_jmod_path()
+                    if exists(jmod_path):
+                        os.remove(jmod_path)
+                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmod_path])
 
                 # Append the module-info.class
                 module_info_arc_dir = ''
@@ -762,8 +763,8 @@ def make_java_module(dist, jdk, javac_daemon=None):
 
                 with mx.Timer('jar@' + version, times):
                     with ZipFile(moduleJar, 'a') as zf:
+                        module_info_class = join(dest_dir, 'module-info.class')
                         zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
-                        zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
 
                 with mx.Timer('cleanup@' + version, times):
                     if unversioned_resources_backup:
