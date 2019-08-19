@@ -13646,7 +13646,7 @@ class JDKConfig(Comparable):
                 if len(parts) == 1:
                     if name is not None:
                         assert name not in modules, 'duplicate module: ' + name
-                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
                     name = parts[0]
                     requires = {}
                     exports = {}
@@ -13684,7 +13684,7 @@ class JDKConfig(Comparable):
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
             setattr(self, '.modules', tuple(modules.values()))
         return getattr(self, '.modules')
 

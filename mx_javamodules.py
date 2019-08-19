@@ -62,8 +62,10 @@ class JavaModuleDescriptor(object):
     :param JARDistribution dist: distribution from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param bool boot: specifies if this module is in the boot layer
+    :param JDKConfig jdk: the JDK containing this module
     """
-    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, modulepath=None, boot=False):
+    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
+                 jarpath=None, dist=None, modulepath=None, boot=False, jdk=None):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -78,6 +80,7 @@ class JavaModuleDescriptor(object):
         self.dist = dist
         self.modulepath = modulepath
         self.boot = boot
+        self.jdk = jdk
 
     def __str__(self):
         return 'module:' + self.name
