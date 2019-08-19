@@ -14876,6 +14876,24 @@ class Archiver(SafeFileCreation):
     def add_link(self, target, archive_name, provenance):
         self._add_link(target, archive_name, provenance)
 
+def make_unstrip_map(dists):
+    """
+    Gets the contents of a map file that can be used with the `unstrip` command to deobfuscate stack
+    traces containing code from the stripped versions of `dists`.
+
+    :return: None if none of the entries in `dists` are stripped or none of them have
+             existing unstripping map files (likely because they have not been built
+             with --strip-jars enabled)
+    """
+    content = ''
+    for d in dists:
+        if d.is_stripped():
+            map_file = d.path + '.map'
+            if exists(map_file):
+                with open(map_file) as fp:
+                    content += fp.read()
+    return None if len(content) == 0 else content
+
 def _unstrip(args):
     """use stripping mappings of a file to unstrip the contents of another file
 
@@ -14884,21 +14902,48 @@ def _unstrip(args):
     unstrip(args)
     return 0
 
-def unstrip(args):
+def unstrip(args, **run_java_kwargs):
     proguard_cp = library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True)
-    unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
+    # A slightly more general pattern for matching stack traces than the default.
+    # This version does not require the "at " prefix.
+    regex = r'(?:.*?\s+%c\.%m\s*\(%s(?::%l)?\)\s*(?:~\[.*\])?)|(?:(?:.*?[:"]\s+)?%c(?::.*)?)'
+    unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace', '-regex', regex]
     mapfiles = []
     inputfiles = []
-    for arg in args:
-        if os.path.isdir(arg):
-            mapfiles += glob.glob(join(arg, '*' + JARDistribution._strip_map_file_suffix))
-        elif arg.endswith(JARDistribution._strip_map_file_suffix):
-            mapfiles.append(arg)
-        else:
-            inputfiles.append(arg)
-    with tempfile.NamedTemporaryFile() as catmapfile:
-        _merge_file_contents(mapfiles, catmapfile)
-        run_java(unstrip_command + [catmapfile.name] + inputfiles)
+    temp_files = []
+    try:
+        for arg in args:
+            if os.path.isdir(arg):
+                mapfiles += glob.glob(join(arg, '*' + JARDistribution._strip_map_file_suffix))
+            elif arg.endswith(JARDistribution._strip_map_file_suffix):
+                mapfiles.append(arg)
+            else:
+                # ReTrace does not (yet) understand JDK9+ stack traces where a module name
+                # is prefixed to a class name. As a workaround, we separate the module name
+                # prefix from the class name with a space. For example, this converts:
+                #
+                #    com.oracle.graal.graal_enterprise/com.oracle.graal.enterprise.a.b(stripped:22)
+                #
+                # to:
+                #
+                #    com.oracle.graal.graal_enterprise/ com.oracle.graal.enterprise.a.b(stripped:22)
+                #
+                with open(arg) as fp:
+                    contents = fp.read()
+                    new_contents = re.sub(r'(\s+(?:[a-z][a-zA-Z_$]*\.)*[a-z][a-zA-Z\d_$]*/)', r'\1 ', contents)
+                if contents != new_contents:
+                    temp_file = arg + '.' + str(os.getpid())
+                    with open(temp_file, 'w') as fp:
+                        fp.write(new_contents)
+                    inputfiles.append(temp_file)
+                else:
+                    inputfiles.append(arg)
+        with tempfile.NamedTemporaryFile() as catmapfile:
+            _merge_file_contents(mapfiles, catmapfile)
+            run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
+    finally:
+        for temp_file in temp_files:
+            os.unlink(temp_file)
 
 def _archive(args):
     """create jar files for projects and distributions"""
