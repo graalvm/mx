@@ -764,10 +764,22 @@ def make_java_module(dist, jdk, javac_daemon=None):
                 if version == max_version:
                     # Delete module-info.java so that it does not get included in the .jmod file
                     os.remove(module_info_java)
+
+                    # Temporarily move META-INF/services out of dest_dir. JDK 9+ service lookup
+                    # still processes this directory but ProGuard does not.
+                    services_dir = join(dest_dir, 'META-INF', 'services')
+                    tmp_services_dir = None
+                    if exists(services_dir):
+                        tmp_services_dir = join(build_directory, version + '_services_tmp')
+                        os.rename(services_dir, tmp_services_dir)
+
                     jmod_path = jmd.get_jmod_path()
                     if exists(jmod_path):
                         os.remove(jmod_path)
                     mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmod_path])
+
+                    if tmp_services_dir:
+                        os.rename(tmp_services_dir, services_dir)
 
                 # Append the module-info.class
                 module_info_arc_dir = ''
