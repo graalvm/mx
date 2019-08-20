@@ -5476,7 +5476,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                     dep_jars = classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
 
                     # Add jmods from the JDK except those overridden by dependencies
-                    jdk_jmods = [m.get_jmod_path() for m in jdk.get_modules() if m.name not in dep_module_names]
+                    jdk_jmods = [m.get_jmod_path(respect_stripping=False) for m in jdk.get_modules() if m.name not in dep_module_names]
 
                     # Make stripped jar
                     strip_commands = [prefix + [
@@ -5490,7 +5490,7 @@ class JARDistribution(Distribution, ClasspathDependency):
                         stripped_jmod = self_jmd.get_jmod_path(respect_stripping=True)
                         dep_jmods = [jmd.get_jmod_path(respect_stripping=True) for jmd in dep_jmds]
                         strip_commands.append(prefix + [
-                            '-injars', self_jmd.get_jmod_path(),
+                            '-injars', self_jmd.get_jmod_path(respect_stripping=False),
                             '-outjars', stripped_jmod,
                             '-libraryjars', os.pathsep.join((e + jar_filter for e in dep_jmods + jdk_jmods)),
                             '-printmapping', stripped_jmod + JARDistribution._strip_map_file_suffix,

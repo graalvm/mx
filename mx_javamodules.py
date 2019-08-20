@@ -94,7 +94,7 @@ class JavaModuleDescriptor(object):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
-    def get_jmod_path(self, respect_stripping=False):
+    def get_jmod_path(self, respect_stripping=True):
         """
         Gets the path to the .jmod file corresponding to this module descriptor.
 
@@ -773,7 +773,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                         tmp_services_dir = join(build_directory, version + '_services_tmp')
                         os.rename(services_dir, tmp_services_dir)
 
-                    jmod_path = jmd.get_jmod_path()
+                    jmod_path = jmd.get_jmod_path(respect_stripping=False)
                     if exists(jmod_path):
                         os.remove(jmod_path)
                     mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmod_path])
