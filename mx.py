@@ -5526,10 +5526,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 yield self.sourcesPath, self.default_source_filename()
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
-            info = get_java_module_info(self)
-            if info:
-                name, _, _ = info  # pylint: disable=unpacking-non-sequence
-                yield join(dirname(self.path), name + '.jmod')
 
     def needsUpdate(self, newestInput):
         res = _needsUpdate(newestInput, self.path)
