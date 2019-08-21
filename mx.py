@@ -4550,9 +4550,10 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             if not self.args.clean and not self.cleanForbidden():
                 self.clean(forBuild=True)
             self.logBuild(reason)
-            self.build()
+            _built = self.build()
             self._persist_deps()
-            self.built = True
+            # The build task is `built` if the `build()` function returns True or None (legacy)
+            self.built = _built or _built is None
             logv('Finished {}'.format(self))
         else:
             self.logSkip(reason)
@@ -19826,7 +19827,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.231.3")  # GR-17678
+version = VersionSpec("5.232.0")  # GR-17322
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
