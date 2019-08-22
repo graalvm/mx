@@ -62,8 +62,10 @@ class JavaModuleDescriptor(object):
     :param JARDistribution dist: distribution from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param bool boot: specifies if this module is in the boot layer
+    :param JDKConfig jdk: the JDK containing this module
     """
-    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None, jarpath=None, dist=None, modulepath=None, boot=False):
+    def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
+                 jarpath=None, dist=None, modulepath=None, boot=False, jdk=None):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -78,6 +80,9 @@ class JavaModuleDescriptor(object):
         self.dist = dist
         self.modulepath = modulepath
         self.boot = boot
+        self.jdk = jdk
+        if not self.dist and not self.jarpath and not self.jdk:
+            mx.abort('JavaModuleDescriptor requires at least one of the "dist", "jarpath" or "jdk" attributes: ' + self.name)
 
     def __str__(self):
         return 'module:' + self.name
@@ -89,10 +94,23 @@ class JavaModuleDescriptor(object):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
-    def get_jmod_path(self):
+    def get_jmod_path(self, respect_stripping=True):
+        """
+        Gets the path to the .jmod file corresponding to this module descriptor.
+
+        :param bool respect_stripping: Specifies whether or not to return a path
+               to a stripped .jmod file if this module is based on a dist
+        """
+        if respect_stripping and self.dist is not None:
+            return join(dirname(self.dist.path), self.name + '.jmod')
+        if self.dist is not None:
+            return join(dirname(self.dist.original_path()), self.name + '.jmod')
         if self.jarpath:
             return join(dirname(self.jarpath), self.name + '.jmod')
-        return None
+        assert self.jdk, self.name
+        p = join(self.jdk.home, 'jmods', self.name + '.jmod')
+        assert exists(p), p
+        return p
 
     @staticmethod
     def load(dist, jdk, fatalIfNotCreated=True):
@@ -297,15 +315,15 @@ def get_java_module_info(dist, fatalIfNotModule=False):
     :param JARDistribution dist: a distribution possibly defining a module
     :param bool fatalIfNotModule: specifies whether to abort if `dist` does not define a module
     :return: None if `dist` does not define a module otherwise a tuple containing
-             the name of the module, the descriptor pickle path, and finally the path to the jar file containing the built module
+             the name of the module, the descriptor pickle path, and finally the path to the
+             (unstripped) modular jar file
     """
     module_name = get_module_name(dist)
     if not module_name:
         if fatalIfNotModule:
             mx.abort('Distribution ' + dist.name + ' does not define a module')
         return None
-    return module_name, dist.path + '-module.pickled', dist.path
-
+    return module_name, dist.path + '-module.pickled', dist.original_path()
 
 def get_library_as_module(dep, jdk):
     """
@@ -737,18 +755,38 @@ def make_java_module(dist, jdk, javac_daemon=None):
                     # separately).
                     javac_args.append('-Xlint:-options,-module')
                     javac_args.append(module_info_java)
+
+                    # Convert javac args to @args file
+                    javac_args_file = mx._derived_path(dest_dir, '.javac_args')
+                    with open(javac_args_file, 'w') as fp:
+                        fp.write(os.linesep.join(javac_args))
+                    javac_args = ['@' + javac_args_file]
+
                     if javac_daemon:
                         javac_daemon.compile(javac_args)
                     else:
-                        mx.run([jdk.javac] + javac_args)
-
-                module_info_class = join(dest_dir, 'module-info.class')
+                        mx.run([jdk.javac] + javac_args, cmdlinefile=dest_dir + '.cmdline')
 
                 # Create .jmod for module
                 if version == max_version:
-                    if exists(jmd.get_jmod_path()):
-                        os.remove(jmd.get_jmod_path())
-                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmd.get_jmod_path()])
+                    # Delete module-info.java so that it does not get included in the .jmod file
+                    os.remove(module_info_java)
+
+                    # Temporarily move META-INF/services out of dest_dir. JDK 9+ service lookup
+                    # still processes this directory but ProGuard does not.
+                    services_dir = join(dest_dir, 'META-INF', 'services')
+                    tmp_services_dir = None
+                    if exists(services_dir):
+                        tmp_services_dir = join(build_directory, version + '_services_tmp')
+                        os.rename(services_dir, tmp_services_dir)
+
+                    jmod_path = jmd.get_jmod_path(respect_stripping=False)
+                    if exists(jmod_path):
+                        os.remove(jmod_path)
+                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmod_path])
+
+                    if tmp_services_dir:
+                        os.rename(tmp_services_dir, services_dir)
 
                 # Append the module-info.class
                 module_info_arc_dir = ''
@@ -759,8 +797,8 @@ def make_java_module(dist, jdk, javac_daemon=None):
 
                 with mx.Timer('jar@' + version, times):
                     with ZipFile(moduleJar, 'a') as zf:
+                        module_info_class = join(dest_dir, 'module-info.class')
                         zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
-                        zf.write(module_info_java, module_info_arc_dir + basename(module_info_java))
 
                 with mx.Timer('cleanup@' + version, times):
                     if unversioned_resources_backup:

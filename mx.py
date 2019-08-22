@@ -2523,6 +2523,8 @@ class SourceSuite(Suite):
                     if native:
                         if isinstance(native, bool) or native.lower() == "true":
                             output = attrs.pop('output', None)
+                            if output and os.sep != '/':
+                                output = output.replace('/', os.sep)
                             results = Suite._pop_list(attrs, 'results', context)
                             p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
                                               theLicense=theLicense, testProject=testProject, **attrs)
@@ -3381,7 +3383,8 @@ import mx_downstream
 import mx_subst
 
 from mx_javamodules import JavaModuleDescriptor, make_java_module, get_java_module_info, lookup_package, \
-                           get_transitive_closure, get_module_name, parse_requiresConcealed_attribute
+                           get_transitive_closure, get_module_name, parse_requiresConcealed_attribute, \
+                           as_java_module
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
@@ -5020,7 +5023,7 @@ class JARDistribution(Distribution, ClasspathDependency):
 
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
-            abort("unbuilt distribution {} can not be on a class path. Did you forget to run 'mx build'?".format(self))
+            abort("unbuilt distribution {} can not be on a class path ({} does not exist). Did you forget to run 'mx build'?".format(self, self.path))
         return self.path
 
     def get_ide_project_dir(self):
@@ -5402,71 +5405,116 @@ class JARDistribution(Distribution, ClasspathDependency):
 
         logv('Stripping {}...'.format(self.name))
         jdk9_or_later = jdk.javaCompliance >= '9'
-        strip_command = ['-jar', library('PROGUARD_6_1_1').get_path(resolve=True)]
 
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as config_tmp_file:
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=JARDistribution._strip_map_file_suffix) as mapping_tmp_file:
-                # add config files from projects
-                assert all((os.path.isabs(f) for f in self.stripConfig))
-                # add mapping files
-                assert all((os.path.isabs(f) for f in self.stripMapping))
+        # add config files from projects
+        assert all((os.path.isabs(f) for f in self.stripConfig))
+        # add mapping files
+        assert all((os.path.isabs(f) for f in self.stripMapping))
 
-                # add configs (must be one file)
-                _merge_file_contents(self.stripConfig, config_tmp_file)
-                strip_command += ['-include', config_tmp_file.name]
+        proguard = ['-jar', library('PROGUARD_6_1_1').get_path(resolve=True)]
 
-                # input and output jars
-                input_maps = self.stripMapping + [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+        prefix = [
+            '-dontusemixedcaseclassnames', # https://sourceforge.net/p/proguard/bugs/762/
+            '-adaptclassstrings',
+            '-adaptresourcefilecontents META-INF/services/*',
+            '-adaptresourcefilenames META-INF/services/*',
+            '-renamesourcefileattribute stripped',
+            '-keepattributes Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,RuntimeVisible*Annotations,EnclosingMethod,AnnotationDefault',
 
-                if not jdk9_or_later:
-                    libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
-                else:
-                    # Override modules from the JDK with those from dependencies
-                    entries = classpath_entries(self, includeSelf=False)
-                    dep_modules = set()
-                    for e in entries:
-                        if e.isJARDistribution():
-                            info = get_java_module_info(e)
-                            if info:
-                                modulename, _, _ = info  # pylint: disable=unpacking-non-sequence
-                                dep_modules.add(modulename)
-                    libraryjars = classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep) + \
-                        [join(jdk.home, 'jmods', jmd.name + '.jmod') for jmd in jdk.get_modules() if jmd.name not in dep_modules]
+            # options for incremental stripping
+            '-dontoptimize -dontshrink -useuniqueclassmembernames']
 
-                # Ignored versioned class files until multi-release jars are
-                # supported by ProGuard (https://sourceforge.net/p/proguard/bugs/671/)
-                strip_command += [
-                     '-injars', self.original_path() + '(!META-INF/versions/**,!module-info.class)',
-                     '-outjars', self.path, # only the jar of this distribution
-                     '-libraryjars', os.pathsep.join([e + '(!META-INF/versions/**,!module-info.class)' for e in libraryjars]),
-                     '-printmapping', self.strip_mapping_file(),
-                ]
+        # add configs
+        for file_name in self.stripConfig:
+            with open(file_name, 'r') as fp:
+                prefix.extend((l.strip() for l in fp.readlines()))
 
-                # options for incremental stripping
-                strip_command += ['-dontoptimize', '-dontshrink', '-useuniqueclassmembernames']
+        def _create_derived_file(base_file, suffix, lines):
+            derived_file = _derived_path(base_file, suffix)
+            with open(derived_file, 'w') as fp:
+                for line in lines:
+                    print(line, file=fp)
+            return derived_file
 
-                # common options for all projects
-                strip_command += [
-                    '-adaptclassstrings',
-                    '-adaptresourcefilecontents', 'META-INF/services/*',
-                    '-adaptresourcefilenames', 'META-INF/services/*',
-                    '-renamesourcefileattribute', 'stripped',
-                    '-keepattributes', 'Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,RuntimeVisible*Annotations,EnclosingMethod,AnnotationDefault',
-                ]
+        # add mappings of all stripped dependencies (must be one file)
+        input_maps = self.stripMapping + [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
+        if input_maps:
+            input_maps_file = _derived_path(self.path, '.input_maps')
+            with open(input_maps_file, 'w') as fp_out:
+                for file_name in input_maps:
+                    with open(file_name, 'r') as fp_in:
+                        fp_out.write(fp_in.read())
+            prefix += ['-applymapping ' + input_maps_file]
 
-                # add mappings of all stripped dependencies (must be one file)
-                if input_maps:
-                    _merge_file_contents(input_maps, mapping_tmp_file)
-                    strip_command += ['-applymapping', mapping_tmp_file.name]
+        if jdk9_or_later:
+            prefix += [
+            '-keep class module-info',
+            '-keepattributes Module*',
 
-                if _opts.very_verbose:
-                    strip_command.append('-verbose')
-                elif not (_opts.verbose or is_windows()):
-                    strip_command += ['-dontnote', '**']
+            # Must keep package names due to https://sourceforge.net/p/proguard/bugs/763/
+            '-keeppackagenames **'
+            ]
 
-                run_java(strip_command, jdk=jdk)
-                with open(self.strip_config_dependency_file(), 'w') as f:
-                    f.writelines((l + os.linesep for l in self.stripConfig))
+        if _opts.very_verbose:
+            prefix += ['-verbose']
+        elif not _opts.verbose:
+            prefix += ['-dontnote **']
+
+        # https://sourceforge.net/p/proguard/bugs/671/#56b4
+        # https://sourceforge.net/p/proguard/bugs/704/#d392
+        jar_filter = '(!META-INF/versions/**,!module-info.class)'
+
+        if not jdk9_or_later:
+            libraryjars = classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
+            include_file = _create_derived_file(self.path, '.proguard', prefix + [
+                '-injars ' + self.original_path(),
+                '-outjars ' + self.path,
+                '-libraryjars ' + os.pathsep.join((e + jar_filter for e in libraryjars)),
+                '-printmapping ' + self.strip_mapping_file(),
+            ])
+            strip_command = proguard + ['-include', include_file]
+
+            run_java(strip_command, jdk=jdk)
+            with open(self.strip_config_dependency_file(), 'w') as f:
+                f.writelines((l + os.linesep for l in self.stripConfig))
+        else:
+            cp_entries = classpath_entries(self, includeSelf=False)
+            self_jmd = as_java_module(self, jdk) if get_java_module_info(self) else None
+            dep_modules = frozenset(e for e in cp_entries if e.isJARDistribution() and get_java_module_info(e))
+            dep_module_names = frozenset((get_java_module_info(e)[0] for e in dep_modules))
+
+            dep_jmds = frozenset((as_java_module(e, jdk) for e in cp_entries if e.isJARDistribution() and get_java_module_info(e)))
+            dep_jars = classpath(self, includeSelf=False, includeBootClasspath=False, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
+
+            # Add jmods from the JDK except those overridden by dependencies
+            jdk_jmods = [m.get_jmod_path(respect_stripping=False) for m in jdk.get_modules() if m.name not in dep_module_names]
+
+            # Make stripped jar
+            include_file = _create_derived_file(self.path, '.proguard', prefix + [
+                '-injars ' + self.original_path() + jar_filter,
+                '-outjars ' + self.path,
+                '-libraryjars ' + os.pathsep.join((e + jar_filter for e in dep_jars + jdk_jmods)),
+                '-printmapping ' + self.path + JARDistribution._strip_map_file_suffix,
+            ])
+
+            strip_commands = [proguard + ['-include', include_file]]
+            if self_jmd:
+                # Make stripped jmod
+                stripped_jmod = self_jmd.get_jmod_path(respect_stripping=True)
+                dep_jmods = [jmd.get_jmod_path(respect_stripping=True) for jmd in dep_jmds]
+
+                include_file = _create_derived_file(stripped_jmod, '.proguard', prefix + [
+                        '-injars ' + self_jmd.get_jmod_path(respect_stripping=False),
+                        '-outjars ' + stripped_jmod,
+                        '-libraryjars ' + os.pathsep.join((e + jar_filter for e in dep_jmods + jdk_jmods)),
+                        '-printmapping ' + stripped_jmod + JARDistribution._strip_map_file_suffix,
+                ])
+
+                strip_commands.append(proguard + ['-include', include_file])
+            for command in strip_commands:
+                run_java(command, jdk=jdk)
+            with open(self.strip_config_dependency_file(), 'w') as f:
+                f.writelines((l + os.linesep for l in self.stripConfig))
 
     def remoteName(self, platform=None):
         base_name = super(JARDistribution, self).remoteName(platform=platform)
@@ -5494,10 +5542,6 @@ class JARDistribution(Distribution, ClasspathDependency):
                 yield self.sourcesPath, self.default_source_filename()
             if self.is_stripped():
                 yield self.strip_mapping_file(), self.default_filename() + JARDistribution._strip_map_file_suffix
-            info = get_java_module_info(self)
-            if info:
-                name, _, _ = info  # pylint: disable=unpacking-non-sequence
-                yield join(dirname(self.path), name + '.jmod')
 
     def needsUpdate(self, newestInput):
         res = _needsUpdate(newestInput, self.path)
@@ -12874,7 +12918,7 @@ def _get_new_progress_group_args():
         preexec_fn = os.setsid
     return preexec_fn, creationflags
 
-def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, **kwargs):
+def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
     If the command times out, it kills the subprocess and returns `ERROR_TIMEOUT` if `nonZeroIsFatal`
@@ -12918,7 +12962,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
-    if _opts.verbose:
+    if _opts.verbose or cmdlinefile:
         if _opts.very_verbose:
             log('Environment variables:')
             for key in sorted(env.keys()):
@@ -12927,11 +12971,17 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if cwd is not None and cwd != _original_directory:
                 log('Directory: ' + cwd)
+            s = ''
             if env is not None:
                 env_diff = [(k, env[k]) for k in env if k not in _original_environ]
                 if len(env_diff):
-                    log('env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\')
-            log(' '.join(map(pipes.quote, args)))
+                    s = 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+            s = s + ' '.join(map(pipes.quote, args))
+            if _opts.verbose:
+                log(s)
+            if cmdlinefile:
+                with open(cmdlinefile, 'w') as fp:
+                    fp.write(s)
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -13646,7 +13696,7 @@ class JDKConfig(Comparable):
                 if len(parts) == 1:
                     if name is not None:
                         assert name not in modules, 'duplicate module: ' + name
-                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
                     name = parts[0]
                     requires = {}
                     exports = {}
@@ -13684,7 +13734,7 @@ class JDKConfig(Comparable):
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot)
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
             setattr(self, '.modules', tuple(modules.values()))
         return getattr(self, '.modules')
 
@@ -14726,6 +14776,18 @@ class SafeFileCreation(object):
         for companion_pattern in self.companion_patterns:
             _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
 
+def _derived_path(base_path, suffix, prefix='.', prepend_dirname=True):
+    """
+    Gets a path derived from `base_path` by prepending `prefix` and appending `suffix` to
+    to the base name of `base_path`.
+
+    :param bool prepend_dirname: if True, `dirname(base_path)` is prepended to the derived base file
+    :param bool delete: if True and the derived
+    """
+    derived = prefix + basename(base_path) + suffix
+    if prepend_dirname:
+        derived = join(dirname(base_path), derived)
+    return derived
 
 class Archiver(SafeFileCreation):
     """
@@ -14838,6 +14900,24 @@ class Archiver(SafeFileCreation):
     def add_link(self, target, archive_name, provenance):
         self._add_link(target, archive_name, provenance)
 
+def make_unstrip_map(dists):
+    """
+    Gets the contents of a map file that can be used with the `unstrip` command to deobfuscate stack
+    traces containing code from the stripped versions of `dists`.
+
+    :return: None if none of the entries in `dists` are stripped or none of them have
+             existing unstripping map files (likely because they have not been built
+             with --strip-jars enabled)
+    """
+    content = ''
+    for d in dists:
+        if d.is_stripped():
+            map_file = d.path + '.map'
+            if exists(map_file):
+                with open(map_file) as fp:
+                    content += fp.read()
+    return None if len(content) == 0 else content
+
 def _unstrip(args):
     """use stripping mappings of a file to unstrip the contents of another file
 
@@ -14846,21 +14926,48 @@ def _unstrip(args):
     unstrip(args)
     return 0
 
-def unstrip(args):
+def unstrip(args, **run_java_kwargs):
     proguard_cp = library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True)
-    unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace']
+    # A slightly more general pattern for matching stack traces than the default.
+    # This version does not require the "at " prefix.
+    regex = r'(?:.*?\s+%c\.%m\s*\(%s(?::%l)?\)\s*(?:~\[.*\])?)|(?:(?:.*?[:"]\s+)?%c(?::.*)?)'
+    unstrip_command = ['-cp', proguard_cp, 'proguard.retrace.ReTrace', '-regex', regex]
     mapfiles = []
     inputfiles = []
-    for arg in args:
-        if os.path.isdir(arg):
-            mapfiles += glob.glob(join(arg, '*' + JARDistribution._strip_map_file_suffix))
-        elif arg.endswith(JARDistribution._strip_map_file_suffix):
-            mapfiles.append(arg)
-        else:
-            inputfiles.append(arg)
-    with tempfile.NamedTemporaryFile() as catmapfile:
-        _merge_file_contents(mapfiles, catmapfile)
-        run_java(unstrip_command + [catmapfile.name] + inputfiles)
+    temp_files = []
+    try:
+        for arg in args:
+            if os.path.isdir(arg):
+                mapfiles += glob.glob(join(arg, '*' + JARDistribution._strip_map_file_suffix))
+            elif arg.endswith(JARDistribution._strip_map_file_suffix):
+                mapfiles.append(arg)
+            else:
+                # ReTrace does not (yet) understand JDK9+ stack traces where a module name
+                # is prefixed to a class name. As a workaround, we separate the module name
+                # prefix from the class name with a space. For example, this converts:
+                #
+                #    com.oracle.graal.graal_enterprise/com.oracle.graal.enterprise.a.b(stripped:22)
+                #
+                # to:
+                #
+                #    com.oracle.graal.graal_enterprise/ com.oracle.graal.enterprise.a.b(stripped:22)
+                #
+                with open(arg) as fp:
+                    contents = fp.read()
+                    new_contents = re.sub(r'(\s+(?:[a-z][a-zA-Z_$]*\.)*[a-z][a-zA-Z\d_$]*/)', r'\1 ', contents)
+                if contents != new_contents:
+                    temp_file = arg + '.' + str(os.getpid())
+                    with open(temp_file, 'w') as fp:
+                        fp.write(new_contents)
+                    inputfiles.append(temp_file)
+                else:
+                    inputfiles.append(arg)
+        with tempfile.NamedTemporaryFile() as catmapfile:
+            _merge_file_contents(mapfiles, catmapfile)
+            run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
+    finally:
+        for temp_file in temp_files:
+            os.unlink(temp_file)
 
 def _archive(args):
     """create jar files for projects and distributions"""
@@ -19827,7 +19934,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.232.0")  # GR-17322
+version = VersionSpec("5.233.0")  # GR-17669: improve support for stripping modules
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
