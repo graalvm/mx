@@ -5429,11 +5429,8 @@ class JARDistribution(Distribution, ClasspathDependency):
             with open(file_name, 'r') as fp:
                 prefix.extend((l.strip() for l in fp.readlines()))
 
-        def _derived_file(base_file, suffix):
-            return join(dirname(base_file), '.' + basename(base_file) + suffix)
-
         def _create_derived_file(base_file, suffix, lines):
-            derived_file = _derived_file(base_file, suffix)
+            derived_file = _derived_path(base_file, suffix)
             with open(derived_file, 'w') as fp:
                 for line in lines:
                     print(line, file=fp)
@@ -5442,7 +5439,7 @@ class JARDistribution(Distribution, ClasspathDependency):
         # add mappings of all stripped dependencies (must be one file)
         input_maps = self.stripMapping + [d.strip_mapping_file() for d in classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
         if input_maps:
-            input_maps_file = _derived_file(self.path, '.input_maps')
+            input_maps_file = _derived_path(self.path, '.input_maps')
             with open(input_maps_file, 'w') as fp_out:
                 for file_name in input_maps:
                     with open(file_name, 'r') as fp_in:
@@ -14779,6 +14776,18 @@ class SafeFileCreation(object):
         for companion_pattern in self.companion_patterns:
             _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
 
+def _derived_path(base_path, suffix, prefix='.', prepend_dirname=True):
+    """
+    Gets a path derived from `base_path` by prepending `prefix` and appending `suffix` to
+    to the base name of `base_path`.
+
+    :param bool prepend_dirname: if True, `dirname(base_path)` is prepended to the derived base file
+    :param bool delete: if True and the derived
+    """
+    derived = prefix + basename(base_path) + suffix
+    if prepend_dirname:
+        derived = join(dirname(base_path), derived)
+    return derived
 
 class Archiver(SafeFileCreation):
     """

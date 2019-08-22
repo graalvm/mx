@@ -755,6 +755,13 @@ def make_java_module(dist, jdk, javac_daemon=None):
                     # separately).
                     javac_args.append('-Xlint:-options,-module')
                     javac_args.append(module_info_java)
+
+                    # Convert javac args to @args file
+                    javac_args_file = mx._derived_path(dest_dir, '.javac_args')
+                    with open(javac_args_file, 'w') as fp:
+                        fp.write(os.linesep.join(javac_args))
+                    javac_args = ['@' + javac_args_file]
+
                     if javac_daemon:
                         javac_daemon.compile(javac_args)
                     else:
