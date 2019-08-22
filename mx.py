@@ -2523,6 +2523,8 @@ class SourceSuite(Suite):
                     if native:
                         if isinstance(native, bool) or native.lower() == "true":
                             output = attrs.pop('output', None)
+                            if output and os.sep != '/':
+                                output = output.replace('/', os.sep)
                             results = Suite._pop_list(attrs, 'results', context)
                             p = NativeProject(self, name, subDir, srcDirs, deps, workingSets, results, output, d,
                                               theLicense=theLicense, testProject=testProject, **attrs)
