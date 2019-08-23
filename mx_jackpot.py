@@ -27,6 +27,7 @@
 
 from __future__ import print_function
 
+import tempfile
 import mx
 import os
 from os.path import join, exists
@@ -45,7 +46,7 @@ def _should_test_project(p):
             usage_msg='[--apply]',
             auto_add=False)
 def jackpot(args, suite=None, nonZeroIsFatal=False):
-    """run Jackpot 3.0 against non-test Java projects"""
+    """run Jackpot 11.1 against non-test Java projects"""
 
     jackpotHome = mx.get_env('JACKPOT_HOME', None)
     if jackpotHome:
@@ -84,15 +85,20 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
 
         groups = groups + ['--group', "--classpath " + mx._separatedCygpathU2W(_escape_string(os.pathsep.join(javacClasspath))) + " --source " + str(sourceLevel) + " " + " ".join([_escape_string(d) for d in p.source_dirs()])]
 
-    cmd = ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
-    cmd = cmd + ['--fail-on-warnings', '--progress'] + args + groups
+    cmd = ['--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED', '--add-opens=java.base/java.net=ALL-UNNAMED', '--add-opens=java.desktop/sun.awt=ALL-UNNAMED']
+    cmd = cmd + ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
+    jackCmd = ['--fail-on-warnings', '--progress'] + args + groups
 
-    jdk = mx.get_jdk(mx.JavaCompliance("8"), cancel='cannot run Jackpot', purpose="run Jackpot")
+    jdk = mx.get_jdk(mx.JavaCompliance("11+"), cancel='cannot run Jackpot', purpose="run Jackpot")
     if jdk is None:
-        mx.warn('Skipping Jackpot since JDK 8 is not available')
+        mx.warn('Skipping Jackpot since JDK 11 is not available')
         return 0
     else:
-        ret = mx.run_java(cmd, nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+        (fd, path) = tempfile.mkstemp('.jackpot')
+        for c in jackCmd:
+            os.write(fd, '{}\n'.format(c))
+        os.close(fd)
+        ret = mx.run_java(cmd + ['@{}'.format(path)], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
         if ret != 0:
             mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
             mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
