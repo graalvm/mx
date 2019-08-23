@@ -7715,6 +7715,8 @@ class JavacLikeCompiler(JavaCompiler):
 
         fileList = join(project.get_output_root(), 'javafilelist.txt')
         with open(fileList, 'w') as fp:
+            if get_os() == 'windows':
+                sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
             fp.write(os.linesep.join(sourceFiles))
         javacArgs.append('@' + _cygpathU2W(fileList))
 
@@ -19934,7 +19936,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.233.1")  # Apache Jackpot 11.1
+version = VersionSpec("5.233.2")  # GR-17751
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
