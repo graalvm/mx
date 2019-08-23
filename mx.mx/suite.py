@@ -302,10 +302,14 @@ suite = {
     },
 
     "JACKPOT" : {
-      "urls" : [
-        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jackpot-8.1-20151011.220626.jar",
-      ],
-      "sha1" : "b5f91770afd3b8ce645e7b967a1f266ab472053b",
+      "sha1" : "9e945acafbdfd585d9079769098f1d78bc8e9921",
+      "sourceSha1": "62949e61e68bd014bad5267007fae2b2c3cf6c9a",
+      "licence": "Apache-2.0",
+      "maven" : {
+        "groupId" : "org.apache.netbeans.modules.jackpot30",
+        "artifactId" : "tool",
+        "version" : "11.1",
+      }
     },
 
     "PROGUARD" : {
