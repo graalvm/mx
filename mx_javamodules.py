@@ -800,25 +800,28 @@ def make_java_module(dist, jdk, javac_daemon=None):
                         module_info_class = join(dest_dir, 'module-info.class')
                         zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
 
-                with mx.Timer('cleanup@' + version, times):
-                    if unversioned_resources_backup:
-                        for dst, contents in unversioned_resources_backup.items():
-                            with open(dst, 'wb') as fp:
-                                fp.write(contents)
-                    for dirpath, dirnames, filenames in os.walk(dest_dir, topdown=False):
-                        del_dirpath = True
-                        for filename in filenames:
-                            abs_filename = join(dirpath, filename)
-                            rel_filename = os.path.relpath(abs_filename, dest_dir)
-                            if rel_filename not in unversioned_resources:
-                                os.remove(abs_filename)
-                            else:
-                                del_dirpath = False
-                        for dname in dirnames:
-                            if exists(join(dirpath, dname)):
-                                del_dirpath = False
-                        if del_dirpath:
-                            os.rmdir(dirpath)
+                if version != max_version:
+                    # Leave output in place for last version so that the jmod command above
+                    # can be manually re-executed (helps debugging).
+                    with mx.Timer('cleanup@' + version, times):
+                        if unversioned_resources_backup:
+                            for dst, contents in unversioned_resources_backup.items():
+                                with open(dst, 'wb') as fp:
+                                    fp.write(contents)
+                        for dirpath, dirnames, filenames in os.walk(dest_dir, topdown=False):
+                            del_dirpath = True
+                            for filename in filenames:
+                                abs_filename = join(dirpath, filename)
+                                rel_filename = os.path.relpath(abs_filename, dest_dir)
+                                if rel_filename not in unversioned_resources:
+                                    os.remove(abs_filename)
+                                else:
+                                    del_dirpath = False
+                            for dname in dirnames:
+                                if exists(join(dirpath, dname)):
+                                    del_dirpath = False
+                            if del_dirpath:
+                                os.rmdir(dirpath)
 
             if files_to_remove:
                 with mx.Timer('cleanup', times), mx.SafeFileCreation(moduleJar) as sfc:
