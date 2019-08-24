@@ -783,7 +783,25 @@ def make_java_module(dist, jdk, javac_daemon=None):
                     jmod_path = jmd.get_jmod_path(respect_stripping=False)
                     if exists(jmod_path):
                         os.remove(jmod_path)
-                    mx.run([jdk.exe_path('jmod'), 'create', '--class-path=' + dest_dir, jmod_path])
+
+                    jdk_jmod = join(jdk_jmods, basename(jmod_path))
+                    jmod_args = ['create', '--class-path=' + dest_dir]
+                    if exists(jdk_jmod):
+                        with ZipFile(jdk_jmod, 'r') as zf:
+                            # Copy commands and legal notices (if any) from JDK version of the module
+                            for jmod_dir, jmod_option in (('bin', '--cmds'), ('legal', '--legal-notices')):
+                                entries = [name for name in zf.namelist() if name.startswith(jmod_dir + '/')]
+                                if entries:
+                                    extracted_dir = join(dest_dir, jmod_dir)
+                                    assert not exists(extracted_dir), extracted_dir
+                                    zf.extractall(dest_dir, entries)
+                                    entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
+                                    if exists(entries_dir):
+                                        shutil.rmtree(entries_dir)
+                                    print(extracted_dir, entries_dir)
+                                    os.rename(extracted_dir, entries_dir)
+                                    jmod_args.extend([jmod_option, join(entries_dir)])
+                    mx.run([jdk.exe_path('jmod')] + jmod_args + [jmod_path])
 
                     if tmp_services_dir:
                         os.rename(tmp_services_dir, services_dir)
