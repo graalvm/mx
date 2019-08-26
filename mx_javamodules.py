@@ -798,7 +798,6 @@ def make_java_module(dist, jdk, javac_daemon=None):
                                     entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
                                     if exists(entries_dir):
                                         shutil.rmtree(entries_dir)
-                                    print(extracted_dir, entries_dir)
                                     os.rename(extracted_dir, entries_dir)
                                     jmod_args.extend([jmod_option, join(entries_dir)])
                     mx.run([jdk.exe_path('jmod')] + jmod_args + [jmod_path])
