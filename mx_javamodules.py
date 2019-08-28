@@ -61,11 +61,13 @@ class JavaModuleDescriptor(object):
     :param str jarpath: path to module jar file
     :param JARDistribution dist: distribution from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
+    :param dict alternatives: name to JavaModuleDescriptor for alternative definitions of the module. If this
+                    is an alternative itself, then the dict has a single entry mapping its alternative name to None.
     :param bool boot: specifies if this module is in the boot layer
     :param JDKConfig jdk: the JDK containing this module
     """
     def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
-                 jarpath=None, dist=None, modulepath=None, boot=False, jdk=None):
+                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -79,6 +81,7 @@ class JavaModuleDescriptor(object):
         self.jarpath = jarpath
         self.dist = dist
         self.modulepath = modulepath
+        self.alternatives = alternatives
         self.boot = boot
         self.jdk = jdk
         if not self.dist and not self.jarpath and not self.jdk:
@@ -94,7 +97,7 @@ class JavaModuleDescriptor(object):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
-    def get_jmod_path(self, respect_stripping=True):
+    def get_jmod_path(self, respect_stripping=True, alt_module_info_name=None):
         """
         Gets the path to the .jmod file corresponding to this module descriptor.
 
@@ -102,9 +105,11 @@ class JavaModuleDescriptor(object):
                to a stripped .jmod file if this module is based on a dist
         """
         if respect_stripping and self.dist is not None:
+            assert alt_module_info_name is None, 'alternate modules not supported for stripped dist ' + self.dist.name
             return join(dirname(self.dist.path), self.name + '.jmod')
         if self.dist is not None:
-            return join(dirname(self.dist.original_path()), self.name + '.jmod')
+            qualifier = '_' + alt_module_info_name if alt_module_info_name else ''
+            return join(dirname(self.dist.original_path()), self.name + qualifier + '.jmod')
         if self.jarpath:
             return join(dirname(self.jarpath), self.name + '.jmod')
         assert self.jdk, self.name
@@ -113,7 +118,7 @@ class JavaModuleDescriptor(object):
         return p
 
     @staticmethod
-    def load(dist, jdk, fatalIfNotCreated=True):
+    def load(dist, jdk, fatalIfNotCreated=True, pickled_path=None):
         """
         Unpickles the module descriptor corresponding to a given distribution.
 
@@ -121,13 +126,14 @@ class JavaModuleDescriptor(object):
         :param JDKConfig jdk: used to resolve pickled references to JDK modules
         :param bool fatalIfNotCreated: specifies whether to abort if a descriptor has not been created yet
         """
-        _, path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
-        if not exists(path):
+        if not pickled_path:
+            _, pickled_path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
+        if not exists(pickled_path):
             if fatalIfNotCreated:
-                mx.abort(path + ' does not exist')
+                mx.abort(pickled_path + ' does not exist')
             else:
                 return None
-        with open(path, 'rb') as fp:
+        with open(pickled_path, 'rb') as fp:
             jmd = pickle.load(fp)
         jdkmodules = {m.name: m for m in jdk.get_modules()}
         resolved = []
@@ -139,9 +145,30 @@ class JavaModuleDescriptor(object):
                 resolved.append(jdkmodules[name])
         jmd.modulepath = resolved
         jmd.dist = mx.distribution(jmd.dist)
+        if jmd.alternatives:
+            alternatives = {}
+            for alt_name, value in jmd.alternatives.items():
+                if value is not None:
+                    alt_pickled_path = JavaModuleDescriptor._get_alt_pickled_path(pickled_path, alt_name)
+                    value = JavaModuleDescriptor.load(dist, jdk, fatalIfNotCreated=fatalIfNotCreated, pickled_path=alt_pickled_path)
+                alternatives[alt_name] = value
+            jmd.alternatives = alternatives
+
         if not os.path.isabs(jmd.jarpath):
-            jmd.jarpath = join(dirname(path), jmd.jarpath)
+            jmd.jarpath = join(dirname(pickled_path), jmd.jarpath)
         return jmd
+
+    def _get_alternative_name(self):
+        if self.alternatives and len(self.alternatives) == 1:
+            alt_name, jmd = next(iter(self.alternatives.items()))
+            if jmd is None:
+                return alt_name
+        return None
+
+    @staticmethod
+    def _get_alt_pickled_path(pickled_path, alt_name):
+        assert pickled_path.endswith('.jar.pickled')
+        return pickled_path[:-len('.jar.pickled')] + '-' + alt_name + '.jar.pickled'
 
     def save(self):
         """
@@ -154,14 +181,20 @@ class JavaModuleDescriptor(object):
         if not dist:
             # Don't pickle a JDK module
             return None
-        _, path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
+        _, pickled_path, _ = get_java_module_info(dist, fatalIfNotModule=True)  # pylint: disable=unpacking-non-sequence
+        assert pickled_path.endswith('.pickled')
+        alt_name = self._get_alternative_name()
+        if alt_name:
+            pickled_path = JavaModuleDescriptor._get_alt_pickled_path(pickled_path, alt_name)
         modulepath = self.modulepath
         jarpath = self.jarpath
         self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
         self.dist = dist.name
-        self.jarpath = os.path.relpath(jarpath, dirname(path))
+        self.jarpath = os.path.relpath(jarpath, dirname(pickled_path))
+        if self.alternatives:
+            self.alternatives = {alt_name : None if v is None else alt_name for alt_name, v in self.alternatives.items()}
         try:
-            with mx.SafeFileCreation(path) as sfc, open(sfc.tmpPath, 'wb') as f:
+            with mx.SafeFileCreation(pickled_path) as sfc, open(sfc.tmpPath, 'wb') as f:
                 pickle.dump(self, f)
         finally:
             self.modulepath = modulepath
@@ -288,8 +321,10 @@ def as_java_module(dist, jdk, fatalIfNotCreated=True):
         return jmd
     return getattr(dist, '.javaModule')
 
-
 def get_module_name(dist):
+    """
+    Gets the name of the module defined by `dist`.
+    """
     if dist.suite.getMxCompatibility().moduleDepsEqualDistDeps():
         module_name = getattr(dist, 'moduleName', None)
         mi = getattr(dist, 'moduleInfo', None)
@@ -297,8 +332,8 @@ def get_module_name(dist):
             if module_name:
                 mx.abort('The "moduleName" and "moduleInfo" attributes are mutually exclusive', context=dist)
             module_name = mi.get('name', None)
-            if not module_name:
-                mx.abort('"moduleInfo" attribute requires non-empty "name" attribute', context=dist)
+            if module_name is None:
+                mx.abort('The "moduleInfo" attribute requires either a "name" sub-attribute', context=dist)
         elif module_name is not None and len(module_name) == 0:
             mx.abort('"moduleName" attribute cannot be empty', context=dist)
     else:
@@ -323,7 +358,7 @@ def get_java_module_info(dist, fatalIfNotModule=False):
         if fatalIfNotModule:
             mx.abort('Distribution ' + dist.name + ' does not define a module')
         return None
-    return module_name, dist.path + '-module.pickled', dist.original_path()
+    return module_name, dist.path + '.pickled', dist.original_path()
 
 def get_library_as_module(dep, jdk):
     """
@@ -418,7 +453,7 @@ _special_versioned_prefix = 'META-INF/_versions/'  # used for versioned services
 _versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
 
 
-def make_java_module(dist, jdk, javac_daemon=None):
+def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
     """
     Creates a Java module from a distribution.
     This updates the JAR by adding `module-info` classes.
@@ -458,7 +493,6 @@ def make_java_module(dist, jdk, javac_daemon=None):
     times = []
     with mx.Timer('total', times):
         moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
-        mx.log('Building Java module ' + moduleName + ' from ' + dist.name)
         exports = {}
         requires = {}
         concealedRequires = {}
@@ -545,6 +579,37 @@ def make_java_module(dist, jdk, javac_daemon=None):
                         exports.setdefault(p, set())
 
         module_info = getattr(dist, 'moduleInfo', None)
+        alt_module_info = None
+
+        if alt_module_info_name is not None:
+            assert isinstance(alt_module_info_name, str)
+            alt_module_info_attr_name = 'moduleInfo:' + alt_module_info_name
+            alt_module_info = getattr(dist, alt_module_info_attr_name, None)
+            if alt_module_info is None or not isinstance(alt_module_info, dict):
+                mx.abort('"{}" attribute must be a dictionary'.format(alt_module_info_attr_name), context=dist)
+            if module_info is None:
+                mx.abort('"{}" attribute found but required "moduleInfo" attribute is missing'.format(alt_module_info_attr_name), context=dist)
+            invalid = [k for k in alt_module_info.keys() if k != 'exports']
+            if invalid:
+                mx.abort('Sub-attribute(s) "{}" of "{}" attribute not supported. Only "exports" is currently supported.'.format('", "'.join(invalid), alt_module_info_attr_name), context=dist)
+            alt_module_jar = join(dirname(moduleJar), basename(moduleJar)[:-len('.jar')] + '-' + alt_module_info_name + '.jar')
+            alt_module_src_zip = alt_module_jar[:-len('.jar')] + '.src.zip'
+            module_src_zip = moduleJar[:-len('.jar')] + '.src.zip'
+            if exists(alt_module_jar):
+                os.remove(alt_module_jar)
+            shutil.copy(moduleJar, alt_module_jar)
+            if exists(alt_module_src_zip):
+                os.remove(alt_module_src_zip)
+            if exists(module_src_zip):
+                shutil.copy(module_src_zip, alt_module_src_zip)
+            moduleJar = alt_module_jar
+            alternatives = {alt_module_info_name : None}
+        else:
+            alt_module_info_names = [key[len('moduleInfo:'):] for key in dir(dist) if key.startswith('moduleInfo:')]
+            alternatives = {name : make_java_module(dist, jdk, javac_daemon=javac_daemon, alt_module_info_name=name) for name in alt_module_info_names}
+
+        mx.log('Building Java module {} ({}) from {}'.format(moduleName, basename(moduleJar), dist.name))
+
         if module_info:
             for entry in module_info.get("requires", []):
                 parts = entry.split()
@@ -552,7 +617,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                 name = parts[-1]
                 requires.setdefault(name, set()).update(qualifiers)
             base_uses.update(module_info.get('uses', []))
-            _process_exports(module_info.get('exports', []), module_packages)
+            _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
 
             requires_concealed = module_info.get('requiresConcealed', None)
             if requires_concealed is not None:
@@ -716,7 +781,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                                             uses.add(service)
 
                     jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
-                                               jarpath=moduleJar, dist=dist, modulepath=modulepath)
+                                               jarpath=moduleJar, dist=dist, modulepath=modulepath, alternatives=alternatives)
 
                     # Compile module-info.class
                     module_info_java = join(dest_dir, 'module-info.java')
@@ -780,7 +845,7 @@ def make_java_module(dist, jdk, javac_daemon=None):
                         tmp_services_dir = join(build_directory, version + '_services_tmp')
                         os.rename(services_dir, tmp_services_dir)
 
-                    jmod_path = jmd.get_jmod_path(respect_stripping=False)
+                    jmod_path = jmd.get_jmod_path(respect_stripping=False, alt_module_info_name=alt_module_info_name)
                     if exists(jmod_path):
                         os.remove(jmod_path)
 

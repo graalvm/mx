@@ -7368,7 +7368,7 @@ class JavaProject(Project, ClasspathDependency):
 
     def get_declaring_module_distribution(self):
         """
-        Gets the distribution that defines a Java module and contains this project.
+        Gets the distribution that contains this project and also defines a Java module.
 
         :rtype: JARDistribution | None
         """
@@ -11366,7 +11366,23 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                     if repo_metadata_name:
                         extraFiles.append((repo_metadata_name, 'suite-revisions', 'xml'))
 
-                    pushed_file = dist.prePush(dist.path)
+                    jar_to_deploy = dist.path
+                    if isinstance(dist.maven, dict):
+                        deployment_module_info = dist.maven.get('moduleInfo')
+                        if deployment_module_info:
+                            jdk = get_jdk(dist.maxJavaCompliance())
+                            if jdk.javaCompliance <= '1.8':
+                                abort('Distribution with "moduleInfo" sub-attribute of the "maven" attribute must be deployed with JAVA_HOME > 8', context=dist)
+
+                            jmd = as_java_module(dist, jdk)
+                            if not jmd.alternatives:
+                                abort('"moduleInfo" sub-attribute of the "maven" attribute specifed but distribution does not contain any "moduleInfo:*" attributes', context=dist)
+                            alt_jmd = jmd.alternatives.get(deployment_module_info)
+                            if not alt_jmd:
+                                abort('"moduleInfo" sub-attribute of the "maven" attribute specifies non-existing "moduleInfo:{}" attribute'.format(deployment_module_info), context=dist)
+                            jar_to_deploy = alt_jmd.jarpath
+
+                    pushed_file = dist.prePush(jar_to_deploy)
                     pushed_src_file = dist.prePush(dist.sourcesPath)
                     _deploy_binary_maven(dist.suite, dist.maven_artifact_id(), dist.maven_group_id(), pushed_file, versionGetter(dist.suite), repo,
                                          srcPath=pushed_src_file,
@@ -19936,7 +19952,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.233.4")  # GR-17789_2
+version = VersionSpec("5.233.5")  # GR-17832
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
