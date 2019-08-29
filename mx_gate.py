@@ -851,6 +851,19 @@ def coverage_upload(args):
                 }
                 $http.get('index.json').then(function(response, status) {
                     var data = response.data.filter(x => x != null);
+                    /*
+                        #GR-17399
+                        Filter build that are unique per suite with revision as key and merge builds.
+                    */
+                    data = data
+                        .filter(x => !x.hasOwnProperty('merge'))
+                        .filter( // filter builds that are unique per suite with revision as key
+                            x => !data
+                                .filter(z => x != z && x.suite == z.suite) // exclude self build and build for other suites.
+                                .map(z => z.revision) // map from array of build to array of revision
+                                .includes(x.revision) // check if revision of x is index data.
+                        ).concat(data.filter(x => x.hasOwnProperty('merge'))); // concat unique build with merged build.
+
                     data.sort((l,r) => r.directory.localeCompare(l.directory));
                     if(data.length > 0) {
                         var startdir;
