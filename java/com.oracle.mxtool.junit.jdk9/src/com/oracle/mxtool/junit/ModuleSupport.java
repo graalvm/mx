@@ -85,7 +85,7 @@ class ModuleSupport {
         final String key;
         final boolean isPrefix;
 
-        public StringSpec(String spec) {
+        StringSpec(String spec) {
             this.isPrefix = spec.endsWith("*");
             this.key = isPrefix ? spec.substring(0, spec.length() - 1) : spec;
         }
