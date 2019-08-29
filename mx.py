@@ -11078,8 +11078,8 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
     """
     :type extraFiles: list[(str, str, str)]
     """
-    assert exists(filePath)
-    assert not srcPath or exists(srcPath)
+    assert exists(filePath), filePath
+    assert not srcPath or exists(srcPath), srcPath
 
     cmd = ['--batch-mode']
 
@@ -11393,7 +11393,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                          gpg=gpg, keyid=keyid,
                                          javadocPath=javadocPath,
                                          extraFiles=extraFiles)
-                    if pushed_file != dist.path:
+                    if pushed_file != jar_to_deploy:
                         os.unlink(pushed_file)
                     if pushed_src_file != dist.sourcesPath:
                         os.unlink(pushed_src_file)
@@ -19952,7 +19952,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.233.7")  # GR-17877
+version = VersionSpec("5.233.8")  # GR-17912
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
