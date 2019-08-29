@@ -188,6 +188,7 @@ class JavaModuleDescriptor(object):
             pickled_path = JavaModuleDescriptor._get_alt_pickled_path(pickled_path, alt_name)
         modulepath = self.modulepath
         jarpath = self.jarpath
+        alternatives = self.alternatives
         self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
         self.dist = dist.name
         self.jarpath = os.path.relpath(jarpath, dirname(pickled_path))
@@ -197,9 +198,11 @@ class JavaModuleDescriptor(object):
             with mx.SafeFileCreation(pickled_path) as sfc, open(sfc.tmpPath, 'wb') as f:
                 pickle.dump(self, f)
         finally:
+            # Restore fields that were modified for pickling
             self.modulepath = modulepath
             self.dist = dist
             self.jarpath = jarpath
+            self.alternatives = alternatives
 
     def as_module_info(self, extras_as_comments=True):
         """
