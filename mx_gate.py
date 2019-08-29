@@ -826,6 +826,7 @@ def coverage_upload(args):
         'directory': remote_dir,
         'build_name': args.build_name,
         'build_url': args.build_url,
+        'jdk_version': str(mx.get_jdk().version),
         'build_number': args.build_number,
         'primary_info': info,
         'excludes': [str(e) for e in excludes],
