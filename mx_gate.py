@@ -833,13 +833,20 @@ def coverage_upload(args):
         'includes': [str(i) for i in includes]}), upload_dir + '/description.json')
     mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do cat \$i; echo ,; done; echo null\]) > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
     upload_string("""<html>
+<script language="javascript">
+  function urlChange(url) {
+    if (url.pathname !== "blank") {
+      window.history.replaceState(null, null, url.pathname.replace("/coverage_upload/", "/coverage_upload/#"))
+    }
+  }
+</script>
 <frameset rows="40,*">
   <frame id="navigation" src="navigation.html"/>
-  <frame id="content" src=""/>
+  <frame id="content" src="" onload="urlChange(this.contentWindow.location);" />
 </frameset>
 </html>""", remote_basedir + '/index.html')
     js_library_url = rewriteurl("https://ajax.googleapis.com/ajax/libs/angularjs/1.7.7/angular.js")
-    upload_string("""<html>
+    upload_string(r"""<html>
     <head>
         <script src="%js_library_url"></script>
         <script language="javascript">
@@ -851,11 +858,25 @@ def coverage_upload(args):
                 }
                 $http.get('index.json').then(function(response, status) {
                     var data = response.data.filter(x => x != null);
+                    /*
+                        #GR-17399
+                        Filter build that are unique per suite with revision as key and merge builds.
+                    */
+                    data = data
+                        .filter(x => !x.hasOwnProperty('merge'))
+                        .filter( // filter builds that are unique per suite with revision as key
+                            x => !data
+                                .filter(z => x != z && x.suite == z.suite) // exclude self build and build for other suites.
+                                .map(z => z.revision) // map from array of build to array of revision
+                                .includes(x.revision) // check if revision of x is index data.
+                        ).concat(data.filter(x => x.hasOwnProperty('merge'))); // concat unique build with merged build.
+
                     data.sort((l,r) => r.directory.localeCompare(l.directory));
                     if(data.length > 0) {
                         var startdir;
                         if(hash) {
-                            startdir = data.find((dir) => dir.directory == hash);
+                            startdir = data.find(build => hash.includes(build.directory));
+                            startdir.hash = hash;
                         }
                         if(!startdir) {
                             startdir = data[0];
@@ -872,21 +893,31 @@ def coverage_upload(args):
                         if(olddir) {
                             newpath = contentDocument.location.href.replace(olddir.directory, dir.directory);
                         } else {
-                            newpath = dir.directory + "/coverage/";
+                            newpath = dir.hasOwnProperty('hash') ? hash : dir.directory + "/coverage/";
                         }
                         contentDocument.location.href = newpath;
-                        parent.window.history.replaceState(undefined, undefined, "#" + dir.directory);
+                        parent.window.history.replaceState(undefined, undefined, "#" + newpath.replace(/^.+coverage_upload\//, ""));
                     }
                 });
                 $scope.step = (i) => $scope.directory = $scope.data[$scope.data.indexOf($scope.directory)+i];
             });
+        function copy(url) {
+            var content = parent.document.getElementById("content");
+            var contentDocument = content.contentDocument || content.contentWindow.document;
+            var copyText = document.getElementById("copy");
+            copyText.value = contentDocument.location.href.replace("coverage_upload/", "coverage_upload/#");
+            copyText.select();
+            document.execCommand("copy");
+        }
         </script>
     </head>
     <body ng-app="myApp" ng-controller="IndexCtrl">
        <button ng-click="step(1)" ng-disabled="data.indexOf(directory) >= data.length-1">&lt;&lt;</button>
        <button ng-click="step(-1)" ng-disabled="data.indexOf(directory) <= 0">&gt;&gt;</button>
-       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.build_number group by i.suite for i in data"></select>
+       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.revision.substr(0,8) group by i.suite for i in data"></select>
        <a href="{{directory.build_url}}" ng-if="directory.build_url" target="_blank">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
+       <input type="text" style="opacity: 0;width: 20;" id="copy" />
+       <button style="float: right;" onclick="copy(window.location);">Share url</button>
     </body>
 </html>""".replace("%js_library_url", js_library_url), remote_basedir + '/navigation.html')
 
