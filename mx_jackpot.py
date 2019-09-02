@@ -94,15 +94,14 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
         mx.warn('Skipping Jackpot since JDK 11 is not available')
         return 0
     else:
-        (fd, path) = tempfile.mkstemp('.jackpot')
-        for c in jackCmd:
-            os.write(fd, '{}\n'.format(c).encode())
-        os.close(fd)
-        ret = mx.run_java(cmd + ['@{}'.format(path)], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
-        if ret != 0:
-            mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
-            mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
-        return ret
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jackpot') as f:
+            for c in jackCmd:
+                print(c, file=f)
+            ret = mx.run_java(cmd + ['@' + f.name], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
+            if ret != 0:
+                mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
+                mx.warn('To fix the error automatically try `mx -p {0} jackpot --apply`'.format(suite.dir))
+            return ret
 
 def _escape_string(s):
     return s.replace("\\", "\\\\").replace(" ", "\\ ")
