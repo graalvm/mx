@@ -1776,7 +1776,11 @@ class BenchmarkExecutor(object):
             else:
                 mx.abort("Unknown score function '{0}'.".format(function))
 
-    def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs):
+    def add_fork_number(self, datapoint, fork_number):
+        if 'metric.fork-number' not in datapoint:
+            datapoint['metric.fork-number'] = fork_number
+
+    def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=0):
         def postProcess(results):
             processed = []
             dim = self.dimensions(suite, mxBenchmarkArgs, bmSuiteArgs)
@@ -1786,6 +1790,7 @@ class BenchmarkExecutor(object):
                 point = dim.copy()
                 point.update(result)
                 self.applyScoreFunction(point)
+                self.add_fork_number(point, fork_number)
                 processed.append(point)
             return processed
 
@@ -1906,7 +1911,7 @@ class BenchmarkExecutor(object):
                         mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                     try:
                         partialResults = self.execute(
-                            suite, benchnames, mxBenchmarkArgs, bmSuiteArgs)
+                            suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
                         results.extend(partialResults)
                     except (BenchmarkFailureError, RuntimeError):
                         failures_seen = True
