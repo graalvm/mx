@@ -96,7 +96,7 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
     else:
         (fd, path) = tempfile.mkstemp('.jackpot')
         for c in jackCmd:
-            os.write(fd, '{}\n'.format(c))
+            os.write(fd, '{}\n'.format(c).encode())
         os.close(fd)
         ret = mx.run_java(cmd + ['@{}'.format(path)], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
         if ret != 0:
