@@ -36,7 +36,7 @@ if sys.version_info < (2, 7):
     major, minor, micro, _, _ = sys.version_info
     raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -529,6 +529,7 @@ environment variables:
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
+        self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -4509,6 +4510,29 @@ class NoOpTask(Task):
 
     def execute(self):
         pass
+
+
+class TaskSequence(Task):
+    """A Task that executes a sequence of subtasks."""
+
+    def __init__(self, subject, args):
+        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
+
+    def __str__(self):
+        def indent(s, padding='  '):
+            return padding + s.replace('\n', '\n' + padding)
+
+        return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
+
+    @abstractproperty
+    def subtasks(self):
+        """:rtype: typing.Sequence[Task]"""
+
+    def execute(self):
+        for subtask in self.subtasks:
+            assert subtask.subject == self.subject
+            subtask.deps += self.deps
+            subtask.execute()
 
 
 class Buildable(object):

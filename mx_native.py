@@ -56,6 +56,29 @@ class lazy_class_default(object):  # pylint: disable=invalid-name
             return vars(self).setdefault(self.init.__name__, self.init(owner))
 
 
+class _Toolchain(object):
+    def __init__(self, target_arch):
+        self.target_arch = target_arch
+
+    @property
+    def target(self):
+        return '{}-{}'.format(mx.get_os(), self.target_arch)
+
+    @property
+    def is_native(self):
+        return self.target_arch == mx.get_arch()
+
+    @property
+    def is_available(self):
+        return self.is_native
+
+    _registry = {}
+
+    @classmethod
+    def for_(cls, target_arch):
+        return cls._registry.setdefault(target_arch, _Toolchain(target_arch))
+
+
 class Ninja(object):
     """Encapsulates access to Ninja (ninja).
 
@@ -123,6 +146,68 @@ class NativeDependency(mx.Dependency):
     """
     include_dirs = ()
     libs = ()
+
+
+class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
+    """A Project containing native code that can be built for multiple target architectures.
+
+    Attributes
+        multiarch : list of str, optional
+            Target architectures for which this project can be built (must include
+            the host architecture).
+
+            If present, the archivable results for each target architecture are in
+            a separate subdir of the archive. Otherwise, the archivable results for
+            the host architecture are at the root of the archive.
+    """
+
+    def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
+        context = 'project ' + name
+        if 'multiarch' in kwargs:
+            multiarch = mx.Suite._pop_list(kwargs, 'multiarch', context)
+            self.multiarch = list(set(mx_subst.results_substitutions.substitute(arch) for arch in multiarch))
+            if mx.get_arch() not in self.multiarch:
+                mx.abort('"multiarch" must contain the host architecture "{}"'.format(mx.get_arch()), context)
+        else:
+            self.multiarch = []
+        super(MultiarchProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
+        self.out_dir = self.get_output_root()
+
+    @property
+    def _use_multiarch(self):
+        return self.multiarch and mx.get_opts().multiarch
+
+    def getBuildTask(self, args):
+        if self._use_multiarch:
+            class MultiarchBuildTask(mx.Buildable, mx.TaskSequence):
+                subtasks = [self._build_task(target_arch, args) for target_arch in self.multiarch]
+
+                def execute(self):
+                    super(MultiarchBuildTask, self).execute()
+                    self.built = any(t.built for t in self.subtasks)
+
+                def newestOutput(self):
+                    return mx.TimeStampFile.newest(t.newestOutput() for t in self.subtasks)
+
+            return MultiarchBuildTask(self, args)
+        else:
+            return self._build_task(mx.get_arch(), args)
+
+    @abc.abstractmethod
+    def _build_task(self, target_arch, args):
+        """:rtype: TargetArchBuildTask"""
+
+    def getArchivableResults(self, use_relpath=True, single=False):
+        for target_arch in self.multiarch if self._use_multiarch else [mx.get_arch()]:
+            toolchain = _Toolchain.for_(target_arch)
+            target_arch_path = toolchain.target if self.multiarch else ''
+            if toolchain.is_native or not single:
+                for file_path, archive_path in self._archivable_results(target_arch, use_relpath, single):
+                    yield file_path, mx.join(target_arch_path, archive_path)
+
+    @abc.abstractmethod
+    def _archivable_results(self, target_arch, use_relpath, single):
+        """:rtype: typing.Iterable[(str, str)]"""
 
 
 class NinjaProject(mx.AbstractNativeProject, NativeDependency):
