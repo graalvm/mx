@@ -3896,7 +3896,7 @@ def clean(args, parser=None):
     # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
     for dep in deps:
         task = dep.getBuildTask(args)
-        if task.cleanForbidden():
+        if getattr(task, 'cleanForbidden', lambda: True)():
             continue
         task.logClean()
         task.clean()
@@ -4498,6 +4498,17 @@ class Task(_with_metaclass(ABCMeta), object):
     @abstractmethod
     def execute(self):
         """Executes this task."""
+
+
+class NoOpTask(Task):
+    def __init__(self, subject, args):
+        super(NoOpTask, self).__init__(subject, args, 1)
+
+    def __str__(self):
+        return 'NoOp'
+
+    def execute(self):
+        pass
 
 
 class Buildable(object):
@@ -7908,28 +7919,6 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
-### ~~~~~~~~~~~~~ Task
-
-class NoOpTask(BuildTask):
-    def __init__(self, subject, args):
-        super(NoOpTask, self).__init__(subject, args, 1)
-
-    def __str__(self):
-        return "NoOp"
-
-    def newestOutput(self):
-        return None
-
-    def execute(self):
-        pass
-
-    def build(self):
-        pass
-
-    def clean(self, forBuild=False):
-        pass
-
-### ~~~~~~~~~~~~~ Library
 
 class JdkLibrary(BaseLibrary, ClasspathDependency):
     """
