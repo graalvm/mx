@@ -227,8 +227,8 @@ class TargetArchBuildTask(mx.AbstractNativeBuildTask):
         return forbidden
 
 
-class NinjaProject(mx.AbstractNativeProject, NativeDependency):
-    """A Project containing native code that is built using the Ninja build system.
+class NinjaProject(MultiarchProject):
+    """A MultiarchProject that is built using the Ninja build system.
 
     What distinguishes Ninja from other build systems is that its input files are
     not meant to be written by hand. Instead, they should be generated, which in
@@ -260,7 +260,6 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
         self.use_jdk_headers = kwargs.pop('use_jdk_headers', False)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         self.buildDependencies += self._ninja_deps
-        self.out_dir = self.get_output_root()
 
     @lazy_class_default
     def _ninja_deps(cls):  # pylint: disable=no-self-argument
@@ -312,8 +311,8 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
 
         return JavaHome(mx.get_jdk(tag=mx.DEFAULT_JDK_TAG))
 
-    def getBuildTask(self, args):
-        return NinjaBuildTask(args, self)
+    def _build_task(self, target_arch, args):
+        return NinjaBuildTask(args, self, target_arch)
 
     @abc.abstractmethod
     def generate_manifest(self, path):
@@ -355,15 +354,15 @@ class NinjaProject(mx.AbstractNativeProject, NativeDependency):
         return dict(tree=source_tree, files=source_files)
 
 
-class NinjaBuildTask(mx.AbstractNativeBuildTask):
-    def __init__(self, args, project):
-        super(NinjaBuildTask, self).__init__(args, project)
+class NinjaBuildTask(TargetArchBuildTask):  # pylint: disable=too-many-ancestors
+    def __init__(self, args, project, target_arch=mx.get_arch()):
+        super(NinjaBuildTask, self).__init__(args, project, target_arch)
         self._reason = None
-        self._manifest = mx.join(project.out_dir, Ninja.default_manifest)
-        self.ninja = Ninja(project.out_dir, self.parallelism)
+        self._manifest = mx.join(self.out_dir, Ninja.default_manifest)
+        self.ninja = Ninja(self.out_dir, self.parallelism)
 
     def __str__(self):
-        return 'Building {} with Ninja'.format(self.subject.name)
+        return 'Building {} with Ninja'.format(self.name)
 
     def needsBuild(self, newestInput):
         is_needed, self._reason = super(NinjaBuildTask, self).needsBuild(newestInput)
@@ -374,12 +373,12 @@ class NinjaBuildTask(mx.AbstractNativeBuildTask):
             self._reason = 'no build manifest'
             return True, self._reason
 
-        mx.logv('Checking whether to build {} with Ninja...'.format(self.subject.name))
+        mx.logv('Checking whether to build {} with Ninja...'.format(self.name))
         is_needed, self._reason = self.ninja.needs_build()
         return is_needed, self._reason
 
     def newestOutput(self):
-        return mx.TimeStampFile.newest([mx.join(self.subject.out_dir, self.subject._target)])
+        return mx.TimeStampFile.newest([mx.join(self.out_dir, self.subject._target)])
 
     def build(self):
         if not mx.exists(self._manifest) \
@@ -398,7 +397,7 @@ class NinjaBuildTask(mx.AbstractNativeBuildTask):
     def clean(self, forBuild=False):
         if not forBuild:
             try:
-                mx.rmtree(self.subject.out_dir)
+                mx.rmtree(self.out_dir)
             except OSError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -616,7 +615,7 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
 
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
-            self.libs = [mx.join(self.out_dir, self._target)]
+            self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
 
     @property
     def _target(self):
@@ -706,13 +705,13 @@ class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
                 link(self._target, object_files + list(itertools.chain.from_iterable(
                     getattr(d, 'libs', []) for d in self.buildDependencies)))
 
-    def getArchivableResults(self, use_relpath=True, single=False):
+    def _archivable_results(self, target_arch, use_relpath, single):
         def result(base_dir, file_path):
             assert not mx.isabs(file_path)
             archive_path = file_path if use_relpath else mx.basename(file_path)
             return mx.join(base_dir, file_path), archive_path
 
-        yield result(self.out_dir, self._target)
+        yield result(mx.join(self.out_dir, target_arch), self._target)
 
         if not single:
             for header in os.listdir(mx.join(self.dir, self.include)):
