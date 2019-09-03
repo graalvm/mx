@@ -4476,6 +4476,10 @@ class Task(_with_metaclass(ABCMeta), object):
     def __repr__(self):
         return str(self)
 
+    @property
+    def name(self):
+        return self.subject.name
+
     def initSharedMemoryState(self):
         pass
 
@@ -4566,7 +4570,7 @@ class BuildTask(Buildable, Task):
     def __init__(self, subject, args, parallelism):
         super(BuildTask, self).__init__(subject, args, parallelism)
         self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     subject._extra_artifact_discriminant(), subject.name)
+                                     subject._extra_artifact_discriminant(), self.name)
 
     @property
     def _current_deps(self):
@@ -4662,13 +4666,13 @@ class BuildTask(Buildable, Task):
             log('{}...'.format(self))
 
     def logClean(self):
-        log('Cleaning {}...'.format(self.subject.name))
+        log('Cleaning {}...'.format(self.name))
 
     def logSkip(self, reason=None):
         if reason:
-            logv('[{} - skipping {}]'.format(reason, self.subject.name))
+            logv('[{} - skipping {}]'.format(reason, self.name))
         else:
-            logv('[skipping {}]'.format(self.subject.name))
+            logv('[skipping {}]'.format(self.name))
 
     def needsBuild(self, newestInput):
         """
@@ -7556,13 +7560,10 @@ class NativeProject(AbstractNativeProject):
 ### ~~~~~~~~~~~~~ Build Tasks
 class AbstractNativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
-        if hasattr(project, 'max_jobs'):
-            jobs = min(int(project.max_jobs), cpu_count())
-        else:
-            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
-            # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
-            # how much parallelism the build machine supports.
-            jobs = min(8, cpu_count())
+        # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
+        # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
+        # how much parallelism the build machine supports.
+        jobs = min(int(getattr(project, 'max_jobs', 8)), cpu_count())
         super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
 
     def buildForbidden(self):

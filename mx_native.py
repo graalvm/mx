@@ -210,6 +210,23 @@ class MultiarchProject(mx.AbstractNativeProject, NativeDependency):
         """:rtype: typing.Iterable[(str, str)]"""
 
 
+class TargetArchBuildTask(mx.AbstractNativeBuildTask):
+    def __init__(self, args, project, target_arch):
+        self.target_arch = target_arch
+        super(TargetArchBuildTask, self).__init__(args, project)
+        self.out_dir = mx.join(self.subject.out_dir, self.target_arch)
+
+    @property
+    def name(self):
+        return '{}_{}'.format(super(TargetArchBuildTask, self).name, self.target_arch)
+
+    def buildForbidden(self):
+        forbidden = super(TargetArchBuildTask, self).buildForbidden()
+        if not forbidden and not _Toolchain.for_(self.target_arch).is_available:
+            self.subject.abort('Missing toolchain for {}.'.format(self.target_arch))
+        return forbidden
+
+
 class NinjaProject(mx.AbstractNativeProject, NativeDependency):
     """A Project containing native code that is built using the Ninja build system.
 
