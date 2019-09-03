@@ -4452,31 +4452,57 @@ mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 
 ### ~~~~~~~~~~~~~ Build
 
-class BuildTask(_with_metaclass(ABCMeta, object)):
+
+class Task(_with_metaclass(ABCMeta), object):
+    """A task executed during a build.
+
+    :type deps: list[Task]
+    :param Dependency subject: the dependency for which this task is executed
+    :param list[str] args: arguments of the build command
+    :param int parallelism: the number of CPUs used when executing this task
     """
-    A build task is used to build a dependency.
-    :type deps: list[BuildTask]
-    """
-    def __init__(self, subject, args, parallelism): # pylint: disable=super-init-not-called
-        """
-        :param Dependency subject: the dependency built by this task
-        :param list[str] args: arguments to the build comment
-        :param int parallelism: how many CPUs are used when running this task
-        """
-        self.parallelism = parallelism
+
+    def __init__(self, subject, args, parallelism):  # pylint: disable=super-init-not-called
         self.subject = subject
-        self.deps = []
-        self.built = False
         self.args = args
+        self.parallelism = parallelism
+        self.deps = []
         self.proc = None
-        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     subject._extra_artifact_discriminant(), subject.name)
 
     def __str__(self):
         nyi('__str__', self)
 
     def __repr__(self):
         return str(self)
+
+    def initSharedMemoryState(self):
+        pass
+
+    def pushSharedMemoryState(self):
+        pass
+
+    def pullSharedMemoryState(self):
+        pass
+
+    def cleanSharedMemoryState(self):
+        pass
+
+    def prepare(self, daemons):
+        """
+        Perform any task initialization that must be done in the main process.
+        This will be called just before the task is launched.
+        The 'daemons' argument is a dictionary for storing any persistent state
+        that might be shared between tasks.
+        """
+
+    @abstractmethod
+    def execute(self):
+        """Executes this task."""
+
+
+class Buildable(object):
+    """A mixin for Task subclasses that can be built."""
+    built = False
 
     def initSharedMemoryState(self):
         self._builtBox = multiprocessing.Value('b', 1 if self.built else 0)
@@ -4489,6 +4515,23 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
 
     def cleanSharedMemoryState(self):
         self._builtBox = None
+
+    # @abstractmethod should be abstract but subclasses in some suites miss this method
+    def newestOutput(self):
+        """
+        Gets a TimeStampFile representing the build output file for this task
+        with the newest modification time or None if no build output file exists.
+        """
+        nyi('newestOutput', self)
+
+
+class BuildTask(Buildable, Task):
+    """A Task used to build a dependency."""
+
+    def __init__(self, subject, args, parallelism):
+        super(BuildTask, self).__init__(subject, args, parallelism)
+        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
+                                     subject._extra_artifact_discriminant(), subject.name)
 
     @property
     def _current_deps(self):
@@ -4531,13 +4574,13 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             buildNeeded = True
             reason = 'clean'
         if not buildNeeded:
-            updated = [dep for dep in self.deps if dep.built]
-            if any(updated):
+            updated = [dep for dep in self.deps if getattr(dep, 'built', False)]
+            if updated:
                 buildNeeded = True
                 if not _opts.verbose:
                     reason = 'dependency {} updated'.format(updated[0].subject)
                 else:
-                    reason = 'dependencies updated: ' + ', '.join([u.subject.name for u in updated])
+                    reason = 'dependencies updated: ' + ', '.join(str(u.subject) for u in updated)
         if not buildNeeded and self._deps_changed():
             buildNeeded = True
             reason = 'dependencies were added, removed or re-ordered'
@@ -4545,7 +4588,7 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             newestInput = None
             newestInputDep = None
             for dep in self.deps:
-                depNewestOutput = dep.newestOutput()
+                depNewestOutput = getattr(dep, 'newestOutput', lambda: None)()
                 if depNewestOutput and (not newestInput or depNewestOutput.isNewerThan(newestInput)):
                     newestInput = depNewestOutput
                     newestInputDep = dep
@@ -4603,14 +4646,6 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             return (True, 'forced build')
         return (False, 'unimplemented')
 
-    # @abstractmethod should be abstract but subclasses in some suites miss this method
-    def newestOutput(self):
-        """
-        Gets a TimeStampFile representing the build output file for this task
-        with the newest modification time or None if no build output file exists.
-        """
-        nyi('newestOutput', self)
-
     def buildForbidden(self):
         if not self.args.only:
             return False
@@ -4619,14 +4654,6 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
 
     def cleanForbidden(self):
         return False
-
-    def prepare(self, daemons):
-        """
-        Perform any task initialization that must be done in the main process.
-        This will be called just before the task is launched.
-        The 'daemons' argument is a dictionary for storing any persistent state
-        that might be shared between tasks.
-        """
 
     @abstractmethod
     def build(self):
