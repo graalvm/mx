@@ -493,6 +493,7 @@ suite = {
       },
       "multiReleaseJarVersion": "9",
       "overlayTarget" : "com.oracle.mxtool.junit",
+      "checkPackagePrefix" : False,
       "javaCompliance" : "9+",
       "checkstyle" : "com.oracle.mxtool.junit",
     },

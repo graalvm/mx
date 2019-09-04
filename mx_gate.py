@@ -34,6 +34,7 @@ from os.path import join, exists
 from argparse import ArgumentParser
 
 import mx
+import mx_javacompliance
 import sys
 from mx_urlrewrites import rewriteurl
 
@@ -453,6 +454,12 @@ def _collect_tasks(cleanArgs, args):
         Task.log = prevLog
     return tasks
 
+def _run_mx_suite_tests():
+    """
+    Mx suite specific tests.
+    """
+    mx_javacompliance._test()
+
 def _run_gate(cleanArgs, args, tasks):
     global _jacoco
     with Task('Versions', tasks, tags=[Tags.always]) as t:
@@ -470,6 +477,9 @@ def _run_gate(cleanArgs, args, tasks):
                     mx.log('==== ' + jdkDir + ' ====')
                     with open(release) as fp:
                         mx.log(fp.read().strip())
+
+    if mx.primary_suite() is mx._mx_suite:
+        _run_mx_suite_tests()
 
     with Task('VerifyMultiReleaseProjects', tasks, tags=[Tags.always]) as t:
         if t:
