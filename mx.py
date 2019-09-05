@@ -76,6 +76,7 @@ import calendar
 import multiprocessing
 from stat import S_IMODE, S_IWRITE
 from mx_commands import MxCommands, MxCommand
+
 _mx_commands = MxCommands("mx")
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
@@ -420,6 +421,8 @@ class Comparable(object):
 
     def __cmp__(self, other): # to override
         raise TypeError("No override for compare")
+
+from mx_javacompliance import JavaCompliance
 
 class DynamicVar(object):
     def __init__(self, initial_value):
@@ -5308,17 +5311,17 @@ class JARDistribution(Distribution, ClasspathDependency):
                             for srcDir in sourceDirs:
                                 addSrcFromDir(srcDir, archivePrefix, arcnameCheck=overlay_check)
 
-                        bounds = p.javaCompliance._bounds()
-                        if len(bounds) == 4:
-                            _, _, lower2, _ = bounds
-                            if lower2 > 8:
-                                # Make a multi-release-jar versioned copy of the class files
-                                # for the lower bound of the second range in a disjoint compliance.
-                                # Anything below that version will pick up the class files in the
-                                # root directory of the jar.
-                                if get_jdk(str(JavaCompliance(lower2)), cancel='probing'):
-                                    archivePrefix = 'META-INF/versions/{}/'.format(lower2)
-                                    addClasses(archivePrefix, includeServices=False)
+                        if p.javaCompliance.value <= 8:
+                            for ver in p.javaCompliance._values():
+                                if ver > 8:
+                                    # Make a multi-release-jar versioned copy of the class files
+                                    # if compliance includes 8 or less and a version higher than 8.
+                                    # Anything below that version will pick up the class files in the
+                                    # root directory of the jar.
+                                    if get_jdk(str(JavaCompliance(ver)), cancel='probing'):
+                                        archivePrefix = 'META-INF/versions/{}/'.format(ver)
+                                        addClasses(archivePrefix, includeServices=False)
+                                    break
 
                     elif dep.isArchivableProject():
                         logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
@@ -6832,7 +6835,7 @@ class JavaProject(Project, ClasspathDependency):
         ClasspathDependency.__init__(self, **kwArgs)
         if javaCompliance is None:
             abort('javaCompliance property required for Java project ' + name)
-        self.javaCompliance = JavaCompliance(javaCompliance)
+        self.javaCompliance = JavaCompliance(javaCompliance, context=self)
         # The annotation processors defined by this project
         self.definedAnnotationProcessors = None
         self.declaredAnnotationProcessors = []
@@ -8652,7 +8655,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         self.path = path.replace('/', os.sep)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.deps = deps
-        self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance('1.2')
+        self.jdkStandardizedSince = jdkStandardizedSince if jdkStandardizedSince else JavaCompliance(1.2)
         self.module = module
 
     def resolveDeps(self):
@@ -13182,172 +13185,6 @@ class DuplicateSuppressingStream:
         self.currentFilteredTime = None
 
 """
-A JavaCompliance simplifies comparing Java compliance values extracted from a JDK version string.
-Example valid version strings and the JDKs they match:
-    "8+"       - jdk8, jdk9, jdk10, ...
-    "1.8"      - jdk8
-    "8..12"    - jdk8, jdk9, jdk10, jdk11, jdk12
-    "8,13+"    - jdk8, jdk13, jdk14, ...
-    "8..9,13+" - jdk8, jdk9, jdk13, jdk14, ...
-There can be at most 2 parts to a version string specifying a non-contiguous range.
-The first part of a 2 part version string must have a strict upper bound (i.e. cannot end with "+").
-"""
-class JavaCompliance(Comparable):
-    _version_pattern = re.compile(r'(?:1\.)?(\d+)(.*)')
-
-    @staticmethod
-    def _parse(part, ver):
-        m = JavaCompliance._version_pattern.match(part)
-        if not m:
-            abort('not a recognized version string: ' + ver)
-        value = int(m.group(1))
-        rest = m.group(2)
-        if rest.startswith('..'):
-            if part.endswith('+'):
-                abort('Version range cannot end with "+": ' + part)
-            m = JavaCompliance._version_pattern.match(rest[2:])
-            if not m:
-                abort('not a recognized version string: ' + rest[2:])
-            upper_bound = int(m.group(1))
-        else:
-            upper_bound = value
-            if part.endswith('+'):
-                upper_bound = None
-        return value, upper_bound
-
-    def _bounds(self):
-        """
-        Gets the bounds for the ranges in the compliance.
-        Examples:
-           JavaCompliance("8")        -> (8, 8)
-           JavaCompliance("8+")       -> (8, None)
-           JavaCompliance("8..11")    -> (8, 11)
-           JavaCompliance("8,13+")    -> (8, 8, 13, None)
-           JavaCompliance("8,13..15") -> (8, 8, 13, 15)
-        """
-        if self._excluded:
-            upper_bound1 = self._excluded[0] - 1
-            lower_bound2 = self._excluded[1]
-            return (self.value, upper_bound1, lower_bound2, self._upper_bound)
-        return (self.value, self._upper_bound)
-
-    def __init__(self, ver):
-        ver = str(ver)
-        parts = ver.split(',')
-        if len(parts) > 1:
-            if len(parts) > 2:
-                abort('Version string can have at most 2 parts separated by a comma: ' + ver)
-            value1, upper_bound1 = JavaCompliance._parse(parts[0], ver)
-            value2, upper_bound2 = JavaCompliance._parse(parts[1], ver)
-            if upper_bound1 is None:
-                abort('First part of 2-part version specification must have an upper bound: ' + ver)
-            if value2 <= upper_bound1:
-                abort('First part of 2-part version specification must have an upper bound less than lower bound of second part: ' + ver)
-            self.value = value1
-            self._upper_bound = upper_bound2
-            self._excluded = (upper_bound1 + 1, value2)
-        else:
-            self.value, self._upper_bound = JavaCompliance._parse(parts[0], ver)
-            self._excluded = None
-
-    def __str__(self):
-        if self.value >= 9:
-            return str(self.value)
-        return '1.' + str(self.value)
-
-    def __repr__(self):
-        bounds = self._bounds()
-        if len(bounds) == 4:
-            lower1, upper1, lower2, upper2 = bounds # pylint: disable=unbalanced-tuple-unpacking
-            if lower1 == upper1:
-                res = str(lower1)
-            else:
-                res = '{}..{}'.format(lower1, upper1)
-            if upper2 is None:
-                return '{},{}+'.format(res, lower2)
-            return '{},{}..{}'.format(res, lower2, upper2)
-        lower, upper = bounds # pylint: disable=unbalanced-tuple-unpacking
-        if upper is None:
-            return str(lower) + '+'
-        if upper == lower:
-            return str(lower)
-        return str(lower) + '..' + str(upper)
-
-    def __cmp__(self, other):
-        if isinstance(other, str):
-            other = JavaCompliance(other)
-        r = compare(self.value, other.value)
-        if r == 0:
-            if self._upper_bound is None:
-                return 0 if other._upper_bound is None else 1
-            if other._upper_bound is None:
-                return -1
-            r = compare(self._upper_bound, other._upper_bound)
-            if r == 0:
-                if self._excluded is None:
-                    return 0 if other._excluded is None else 1
-                if other._excluded is None:
-                    return -1
-                r = compare(self._excluded, other._excluded)
-        return r
-
-    def __contains__(self, other):
-        if isinstance(other, str):
-            other = JavaCompliance(other)
-        assert other._upper_bound is not None, "Contains check cannot be done with version ranges"
-        r = compare(self.value, other.value)
-        if r == 0:
-            return True
-        elif r > 0:
-            return False
-        else: # r < 0
-            if self._upper_bound is None:
-                return True
-            else:
-                return compare(self._upper_bound, other.value) >= 0
-
-    def __hash__(self):
-        h = self.value ** (self._upper_bound or 1)
-        if self._excluded:
-            start, stop = self._excluded # pylint: disable=unpacking-non-sequence
-            h = hash((h, start, stop))
-        return h
-
-    def _is_exact_bound(self):
-        return self.value == self._upper_bound
-
-    def _exact_match(self, version):
-        assert isinstance(version, VersionSpec)
-        if len(version.parts) > 0:
-            if len(version.parts) > 1 and version.parts[0] == 1:
-                # First part is a '1',  e.g. '1.8.0'.
-                value = version.parts[1]
-            else:
-                # No preceding '1', e.g. '9-ea'. Used for Java 9 early access releases.
-                value = version.parts[0]
-
-            if value >= self.value:
-                if self._excluded is not None:
-                    if self._excluded[0] <= value < self._excluded[1]:
-                        return False
-                if self._upper_bound is not None:
-                    return value <= self._upper_bound
-                return True
-        return False
-
-    def as_version_check(self):
-        if self._is_exact_bound():
-            versionDesc = str(self)
-        elif self._upper_bound is None:
-            versionDesc = '>=' + str(self)
-        else:
-            versionDesc = 'between ' + str(self) + ' and ' + str(self._upper_bound)
-        if self._excluded:
-            versionDesc = '{} excluding [{}..{})'.format(versionDesc, *self._excluded)
-        versionCheck = self._exact_match
-        return (versionCheck, versionDesc)
-
-"""
 A version specification as defined in JSR-56
 """
 class VersionSpec(Comparable):
@@ -13472,7 +13309,8 @@ class JDKConfig(Comparable):
                     version = o
 
         self.version = VersionSpec(version.split()[2].strip('"'))
-        self.javaCompliance = JavaCompliance(self.version.versionString)
+        ver = self.version.parts[1] if self.version.parts[0] == 1 else self.version.parts[0]
+        self.javaCompliance = JavaCompliance(ver)
 
         self.debug_args = java_debug_args()
 
@@ -13488,7 +13326,7 @@ class JDKConfig(Comparable):
     def _init_classpaths(self):
         if not self._classpaths_initialized:
             _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
-            if self.javaCompliance <= JavaCompliance('1.8'):
+            if self.javaCompliance <= JavaCompliance(8):
                 self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in _check_output_str([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
@@ -13620,7 +13458,7 @@ class JDKConfig(Comparable):
                 if e.output:
                     log(e.output)
                 raise e
-            if self.javaCompliance < JavaCompliance('1.9'):
+            if self.javaCompliance < JavaCompliance(9):
                 lintre = re.compile(r"-Xlint:\{([a-z-]+(?:,[a-z-]+)*)\}")
                 m = lintre.search(out)
                 if not m:
@@ -18307,7 +18145,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-source', str(jdk.javaCompliance)] +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
-                     ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+                     ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
                      links +
                      extraArgs +
                      nowarnAPI +
@@ -18388,7 +18226,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
         log('Generating {2} for {0} in {1}'.format(', '.join(names), out, docDir))
 
         ignoreWarnings = set()
-        if jdk.javaCompliance >= JavaCompliance('9'):
+        if jdk.javaCompliance >= JavaCompliance(9):
             # JDK9+ reports codesnippetdoclet is using JDK8's Javadoc API
             ignoreWarnings.add('javadoc: warning - The old Doclet and Taglet APIs in the packages')
             ignoreWarnings.add('com.sun.javadoc, com.sun.tools.doclets and their implementations')
@@ -18433,8 +18271,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
              '-sourcepath', sp] +
              verifySincePresent +
              snippetsPatterns +
-             (['-J--add-opens=jdk.javadoc/com.sun.tools.javadoc.main=ALL-UNNAMED'] if jdk.javaCompliance >= JavaCompliance('9') else []) +
-             ([] if jdk.javaCompliance < JavaCompliance('1.8') else ['-Xdoclint:none']) +
+             (['-J--add-opens=jdk.javadoc/com.sun.tools.javadoc.main=ALL-UNNAMED'] if jdk.javaCompliance >= JavaCompliance(9) else []) +
+             ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
              (['-overview', overviewFile] if exists(overviewFile) else []) +
              groupargs +
              links +
@@ -19952,7 +19790,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.233.12")  # GR-17965
+version = VersionSpec("5.234.0")  # GR-18039
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
