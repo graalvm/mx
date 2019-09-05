@@ -1115,7 +1115,8 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
                     output_lines = output_lines[-3:]
                 assert "version" in output_lines[0]
                 jdk_version_number = output_lines[0].split("\"")[1]
-                jdk_major_version = mx.JavaCompliance(jdk_version_number).value
+                version = mx.VersionSpec(jdk_version_number)
+                jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
                 jdk_version_string = output_lines[2]
                 self._suite_dimensions["platform.jdk-version-number"] = jdk_version_number
                 self._suite_dimensions["platform.jdk-major-version"] = jdk_major_version
