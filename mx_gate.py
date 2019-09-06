@@ -881,7 +881,7 @@ def coverage_upload(args):
                                 .includes(x.revision) // check if revision of x is index data.
                         ).concat(data.filter(x => x.hasOwnProperty('merge'))); // concat unique build with merged build.
 
-                    data.sort((l,r) => r.directory.localeCompare(l.directory));
+                    data.sort((l,r) => r.timestamp - l.timestamp);
                     if(data.length > 0) {
                         var startdir;
                         if(hash) {
