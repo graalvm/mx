@@ -24,11 +24,27 @@
  */
 package com.oracle.mxtool.checkcopy;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.*;
-import java.util.regex.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A program to check the existence and correctness of the copyright notice on a given set of
@@ -125,9 +141,9 @@ public class CheckCopyright {
 
         protected abstract void readCopyrights() throws IOException;
 
-        protected abstract Matcher getMatcher(String fileName, String fileContent) throws IOException;
+        protected abstract RegexCopyrightConfig getRegexCopyright(String fileName) throws IOException;
 
-        protected abstract String getText(String fileName) throws IOException;
+        protected abstract CopyrightConfig getPlainCopyright(String fileName) throws IOException;
 
         protected abstract boolean handlesFile(String fileName);
 
@@ -141,7 +157,7 @@ public class CheckCopyright {
         protected abstract boolean checkYearInfo(String fileName, String fileContent, Matcher matcher, Info info) throws IOException;
 
         static String getCopyrightText(String fileName) throws IOException {
-            return getCopyrightHandler(fileName).getText(fileName);
+            return getCopyrightHandler(fileName).getPlainCopyright(fileName).copyright;
         }
 
         private static CopyrightHandler getCopyrightHandler(String fileName) {
@@ -196,9 +212,8 @@ public class CheckCopyright {
         private static final String ORACLE_COPYRIGHT = "oracle.copyright";
         private static final String ORACLE_COPYRIGHT_REGEX = "oracle.copyright.regex";
 
-        private String copyrightRegex;
-        private String copyright;
-        Pattern copyrightPattern;
+        CopyrightConfig plainCopyright;
+        RegexCopyrightConfig regexCopyright;
 
         DefaultCopyrightHandler(CopyrightHandler.CommentType commentType) throws IOException {
             super(commentType);
@@ -221,16 +236,19 @@ public class CheckCopyright {
             readCopyrights();
         }
 
-        private String readCopyright(String name) throws IOException {
+        private CopyrightConfig readCopyright(String name, boolean isRegex) throws IOException {
             String copyRightDir = COPYRIGHT_DIR.getValue();
             String fileName = "copyrights/" + name + "." + suffix;
             String copyrightPath;
             if (copyRightDir != null) {
                 // try to find the default copyright first in the custom copyright directory
+                File file = new File(new File(copyRightDir), fileName);
                 String customCopyDir = CUSTOM_COPYRIGHT_DIR.getValue();
-                File file = new File(new File(customCopyDir), name + "." + suffix);
-                if (!file.exists()) {
-                    file = new File(new File(copyRightDir), fileName);
+                if (customCopyDir != null) {
+                    File cfile = new File(new File(customCopyDir), name + "." + suffix);
+                    if (cfile.exists()) {
+                        file = cfile;
+                    }
                 }
                 copyrightPath = file.getAbsolutePath();
             } else {
@@ -242,24 +260,24 @@ public class CheckCopyright {
                 }
             }
             InputStream is = new FileInputStream(copyrightPath);
-            return readCopyright(is);
+            String copyright = readCopyright(is);
+            return isRegex ? new RegexCopyrightConfig(copyright, copyrightPath) : new CopyrightConfig(copyright, copyrightPath);
         }
 
         @Override
         protected void readCopyrights() throws IOException {
-            copyright = readCopyright(ORACLE_COPYRIGHT);
-            copyrightRegex = readCopyright(ORACLE_COPYRIGHT_REGEX);
-            copyrightPattern = Pattern.compile(copyrightRegex, Pattern.DOTALL);
+            plainCopyright = readCopyright(ORACLE_COPYRIGHT, false);
+            regexCopyright = (RegexCopyrightConfig) readCopyright(ORACLE_COPYRIGHT_REGEX, true);
         }
 
         @Override
-        protected Matcher getMatcher(String fileName, String fileContent) {
-            return copyrightPattern.matcher(fileContent);
+        protected RegexCopyrightConfig getRegexCopyright(String fileName) {
+            return regexCopyright;
         }
 
         @Override
-        protected String getText(String fileName) {
-            return copyright;
+        protected CopyrightConfig getPlainCopyright(String fileName) {
+            return plainCopyright;
         }
 
         @Override
@@ -333,20 +351,24 @@ public class CheckCopyright {
         }
 
         @Override
-        protected Matcher getMatcher(String fileName, String fileContent) throws IOException {
-            String copyright = overrides.get(fileName);
-            assert copyright != null : fileName;
-            try (InputStream fs = new FileInputStream(copyright + "." + suffix + ".regex")) {
-                return Pattern.compile(readCopyright(fs), Pattern.DOTALL).matcher(fileContent);
+        protected RegexCopyrightConfig getRegexCopyright(String fileName) throws IOException {
+            String override = overrides.get(fileName);
+            assert override != null : fileName;
+            String copyrightPath = override + "." + suffix + ".regex";
+            try (InputStream fs = new FileInputStream(copyrightPath)) {
+                String copyright = readCopyright(fs);
+                return new RegexCopyrightConfig(copyright, copyrightPath);
             }
         }
 
         @Override
-        protected String getText(String fileName) throws IOException {
-            String copyright = overrides.get(fileName);
-            assert copyright != null : fileName;
-            try (InputStream fs = new FileInputStream(copyright + "." + suffix)) {
-                return readCopyright(fs);
+        protected CopyrightConfig getPlainCopyright(String fileName) throws IOException {
+            String override = overrides.get(fileName);
+            assert override != null : fileName;
+            String copyrightPath = override + "." + suffix;
+            try (InputStream fs = new FileInputStream(copyrightPath)) {
+                String copyright = readCopyright(fs);
+                return new CopyrightConfig(copyright, copyrightPath);
             }
         }
 
@@ -364,6 +386,30 @@ public class CheckCopyright {
             }
             return defaultHandler.checkYearInfo(fileName, fileContent, matcher, info);
         }
+    }
+
+    private static class CopyrightConfig {
+        final String copyright;
+        /**
+         * The location from which {@link #copyright} came.
+         */
+        final String origin;
+
+        CopyrightConfig(String copyright, String origin) {
+            this.copyright = copyright;
+            this.origin = origin;
+        }
+
+    }
+
+    private static class RegexCopyrightConfig extends CopyrightConfig {
+        final Pattern pattern;
+
+        RegexCopyrightConfig(String copyright, String origin) {
+            super(copyright, origin);
+            this.pattern = Pattern.compile(copyright, Pattern.DOTALL);
+        }
+
     }
 
     private static void initCopyrightKinds() throws IOException {
@@ -673,17 +719,18 @@ public class CheckCopyright {
     private static void processFiles(List<String> fileNames) throws Exception {
         final List<String> projects = PROJECT.getValue();
         Calendar cal = Calendar.getInstance();
+
         for (String fileName : fileNames) {
             if (projects == null || isInProjects(fileName, projects)) {
                 File file = new File(fileName);
                 if (file.isDirectory()) {
                     continue;
                 }
-                if (verbose) {
-                    System.out.println("checking " + fileName);
-                }
                 try {
-                    Info info = null;
+                    if (verbose) {
+                        System.out.println("checking " + fileName);
+                    }
+                    Info info;
                     if (DIR_WALK.getValue()) {
                         info = getFromLastModified(cal, fileName);
                     } else {
@@ -774,7 +821,8 @@ public class CheckCopyright {
         final String fileContent = getFileContent(fileContentBytes);
         CopyrightHandler copyrightHandler = CopyrightHandler.getCopyrightHandler(fileName);
         if (copyrightHandler != null) {
-            Matcher copyrightMatcher = copyrightHandler.getMatcher(fileName, fileContent);
+            RegexCopyrightConfig copyright = copyrightHandler.getRegexCopyright(fileName);
+            Matcher copyrightMatcher = copyright.pattern.matcher(fileContent);
             if (copyrightMatcher.matches()) {
                 error = error | !copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info);
             } else {
@@ -795,7 +843,7 @@ public class CheckCopyright {
                         error = true;
                     }
                 } else {
-                    System.out.println("file " + fileName + " has malformed copyright" + (FIX.getValue() ? " not fixing" : ""));
+                    System.out.println(fileName + " has a copyright that does not match the regex in " + copyright.origin + (FIX.getValue() ? " [could not fix]" : ""));
                     error = true;
                 }
             }

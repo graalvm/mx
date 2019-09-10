@@ -201,7 +201,7 @@ class JavaCompliance(mx.Comparable):
         return mx.compare(self._parts, other._parts)
 
     def __contains__(self, other):
-        if isinstance(other, str):
+        if isinstance(other, (int, str)):
             other = JavaCompliance(other)
         assert other._high_bound() is not None, "Contains check cannot be done with version ranges"
         r = mx.compare(self.value, other.value)

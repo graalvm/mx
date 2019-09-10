@@ -18559,7 +18559,7 @@ def checkcopyrights(args):
 
         def _get_program_help(self):
             help_output = _check_output_str([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
-            return '\nother argumemnts preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
+            return '\nother argumments preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
 
     # ensure compiled form of code is up to date
     build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.checkcopy'])
@@ -19046,7 +19046,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.234.3")  # GR-18102
+version = VersionSpec("5.234.4")  # GR-18166
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
