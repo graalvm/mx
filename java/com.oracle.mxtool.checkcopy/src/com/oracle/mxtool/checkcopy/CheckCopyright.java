@@ -43,6 +43,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -720,33 +724,47 @@ public class CheckCopyright {
         final List<String> projects = PROJECT.getValue();
         Calendar cal = Calendar.getInstance();
 
+        int threadCount = 1;
+        threadCount = Runtime.getRuntime().availableProcessors();
+
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+        List<Future<?>> tasks = new ArrayList<>();
+
         for (String fileName : fileNames) {
             if (projects == null || isInProjects(fileName, projects)) {
                 File file = new File(fileName);
                 if (file.isDirectory()) {
                     continue;
                 }
-                try {
-                    if (verbose) {
-                        System.out.println("checking " + fileName);
-                    }
-                    Info info;
-                    if (DIR_WALK.getValue()) {
-                        info = getFromLastModified(cal, fileName);
-                    } else {
-                        final List<String> logInfo = vc.log(fileName);
-                        if (logInfo.size() == 0) {
-                            // an added file, so go with last modified
-                            info = getFromLastModified(cal, fileName);
-                        } else {
-                            info = vc.getInfo(fileName, logInfo);
-                        }
-                    }
-                    checkFile(info);
-                } catch (Exception e) {
-                    System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
+                tasks.add(threadPool.submit(() -> processFile(cal, fileName)));
+            }
+        }
+
+        for (Future<?> task : tasks) {
+            task.get();
+        }
+    }
+
+    private static void processFile(Calendar cal, String fileName) {
+        try {
+            if (verbose) {
+                System.out.println("checking " + fileName);
+            }
+            Info info;
+            if (DIR_WALK.getValue()) {
+                info = getFromLastModified(cal, fileName);
+            } else {
+                final List<String> logInfo = vc.log(fileName);
+                if (logInfo.size() == 0) {
+                    // an added file, so go with last modified
+                    info = getFromLastModified(cal, fileName);
+                } else {
+                    info = vc.getInfo(fileName, logInfo);
                 }
             }
+            checkFile(info);
+        } catch (Exception e) {
+            System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
         }
     }
 
