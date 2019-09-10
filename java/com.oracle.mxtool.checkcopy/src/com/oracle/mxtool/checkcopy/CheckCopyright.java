@@ -43,6 +43,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -285,6 +289,16 @@ public class CheckCopyright {
             return true;
         }
 
+        static class LazyHeader {
+            static {
+                System.out.printf("<year in copyright> != <year last modified> -> <current year>: <file>%n");
+            }
+
+            static void emit() {
+
+            }
+        }
+
         /**
          * Check the year info against the copyright header. N.B. In the case of multiple matching
          * groups, only the last group is checked. I.e., only the last lines containing year info is
@@ -305,11 +319,11 @@ public class CheckCopyright {
             String yearInCopyrightString = matcher.group(groupCount);
             yearInCopyright = Integer.parseInt(yearInCopyrightString);
             yearInCopyrightIndex = matcher.start(groupCount);
-            if (yearInCopyright != info.lastYear) {
-                System.out.println(fileName + " copyright last modified year " + yearInCopyright + ", " + vc.name() + " last modified year " + info.lastYear);
+            if (yearInCopyright != info.lastYear && currentYear != yearInCopyright) {
                 if (FIX.getValue()) {
                     // Use currentYear as that is what it will be when it's checked in!
-                    System.out.println("updating last modified year of " + fileName + " to " + info.lastYear);
+                    LazyHeader.emit();
+                    System.out.printf("%d != %d -> %d [fixed]: %s%n", yearInCopyright, info.lastYear, currentYear, fileName);
                     /*
                      * If the previous copyright only specified a single (initial) year, we convert
                      * it to the pair form
@@ -319,12 +333,14 @@ public class CheckCopyright {
                         // single year form
                         newContent += yearInCopyrightString + ", ";
                     }
-                    newContent += info.lastYear + fileContent.substring(yearInCopyrightIndex + 4);
+                    newContent += currentYear + fileContent.substring(yearInCopyrightIndex + 4);
                     final FileOutputStream os = new FileOutputStream(fileName);
                     os.write(newContent.getBytes());
                     os.close();
                     return true;
                 } else {
+                    LazyHeader.emit();
+                    System.out.printf("%d != %d -> %d: %s%n", yearInCopyright, info.lastYear, currentYear, fileName);
                     return false;
                 }
             }
@@ -720,33 +736,47 @@ public class CheckCopyright {
         final List<String> projects = PROJECT.getValue();
         Calendar cal = Calendar.getInstance();
 
+        int threadCount = 1;
+        threadCount = Runtime.getRuntime().availableProcessors();
+
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+        List<Future<?>> tasks = new ArrayList<>();
+
         for (String fileName : fileNames) {
             if (projects == null || isInProjects(fileName, projects)) {
                 File file = new File(fileName);
                 if (file.isDirectory()) {
                     continue;
                 }
-                try {
-                    if (verbose) {
-                        System.out.println("checking " + fileName);
-                    }
-                    Info info;
-                    if (DIR_WALK.getValue()) {
-                        info = getFromLastModified(cal, fileName);
-                    } else {
-                        final List<String> logInfo = vc.log(fileName);
-                        if (logInfo.size() == 0) {
-                            // an added file, so go with last modified
-                            info = getFromLastModified(cal, fileName);
-                        } else {
-                            info = vc.getInfo(fileName, logInfo);
-                        }
-                    }
-                    checkFile(info);
-                } catch (Exception e) {
-                    System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
+                tasks.add(threadPool.submit(() -> processFile(cal, fileName)));
+            }
+        }
+
+        for (Future<?> task : tasks) {
+            task.get();
+        }
+    }
+
+    private static void processFile(Calendar cal, String fileName) {
+        try {
+            if (verbose) {
+                System.out.println("checking " + fileName);
+            }
+            Info info;
+            if (DIR_WALK.getValue()) {
+                info = getFromLastModified(cal, fileName);
+            } else {
+                final List<String> logInfo = vc.log(fileName);
+                if (logInfo.size() == 0) {
+                    // an added file, so go with last modified
+                    info = getFromLastModified(cal, fileName);
+                } else {
+                    info = vc.getInfo(fileName, logInfo);
                 }
             }
+            checkFile(info);
+        } catch (Exception e) {
+            System.err.format("COPYRIGHT CHECK WARNING: error while processing %s: %s%n", fileName, e.getMessage());
         }
     }
 
