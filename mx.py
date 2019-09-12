@@ -2517,6 +2517,10 @@ class SourceSuite(Suite):
                     else:
                         d = join(self.dir, subDir, name)
                     native = attrs.pop('native', False)
+                    if not native:
+                        project_type_name = attrs.pop('type', 'JavaProject')
+                    else:
+                        project_type_name = None
 
                     old_test_project = attrs.pop('isTestProject', None)
                     if old_test_project is not None:
@@ -2535,7 +2539,7 @@ class SourceSuite(Suite):
                             from mx_native import DefaultNativeProject
                             p = DefaultNativeProject(self, name, subDir, srcDirs, deps, workingSets, d, kind=native,
                                                      theLicense=theLicense, testProject=testProject, **attrs)
-                    else:
+                    elif project_type_name == 'JavaProject':
                         javaCompliance = attrs.pop('javaCompliance', None)
                         if javaCompliance is None:
                             abort('javaCompliance property required for non-native project ' + name)
@@ -2553,6 +2557,14 @@ class SourceSuite(Suite):
                             p._javac_lint_overrides = jlintOverrides
                         if hasattr(p, "javaVersionExclusion") and self.getMxCompatibility().supports_disjoint_JavaCompliance_range():
                             abort('The "javaVersionExclusion" is no longer supported. Use a disjoint range for the "javaCompliance" attribute instead (e.g. "8,13+")', context=p)
+                    else:
+                        assert project_type_name
+                        project_type = getattr(self.extensions, project_type_name, None)
+                        if not project_type:
+                            abort("unknown project type '{}'".format(project_type_name))
+                        p = project_type(self, name, subDir, srcDirs, deps, workingSets, d,
+                                              theLicense=theLicense, testProject=testProject, **attrs)
+
                 if self.getMxCompatibility().overwriteProjectAttributes():
                     p.__dict__.update(attrs)
                 else:
@@ -19046,7 +19058,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.234.5")  # GR-18170
+version = VersionSpec("5.234.6")  # GR-18076
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
