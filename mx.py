@@ -14975,15 +14975,24 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
     projectDeps = []
-    visited = set()
     jdk = get_jdk(p.javaCompliance)
 
+    excluded = set()
     def preVisitDep(dep, edge):
         if dep.isLibrary() and hasattr(dep, 'eclipse.container'):
             container = getattr(dep, 'eclipse.container')
             out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : container})
             # Ignore the dependencies of this library
             return False
+        if dep.isJARDistribution():
+            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
+            # When depending on a jar, do not depend on the constituents of the jar otherwise
+            # we loose the class resolution performed for multi-release jars.
+            excluded.update(dep.archived_deps())
+
+            # This prevents the jar from being traversed more than once
+            excluded.add(dep)
+
         return True
 
     def processLibraryDep(dep):
@@ -15019,8 +15028,8 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 libFiles.append(path)
 
     def processDep(dep, edge):
-        assert dep not in visited
-        visited.add(dep)
+        if dep in excluded:
+            return
 
         if dep is p:
             return
@@ -15030,8 +15039,6 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             projectDeps.append(dep)
         elif dep.isJdkLibrary():
             processJdkLibraryDep(dep)
-        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
-            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
         elif dep.isJreLibrary() or dep.isDistribution():
             pass
         elif dep.isProject():
@@ -19058,7 +19065,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.234.7")  # GR-18289
+version = VersionSpec("5.235.0")  # GR-18289
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
