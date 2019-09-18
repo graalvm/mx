@@ -4700,12 +4700,16 @@ class Distribution(Dependency):
     def resolveDeps(self):
         self._resolveDepsHelper(self.deps, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         if self.suite.getMxCompatibility().automatic_overlay_distribution_deps():
+            # Overlays must come before overlayed when walking dependencies (e.g. to create a class path)
+            new_deps = []
             for d in self.deps:
                 if d.isJavaProject() and d._overlays:
                     for o in d._overlays:
                         if o in self.deps:
                             abort('Distribution must not explicitly specify a dependency on {} as it is derived automatically.'.format(o), context=self)
-                        self.deps.append(o)
+                        new_deps.append(o)
+                new_deps.append(d)
+            self.deps = new_deps
         self._resolveDepsHelper(self.buildDependencies, fatalIfMissing=not isinstance(self.suite, BinarySuite))
         self._resolveDepsHelper(self.excludedLibs)
         self._resolveDepsHelper(getattr(self, 'moduledeps', None))
@@ -14970,45 +14974,19 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
-    containerDeps = set()
-    libraryDeps = set()
-    jdkLibraryDeps = set()
-    projectDeps = set()
-    distributionDeps = set()
+    projectDeps = []
+    jdk = get_jdk(p.javaCompliance)
 
-    def processDep(dep, edge):
-        if dep is p:
-            return
-        if dep.isLibrary():
-            if hasattr(dep, 'eclipse.container'):
-                container = getattr(dep, 'eclipse.container')
-                containerDeps.add(container)
-                dep.walk_deps(visit=lambda dep2, edge2: libraryDeps.discard(dep2))
-            else:
-                libraryDeps.add(dep)
-        elif dep.isJavaProject() or dep.isNativeProject():
-            projectDeps.add(dep)
-        elif dep.isMavenProject():
-            libraryDeps.add(dep)
-        elif dep.isJdkLibrary():
-            jdkLibraryDeps.add(dep)
-        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
-            distributionDeps.add(dep)
-        elif dep.isJreLibrary() or dep.isDistribution():
-            pass
-        elif dep.isProject():
-            logv('ignoring project ' + dep.name + ' for eclipseinit')
-        else:
-            abort('unexpected dependency: ' + str(dep))
-    p.walk_deps(visit=processDep)
+    def preVisitDep(dep, edge):
+        if dep.isLibrary() and hasattr(dep, 'eclipse.container'):
+            container = getattr(dep, 'eclipse.container')
+            out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : container})
+            # Ignore the dependencies of this library
+            return False
+        return True
 
-    for dep in sorted(containerDeps):
-        out.element('classpathentry', {'exported' : 'true', 'kind' : 'con', 'path' : dep})
-
-    for dep in sorted(distributionDeps):
-        out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
-
-    for dep in sorted(libraryDeps):
+    def processLibraryDep(dep):
+        assert not hasattr(dep, 'eclipse.container'), dep.name + ' should have been handled in preVisitDep'
         path = dep.get_path(resolve=True)
 
         # Relative paths for "lib" class path entries have various semantics depending on the Eclipse
@@ -15028,8 +15006,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         if libFiles:
             libFiles.append(path)
 
-    jdk = get_jdk(p.javaCompliance)
-    for dep in sorted(jdkLibraryDeps):
+    def processJdkLibraryDep(dep):
         path = dep.classpath_repr(jdk, resolve=True)
         if path:
             attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
@@ -15040,14 +15017,33 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             if libFiles:
                 libFiles.append(path)
 
+    def processDep(dep, edge):
+        if dep is p:
+            return
+        if dep.isLibrary() or dep.isMavenProject():
+            processLibraryDep(dep)
+        elif dep.isJavaProject() or dep.isNativeProject():
+            projectDeps.append(dep)
+        elif dep.isJdkLibrary():
+            processJdkLibraryDep(dep)
+        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
+            out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
+        elif dep.isJreLibrary() or dep.isDistribution():
+            pass
+        elif dep.isProject():
+            logv('ignoring project ' + dep.name + ' for eclipseinit')
+        else:
+            abort('unexpected dependency: ' + str(dep))
+
+    p.walk_deps(preVisit=preVisitDep, visit=processDep)
+
     # When targeting JDK 8 or earlier, dependencies need to precede the JDK on the Eclipse build path.
     # There may be classes in dependencies that are also in the JDK. We want to compile against the
     # former. This is the same -Xbootclasspath:/p trick done in JavacLikeCompiler.prepare.
     putJREFirstOnBuildPath = p.javaCompliance.value >= 9
 
-    sortedDeps = sorted(projectDeps)
     allProjectPackages = set()
-    for dep in sortedDeps:
+    for dep in projectDeps:
         if not dep.isNativeProject():
             allProjectPackages.update(dep.defined_java_packages())
             if not putJREFirstOnBuildPath:
@@ -15083,7 +15079,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.close('classpathentry')
 
     if putJREFirstOnBuildPath:
-        for dep in sortedDeps:
+        for dep in projectDeps:
             if not dep.isNativeProject():
                 out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
@@ -15136,7 +15132,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.element('name', data=p.name)
     out.element('comment', data='')
     out.open('projects')
-    for dep in sorted(projectDeps):
+    for dep in projectDeps:
         if not dep.isNativeProject():
             out.element('project', data=dep.name)
     out.close('projects')
@@ -19058,7 +19054,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.234.6")  # GR-18076
+version = VersionSpec("5.235.0")  # GR-18289
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
