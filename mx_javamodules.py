@@ -361,7 +361,7 @@ def get_java_module_info(dist, fatalIfNotModule=False):
         if fatalIfNotModule:
             mx.abort('Distribution ' + dist.name + ' does not define a module')
         return None
-    return module_name, dist.path + '.pickled', dist.original_path()
+    return module_name, dist.original_path() + '.pickled', dist.original_path()
 
 def get_library_as_module(dep, jdk):
     """
