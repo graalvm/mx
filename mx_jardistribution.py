@@ -779,7 +779,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 res = mx._needsUpdate(newestInput, pickle_path)
                 if res:
                     return res
-                res = mx._needsUpdate(self.path, pickle_path)
+                res = mx._needsUpdate(self.original_path(), pickle_path)
                 if res:
                     return res
                 # Rebuild the jmod file if different JDK used previously
