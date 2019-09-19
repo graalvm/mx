@@ -158,8 +158,18 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             return self.original_path()
 
     def _stripped_path(self):
+        """
+        Gets the path to the ProGuard stripped version of the jar. Due to a limitation in ProGuard
+        handling of multi-release jars (https://sourceforge.net/p/proguard/bugs/671), the stripped
+        jar is specific to the default JDK (i.e. defined by JAVA_HOME/--java-home).
+        """
         assert self._path is not None, self.name
-        return join(mx.ensure_dir_exists(join(dirname(self._path), 'stripped')), basename(self._path))
+        res = getattr(self, '.stripped_path', None)
+        if res is None:
+            jdk = mx.get_jdk(tag='default')
+            res = join(mx.ensure_dir_exists(join(dirname(self._path), 'stripped', str(jdk.javaCompliance))), basename(self._path))
+            setattr(self, '.stripped_path', res)
+        return res
 
     def original_path(self):
         assert self._path is not None, self.name
@@ -230,7 +240,14 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
     def classpath_repr(self, resolve=True):
         if resolve and not exists(self.path):
-            mx.abort("unbuilt distribution {} can not be on a class path ({} does not exist). Did you forget to run 'mx build'?".format(self, self.path))
+            if exists(self.original_path()):
+                jdk = mx.get_jdk(tag='default')
+                msg = "The Java {} stripped jar for {} does not exist: {}{}".format(jdk.javaCompliance, self, self.path, os.linesep)
+                msg += "This might be solved by running: mx --java-home={} --strip build --dependencies={}".format(jdk.home, self)
+                mx.abort(msg)
+            msg = "The jar for {} does not exist: {}{}".format(self, self.path, os.linesep)
+            msg += "This might be solved by running: mx build --dependencies={}".format(self)
+            mx.abort(msg)
         return self.path
 
     def get_ide_project_dir(self):
@@ -610,7 +627,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def strip_jar(self):
         assert mx.get_opts().strip_jars, "Only works under the flag --strip-jars"
 
-        jdk = mx.get_jdk(self.maxJavaCompliance())
+        jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance > '13':
             mx.abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
 
@@ -657,10 +674,60 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                         fp_out.write(fp_in.read())
             prefix += ['-applymapping ' + input_maps_file]
 
+        # Create flattened input jar
+        flattened_jar = mx._derived_path(self.path, '', prefix='flattened_')
+        flattened_entries = {}
+        with zipfile.ZipFile(self.original_path(), 'r') as in_zf:
+            compression = in_zf.compression
+            versions = {}
+            for info in in_zf.infolist():
+                if not info.filename.startswith('META-INF/versions/'):
+                    if info.filename.startswith('META-INF/services/') and jdk9_or_later:
+                        # Omit JDK 8 style service descriptors when flattening for 9+
+                        pass
+                    else:
+                        flattened_entries[info.filename] = (info, in_zf.read(info))
+
+            for info in in_zf.infolist():
+                if info.filename.startswith('META-INF/versions/'):
+                    if jdk9_or_later:
+                        import mx_javamodules
+                        m = mx_javamodules._versioned_re.match(info.filename)
+                        if m:
+                            version = int(m.group(1))
+                            unversioned_name = m.group(2)
+                            if version <= jdk.javaCompliance.value:
+                                contents = in_zf.read(info)
+                                info.filename = unversioned_name
+                                versions.setdefault(version, {})[unversioned_name] = (info, contents)
+                            else:
+                                # Omit versioned resource whose version is too high
+                                pass
+                    else:
+                        # Omit versioned resources when flattening for JDK 8
+                        pass
+                elif info.filename.startswith('META-INF/services/') and jdk9_or_later:
+                    # Omit JDK 8 style service descriptors when flattening for 9+
+                    pass
+                else:
+                    flattened_entries[info.filename] = (info, in_zf.read(info))
+            if versions:
+                for version, entries in sorted(versions.items()):
+                    flattened_entries.update(entries)
+
+        with mx.SafeFileCreation(flattened_jar) as sfc:
+            with zipfile.ZipFile(sfc.tmpPath, 'w', compression) as out_zf:
+                for name, ic in sorted(flattened_entries.items()):
+                    info, contents = ic
+                    assert info.filename == name
+                    out_zf.writestr(info, contents)
+
         if jdk9_or_later:
             prefix += [
-            '-keep class module-info',
             '-keepattributes Module*',
+
+            # https://sourceforge.net/p/proguard/bugs/704/#d392
+            '-keep class module-info',
 
             # Must keep package names due to https://sourceforge.net/p/proguard/bugs/763/
             '-keeppackagenames **'
@@ -672,13 +739,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             prefix += ['-dontnote **']
 
         # https://sourceforge.net/p/proguard/bugs/671/#56b4
-        # https://sourceforge.net/p/proguard/bugs/704/#d392
         jar_filter = '(!META-INF/versions/**,!module-info.class)'
 
         if not jdk9_or_later:
             libraryjars = mx.classpath(self, includeSelf=False, includeBootClasspath=True, jdk=jdk, unique=True, ignoreStripped=True).split(os.pathsep)
             include_file = _create_derived_file(self.path, '.proguard', prefix + [
-                '-injars ' + self.original_path(),
+                '-injars ' + flattened_jar,
                 '-outjars ' + self.path,
                 '-libraryjars ' + os.pathsep.join((e + jar_filter for e in libraryjars)),
                 '-printmapping ' + self.strip_mapping_file(),
@@ -702,7 +768,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
             # Make stripped jar
             include_file = _create_derived_file(self.path, '.proguard', prefix + [
-                '-injars ' + self.original_path() + jar_filter,
+                '-injars ' + flattened_jar,
                 '-outjars ' + self.path,
                 '-libraryjars ' + os.pathsep.join((e + jar_filter for e in dep_jars + jdk_jmods)),
                 '-printmapping ' + self.path + JARDistribution._strip_map_file_suffix,
