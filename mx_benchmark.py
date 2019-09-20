@@ -1391,7 +1391,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
         return [mx.distribution(self.dist).mainClass]
 
 
-class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase): #pylint: disable=too-many-ancestors
+class JMHRunnerBenchmarkSuite(JMHBenchmarkSuiteBase):
     """JMH benchmark suite that uses jmh-runner to execute projects with JMH benchmarks."""
 
     def benchmarkList(self, bmSuiteArgs):
@@ -1493,7 +1493,7 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         return jmh_jar
 
 
-class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite): #pylint: disable=too-many-ancestors
+class JMHRunnerMxBenchmarkSuite(JMHRunnerBenchmarkSuite):
 
     def alternative_suite(self):
         return "jmh-dist"

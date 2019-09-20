@@ -5872,11 +5872,11 @@ class LayoutDistribution(AbstractDistribution):
         return self._source_location_cache[source]
 
 
-class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):  # pylint: disable=too-many-ancestors
+class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
 
 
-class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):  # pylint: disable=too-many-ancestors
+class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
@@ -5894,7 +5894,7 @@ class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):  # pyl
         return self._remote_compress
 
 
-class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):  # pylint: disable=too-many-ancestors
+class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):
     pass
 
 

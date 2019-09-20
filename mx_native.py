@@ -354,7 +354,7 @@ class NinjaProject(MultiarchProject):
         return dict(tree=source_tree, files=source_files)
 
 
-class NinjaBuildTask(TargetArchBuildTask):  # pylint: disable=too-many-ancestors
+class NinjaBuildTask(TargetArchBuildTask):
     def __init__(self, args, project, target_arch=mx.get_arch()):
         super(NinjaBuildTask, self).__init__(args, project, target_arch)
         self._reason = None
@@ -553,7 +553,7 @@ class NinjaManifestGenerator(object):
         self.newline()
 
 
-class DefaultNativeProject(NinjaProject):  # pylint: disable=too-many-ancestors
+class DefaultNativeProject(NinjaProject):
     """A NinjaProject that makes many assumptions when generating a build manifest.
 
     It is assumed that:
