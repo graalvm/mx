@@ -1901,12 +1901,15 @@ class BenchmarkExecutor(object):
                 suite.validateEnvironment()
                 fork_count = 1
                 if fork_count_spec and benchnames and len(benchnames) == 1:
-                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]), fork_count_spec.get(benchnames[0], 1))
+                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]), fork_count_spec.get(benchnames[0]))
                 elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
                     # single benchmark suites executed by providing the suite name only or a wildcard
-                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name()), 1))
+                    fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name())))
                 elif fork_count_spec:
                     mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
+                if fork_count_spec and fork_count is None:
+                    fork_count = 1
+                    mx.log("Defaulting fork count to 1 for {}:{} since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
                 for fork_num in range(0, fork_count):
                     if fork_count_spec:
                         mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
