@@ -272,7 +272,7 @@ class MxCompatibility566(MxCompatibility555):
     def mavenDeployJavadoc(self):
         return True
 
-class MxCompatibility5616(MxCompatibility566):#pylint: disable=too-many-ancestors
+class MxCompatibility5616(MxCompatibility566):
     @staticmethod
     def version():
         return mx.VersionSpec("5.6.16")
@@ -280,7 +280,7 @@ class MxCompatibility5616(MxCompatibility566):#pylint: disable=too-many-ancestor
     def checkstyleVersion(self):
         return '6.15'
 
-class MxCompatibility59(MxCompatibility5616):#pylint: disable=too-many-ancestors
+class MxCompatibility59(MxCompatibility5616):
     @staticmethod
     def version():
         return mx.VersionSpec("5.9.0")
@@ -288,7 +288,7 @@ class MxCompatibility59(MxCompatibility5616):#pylint: disable=too-many-ancestors
     def verifySincePresent(self):
         return ['-verifysincepresent']
 
-class MxCompatibility5200(MxCompatibility59):#pylint: disable=too-many-ancestors
+class MxCompatibility5200(MxCompatibility59):
     @staticmethod
     def version():
         return mx.VersionSpec("5.20.0")
@@ -299,7 +299,7 @@ class MxCompatibility5200(MxCompatibility59):#pylint: disable=too-many-ancestors
     def improvedImportMatching(self):
         return True
 
-class MxCompatibility5344(MxCompatibility5200):#pylint: disable=too-many-ancestors
+class MxCompatibility5344(MxCompatibility5200):
     @staticmethod
     def version():
         return mx.VersionSpec("5.34.4")
@@ -307,7 +307,7 @@ class MxCompatibility5344(MxCompatibility5200):#pylint: disable=too-many-ancesto
     def moduleDepsEqualDistDeps(self):
         return True
 
-class MxCompatibility5590(MxCompatibility5344):#pylint: disable=too-many-ancestors
+class MxCompatibility5590(MxCompatibility5344):
     @staticmethod
     def version():
         return mx.VersionSpec("5.59.0")
@@ -315,7 +315,7 @@ class MxCompatibility5590(MxCompatibility5344):#pylint: disable=too-many-ancesto
     def useDistsForUnittest(self):
         return True
 
-class MxCompatibility5680(MxCompatibility5590):#pylint: disable=too-many-ancestors
+class MxCompatibility5680(MxCompatibility5590):
     @staticmethod
     def version():
         return mx.VersionSpec("5.68.0")
@@ -323,7 +323,7 @@ class MxCompatibility5680(MxCompatibility5590):#pylint: disable=too-many-ancesto
     def excludeDisableJavaDebuggging(self):
         return True
 
-class MxCompatibility51104(MxCompatibility5680):#pylint: disable=too-many-ancestors
+class MxCompatibility51104(MxCompatibility5680):
     @staticmethod
     def version():
         return mx.VersionSpec("5.110.4")
@@ -331,7 +331,7 @@ class MxCompatibility51104(MxCompatibility5680):#pylint: disable=too-many-ancest
     def makePylintVCInputsAbsolute(self):
         return True
 
-class MxCompatibility51120(MxCompatibility51104):#pylint: disable=too-many-ancestors
+class MxCompatibility51120(MxCompatibility51104):
     @staticmethod
     def version():
         return mx.VersionSpec("5.113.0")
@@ -340,7 +340,7 @@ class MxCompatibility51120(MxCompatibility51104):#pylint: disable=too-many-ances
         return True
 
 
-class MxCompatibility51150(MxCompatibility51120):#pylint: disable=too-many-ancestors
+class MxCompatibility51150(MxCompatibility51120):
     @staticmethod
     def version():
         return mx.VersionSpec("5.115.0")
@@ -349,7 +349,7 @@ class MxCompatibility51150(MxCompatibility51120):#pylint: disable=too-many-ances
         return True
 
 
-class MxCompatibility51247(MxCompatibility51150):#pylint: disable=too-many-ancestors
+class MxCompatibility51247(MxCompatibility51150):
     @staticmethod
     def version():
         return mx.VersionSpec("5.124.7")
@@ -357,7 +357,7 @@ class MxCompatibility51247(MxCompatibility51150):#pylint: disable=too-many-ances
     def overwriteProjectAttributes(self):
         return False
 
-class MxCompatibility51330(MxCompatibility51247):#pylint: disable=too-many-ancestors
+class MxCompatibility51330(MxCompatibility51247):
     @staticmethod
     def version():
         return mx.VersionSpec("5.133.0")
@@ -365,7 +365,7 @@ class MxCompatibility51330(MxCompatibility51247):#pylint: disable=too-many-ances
     def requireJsonifiableSuite(self):
         return True
 
-class MxCompatibility51380(MxCompatibility51330):#pylint: disable=too-many-ancestors
+class MxCompatibility51380(MxCompatibility51330):
     @staticmethod
     def version():
         return mx.VersionSpec("5.138.0")
@@ -373,7 +373,7 @@ class MxCompatibility51380(MxCompatibility51330):#pylint: disable=too-many-ances
     def supportSuiteImportGitBref(self):
         return False
 
-class MxCompatibility51400(MxCompatibility51380):#pylint: disable=too-many-ancestors
+class MxCompatibility51400(MxCompatibility51380):
     @staticmethod
     def version():
         return mx.VersionSpec("5.140.0")
@@ -384,7 +384,7 @@ class MxCompatibility51400(MxCompatibility51380):#pylint: disable=too-many-ances
     def deprecateIsTestProject(self):
         return True
 
-class MxCompatibility51492(MxCompatibility51400):#pylint: disable=too-many-ancestors
+class MxCompatibility51492(MxCompatibility51400):
     @staticmethod
     def version():
         return mx.VersionSpec("5.149.2")
@@ -392,7 +392,7 @@ class MxCompatibility51492(MxCompatibility51400):#pylint: disable=too-many-ances
     def filterFindbugsProjectsByJavaCompliance(self):
         return True
 
-class MxCompatibility51760(MxCompatibility51492):#pylint: disable=too-many-ancestors
+class MxCompatibility51760(MxCompatibility51492):
     @staticmethod
     def version():
         return mx.VersionSpec("5.176.0")
@@ -400,7 +400,7 @@ class MxCompatibility51760(MxCompatibility51492):#pylint: disable=too-many-ances
     def addVersionSuffixToExplicitVersion(self):
         return True
 
-class MxCompatibility5181(MxCompatibility51760):#pylint: disable=too-many-ancestors
+class MxCompatibility5181(MxCompatibility51760):
     @staticmethod
     def version():
         return mx.VersionSpec("5.181.0")
@@ -408,7 +408,7 @@ class MxCompatibility5181(MxCompatibility51760):#pylint: disable=too-many-ancest
     def jarsUseJDKDiscriminant(self):
         return True
 
-class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ancestors
+class MxCompatibility5194(MxCompatibility5181):
     @staticmethod
     def version():
         return mx.VersionSpec("5.194.0")
@@ -416,7 +416,7 @@ class MxCompatibility5194(MxCompatibility5181):  # pylint: disable=too-many-ance
     def check_package_locations(self):
         return True
 
-class MxCompatibility51950(MxCompatibility5194):  # pylint: disable=too-many-ancestors
+class MxCompatibility51950(MxCompatibility5194):
     @staticmethod
     def version():
         return mx.VersionSpec("5.195.0")
@@ -424,7 +424,7 @@ class MxCompatibility51950(MxCompatibility5194):  # pylint: disable=too-many-anc
     def mavenSupportsClassifier(self):
         return True
 
-class MxCompatibility51951(MxCompatibility51950):  # pylint: disable=too-many-ancestors
+class MxCompatibility51951(MxCompatibility51950):
     @staticmethod
     def version():
         return mx.VersionSpec("5.195.1")
@@ -432,7 +432,7 @@ class MxCompatibility51951(MxCompatibility51950):  # pylint: disable=too-many-an
     def check_checkstyle_config(self):
         return True
 
-class MxCompatibility52061(MxCompatibility51951):  # pylint: disable=too-many-ancestors
+class MxCompatibility52061(MxCompatibility51951):
     @staticmethod
     def version():
         return mx.VersionSpec("5.206.1")
@@ -440,7 +440,7 @@ class MxCompatibility52061(MxCompatibility51951):  # pylint: disable=too-many-an
     def verify_multirelease_projects(self):
         return True
 
-class MxCompatibility52102(MxCompatibility52061):  # pylint: disable=too-many-ancestors
+class MxCompatibility52102(MxCompatibility52061):
     @staticmethod
     def version():
         return mx.VersionSpec("5.210.2")
@@ -448,7 +448,7 @@ class MxCompatibility52102(MxCompatibility52061):  # pylint: disable=too-many-an
     def spotbugs_version(self):
         return "3.1.11"
 
-class MxCompatibility52230(MxCompatibility52102):  # pylint: disable=too-many-ancestors
+class MxCompatibility52230(MxCompatibility52102):
     @staticmethod
     def version():
         return mx.VersionSpec("5.223.0")
@@ -460,7 +460,7 @@ class MxCompatibility52230(MxCompatibility52102):  # pylint: disable=too-many-an
         return True
 
 
-class MxCompatibility52290(MxCompatibility52230):  # pylint: disable=too-many-ancestors
+class MxCompatibility52290(MxCompatibility52230):
     @staticmethod
     def version():
         return mx.VersionSpec("5.229.0")
@@ -468,7 +468,7 @@ class MxCompatibility52290(MxCompatibility52230):  # pylint: disable=too-many-an
     def maven_deploy_unsupported_is_error(self):
         return True
 
-class MxCompatibility52310(MxCompatibility52290):  # pylint: disable=too-many-ancestors
+class MxCompatibility52310(MxCompatibility52290):
     @staticmethod
     def version():
         return mx.VersionSpec("5.231.0")

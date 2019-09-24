@@ -36,7 +36,7 @@ if sys.version_info < (2, 7):
     major, minor, micro, _, _ = sys.version_info
     raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 
 if __name__ == '__main__':
     # Rename this module as 'mx' so it is not re-executed when imported by other modules.
@@ -529,6 +529,7 @@ environment variables:
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
+        self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -3896,7 +3897,7 @@ def clean(args, parser=None):
     # TODO should we clean all the instantiations of a template?, how to enumerate all instantiations?
     for dep in deps:
         task = dep.getBuildTask(args)
-        if task.cleanForbidden():
+        if getattr(task, 'cleanForbidden', lambda: True)():
             continue
         task.logClean()
         task.clean()
@@ -4452,31 +4453,95 @@ mx_subst.path_substitutions.register_with_arg('jnigen', _get_jni_gen)
 
 ### ~~~~~~~~~~~~~ Build
 
-class BuildTask(_with_metaclass(ABCMeta, object)):
+
+class Task(_with_metaclass(ABCMeta), object):
+    """A task executed during a build.
+
+    :type deps: list[Task]
+    :param Dependency subject: the dependency for which this task is executed
+    :param list[str] args: arguments of the build command
+    :param int parallelism: the number of CPUs used when executing this task
     """
-    A build task is used to build a dependency.
-    :type deps: list[BuildTask]
-    """
-    def __init__(self, subject, args, parallelism): # pylint: disable=super-init-not-called
-        """
-        :param Dependency subject: the dependency built by this task
-        :param list[str] args: arguments to the build comment
-        :param int parallelism: how many CPUs are used when running this task
-        """
-        self.parallelism = parallelism
+
+    def __init__(self, subject, args, parallelism):  # pylint: disable=super-init-not-called
         self.subject = subject
-        self.deps = []
-        self.built = False
         self.args = args
+        self.parallelism = parallelism
+        self.deps = []
         self.proc = None
-        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
-                                     subject._extra_artifact_discriminant(), subject.name)
 
     def __str__(self):
         nyi('__str__', self)
 
     def __repr__(self):
         return str(self)
+
+    @property
+    def name(self):
+        return self.subject.name
+
+    def initSharedMemoryState(self):
+        pass
+
+    def pushSharedMemoryState(self):
+        pass
+
+    def pullSharedMemoryState(self):
+        pass
+
+    def cleanSharedMemoryState(self):
+        pass
+
+    def prepare(self, daemons):
+        """
+        Perform any task initialization that must be done in the main process.
+        This will be called just before the task is launched.
+        The 'daemons' argument is a dictionary for storing any persistent state
+        that might be shared between tasks.
+        """
+
+    @abstractmethod
+    def execute(self):
+        """Executes this task."""
+
+
+class NoOpTask(Task):
+    def __init__(self, subject, args):
+        super(NoOpTask, self).__init__(subject, args, 1)
+
+    def __str__(self):
+        return 'NoOp'
+
+    def execute(self):
+        pass
+
+
+class TaskSequence(Task):
+    """A Task that executes a sequence of subtasks."""
+
+    def __init__(self, subject, args):
+        super(TaskSequence, self).__init__(subject, args, max(t.parallelism for t in self.subtasks))
+
+    def __str__(self):
+        def indent(s, padding='  '):
+            return padding + s.replace('\n', '\n' + padding)
+
+        return self.__class__.__name__ + '[\n' + indent('\n'.join(map(str, self.subtasks))) + '\n]'
+
+    @abstractproperty
+    def subtasks(self):
+        """:rtype: typing.Sequence[Task]"""
+
+    def execute(self):
+        for subtask in self.subtasks:
+            assert subtask.subject == self.subject
+            subtask.deps += self.deps
+            subtask.execute()
+
+
+class Buildable(object):
+    """A mixin for Task subclasses that can be built."""
+    built = False
 
     def initSharedMemoryState(self):
         self._builtBox = multiprocessing.Value('b', 1 if self.built else 0)
@@ -4489,6 +4554,23 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
 
     def cleanSharedMemoryState(self):
         self._builtBox = None
+
+    # @abstractmethod should be abstract but subclasses in some suites miss this method
+    def newestOutput(self):
+        """
+        Gets a TimeStampFile representing the build output file for this task
+        with the newest modification time or None if no build output file exists.
+        """
+        nyi('newestOutput', self)
+
+
+class BuildTask(Buildable, Task):
+    """A Task used to build a dependency."""
+
+    def __init__(self, subject, args, parallelism):
+        super(BuildTask, self).__init__(subject, args, parallelism)
+        self._saved_deps_path = join(subject.suite.get_mx_output_dir(), 'savedDeps', type(subject).__name__,
+                                     subject._extra_artifact_discriminant(), self.name)
 
     @property
     def _current_deps(self):
@@ -4531,13 +4613,13 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             buildNeeded = True
             reason = 'clean'
         if not buildNeeded:
-            updated = [dep for dep in self.deps if dep.built]
-            if any(updated):
+            updated = [dep for dep in self.deps if getattr(dep, 'built', False)]
+            if updated:
                 buildNeeded = True
                 if not _opts.verbose:
                     reason = 'dependency {} updated'.format(updated[0].subject)
                 else:
-                    reason = 'dependencies updated: ' + ', '.join([u.subject.name for u in updated])
+                    reason = 'dependencies updated: ' + ', '.join(str(u.subject) for u in updated)
         if not buildNeeded and self._deps_changed():
             buildNeeded = True
             reason = 'dependencies were added, removed or re-ordered'
@@ -4545,7 +4627,7 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             newestInput = None
             newestInputDep = None
             for dep in self.deps:
-                depNewestOutput = dep.newestOutput()
+                depNewestOutput = getattr(dep, 'newestOutput', lambda: None)()
                 if depNewestOutput and (not newestInput or depNewestOutput.isNewerThan(newestInput)):
                     newestInput = depNewestOutput
                     newestInputDep = dep
@@ -4584,13 +4666,13 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             log('{}...'.format(self))
 
     def logClean(self):
-        log('Cleaning {}...'.format(self.subject.name))
+        log('Cleaning {}...'.format(self.name))
 
     def logSkip(self, reason=None):
         if reason:
-            logv('[{} - skipping {}]'.format(reason, self.subject.name))
+            logv('[{} - skipping {}]'.format(reason, self.name))
         else:
-            logv('[skipping {}]'.format(self.subject.name))
+            logv('[skipping {}]'.format(self.name))
 
     def needsBuild(self, newestInput):
         """
@@ -4603,14 +4685,6 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
             return (True, 'forced build')
         return (False, 'unimplemented')
 
-    # @abstractmethod should be abstract but subclasses in some suites miss this method
-    def newestOutput(self):
-        """
-        Gets a TimeStampFile representing the build output file for this task
-        with the newest modification time or None if no build output file exists.
-        """
-        nyi('newestOutput', self)
-
     def buildForbidden(self):
         if not self.args.only:
             return False
@@ -4619,14 +4693,6 @@ class BuildTask(_with_metaclass(ABCMeta, object)):
 
     def cleanForbidden(self):
         return False
-
-    def prepare(self, daemons):
-        """
-        Perform any task initialization that must be done in the main process.
-        This will be called just before the task is launched.
-        The 'daemons' argument is a dictionary for storing any persistent state
-        that might be shared between tasks.
-        """
 
     @abstractmethod
     def build(self):
@@ -5806,11 +5872,11 @@ class LayoutDistribution(AbstractDistribution):
         return self._source_location_cache[source]
 
 
-class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):  # pylint: disable=too-many-ancestors
+class LayoutTARDistribution(LayoutDistribution, AbstractTARDistribution):
     pass
 
 
-class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):  # pylint: disable=too-many-ancestors
+class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):
     def __init__(self, *args, **kw_args):
         # we have *args here because some subclasses in suites have been written passing positional args to
         # LayoutDistribution.__init__ instead of keyword args. We just forward it as-is to super(), it's risky but better
@@ -5828,7 +5894,7 @@ class LayoutZIPDistribution(LayoutDistribution, AbstractZIPDistribution):  # pyl
         return self._remote_compress
 
 
-class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):  # pylint: disable=too-many-ancestors
+class LayoutJARDistribution(LayoutZIPDistribution, AbstractJARDistribution):
     pass
 
 
@@ -7494,13 +7560,10 @@ class NativeProject(AbstractNativeProject):
 ### ~~~~~~~~~~~~~ Build Tasks
 class AbstractNativeBuildTask(ProjectBuildTask):
     def __init__(self, args, project):
-        if hasattr(project, 'max_jobs'):
-            jobs = min(int(project.max_jobs), cpu_count())
-        else:
-            # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
-            # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
-            # how much parallelism the build machine supports.
-            jobs = min(8, cpu_count())
+        # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
+        # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
+        # how much parallelism the build machine supports.
+        jobs = min(int(getattr(project, 'max_jobs', 8)), cpu_count())
         super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
 
     def buildForbidden(self):
@@ -7881,28 +7944,6 @@ class JreLibrary(BaseLibrary, ClasspathDependency):
     def isJar(self):
         return True
 
-### ~~~~~~~~~~~~~ Task
-
-class NoOpTask(BuildTask):
-    def __init__(self, subject, args):
-        super(NoOpTask, self).__init__(subject, args, 1)
-
-    def __str__(self):
-        return "NoOp"
-
-    def newestOutput(self):
-        return None
-
-    def execute(self):
-        pass
-
-    def build(self):
-        pass
-
-    def clean(self, forBuild=False):
-        pass
-
-### ~~~~~~~~~~~~~ Library
 
 class JdkLibrary(BaseLibrary, ClasspathDependency):
     """
@@ -19054,7 +19095,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.236.2")  # GR-18326
+version = VersionSpec("5.237.0")  # GR-17690
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
