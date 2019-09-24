@@ -383,7 +383,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                                 services_dict = services.setdefault(service_version, {})
                             else:
                                 services_dict = services
-                            with open(join(outputDir, relpath), 'r') as fp:
+                            with mx.open(join(outputDir, relpath), 'r') as fp:
                                 services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
                     else:
                         if snippetsPattern and snippetsPattern.match(relpath):
@@ -391,7 +391,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                         source = join(outputDir, relpath)
                         with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
                             if guard:
-                                with open(source, 'rb') as fp:
+                                with mx.open(source, 'rb') as fp:
                                     contents = fp.read()
                                 if not participants__add__(arcname, contents):
                                     if versioned_meta_inf_re.match(arcname):
@@ -410,7 +410,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                                 if arcnameCheck is None or arcnameCheck(arcname):
                                     with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
                                         if guard:
-                                            with open(join(root, f), 'r') as fp:
+                                            with mx.open(join(root, f), 'r') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
                                                 info = zipfile.ZipInfo(arcname, time.localtime(mx.getmtime(join(root, f)))[:6])
@@ -609,7 +609,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             if jmd:
                 setattr(self, '.javaModule', jmd)
                 dependency_file = self._jmod_build_jdk_dependency_file()
-                with open(dependency_file, 'w') as fp:
+                with mx.open(dependency_file, 'w') as fp:
                     fp.write(jdk.home)
 
         if self.is_stripped():
@@ -654,12 +654,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         # add configs
         for file_name in self.stripConfig:
-            with open(file_name, 'r') as fp:
+            with mx.open(file_name, 'r') as fp:
                 prefix.extend((l.strip() for l in fp.readlines()))
 
         def _create_derived_file(base_file, suffix, lines):
             derived_file = mx._derived_path(base_file, suffix)
-            with open(derived_file, 'w') as fp:
+            with mx.open(derived_file, 'w') as fp:
                 for line in lines:
                     print(line, file=fp)
             return derived_file
@@ -668,9 +668,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         input_maps = self.stripMapping + [d.strip_mapping_file() for d in mx.classpath_entries(self, includeSelf=False) if d.isJARDistribution() and d.is_stripped()]
         if input_maps:
             input_maps_file = mx._derived_path(self.path, '.input_maps')
-            with open(input_maps_file, 'w') as fp_out:
+            with mx.open(input_maps_file, 'w') as fp_out:
                 for file_name in input_maps:
-                    with open(file_name, 'r') as fp_in:
+                    with mx.open(file_name, 'r') as fp_in:
                         fp_out.write(fp_in.read())
             prefix += ['-applymapping ' + input_maps_file]
 
@@ -752,7 +752,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             strip_command = proguard + ['-include', include_file]
 
             mx.run_java(strip_command, jdk=jdk)
-            with open(self.strip_config_dependency_file(), 'w') as f:
+            with mx.open(self.strip_config_dependency_file(), 'w') as f:
                 f.writelines((l + os.linesep for l in self.stripConfig))
         else:
             cp_entries = mx.classpath_entries(self, includeSelf=False)
@@ -790,7 +790,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 strip_commands.append(proguard + ['-include', include_file])
             for command in strip_commands:
                 mx.run_java(command, jdk=jdk)
-            with open(self.strip_config_dependency_file(), 'w') as f:
+            with mx.open(self.strip_config_dependency_file(), 'w') as f:
                 f.writelines((l + os.linesep for l in self.stripConfig))
 
     def remoteName(self, platform=None):
@@ -852,7 +852,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 jdk = mx.get_jdk(compliance)
                 dependency_file = self._jmod_build_jdk_dependency_file()
                 if exists(dependency_file):
-                    with open(dependency_file) as fp:
+                    with mx.open(dependency_file) as fp:
                         last_build_jdk = fp.read()
                     if last_build_jdk != jdk.home:
                         return 'build JDK changed from {} to {}'.format(last_build_jdk, jdk.home)
@@ -860,7 +860,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
             if exists(dependency_file):
-                with open(dependency_file) as f:
+                with mx.open(dependency_file) as f:
                     previous_strip_configs = (l.rstrip('\r\n') for l in f.readlines())
             if set(previous_strip_configs) != set(self.stripConfig):
                 return 'strip config files changed'
