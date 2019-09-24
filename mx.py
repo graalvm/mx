@@ -18332,10 +18332,13 @@ def show_projects(args):
 
 def show_jar_distributions(args):
     parser = ArgumentParser(prog='mx jar-distributions', description='List jar distributions')
-    parser.add_argument('--sources', action='store_true', help='Show the path to the source bundle when available.')
-    parser.add_argument('--dependencies', action='store_true', help='Also list dependencies.')
+    parser.add_argument('--sources', action='store_true', help='Show the path to the source bundle of jar distributions when available.')
+    parser.add_argument('--sources-only', action='store_true', help='Only show the path to the sources for jar distributions.')
+    parser.add_argument('--dependencies', action='store_true', help='Also list dependencies (path to jar only).')
     parser.add_argument('--no-tests', action='store_false', dest='tests', help='Filter out test distributions.')
     args = parser.parse_args(args)
+    if args.sources_only:
+        args.sources = True
     all_jars = set()
     for s in suites(opt_limit_to_suite=True):
         jars = [d for d in s.dists if d.isJARDistribution() and (args.tests or not d.is_test_distribution())]
@@ -18343,11 +18346,16 @@ def show_jar_distributions(args):
             sources = None
             if args.sources:
                 sources = jar.sourcesPath
-            path = jar.path
-            if sources:
-                print("{}:{}\t{}\t{}".format(s.name, jar.name, path, sources))
+            if args.sources_only:
+                if not sources:
+                    raise abort("Could not find sources for {}".format(jar))
+                print(sources)
             else:
-                print("{}:{}\t{}".format(s.name, jar.name, path))
+                path = jar.path
+                if sources:
+                    print("{}:{}\t{}\t{}".format(s.name, jar.name, path, sources))
+                else:
+                    print("{}:{}\t{}".format(s.name, jar.name, path))
         all_jars.update(jars)
     if args.dependencies and all_jars:
         for e in classpath(all_jars, includeSelf=False, includeBootClasspath=True, unique=True).split(os.pathsep):
