@@ -97,6 +97,7 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.jackpot') as f:
             for c in jackCmd:
                 print(c, file=f)
+            f.flush()
             ret = mx.run_java(cmd + ['@' + f.name], nonZeroIsFatal=nonZeroIsFatal, jdk=jdk)
             if ret != 0:
                 mx.warn('To simulate the failure execute `mx -p {0} jackpot`.'.format(suite.dir))
