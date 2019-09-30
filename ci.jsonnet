@@ -1,10 +1,10 @@
 local
 java = {
   downloads+: {
-    JAVA_HOME: {name: 'oraclejdk', version: "8u212", platformspecific: true}
+    JAVA_HOME: {name: 'oraclejdk', version: "8u221", platformspecific: true}
   }
 },
-oraclejdk_jvmci = {name: 'oraclejdk', version: "8u212-jvmci-19.2-b01", platformspecific: true},
+oraclejdk_jvmci = {name: 'oraclejdk', version: "8u221-jvmci-19.3-b03", platformspecific: true},
 gate = java + {
   targets: ['gate'],
   packages+: {
