@@ -2391,6 +2391,11 @@ class Repository(SuiteConstituent):
             url = mx_urlrewrites.rewriteurl(url)
         return url
 
+    def get_maven_id(self):
+        if hasattr(self, 'mavenId'):
+            return getattr(self, 'mavenId')
+        return self.name
+
     def _comparison_key(self):
         return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
@@ -10436,7 +10441,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
 
     if repo != maven_local_repository():
         cmd += [
-            '-DrepositoryId=' + repo.name,
+            '-DrepositoryId=' + repo.get_maven_id(),
             '-Durl=' + repo.get_url(version)
         ]
         if gpg:
