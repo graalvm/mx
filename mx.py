@@ -19133,7 +19133,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.238.1")  # fix checkstyle on python 3
+version = VersionSpec("5.238.2")  # GR-18623
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
