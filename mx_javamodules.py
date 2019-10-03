@@ -794,7 +794,17 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                 last_dest_dir = dest_dir
 
                 with mx.Timer('compile@' + version, times):
-                    javac_args = ['-d', dest_dir]
+                    def safe_path_arg(p):
+                        """
+                        If on Windows and `p` contains spaces, then return `p` with
+                        all `\` characters replaced with `\\`, all spaces replaced
+                        with `\ ` and the result enclosed in double quotes.
+                        """
+                        if mx.is_windows() and ' ' in p:
+                            return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
+                        return p
+
+                    javac_args = ['-d', safe_path_arg(dest_dir)]
                     modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
                     # TODO we should rather use the right JDK
                     javac_args += ['-target', version if version != 'common' else '9', '-source', version if version != 'common' else '9']
@@ -809,7 +819,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     if not exists(jdk_jmods):
                         mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
                     modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
-                    javac_args.append('--module-path=' + os.pathsep.join(modulepath_jars))
+                    javac_args.append('--module-path=' + safe_path_arg(os.pathsep.join(modulepath_jars)))
 
                     if concealedRequires:
                         for module, packages in concealedRequires.items():
@@ -822,7 +832,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     # modules in qualified exports (not sure how to avoid these since we build modules
                     # separately).
                     javac_args.append('-Xlint:-options,-module')
-                    javac_args.append(module_info_java)
+                    javac_args.append(safe_path_arg(module_info_java))
 
                     # Convert javac args to @args file
                     javac_args_file = mx._derived_path(dest_dir, '.javac_args')
