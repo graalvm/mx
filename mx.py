@@ -14489,7 +14489,8 @@ def checkstyle(args):
                         with open(auditfileName, 'rb') as fp:
                             xp.ParseFile(fp)
                         if len(errors) != 0:
-                            map(log_error, errors)
+                            for e in errors:
+                                log_error(e)
                             totalErrors = totalErrors + len(errors)
                         else:
                             batch.timestamp.touch()
@@ -19132,7 +19133,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.238.0")  # jar-distributions
+version = VersionSpec("5.238.1")  # fix checkstyle on python 3
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
