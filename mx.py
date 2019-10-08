@@ -76,6 +76,7 @@ import calendar
 import multiprocessing
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
+from copy import copy
 
 _mx_commands = MxCommands("mx")
 
@@ -5604,7 +5605,7 @@ class LayoutDistribution(AbstractDistribution):
                 if not destination.endswith('/'):
                     name = '/'.join(name.split('/')[:-1] + [basename(destination)])
                     if not first_file_box[0]:
-                        abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
+                        raise abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
                 first_file_box[0] = False
                 return name, _root_match
@@ -5626,25 +5627,33 @@ class LayoutDistribution(AbstractDistribution):
                         # from tarfile.TarFile.extractall:
                         directories = []
                         for tarinfo in tf:
-                            tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
-                            if not tarinfo.name:
+                            new_name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
+                            if not new_name:
                                 continue
-                            extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
-                            arcname = dest_arcname(tarinfo.name)
+                            extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
+                            arcname = dest_arcname(new_name)
                             if tarinfo.issym():
                                 if root_match:
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
+                                    original_name = tarinfo.name
+                                    tarinfo.name = new_name
                                     tf.extract(tarinfo, unarchiver_dest_directory)
+                                    tarinfo.name = original_name
                                     archiver.add_link(tarinfo.linkname, arcname, provenance)
                             else:
+                                original_name = tarinfo.name
+                                tarinfo.name = new_name
                                 tf.extract(tarinfo, unarchiver_dest_directory)
+                                tarinfo.name = original_name
                                 archiver.add(extracted_file, arcname, provenance)
                                 if tarinfo.isdir():
                                     # use a safe mode while extracting, fix later
                                     os.chmod(extracted_file, 0o700)
-                                    directories.append(tarinfo)
+                                    new_tarinfo = copy(tarinfo)
+                                    new_tarinfo.name = new_name
+                                    directories.append(new_tarinfo)
 
                         # Reverse sort directories.
                         directories.sort(key=operator.attrgetter('name'))
