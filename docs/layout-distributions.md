@@ -57,6 +57,8 @@ The following types are available:
   The `extracted-dependency:` prefix is followed by a dependency name (potentially qualified by the suite name).
 
   If only certain files should be extracted, a `/` followed by a glob pattern can be appended.
+  Using `|` instead of `/` to separate the dependency form the glob will cause the copy to be done with no de-referencing of the
+  source.
 * `link` creates a symbolic link.
   The `link:` prefix should be followed by the content of the link (a relative path from the directory containing the link).
 * `string` creates a file with the content following the `string:` prefix.
@@ -66,6 +68,10 @@ Note that glob patterns do not match `.*` files by default.
 Note that when using a glob pattern to select a source, every element matched by the pattern will be (recursively) copied like `cp` would.
 In particular `"lib/": "file:libs/libz.so"` will produce `lib/libz.so` in the archive, not `lib/libs/libz.so`!
 The same is true for `dependency` and `extracted-dependency`.
+
+Just like `cp`, the initial source is de-referenced if it is a symlink while they are not de-referenced during recursion.
+`extracted-dependency` support a special no-dereference mode to prevent that (see above).
+
 
 The simple string syntax for source is complemented by a dict syntax which explicitly splits the different parts of the source
 and sometimes provides additional functionality. For example `extracted-dependency:DEVEL/include/*` expands to:
