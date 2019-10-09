@@ -5412,9 +5412,15 @@ class LayoutDistribution(AbstractDistribution):
             if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
         if path_substitutions and source_dict.get("path"):
-            source_dict["path"] = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
+            path = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
+            if path != source_dict["path"]:
+                source_dict = source_dict.copy()
+                source_dict["path"] = path
         if string_substitutions and source_dict.get("value") and not source_dict.get("ignore_value_subst"):
-            source_dict["value"] = mx_subst.as_engine(string_substitutions).substitute(source_dict["value"], distribution=distribution_object)
+            value = mx_subst.as_engine(string_substitutions).substitute(source_dict["value"], distribution=distribution_object)
+            if value != source_dict["value"]:
+                source_dict = source_dict.copy()
+                source_dict["value"] = value
         return source_dict
 
     @staticmethod
