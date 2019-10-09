@@ -5378,7 +5378,7 @@ class LayoutDistribution(AbstractDistribution):
                 else:
                     source_dict["dependency"], source_dict["path"] = source_spec, None
                 if source_type == 'extracted-dependency':
-                    source_dict["no_dereference"] = False
+                    source_dict["dereference"] = "root"
                 source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict["path"] = source_spec
@@ -5394,8 +5394,11 @@ class LayoutDistribution(AbstractDistribution):
             # TODO check structure
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
-                if source_type == 'extracted-dependency' and 'no_dereference' not in source_dict:
-                    source_dict["no_dereference"] = False
+                if source_type == 'extracted-dependency':
+                    if 'dereference' not in source_dict:
+                        source_dict["dereference"] = "root"
+                    elif source_dict["dereference"] not in ("root", "never"):
+                        raise abort("Unsupported dereference mode: '{}' in '{}'".format(source_dict["dereference"], destination), context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
                 if 'optional' not in source_dict:
@@ -5407,7 +5410,7 @@ class LayoutDistribution(AbstractDistribution):
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
             else:
-                abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
+                raise abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
         if 'exclude' in source_dict:
             if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
@@ -5575,7 +5578,7 @@ class LayoutDistribution(AbstractDistribution):
                             type=source_type),
                         context=self)
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
-            no_dereference = source.get("no_dereference", False)
+            dereference = source.get("dereference", "root")
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
             output_done = False
@@ -5644,7 +5647,7 @@ class LayoutDistribution(AbstractDistribution):
                             extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
                             arcname = dest_arcname(new_name)
                             if tarinfo.issym():
-                                if root_match and not no_dereference:
+                                if root_match and dereference == "root":
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:

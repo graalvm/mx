@@ -67,9 +67,8 @@ Note that when using a glob pattern to select a source, every element matched by
 In particular `"lib/": "file:libs/libz.so"` will produce `lib/libz.so` in the archive, not `lib/libs/libz.so`!
 The same is true for `dependency` and `extracted-dependency`.
 
-Just like `cp`, the initial source is de-referenced if it is a symlink while they are not de-referenced during recursion.
-`extracted-dependency` support a special no-dereference mode to prevent that (see below).
-
+The initial source is de-referenced if it is a symlink while they are not de-referenced during recursion.
+`extracted-dependency` support a alternative dereference modes to prevent that (see below).
 
 The simple string syntax for source is complemented by a dict syntax which explicitly splits the different parts of the source
 and sometimes provides additional functionality. For example `extracted-dependency:DEVEL/include/*` expands to:
@@ -88,7 +87,9 @@ It is a glob pattern or a list of glob patterns.
 If any pattern matches, the element is excluded.
 The pattern is rooted at the same level as the inclusion pattern.
 
-For `extracted-dependency`, the boolean `no_dereference` property can be used to copy without de-referencing the source.
+For `extracted-dependency`, the `dereference` property can set to:
+* `"never"` to copy without any de-referencing the source (like `cp -P`)
+* `"root"` (default) to only de-reference the root matches of the recursive copy (like `cp -H`)
 
 ## Archive types
 
