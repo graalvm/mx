@@ -76,6 +76,7 @@ import calendar
 import multiprocessing
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
+from copy import copy
 
 _mx_commands = MxCommands("mx")
 
@@ -5376,6 +5377,8 @@ class LayoutDistribution(AbstractDistribution):
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
                 else:
                     source_dict["dependency"], source_dict["path"] = source_spec, None
+                if source_type == 'extracted-dependency':
+                    source_dict["dereference"] = "root"
                 source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict["path"] = source_spec
@@ -5391,6 +5394,11 @@ class LayoutDistribution(AbstractDistribution):
             # TODO check structure
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
+                if source_type == 'extracted-dependency':
+                    if 'dereference' not in source_dict:
+                        source_dict["dereference"] = "root"
+                    elif source_dict["dereference"] not in ("root", "never"):
+                        raise abort("Unsupported dereference mode: '{}' in '{}'".format(source_dict["dereference"], destination), context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
                 if 'optional' not in source_dict:
@@ -5402,14 +5410,20 @@ class LayoutDistribution(AbstractDistribution):
             elif source_type == 'string':
                 source_dict['_str_'] = "string:" + source_dict['value']
             else:
-                abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
+                raise abort("Unsupported source type: '{}' in '{}'".format(source_type, destination), context=context)
         if 'exclude' in source_dict:
             if isinstance(source_dict['exclude'], str):
                 source_dict['exclude'] = [source_dict['exclude']]
         if path_substitutions and source_dict.get("path"):
-            source_dict["path"] = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
+            path = mx_subst.as_engine(path_substitutions).substitute(source_dict["path"], distribution=distribution_object)
+            if path != source_dict["path"]:
+                source_dict = source_dict.copy()
+                source_dict["path"] = path
         if string_substitutions and source_dict.get("value") and not source_dict.get("ignore_value_subst"):
-            source_dict["value"] = mx_subst.as_engine(string_substitutions).substitute(source_dict["value"], distribution=distribution_object)
+            value = mx_subst.as_engine(string_substitutions).substitute(source_dict["value"], distribution=distribution_object)
+            if value != source_dict["value"]:
+                source_dict = source_dict.copy()
+                source_dict["value"] = value
         return source_dict
 
     @staticmethod
@@ -5564,6 +5578,7 @@ class LayoutDistribution(AbstractDistribution):
                             type=source_type),
                         context=self)
                 unarchiver_dest_directory = dirname(unarchiver_dest_directory)
+            dereference = source.get("dereference", "root")
             ensure_dir_exists(unarchiver_dest_directory)
             ext = get_file_extension(source_archive_file)
             output_done = False
@@ -5604,7 +5619,7 @@ class LayoutDistribution(AbstractDistribution):
                 if not destination.endswith('/'):
                     name = '/'.join(name.split('/')[:-1] + [basename(destination)])
                     if not first_file_box[0]:
-                        abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
+                        raise abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
                 first_file_box[0] = False
                 return name, _root_match
@@ -5626,25 +5641,33 @@ class LayoutDistribution(AbstractDistribution):
                         # from tarfile.TarFile.extractall:
                         directories = []
                         for tarinfo in tf:
-                            tarinfo.name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
-                            if not tarinfo.name:
+                            new_name, root_match = _filter_archive_name(tarinfo.name.rstrip("/"))
+                            if not new_name:
                                 continue
-                            extracted_file = join(unarchiver_dest_directory, tarinfo.name.replace("/", os.sep))
-                            arcname = dest_arcname(tarinfo.name)
+                            extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
+                            arcname = dest_arcname(new_name)
                             if tarinfo.issym():
-                                if root_match:
+                                if root_match and dereference == "root":
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
+                                    original_name = tarinfo.name
+                                    tarinfo.name = new_name
                                     tf.extract(tarinfo, unarchiver_dest_directory)
+                                    tarinfo.name = original_name
                                     archiver.add_link(tarinfo.linkname, arcname, provenance)
                             else:
+                                original_name = tarinfo.name
+                                tarinfo.name = new_name
                                 tf.extract(tarinfo, unarchiver_dest_directory)
+                                tarinfo.name = original_name
                                 archiver.add(extracted_file, arcname, provenance)
                                 if tarinfo.isdir():
                                     # use a safe mode while extracting, fix later
                                     os.chmod(extracted_file, 0o700)
-                                    directories.append(tarinfo)
+                                    new_tarinfo = copy(tarinfo)
+                                    new_tarinfo.name = new_name
+                                    directories.append(new_tarinfo)
 
                         # Reverse sort directories.
                         directories.sort(key=operator.attrgetter('name'))
@@ -19133,7 +19156,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.238.3")  # GR-18670
+version = VersionSpec("5.239.0")  # extracted-dependency
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
