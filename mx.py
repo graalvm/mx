@@ -5373,14 +5373,12 @@ class LayoutDistribution(AbstractDistribution):
                 "_str_": source,
             }
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
-                if '|' in source_spec:
-                    source_dict["dependency"], source_dict["path"] = source_spec.split('|', 1)
-                    source_dict["no_dereference"] = True
-                elif '/' in source_spec:
+                if '/' in source_spec:
                     source_dict["dependency"], source_dict["path"] = source_spec.split('/', 1)
-                    source_dict["no_dereference"] = False
                 else:
                     source_dict["dependency"], source_dict["path"] = source_spec, None
+                if source_type == 'extracted-dependency':
+                    source_dict["no_dereference"] = False
                 source_dict["optional"] = False
             elif source_type == 'file':
                 source_dict["path"] = source_spec
@@ -5396,14 +5394,10 @@ class LayoutDistribution(AbstractDistribution):
             # TODO check structure
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
                 source_dict['_str_'] = source_type + ":" + source_dict['dependency']
-                path_marker = '/'
-                if source_type == 'extracted-dependency':
-                    if 'no_dereference' not in source_dict:
-                        source_dict["no_dereference"] = False
-                    if source_dict["no_dereference"]:
-                        path_marker = '|'
+                if source_type == 'extracted-dependency' and 'no_dereference' not in source_dict:
+                    source_dict["no_dereference"] = False
                 if source_dict['path']:
-                    source_dict['_str_'] += '{}{}'.format(path_marker, source_dict['path'])
+                    source_dict['_str_'] += '/{}'.format(source_dict['path'])
                 if 'optional' not in source_dict:
                     source_dict["optional"] = False
             elif source_type == 'file':
