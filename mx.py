@@ -2391,6 +2391,11 @@ class Repository(SuiteConstituent):
             url = mx_urlrewrites.rewriteurl(url)
         return url
 
+    def get_maven_id(self):
+        if hasattr(self, 'mavenId'):
+            return getattr(self, 'mavenId')
+        return self.name
+
     def _comparison_key(self):
         return self.name, self.snapshots_url, self.releases_url, tuple((l.name if isinstance(l, License) else l for l in self.licenses))
 
@@ -10436,7 +10441,7 @@ def _deploy_binary_maven(suite, artifactId, groupId, filePath, version, repo,
 
     if repo != maven_local_repository():
         cmd += [
-            '-DrepositoryId=' + repo.name,
+            '-DrepositoryId=' + repo.get_maven_id(),
             '-Durl=' + repo.get_url(version)
         ]
         if gpg:
@@ -10711,15 +10716,15 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                         if deployment_module_info:
                             jdk = get_jdk(dist.maxJavaCompliance())
                             if jdk.javaCompliance <= '1.8':
-                                abort('Distribution with "moduleInfo" sub-attribute of the "maven" attribute must be deployed with JAVA_HOME > 8', context=dist)
-
-                            jmd = as_java_module(dist, jdk)
-                            if not jmd.alternatives:
-                                abort('"moduleInfo" sub-attribute of the "maven" attribute specifed but distribution does not contain any "moduleInfo:*" attributes', context=dist)
-                            alt_jmd = jmd.alternatives.get(deployment_module_info)
-                            if not alt_jmd:
-                                abort('"moduleInfo" sub-attribute of the "maven" attribute specifies non-existing "moduleInfo:{}" attribute'.format(deployment_module_info), context=dist)
-                            jar_to_deploy = alt_jmd.jarpath
+                                warn('Distribution with "moduleInfo" sub-attribute of the "maven" attribute deployed with JAVA_HOME <= 8', context=dist)
+                            else:
+                                jmd = as_java_module(dist, jdk)
+                                if not jmd.alternatives:
+                                    abort('"moduleInfo" sub-attribute of the "maven" attribute specified but distribution does not contain any "moduleInfo:*" attributes', context=dist)
+                                alt_jmd = jmd.alternatives.get(deployment_module_info)
+                                if not alt_jmd:
+                                    abort('"moduleInfo" sub-attribute of the "maven" attribute specifies non-existing "moduleInfo:{}" attribute'.format(deployment_module_info), context=dist)
+                                jar_to_deploy = alt_jmd.jarpath
 
                     pushed_file = dist.prePush(jar_to_deploy)
                     pushed_src_file = dist.prePush(dist.sourcesPath)
@@ -19156,7 +19161,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.239.0")  # extracted-dependency
+version = VersionSpec("5.240.0")  # mavenId
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
