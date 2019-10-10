@@ -2266,7 +2266,7 @@ class Suite(object):
     def visit_imports(self, visitor, **extra_args):
         """
         Visitor support for the suite imports list
-        For each entry the visitor function is called with this suite, a SuiteImport instance created
+        For each entry the visitor function is called with this suite and a SuiteImport instance
         from the entry and any extra args passed to this call.
         N.B. There is no built-in support for avoiding visiting the same suite multiple times,
         as this function only visits the imports of a single suite. If a (recursive) visitor function
@@ -17906,15 +17906,22 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
         if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
             with open(importing_suite.suite_py()) as fp:
                 contents = fp.read()
-            if contents.count(str(suite_import.version)) == 1:
-                newContents = contents.replace(suite_import.version, str(importedVersion))
+            if contents.count(str(suite_import.version)) >= 1:
+                oldVersion = suite_import.version
+                newContents = contents.replace(oldVersion, str(importedVersion))
                 if not update_file(importing_suite.suite_py(), newContents, showDiff=True):
                     abort("Updating {} failed: update didn't change anything".format(importing_suite.suite_py()))
-                suite_import.version = importedVersion
+
+                # Update the SuiteImport instances of this suite
+                def _update_suite_import(s, si):
+                    if si.version == oldVersion:
+                        si.version = importedVersion
+                importing_suite.visit_imports(_update_suite_import)
+
                 if bookmark_imports:
                     _sbookmark_visitor(importing_suite, suite_import)
             else:
-                print('Could not update as the substring {} does not appear exactly once in {}'.format(suite_import.version, importing_suite.suite_py()))
+                print('Could not find the substring {} in {}'.format(suite_import.version, importing_suite.suite_py()))
 
 
 @no_suite_loading
@@ -19161,7 +19168,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.240.0")  # mavenId
+version = VersionSpec("5.241.0")  # scheckimports
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
