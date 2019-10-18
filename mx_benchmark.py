@@ -1103,25 +1103,6 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     def getJavaVm(self, bmSuiteArgs):
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
-    def before(self, bmSuiteArgs):
-        super(JavaBenchmarkSuite, self).before(bmSuiteArgs)
-        with mx.DisableJavaDebugging():
-            code, out, _ = self.getJavaVm(bmSuiteArgs).run(".", ["-version"])
-            if code == 0:
-                output_lines = out.splitlines()
-                assert len(output_lines) >= 3
-                if len(output_lines) > 3:
-                    # in case the VM starts with warnings or "Picked up : <ENV VAR>"
-                    output_lines = output_lines[-3:]
-                assert "version" in output_lines[0]
-                jdk_version_number = output_lines[0].split("\"")[1]
-                version = mx.VersionSpec(jdk_version_number)
-                jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
-                jdk_version_string = output_lines[2]
-                self._suite_dimensions["platform.jdk-version-number"] = jdk_version_number
-                self._suite_dimensions["platform.jdk-major-version"] = jdk_major_version
-                self._suite_dimensions["platform.jdk-version-string"] = jdk_version_string
-
 
 class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
@@ -1211,11 +1192,16 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """
         return {}
 
+    def extract_vm_info(self):
+        """Extract vm information."""
+        pass
+
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
 
     def run(self, cwd, args):
+        self.extract_vm_info()
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_command_line_args(args)
         mx.log("Running {0} with args: {1}".format(self.name(), args))
@@ -1228,16 +1214,51 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
 class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
     """A convenience class for running Java VMs."""
 
+    def __init__(self):
+        super(OutputCapturingJavaVm, self).__init__()
+        self._vm_info = None
+
+    def extract_vm_info(self):
+        if self._vm_info is None:
+            self._vm_info = {}
+            with mx.DisableJavaDebugging():
+                java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
+                code = self.run_java(["-version"], out=java_version_out, err=java_version_out, cwd=".")
+                if code == 0:
+                    output_lines = java_version_out.underlying.data.splitlines()
+                    assert len(output_lines) >= 3
+                    if len(output_lines) > 3:
+                        # in case the VM starts with warnings or "Picked up : <ENV VAR>"
+                        output_lines = output_lines[-3:]
+                    assert "version" in output_lines[0]
+                    jdk_version_number = output_lines[0].split("\"")[1]
+                    version = mx.VersionSpec(jdk_version_number)
+                    jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
+                    jdk_version_string = output_lines[2]
+                    self._vm_info["platform.jdk-version-number"] = jdk_version_number
+                    self._vm_info["platform.jdk-major-version"] = jdk_major_version
+                    self._vm_info["platform.jdk-version-string"] = jdk_version_string
+                else:
+                    mx.log_error("JDK version extraction failed ! (code={})".format(code))
+
+    def dimensions(self, cwd, args, code, out):
+        dims = super(OutputCapturingJavaVm, self).dimensions(cwd, args, code, out)
+        if self._vm_info:
+            dims.update(self._vm_info)
+        return dims
+
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
+        self.extract_vm_info()
         return self.run_java(args=args, out=out, err=err, cwd=cwd, nonZeroIsFatal=nonZeroIsFatal)
 
 
 class DefaultJavaVm(OutputCapturingJavaVm):
     def __init__(self, raw_name, raw_config_name):
+        super(DefaultJavaVm, self).__init__()
         self.raw_name = raw_name
         self.raw_config_name = raw_config_name
 
