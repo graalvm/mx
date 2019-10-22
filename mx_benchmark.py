@@ -499,7 +499,7 @@ class BaseRule(Rule):
                     elif vtype is int:
                         inst = int(v)
                     elif vtype is float:
-                        if isinstance(v, str) and ',' in v:
+                        if isinstance(v, str) and ',' in v and '.' not in v:
                             # accommodate different locale in float formatting
                             v = v.replace(',', '.')
                         inst = float(v)
