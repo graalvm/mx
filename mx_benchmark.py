@@ -1636,6 +1636,11 @@ class BenchmarkExecutor(object):
             return mxBenchmarkArgs.machine_node
         return mx.get_env("MACHINE_NODE", default="")
 
+    def machineIp(self, mxBenchmarkArgs):
+        if mxBenchmarkArgs.machine_ip:
+            return mxBenchmarkArgs.machine_ip
+        return mx.get_env("NODE_NAME", default="")
+
     def machineOs(self):
         return mx.get_os()
 
@@ -1696,6 +1701,7 @@ class BenchmarkExecutor(object):
           "config.build-flags": self.buildFlags(),
           "machine.name": self.machineName(mxBenchmarkArgs),
           "machine.node": self.machineNode(mxBenchmarkArgs),
+          "machine.ip": self.machineIp(mxBenchmarkArgs),
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
           "machine.cpu-cores": self.machineCpuCores(),
@@ -1843,6 +1849,8 @@ class BenchmarkExecutor(object):
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
             "--machine-node", default=None, help="Machine node the benchmark is executed on.")
+        parser.add_argument(
+            "--machine-ip", default=None, help="Machine ip the benchmark is executed on.")
         parser.add_argument(
             "--triggering-suite", default=None,
             help="Name of the suite that triggered this benchmark, used to extract commit info of the corresponding repo.")
