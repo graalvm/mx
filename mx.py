@@ -19168,7 +19168,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.241.2")  # locale float formatting
+version = VersionSpec("5.242.0")  # Collect machine.ip in benchmark results
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
