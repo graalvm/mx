@@ -12280,6 +12280,53 @@ def _get_new_progress_group_args():
         preexec_fn = os.setsid
     return preexec_fn, creationflags
 
+def list_to_cmd_line(args):
+    return _list2cmdline(args) if is_windows() else ' '.join(pipes.quote(arg) for arg in args)
+
+def _list2cmdline(seq):
+    """
+    From subprocess.list2cmdline(seq), adding '=' to `needquote`.
+    Quoting arguments that contain '=' simplifies argument parsing in cmd files, where '=' is parsed as ' '.
+    """
+    result = []
+    needquote = False
+    for arg in seq:
+        bs_buf = []
+
+        # Add a space to separate this argument from the others
+        if result:
+            result.append(' ')
+
+        needquote = (" " in arg) or ("\t" in arg) or ("=" in arg) or not arg
+        if needquote:
+            result.append('"')
+
+        for c in arg:
+            if c == '\\':
+                # Don't know if we need to double yet.
+                bs_buf.append(c)
+            elif c == '"':
+                # Double backslashes.
+                result.append('\\' * len(bs_buf)*2)
+                bs_buf = []
+                result.append('\\"')
+            else:
+                # Normal char
+                if bs_buf:
+                    result.extend(bs_buf)
+                    bs_buf = []
+                result.append(c)
+
+        # Add remaining backslashes, if any.
+        if bs_buf:
+            result.extend(bs_buf)
+
+        if needquote:
+            result.extend(bs_buf)
+            result.append('"')
+
+    return ''.join(result)
+
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
@@ -12338,7 +12385,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 env_diff = [(k, env[k]) for k in env if k not in _original_environ]
                 if len(env_diff):
                     s = 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
-            s = s + ' '.join(map(pipes.quote, args))
+            s = s + list_to_cmd_line(args)
             if _opts.verbose:
                 log(s)
             if cmdlinefile:
@@ -12363,6 +12410,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
+        args = _list2cmdline(args) if is_windows() else args
         p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
@@ -19168,7 +19216,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.242.0")  # Collect machine.ip in benchmark results
+version = VersionSpec("5.243.0")  # On Windows, quote command line arguments containing the '=' char
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
