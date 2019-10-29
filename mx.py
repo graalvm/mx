@@ -10780,6 +10780,7 @@ def maven_deploy(args):
     parser.add_argument('--licenses', help='Comma-separated list of licenses that are cleared for upload. Only used if no url is given. Otherwise licenses are looked up in suite.py', default='')
     parser.add_argument('--gpg', action='store_true', help='Sign files with gpg before deploying')
     parser.add_argument('--gpg-keyid', help='GPG keyid to use when signing files (implies --gpg)', default=None)
+    parser.add_argument('--tags', help='Comma-separated list of tags to match in the maven metadata of the distribution. When left unspecified, no filtering is done. The default tag is \'default\'', default=None)
     parser.add_argument('--with-suite-revisions-metadata', help='Deploy suite revisions metadata file', action='store_true')
     parser.add_argument('repository_id', metavar='repository-id', nargs='?', action='store', help='Repository ID used for Maven deploy')
     parser.add_argument('url', metavar='repository-url', nargs='?', action='store', help='Repository URL used for Maven deploy, if no url is given, the repository-id is looked up in suite.py')
@@ -10800,7 +10801,16 @@ def maven_deploy(args):
     else:
         _suites = primary_or_specific_suites()
 
+    tags = args.tags.split(',') if args.tags is not None else None
+
     def distMatcher(dist):
+        maven = getattr(dist, 'maven', False)
+        if tags is not None:
+            maven_tag = 'default'
+            if isinstance(maven, dict) and 'tag' in maven:
+                maven_tag = maven['tag']
+            if maven_tag not in tags:
+                return False
         if args.all_distributions:
             return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
