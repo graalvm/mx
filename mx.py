@@ -67,7 +67,7 @@ from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
-from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath
+from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
 import fnmatch
@@ -17362,15 +17362,35 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     :param set excluded: if not None or empty, do not consider packages in this set
     """
     sourceDirs = project.source_dirs()
-    def is_visible(name):
+    class VisibleCache:
+        """ Work around nonlocal access """
+        folder = None
+        visible = False
+
+        @staticmethod
+        def _visible(folder):
+            VisibleCache.folder = folder
+            VisibleCache.visible = True
+
+    def is_visible(folder, name):
         if onlyPublic:
             return name == 'package-info.java'
+        elif not name.endswith('.java'):
+            return False
+        elif VisibleCache.folder == folder and VisibleCache.visible:
+            return True
         else:
-            return name.endswith('.java')
+            pubClassPattern = re.compile(r"^\s*public\s+((abstract|final)\s+)?(class|(@)?interface|enum)\s*" + splitext(name)[0] + r"\W.*", re.MULTILINE)
+            with open(join(folder,name)) as f:
+                for l in f.readlines():
+                    if pubClassPattern.match(l):
+                        VisibleCache._visible(folder)
+                        return True
+            return False
     packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
-            if len([name for name in files if is_visible(name)]) != 0:
+            if len([name for name in files if is_visible(root, name)]) != 0:
                 package = root[len(sourceDir) + 1:].replace(os.sep, '.')
                 if not included or package in included:
                     if not excluded or package not in excluded:
@@ -17428,6 +17448,8 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             return False, 'Already visited'
         if not args.implementation and p.is_test_project():
             return False, 'Test project'
+        if hasattr(p, 'overlayTarget'):
+            return False, 'Multi release JAR overlay project'
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
             return True, None
@@ -17452,7 +17474,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     for s in set((p.suite for p in projects)):
         assert isinstance(s, SourceSuite)
         for p in s.projects:
-            if p.isJavaProject():
+            if p.isJavaProject() and not hasattr(p, 'overlayTarget'):
                 snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
@@ -17510,7 +17532,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
 
             if not pkgs:
                 if quietForNoPackages:
-                    return
+                    continue
                 else:
                     abort('No packages to generate javadoc for!')
 
@@ -19231,7 +19253,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.244.4")  # [GR-19374] Allow custom maven local repository.
+version = VersionSpec("5.247.0")  # maven-deploy --tags
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
