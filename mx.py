@@ -19226,7 +19226,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.244.0")  # maven-deploy --tags
+version = VersionSpec("5.244.1")  # GR-18988
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

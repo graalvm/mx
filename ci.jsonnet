@@ -4,7 +4,7 @@ java = {
     JAVA_HOME: {name: 'oraclejdk', version: "8u221", platformspecific: true}
   }
 },
-oraclejdk_jvmci = {name: 'oraclejdk', version: "8u221-jvmci-19.3-b03", platformspecific: true},
+oraclejdk_jvmci = {name: 'oraclejdk', version: "8u231-jvmci-19.3-b04", platformspecific: true},
 gate = java + {
   targets: ['gate'],
   packages+: {
@@ -103,7 +103,7 @@ python3 = {
 {
   # Overlay
   java8: oraclejdk_jvmci,
-  java11: {name: 'labsjdk', version: "ee-11.0.5+1-jvmci-19.3-b03", platformspecific: true},
+  java11: {name: 'labsjdk', version: "ee-11.0.5+10-jvmci-19.3-b04", platformspecific: true},
   overlay: 'eccba759c1cbffb45fd2e5b5eccaeed6f6163d11',
 
   builds: [
