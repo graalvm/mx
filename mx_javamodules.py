@@ -715,7 +715,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     dest_dir = join(build_directory, version)
                     if exists(dest_dir):
                         # Clean up any earlier build artifacts
-                        shutil.rmtree(dest_dir)
+                        mx.rmtree(dest_dir)
 
                     if last_dest_dir:
                         # The unversioned resources have been preserved from the
@@ -734,7 +734,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                                     for name in zf.namelist():
                                         m = _versioned_re.match(name)
                                         if not m:
-                                            zf.extract(name, dest_dir)
+                                            zf.extract(name, mx._safe_path(dest_dir))
                                             rel_name = name if os.sep == '/' else name.replace('/', os.sep)
                                             unversioned_resources.add(rel_name)
 
@@ -918,7 +918,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
             if not mx.get_opts().verbose:
                 # Preserve build directory so that javac command can be re-executed
                 # by cutting and pasting verbose output.
-                shutil.rmtree(build_directory)
+                mx.rmtree(build_directory)
         default_jmd.save()
 
     mx.logv('[' + moduleName + ' times: ' + ', '.join(['{}={:.3f}s'.format(name, secs) for name, secs in sorted(times, key=lambda pair: pair[1], reverse=True)]) + ']')
