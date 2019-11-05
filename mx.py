@@ -17397,6 +17397,33 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None):
                         packages.add(package)
     return packages
 
+def _additional_javadoc_args(project, jdk):
+    additional_javadoc_args = []
+    if jdk.javaCompliance >= JavaCompliance(11):
+        jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
+        additional_javadoc_args = [
+            '--limit-modules',
+            ','.join([module.name for module in jdk.get_modules() if not module.name in jdk_excluded_modules])
+            ]
+        class NonLocal:
+            requiresJVMCI = False
+        def visit(dep, edge):
+            if dep == project:
+                return
+            if hasattr(dep, 'module') and dep.module == 'jdk.internal.vm.ci':
+                NonLocal.requiresJVMCI = True
+        project.walk_deps(visit=visit)
+        if NonLocal.requiresJVMCI:
+            for module in jdk.get_modules():
+                if module.name == 'jdk.internal.vm.ci':
+                    for package in module.packages:
+                        additional_javadoc_args.extend([
+                            '--add-exports', module.name + '/' + package + '=ALL-UNNAMED'
+                        ])
+                    additional_javadoc_args.extend(['--add-modules', 'jdk.internal.vm.ci'])
+                    break
+    return additional_javadoc_args
+
 _javadocRefNotFound = re.compile("Tag @link(plain)?: reference not found: ")
 
 def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=True, mayBuild=True, quietForNoPackages=False):
@@ -17562,6 +17589,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-snippetpath', snippets,
                      '-hiddingannotation', 'java.lang.Deprecated',
                      '-source', str(jdk.javaCompliance)] +
+                     _additional_javadoc_args(p, jdk) +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
                      ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
