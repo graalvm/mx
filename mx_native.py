@@ -620,6 +620,8 @@ class DefaultNativeProject(NinjaProject):
     @property
     def cflags(self):
         default_cflags = []
+        if mx.is_windows() and mx.get_jdk(tag=mx.DEFAULT_JDK_TAG).javaCompliance >= '11':
+            default_cflags += ['-FS']  # necessary until GR-16572 is resolved
         if self._kind == self._kinds['shared_lib']:
             default_cflags += dict(
                 windows=['-MD'],
