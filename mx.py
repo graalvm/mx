@@ -17362,42 +17362,29 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     :param set excluded: if not None or empty, do not consider packages in this set
     """
     sourceDirs = project.source_dirs()
-    class VisibleCache:
-        """ Work around nonlocal access """
-        folder = None
-        visible = False
-
-        @staticmethod
-        def _visible(folder):
-            VisibleCache.folder = folder
-            VisibleCache.visible = True
-
-    def is_visible(folder, name):
-        if onlyPublic:
-            return name == 'package-info.java'
-        elif not name.endswith('.java'):
-            return False
-        elif VisibleCache.folder == folder and VisibleCache.visible:
-            return True
-        else:
-            pubClassPattern = re.compile(r"^\s*public\s+((abstract|final)\s+)?(class|(@)?interface|enum)\s*" + splitext(name)[0] + r"\W.*", re.MULTILINE)
-            with open(join(folder,name)) as f:
-                for l in f.readlines():
-                    if pubClassPattern.match(l):
-                        VisibleCache._visible(folder)
-                        return True
-            return False
+    def is_visible(folder, names):
+        for name in names:
+            if onlyPublic:
+                if name == 'package-info.java':
+                    return True
+            elif name.endswith('.java'):
+                pubClassPattern = re.compile(r"^public\s+((abstract|final)\s+)?(class|(@)?interface|enum)\s*" + splitext(name)[0] + r"\W.*", re.MULTILINE)
+                with open(join(folder, name)) as f:
+                    for l in f.readlines():
+                        if pubClassPattern.match(l):
+                            return True
+        return False
     packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
-            if len([name for name in files if is_visible(root, name)]) != 0:
+            if is_visible(root, files):
                 package = root[len(sourceDir) + 1:].replace(os.sep, '.')
                 if not included or package in included:
                     if not excluded or package not in excluded:
                         packages.add(package)
     return packages
 
-def _additional_javadoc_args(project, jdk):
+def _get_javadoc_module_args(project, jdk):
     additional_javadoc_args = []
     if jdk.javaCompliance >= JavaCompliance(11):
         jdk_excluded_modules = {'jdk.internal.vm.compiler', 'jdk.internal.vm.compiler.management'}
@@ -17470,12 +17457,15 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     def check_package_list(p):
         return not exists(join(outDir(p), 'package-list'))
 
+    def is_multirelease_jar_overlay(p):
+        return hasattr(p, 'overlayTarget')
+
     def assess_candidate(p, projects):
         if p in projects:
             return False, 'Already visited'
         if not args.implementation and p.is_test_project():
             return False, 'Test project'
-        if hasattr(p, 'overlayTarget'):
+        if is_multirelease_jar_overlay(p):
             return False, 'Multi release JAR overlay project'
         if args.force or args.unified or check_package_list(p):
             projects.append(p)
@@ -17501,7 +17491,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
     for s in set((p.suite for p in projects)):
         assert isinstance(s, SourceSuite)
         for p in s.projects:
-            if p.isJavaProject() and not hasattr(p, 'overlayTarget'):
+            if p.isJavaProject() and not is_multirelease_jar_overlay(p):
                 snippets += p.source_dirs()
     snippets = os.pathsep.join(snippets)
     snippetslib = library('CODESNIPPET-DOCLET').get_path(resolve=True)
@@ -17540,7 +17530,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             def visit(dep, edge):
                 if dep == p:
                     return
-                if dep.isProject():
+                if dep.isProject() and not is_multirelease_jar_overlay(dep):
                     depOut = outDir(dep)
                     links.append('-link')
                     links.append(os.path.relpath(depOut, out))
@@ -17589,7 +17579,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
                      '-snippetpath', snippets,
                      '-hiddingannotation', 'java.lang.Deprecated',
                      '-source', str(jdk.javaCompliance)] +
-                     _additional_javadoc_args(p, jdk) +
+                     _get_javadoc_module_args(p, jdk) +
                      snippetsPatterns +
                      jdk.javadocLibOptions([]) +
                      ([] if jdk.javaCompliance < JavaCompliance(8) else ['-Xdoclint:none']) +
@@ -19281,7 +19271,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.0")  # maven-deploy --tags
+version = VersionSpec("5.247.0")  # GR-19366
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
