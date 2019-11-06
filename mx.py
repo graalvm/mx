@@ -1141,13 +1141,15 @@ def primary_suite():
 
 
 class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
-    def __init__(self, suite, name): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, build_time=1): # pylint: disable=super-init-not-called
         """
         :type name: str
         :type suite: Suite
+        :type build_time: Expected build time in minutes (Used to schedule parallel jobs efficient)
         """
         self.name = name
         self.suite = suite
+        self.build_time = build_time
 
         # Should this constituent be visible outside its suite
         self.internal = False
@@ -4485,6 +4487,10 @@ class Task(_with_metaclass(ABCMeta), object):
     @property
     def name(self):
         return self.subject.name
+
+    @property
+    def build_time(self):
+        return getattr(self.subject, "build_time", 1)
 
     def initSharedMemoryState(self):
         pass
@@ -13541,6 +13547,7 @@ def build(cmd_args, parser=None):
                 return True
 
             added_new_tasks = False
+            worklist.sort(key=lambda task: task.build_time, reverse=True)
             for task in worklist:
                 if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
