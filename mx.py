@@ -12236,6 +12236,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     if _opts.very_verbose:
         extra_args += ['--debug']
 
+    custom_local_repo = os.environ.get('MAVEN_REPO_LOCAL')
+    if custom_local_repo:
+        custom_local_repo = realpath(custom_local_repo)
+        ensure_dir_exists(custom_local_repo)
+        extra_args += ['-Dmaven.repo.local=' + custom_local_repo]
 
     mavenCommand = 'mvn'
     if is_windows():
