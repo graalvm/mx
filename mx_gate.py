@@ -1044,7 +1044,7 @@ def sonarqube_upload(args):
 
     with tempfile.NamedTemporaryFile(suffix="-sonarqube.properties", mode="w+") as fp:
         # prepare properties file
-        fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.iteritems()))
+        fp.writelines(('{}={}\n'.format(k, v) for k, v in java_props.items()))
         fp.flush()
 
         # Since there's no options to exclude individual classes,
