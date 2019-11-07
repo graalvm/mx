@@ -19231,7 +19231,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.244.3")  # GR-18662
+version = VersionSpec("5.244.4")  # [GR-19374] Allow custom maven local repository.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
