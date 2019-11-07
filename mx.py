@@ -12236,6 +12236,11 @@ def run_maven(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=N
     if _opts.very_verbose:
         extra_args += ['--debug']
 
+    custom_local_repo = os.environ.get('MAVEN_REPO_LOCAL')
+    if custom_local_repo:
+        custom_local_repo = realpath(custom_local_repo)
+        ensure_dir_exists(custom_local_repo)
+        extra_args += ['-Dmaven.repo.local=' + custom_local_repo]
 
     mavenCommand = 'mvn'
     if is_windows():
@@ -19226,7 +19231,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.244.3")  # GR-18662
+version = VersionSpec("5.244.4")  # [GR-19374] Allow custom maven local repository.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
