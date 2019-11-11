@@ -12729,9 +12729,17 @@ class JDKConfig(Comparable):
 
     def _init_classpaths(self):
         if not self._classpaths_initialized:
-            _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
             if self.javaCompliance <= JavaCompliance(8):
-                self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in _check_output_str([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+                _, binDir = _compile_mx_class('ClasspathDump', jdk=self)
+                remaining_attempts = 2
+                while remaining_attempts != 0:
+                    remaining_attempts -= 1
+                    try:
+                        self._bootclasspath, self._extdirs, self._endorseddirs = [x if x != 'null' else None for x in _check_output_str([self.java, '-cp', _cygpathU2W(binDir), 'ClasspathDump'], stderr=subprocess.PIPE).split('|')]
+                    except subprocess.CalledProcessError as e:
+                        if remaining_attempts == 0:
+                            abort('{}{}Command output:{}{}'.format(str(e), os.linesep, e.output, os.linesep))
+                        warn('{}{}Command output:{}{}'.format(str(e), os.linesep, e.output, os.linesep))
                 # All 3 system properties accessed by ClasspathDump are expected to exist
                 if not self._bootclasspath or not self._extdirs or not self._endorseddirs:
                     warn("Could not find all classpaths: boot='" + str(self._bootclasspath) + "' extdirs='" + str(self._extdirs) + "' endorseddirs='" + str(self._endorseddirs) + "'")
@@ -19271,7 +19279,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.1")  # GR-19439
+version = VersionSpec("5.247.2")  # GR-19493
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
