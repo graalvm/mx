@@ -227,7 +227,7 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
 
     if len(classes) != 0:
         f_testfile = open(testfile, 'w')
-        for c in classes:
+        for c in sorted(classes):
             f_testfile.write(c + '\n')
         f_testfile.close()
         harness(depsContainingTests, vmLauncher, vmArgs)
