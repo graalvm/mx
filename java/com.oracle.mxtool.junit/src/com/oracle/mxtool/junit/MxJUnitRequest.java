@@ -26,9 +26,11 @@ package com.oracle.mxtool.junit;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
 import org.junit.runner.Description;
 import org.junit.runner.Request;
 import org.junit.runner.notification.Failure;
@@ -51,6 +53,10 @@ public final class MxJUnitRequest {
 
     public Request getRequest() {
         return request;
+    }
+
+    public List<Failure> getMissingClasses() {
+        return Collections.unmodifiableList(missingClasses);
     }
 
     public static final class BuilderException extends Exception {
