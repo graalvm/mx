@@ -222,6 +222,20 @@ suite = {
       }
     },
 
+    "CHECKSTYLE_8.26" : {
+      "urls" : [
+        "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-8.26-all.jar",
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-8.26/checkstyle-8.26-all.jar",
+      ],
+      "sha1" : "9349178590f0820476f63074bb204aefb8c61212",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "8.26",
+      }
+    },
+
     "HAMCREST" : {
       "sha1" : "42a25dc3219429f0e5d060061f71acb49bf010a0",
       "sourceSha1" : "1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b",
@@ -478,7 +492,7 @@ suite = {
         "JUNIT",
       ],
       "javaCompliance" : "1.8+",
-      "checkstyleVersion" : "8.8",
+      "checkstyleVersion" : "8.26",
     },
 
     "com.oracle.mxtool.junit.jdk9" : {
