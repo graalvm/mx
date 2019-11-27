@@ -13189,6 +13189,16 @@ def log_error(msg=None):
     else:
         print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
+
+def log_deprecation(msg=None):
+    """
+    Write an deprecation warning to the console.
+    """
+    if msg is None:
+        print(sys.stderr, file=sys.stderr)
+    else:
+        print(colorize(str("[MX DEPRECATED] {}".format(msg)), color='yellow', stream=sys.stderr), file=sys.stderr)
+
 ### ~~~~~~~~~~~~~ Project
 
 def expand_project_in_class_path_arg(cpArg, jdk=None):
