@@ -250,7 +250,8 @@ class BenchmarkSuite(object):
         :return: List of benchmark string names.
         :rtype: list[str]
         """
-        # TODO: Remove old-style benchmarks after updating downstream suites.
+        # TODO: raise NotImplementedError() here
+        mx.log_deprecation("'benchmarks' method is deprecated ! Use 'benchmarkList' instead.")
         return self.benchmarks()
 
     def benchmarks(self):
@@ -748,11 +749,13 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 out, benchmarks, bmSuiteArgs, retcode=retcode, dims=dims)
         else:
             # TODO: Remove old-style validateStdOut after updating downstream suites.
+            mx.log_deprecation("'runAndReturnStdOut' must return exactly three elements !")
             retcode, out = runretval
             return self.validateStdout(out, benchmarks, bmSuiteArgs, retcode=retcode)
 
     # TODO: Remove once all the downstream suites become up-to-date.
     def validateStdout(self, out, benchmarks, bmSuiteArgs, retcode=None):
+        mx.log_deprecation("'validateStdout' is deprecated ! Use 'validateStdoutWithDimensions' instead.'")
         return self.validateStdoutWithDimensions(
             out, benchmarks, bmSuiteArgs, retcode=retcode, dims={})
 
@@ -1313,7 +1316,7 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         return bmSuiteArgs
 
-    def benchmarks(self):
+    def benchmarkList(self, bmSuiteArgs):
         return ["simple-bench", "complex-bench"]
 
     def rules(self, out, benchmarks, bmSuiteArgs):
