@@ -1261,6 +1261,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                     version_output = command_output.splitlines()
                     assert len(version_output) >= 3
                     if len(version_output) > 3:
+                        # removing the output of PrintCommandLineFlags from above
+                        # and any other warnings or info like "Picked up : <ENV VAR>"
                         version_output = version_output[-3:]
                     assert "version" in version_output[0]
                     jdk_version_number = version_output[0].split("\"")[1]
