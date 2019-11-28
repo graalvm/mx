@@ -3652,6 +3652,15 @@ def cpu_count():
 def is_darwin():
     return sys.platform.startswith('darwin')
 
+def is_darwin_high_sierra():
+    if not is_darwin():
+        return False
+
+    v, _, _ = platform.mac_ver()
+    major, minor, _ = v.split('.')
+    major, minor = int(major), int(minor)
+
+    return major < 10 or (major == 10 and minor < 14)
 
 def is_linux():
     return sys.platform.startswith('linux')
@@ -7628,7 +7637,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif is_darwin() and not _opts.cpu_count:
+        elif is_darwin_high_sierra() and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -19323,7 +19332,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.9")  # GR-19801 split vm args
+version = VersionSpec("5.247.10")  # GR-6892
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
