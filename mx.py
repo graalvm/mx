@@ -531,6 +531,7 @@ environment variables:
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
         self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
+        self.add_argument('--dump-task-stats', help='Dump CSV formatted start/end timestamps for each build task. If set to \'-\' it will print it to stdout, otherwise the CSV will be written to <path>', metavar='<path>', default=None)
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -1141,13 +1142,15 @@ def primary_suite():
 
 
 class SuiteConstituent(_with_metaclass(ABCMeta, Comparable)):
-    def __init__(self, suite, name): # pylint: disable=super-init-not-called
+    def __init__(self, suite, name, build_time=1): # pylint: disable=super-init-not-called
         """
         :type name: str
         :type suite: Suite
+        :type build_time: Expected build time in minutes (Used to schedule parallel jobs efficient)
         """
         self.name = name
         self.suite = suite
+        self.build_time = build_time
 
         # Should this constituent be visible outside its suite
         self.internal = False
@@ -4485,6 +4488,10 @@ class Task(_with_metaclass(ABCMeta), object):
     @property
     def name(self):
         return self.subject.name
+
+    @property
+    def build_time(self):
+        return getattr(self.subject, "build_time", 1)
 
     def initSharedMemoryState(self):
         pass
@@ -13482,6 +13489,7 @@ def build(cmd_args, parser=None):
                     t.pullSharedMemoryState()
                     t.cleanSharedMemoryState()
                     t._finished = True
+                    t._end_time = time.time()
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
@@ -13541,12 +13549,14 @@ def build(cmd_args, parser=None):
                 return True
 
             added_new_tasks = False
+            worklist.sort(key=lambda task: task.build_time, reverse=True)
             for task in worklist:
                 if depsDone(task) and _activeCpus(active) + task.parallelism <= cpus:
                     worklist.remove(task)
                     task.initSharedMemoryState()
                     task.prepare(daemons)
                     task.proc = multiprocessing.Process(target=executeTask, args=(task,))
+                    task._start_time = time.time()
                     task._finished = False
                     task.proc.start()
                     active.append(task)
@@ -13561,6 +13571,30 @@ def build(cmd_args, parser=None):
             worklist = sortWorklist(worklist)
 
         failed += joinTasks(active)
+
+        def dump_task_stats(f):
+            """
+            Dump task statistics CSV. Use R with following commands for visualization:
+            d <- read.csv("input.csv", header=F)
+            names(d) <- c("content", "start", "end")
+            d$id <- 1:nrow(d)
+            d <- d[(d$end-d$start > 5),]
+            d$start <- as.POSIXct(d$start, origin="1970-01-01")
+            d$end <- as.POSIXct(d$end, origin="1970-01-01")
+            timevis(d)
+            """
+            for task in sortedTasks:
+                try:
+                    f.write("{},{},{}\n".format(str(task).replace(',', '_'), task._start_time, task._end_time))
+                except:
+                    pass
+        if _opts.dump_task_stats == '-':
+            log("Printing task stats:")
+            dump_task_stats(sys.stdout)
+        elif _opts.dump_task_stats is not None:
+            log("Writing task stats to {}".format(_opts.dump_task_stats))
+            with open(_opts.dump_task_stats, 'wa') as f:
+                dump_task_stats(f)
 
         if len(failed):
             for t in failed:
@@ -19289,7 +19323,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.5")  # GR-19652
+version = VersionSpec("5.247.6")  # GR-19279
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
