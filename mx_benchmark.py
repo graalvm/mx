@@ -1185,6 +1185,24 @@ def _get_default_java_vm(jvm_config, vms):
 java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
 
 
+def _get_gc_info(version_out):
+    gc = ""
+    initial_heap_size = -1
+    max_heap_size = -1
+
+    for line in version_out.splitlines():
+        if "-XX:+PrintCommandLineFlags" in line:
+            for flag in line.split():
+                if flag.startswith("-XX:+Use") and flag.endswith("GC"):
+                    gc = flag[8:]
+                if flag.startswith("-XX:InitialHeapSize="):
+                    initial_heap_size = int(flag.split("=")[1])
+                if flag.startswith("-XX:MaxHeapSize="):
+                    max_heap_size = int(flag.split("=")[1])
+    mx.logv("Detected GC is '{}'. Heap size : Initial = {}, Max = {}".format(gc, initial_heap_size, max_heap_size))
+    return gc, initial_heap_size, max_heap_size
+
+
 class OutputCapturingVm(Vm): #pylint: disable=R0921
     """A convenience class for running Non-Java VMs."""
 
@@ -1198,7 +1216,7 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """
         return {}
 
-    def extract_vm_info(self):
+    def extract_vm_info(self, args):
         """Extract vm information."""
         pass
 
@@ -1207,7 +1225,7 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         raise NotImplementedError()
 
     def run(self, cwd, args):
-        self.extract_vm_info()
+        self.extract_vm_info(args)
         out = mx.TeeOutputCapture(mx.OutputCapture())
         args = self.post_process_command_line_args(args)
         mx.log("Running {0} with args: {1}".format(self.name(), args))
@@ -1224,28 +1242,38 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
         super(OutputCapturingJavaVm, self).__init__()
         self._vm_info = None
 
-    def extract_vm_info(self):
+    def extract_vm_info(self, args):
+        args = self.post_process_command_line_args(args)
         if self._vm_info is None:
             self._vm_info = {}
             with mx.DisableJavaDebugging():
                 java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
-                code = self.run_java(["-version"], out=java_version_out, err=java_version_out, cwd=".")
+                vm_opts = [opt for opt in args if opt.startswith("-X")]
+                vm_opts.append("-XX:+PrintCommandLineFlags")
+                code = self.run_java(vm_opts + ["-version"], out=java_version_out, err=java_version_out, cwd=".")
                 if code == 0:
-                    output_lines = java_version_out.underlying.data.splitlines()
-                    assert len(output_lines) >= 3
-                    if len(output_lines) > 3:
-                        # in case the VM starts with warnings or "Picked up : <ENV VAR>"
-                        output_lines = output_lines[-3:]
-                    assert "version" in output_lines[0]
-                    jdk_version_number = output_lines[0].split("\"")[1]
+                    command_output = java_version_out.underlying.data
+                    gc, initial_heap, max_heap = _get_gc_info(command_output)
+                    self._vm_info["platform.gc"] = gc
+                    self._vm_info["platform.initial-heap-size"] = initial_heap
+                    self._vm_info["platform.max-heap-size"] = max_heap
+
+                    version_output = command_output.splitlines()
+                    assert len(version_output) >= 3
+                    if len(version_output) > 3:
+                        # removing the output of PrintCommandLineFlags from above
+                        # and any other warnings or info like "Picked up : <ENV VAR>"
+                        version_output = version_output[-3:]
+                    assert "version" in version_output[0]
+                    jdk_version_number = version_output[0].split("\"")[1]
                     version = mx.VersionSpec(jdk_version_number)
                     jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
-                    jdk_version_string = output_lines[2]
+                    jdk_version_string = version_output[2]
                     self._vm_info["platform.jdk-version-number"] = jdk_version_number
                     self._vm_info["platform.jdk-major-version"] = jdk_major_version
                     self._vm_info["platform.jdk-version-string"] = jdk_version_string
                 else:
-                    mx.log_error("JDK version extraction failed ! (code={})".format(code))
+                    mx.log_error("VM info extraction failed ! (code={})".format(code))
 
     def dimensions(self, cwd, args, code, out):
         dims = super(OutputCapturingJavaVm, self).dimensions(cwd, args, code, out)
@@ -1258,7 +1286,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
         raise NotImplementedError()
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
-        self.extract_vm_info()
+        self.extract_vm_info(args)
         return self.run_java(args=args, out=out, err=err, cwd=cwd, nonZeroIsFatal=nonZeroIsFatal)
 
 
