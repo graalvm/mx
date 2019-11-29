@@ -410,7 +410,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                                 if arcnameCheck is None or arcnameCheck(arcname):
                                     with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
                                         if guard:
-                                            with mx.open(join(root, f), 'r') as fp:
+                                            with mx.open(join(root, f), 'rb') as fp:
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
                                                 info = zipfile.ZipInfo(arcname, time.localtime(mx.getmtime(join(root, f)))[:6])
