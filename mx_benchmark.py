@@ -1185,6 +1185,17 @@ def _get_default_java_vm(jvm_config, vms):
 java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
 
 
+def _get_vm_options_for_config_extraction(run_args):
+    vm_opts = []
+    for opt in run_args:
+        if opt.startswith("-Xm"):
+            vm_opts.append(opt)
+        if (opt.startswith("-XX:+Use") or opt.startswith("-XX:-Use")) and opt.endswith("GC"):
+            vm_opts.append(opt)
+    vm_opts.append("-XX:+PrintCommandLineFlags")
+    return vm_opts
+
+
 def _get_gc_info(version_out):
     gc = ""
     initial_heap_size = -1
@@ -1248,8 +1259,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             self._vm_info = {}
             with mx.DisableJavaDebugging():
                 java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
-                vm_opts = [opt for opt in args if opt.startswith("-X")]
-                vm_opts.append("-XX:+PrintCommandLineFlags")
+                vm_opts = _get_vm_options_for_config_extraction(args)
                 code = self.run_java(vm_opts + ["-version"], out=java_version_out, err=java_version_out, cwd=".")
                 if code == 0:
                     command_output = java_version_out.underlying.data
