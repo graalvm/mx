@@ -1256,7 +1256,10 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
         self._vm_info = None
 
     def extract_vm_info(self, args=None):
-        args = self.post_process_command_line_args(args) if args is not None else []
+        if args is None:
+            mx.log_error("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
+            args = []
+        args = self.post_process_command_line_args(args)
         if self._vm_info is None:
             self._vm_info = {}
             with mx.DisableJavaDebugging():
