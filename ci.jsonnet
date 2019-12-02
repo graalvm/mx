@@ -104,7 +104,7 @@ python3 = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: {name: 'labsjdk', version: "ee-11.0.5+10-jvmci-19.3-b04", platformspecific: true},
-  overlay: 'eccba759c1cbffb45fd2e5b5eccaeed6f6163d11',
+  overlay: '2be8e19233241737eda05ac69a96558a12744f6e',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,

@@ -19323,7 +19323,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.8")  # GR-19801
+version = VersionSpec("5.247.9")  # GR-19801 split vm args
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
