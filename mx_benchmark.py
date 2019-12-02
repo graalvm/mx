@@ -1187,12 +1187,13 @@ java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
 
 def _get_vm_options_for_config_extraction(run_args):
     vm_opts = []
-    for arg in run_args:
-        for opt in arg.split(" "):
-            if opt.startswith("-Xm"):
-                vm_opts.append(opt)
-            if (opt.startswith("-XX:+Use") or opt.startswith("-XX:-Use")) and opt.endswith("GC"):
-                vm_opts.append(opt)
+    if run_args:
+        for arg in run_args:
+            for opt in arg.split(" "):
+                if opt.startswith("-Xm"):
+                    vm_opts.append(opt)
+                if (opt.startswith("-XX:+Use") or opt.startswith("-XX:-Use")) and opt.endswith("GC"):
+                    vm_opts.append(opt)
     vm_opts.append("-XX:+PrintCommandLineFlags")
     return vm_opts
 
@@ -1228,7 +1229,7 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """
         return {}
 
-    def extract_vm_info(self, args):
+    def extract_vm_info(self, args=None):
         """Extract vm information."""
         pass
 
@@ -1254,8 +1255,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
         super(OutputCapturingJavaVm, self).__init__()
         self._vm_info = None
 
-    def extract_vm_info(self, args):
-        args = self.post_process_command_line_args(args)
+    def extract_vm_info(self, args=None):
+        args = self.post_process_command_line_args(args) if args is not None else []
         if self._vm_info is None:
             self._vm_info = {}
             with mx.DisableJavaDebugging():
