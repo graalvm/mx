@@ -1257,7 +1257,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
 
     def extract_vm_info(self, args=None):
         if args is None:
-            mx.log_error("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
+            # This method will force the caller to pass 'args' in the future to ensure correctness of the output
+            mx.log_deprecation("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
             args = []
         args = self.post_process_command_line_args(args)
         if self._vm_info is None:
