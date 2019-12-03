@@ -12523,6 +12523,9 @@ def add_lib_prefix(name):
         return 'lib' + name
     return name
 
+def add_static_lib_prefix(name):
+    return add_lib_prefix(name)
+
 def add_lib_suffix(name):
     """
     Adds the platform specific library suffix to a name
@@ -12533,6 +12536,16 @@ def add_lib_suffix(name):
         return name + '.so'
     if is_darwin():
         return name + '.dylib'
+    return name
+
+def add_static_lib_suffix(name):
+    """
+    Adds the platform specific library suffix to a name
+    """
+    if is_windows():
+        return name + '.lib'
+    if is_linux() or is_openbsd() or is_sunos() or is_darwin():
+        return name + '.a'
     return name
 
 def add_debug_lib_suffix(name):
@@ -12548,8 +12561,10 @@ def add_debug_lib_suffix(name):
     return name
 
 mx_subst.results_substitutions.register_with_arg('lib', lambda lib: add_lib_suffix(add_lib_prefix(lib)))
+mx_subst.results_substitutions.register_with_arg('staticlib', lambda lib: add_static_lib_suffix(add_static_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libdebug', lambda lib: add_debug_lib_suffix(add_lib_prefix(lib)))
 mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
+mx_subst.results_substitutions.register_with_arg('staticlibsuffix', add_static_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('cmd', cmd_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
 
@@ -19332,7 +19347,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.10")  # GR-6892
+version = VersionSpec("5.247.11")  # GR-19811
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
