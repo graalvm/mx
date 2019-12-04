@@ -934,7 +934,7 @@ def coverage_upload(args):
 def sonarqube_upload(args):
     """run SonarQube scanner and upload JaCoCo results"""
 
-    sonarqube_cli = mx.library("SONARSCANNER_CLI_3_3_0_1492", True)
+    sonarqube_cli = mx.library("SONARSCANNER_CLI_4_2_0_1873", True)
 
     parser = ArgumentParser(prog='mx sonarqube-upload')
     parser.add_argument('--exclude-generated', action='store_true', help='Exclude generated source files')

@@ -411,12 +411,12 @@ suite = {
       "sha1" : "702ca2d0ae93841c5ab75e4d119b29780ec0b7d9"
     },
 
-    "SONARSCANNER_CLI_3_3_0_1492": {
-      "sha1": "9116a2763e257dbc0251c18cd7dd975c588f0169",
+    "SONARSCANNER_CLI_4_2_0_1873": {
+      "sha1": "fda01e04cd3c7fab6661aaadad2821c44577f80a",
       "maven": {
         "groupId": "org.sonarsource.scanner.cli",
         "artifactId": "sonar-scanner-cli",
-        "version": "3.3.0.1492",
+        "version": "4.2.0.1873",
       },
       "licence": "LGPLv30",
     },
