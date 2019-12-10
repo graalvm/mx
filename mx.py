@@ -11385,7 +11385,9 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             return False
         if dst in excludes:
             return False
-        if dst in roots or dst.isLibrary() or dst.isJdkLibrary():
+        if edge and edge.src.isLayoutJARDistribution():
+            return False
+        if dst in roots or dst.isLibrary() or dst.isJdkLibrary() or dst.isLayoutJARDistribution():
             return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
             preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
@@ -19347,7 +19349,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.12")  # GR-19871
+version = VersionSpec("5.247.13")  # GR-19982
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
