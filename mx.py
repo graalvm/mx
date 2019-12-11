@@ -5038,7 +5038,7 @@ class JARArchiveTask(AbstractArchiveTask):
         self.subject.make_archive(getattr(self, 'javac_daemon', None))
 
     def prepare(self, daemons):
-        if self.args.no_daemon:
+        if self.args.no_daemon or self.subject.suite.isBinarySuite():
             return
         compliance = self.subject._compliance_for_build()
         if compliance is not None and compliance >= '9':
@@ -19349,7 +19349,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.0")  # GR-20036
+version = VersionSpec("5.248.1")  # GR-20074
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
