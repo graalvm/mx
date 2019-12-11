@@ -10264,8 +10264,8 @@ def maven_local_repository():  # pylint: disable=invalid-name
                     dom = minidomParseString(res['lines'])
                     local_repo = dom.getElementsByTagName('localRepository')[0].firstChild.data
                     url = 'file://' + local_repo
-                except:
-                    raise abort('Unable to determine maven local repository URL')
+                except BaseException as e:
+                    raise abort('Unable to determine maven local repository URL{}Caused by: {}'.format(os.linesep, repr(e)))
                 Repository.__init__(self, suite('mx'), 'maven local repository', url, url, [])
 
             def resolveLicenses(self):
@@ -19349,7 +19349,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.247.13")  # GR-19982
+version = VersionSpec("5.248.0")  # GR-20036
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
