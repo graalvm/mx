@@ -163,9 +163,9 @@ suite = {
       "maven" : {
         "groupId" : "org.apidesign.javadoc",
         "artifactId" : "codesnippet-doclet",
-        "version" : "0.31",
+        "version" : "0.50",
       },
-      "sha1" : "ccfb545b52e23240d1ecfe591164efad33c2cecf",
+      "sha1" : "b4c1257c9f4a8c912c34d290d3a13c37da80e514",
     },
 
     "JUNIT" : {
