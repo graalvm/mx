@@ -3648,19 +3648,12 @@ def cpu_count():
     else:
         return cpus
 
+def _is_continuous_integration():
+    return get_env("CONTINUOUS_INTEGRATION") != None
+
 
 def is_darwin():
     return sys.platform.startswith('darwin')
-
-def is_darwin_high_sierra():
-    if not is_darwin():
-        return False
-
-    v, _, _ = platform.mac_ver()
-    major, minor, _ = v.split('.')
-    major, minor = int(major), int(minor)
-
-    return major < 10 or (major == 10 and minor < 14)
 
 def is_linux():
     return sys.platform.startswith('linux')
@@ -7637,7 +7630,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif is_darwin_high_sierra() and not _opts.cpu_count:
+        elif _is_continuous_integration() and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -11979,7 +11972,7 @@ def _sorted_unique_jdk_configs(configs):
     return sorted(unique_configs, key=cmp_to_key(_compare_configs), reverse=True)
 
 def is_interactive():
-    if get_env('CONTINUOUS_INTEGRATION'):
+    if _is_continuous_integration():
         return False
     return not sys.stdin.closed and sys.stdin.isatty()
 
@@ -19337,7 +19330,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.3")  # GR-20104
+version = VersionSpec("5.248.4")  # GR-6892
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
