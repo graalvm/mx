@@ -7630,7 +7630,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif _is_continuous_integration() and not _opts.cpu_count:
+        elif (is_darwin() and _is_continuous_integration()) and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -19330,7 +19330,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.4")  # GR-6892
+version = VersionSpec("5.248.5")  # GR-6892 fix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
