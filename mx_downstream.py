@@ -27,9 +27,11 @@
 
 from __future__ import print_function
 
+import os
+import pipes
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
-import os
+
 import mx
 import mx_urlrewrites
 
@@ -152,3 +154,71 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     for command in mxCommands:
         mx.logv('[running "mx ' + ' '.join(command) + '" in ' + targetSuiteDir + ']')
         mx.run_mx(command, targetSuiteDir, mxpy=mxpy)
+
+
+@mx.command('mx', 'checkout-downstream', usage_msg='[upstream suite] [downstream suite]\n\nWorks only with Git repositories.\n\nExample:\nmx checkout-downstream compiler graal-enterprise')
+@mx.no_suite_discovery
+def checkout_downstream(args):
+    """checkout a revision of the downstream suite that imports the most recent merge to master in the currently checked-out branch of the upstream suite"""
+    parser = ArgumentParser(prog='mx checkout-downstream', description='Checkout a revision of the downstream suite that imports the currently checked-out version of the upstream suite')
+    parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
+    parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
+    args = parser.parse_args(args)
+
+    def get_suite(name):
+        suite = mx.suite(name, fatalIfMissing=False)
+        if suite is None:
+            raise mx.abort("Cannot load the '{}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?".format(name))
+        return suite
+
+    upstream_suite = get_suite(args.upstream)
+    downstream_suite = get_suite(args.downstream)
+
+    if upstream_suite.vc_dir == downstream_suite.vc_dir:
+        raise mx.abort("Suites '{}' and '{}' are part of the same repository, cloned in '{}'".format(upstream_suite.name, downstream_suite.name, upstream_suite.vc_dir))
+    if len(downstream_suite.suite_imports) == 0:
+        raise mx.abort("Downstream suite '{}' does not have dependencies".format(downstream_suite.name))
+    if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
+        raise mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
+
+    def parse_output(out, cmd, expected_lines, parsed_line=0):
+        """
+        :type out: mx.LinesOutputCapture
+        :type cmd: list[str]
+        :type parsed_line: int
+        :rtype: str
+        """
+        assert len(out.lines) == expected_lines, "Unexpected output running command '{}'. Expected {} line(s), got:\n{}".format(' '.join(map(pipes.quote, cmd)), expected_lines, '\n'.join(out.lines))
+        return out.lines[parsed_line]
+
+    def get_git_vc(suite):
+        """
+        :type suite: mx.Suite
+        :rtype: mx.GitConfig
+        """
+        vc = mx.VC.get_vc(suite.vc_dir)
+        assert isinstance(vc, mx.GitConfig), "Suite '{}' is not part of a Git repo.".format(suite.name)
+        return vc
+
+    downstream_vc = get_git_vc(downstream_suite)
+    downstream_vc.check_for_git()  # Check that `git` is available
+    get_git_vc(upstream_suite)  # Just check that the upstream suite is part of a Git repository
+
+    mx.log("Fetching remote content from '{}'".format(downstream_vc.default_pull(downstream_suite.vc_dir)))
+    downstream_vc.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
+
+    upstream_commit_out = mx.LinesOutputCapture()
+    # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
+    upstream_commit_cmd = ['git', '-C', upstream_suite.vc_dir, 'log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
+    mx.run(upstream_commit_cmd, nonZeroIsFatal=True, out=upstream_commit_out, err=None)
+    upstream_commit = parse_output(upstream_commit_out, upstream_commit_cmd, expected_lines=1, parsed_line=0)
+
+    downstream_commit_out = mx.LinesOutputCapture()
+    mx.log("Searching local clone of '{}' for a commit that imports revision '{}' of '{}'".format(downstream_vc.default_pull(downstream_suite.vc_dir), upstream_commit, upstream_suite.name))
+    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the `origin/master` branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
+    downstream_commit_cmd = ['git', '-C', downstream_suite.vc_dir, 'log', 'origin/master', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+    mx.run(downstream_commit_cmd, nonZeroIsFatal=True, out=downstream_commit_out, err=None)
+    downstream_commit = parse_output(downstream_commit_out, downstream_commit_cmd, expected_lines=2, parsed_line=0)
+
+    mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
+    return downstream_vc.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
