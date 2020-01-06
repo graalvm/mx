@@ -11483,7 +11483,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
 
     def add_props(d):
         if hasattr(d, "getJavaProperties"):
-            for key, value in d.getJavaProperties().items():
+            for key, value in sorted(d.getJavaProperties().items()):
                 ret.append("-D" + key + "=" + value)
 
     for dep in cpEntries:
