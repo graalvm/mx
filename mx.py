@@ -5467,7 +5467,7 @@ class LayoutDistribution(AbstractDistribution):
     @staticmethod
     def _walk_static_layout(layout, distribution_name, path_substitutions=None, string_substitutions=None, distribution_object=None, context=None):
         substs = mx_subst.as_engine(path_substitutions) if path_substitutions else None
-        for destination, sources in layout.items():
+        for destination, sources in sorted(layout.items()):
             if not isinstance(sources, list):
                 sources = [sources]
             for source in sources:
