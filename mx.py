@@ -4093,7 +4093,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
 
         if verifyOnly:
             try:
-                conn = _urlopen(url, timeout=10)
+                conn = _urlopen(url, timeout=5, timeout_retries=1)
                 conn.close()
             except (IOError, socket.timeout) as e:
                 _suggest_tlsv1_error(e)
@@ -4106,17 +4106,21 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 if _attempt_download(url, path, jarEntryName):
                     return True # Download was successful
 
+    verify_msg = None
+    if verifyOnly and len(verify_errors) > 0: # verify-mode -> print error details
+        verify_msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
+        for url, e in verify_errors.items():
+            verify_msg += '\n  ' + url + ': ' + str(e)
+
     if verifyOnly and len(verify_errors) < len(urls): # verify-mode at least one success -> success
+        if verify_msg is not None:
+            warn(verify_msg)
         return True
     else: # Either verification error or no download was successful
-        msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
-        if verifyOnly: # verify-mode -> print error details
-            for url, e in verify_errors.items():
-                msg += '\n  ' + url + ': ' + str(e)
         if abortOnError:
-            abort(msg)
+            abort(verify_msg)
         else:
-            warn(msg)
+            warn(verify_msg)
             return False
 
 def update_file(path, content, showDiff=False):
@@ -19330,7 +19334,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.6")  # GR-19892
+version = VersionSpec("5.248.7")  # GR-20458 Reduce timeout int verifylibraryurls and print details
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
