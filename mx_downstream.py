@@ -29,6 +29,7 @@ from __future__ import print_function
 
 import os
 import pipes
+import re
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
 
@@ -181,44 +182,37 @@ def checkout_downstream(args):
     if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
         raise mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
 
-    def parse_output(out, cmd, expected_lines, parsed_line=0):
+    git = mx.GitConfig()
+    for suite in upstream_suite, downstream_suite:
+        if not git.is_this_vc(suite.vc_dir):
+            raise mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
+
+    quiet = not mx.get_opts().verbose
+
+    def run_git_cmd(vc_dir, cmd, regex=None, flags=0):
         """
-        :type out: mx.LinesOutputCapture
+        :type vc_dir: str
         :type cmd: list[str]
-        :type parsed_line: int
+        :type regex: str | None
+        :type flags: int
         :rtype: str
         """
-        assert len(out.lines) == expected_lines, "Unexpected output running command '{}'. Expected {} line(s), got:\n{}".format(' '.join(map(pipes.quote, cmd)), expected_lines, '\n'.join(out.lines))
-        return out.lines[parsed_line]
+        output = git.git_command(vc_dir, cmd, abortOnError=True, quiet=quiet).strip()
+        if regex is not None and re.match(regex, output, flags) is None:
+            raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+        return output
 
-    def get_git_vc(suite):
-        """
-        :type suite: mx.Suite
-        :rtype: mx.GitConfig
-        """
-        vc = mx.VC.get_vc(suite.vc_dir)
-        assert isinstance(vc, mx.GitConfig), "Suite '{}' is not part of a Git repo.".format(suite.name)
-        return vc
+    mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
+    git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
-    downstream_vc = get_git_vc(downstream_suite)
-    downstream_vc.check_for_git()  # Check that `git` is available
-    get_git_vc(upstream_suite)  # Just check that the upstream suite is part of a Git repository
-
-    mx.log("Fetching remote content from '{}'".format(downstream_vc.default_pull(downstream_suite.vc_dir)))
-    downstream_vc.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
-
-    upstream_commit_out = mx.LinesOutputCapture()
     # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
-    upstream_commit_cmd = ['git', '-C', upstream_suite.vc_dir, 'log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
-    mx.run(upstream_commit_cmd, nonZeroIsFatal=True, out=upstream_commit_out, err=None)
-    upstream_commit = parse_output(upstream_commit_out, upstream_commit_cmd, expected_lines=1, parsed_line=0)
+    upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
+    upstream_commit = run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
 
-    downstream_commit_out = mx.LinesOutputCapture()
-    mx.log("Searching local clone of '{}' for a commit that imports revision '{}' of '{}'".format(downstream_vc.default_pull(downstream_suite.vc_dir), upstream_commit, upstream_suite.name))
+    mx.log("Searching local clone of '{}' in '{}' for a commit that imports revision '{}' of '{}'".format(git.default_pull(downstream_suite.vc_dir), downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
     # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the `origin/master` branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
-    downstream_commit_cmd = ['git', '-C', downstream_suite.vc_dir, 'log', 'origin/master', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
-    mx.run(downstream_commit_cmd, nonZeroIsFatal=True, out=downstream_commit_out, err=None)
-    downstream_commit = parse_output(downstream_commit_out, downstream_commit_cmd, expected_lines=2, parsed_line=0)
+    downstream_commit_cmd = ['log', 'origin/master', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}\n[a-f0-9]{40}$', flags=re.MULTILINE).split('\n')[0]
 
     mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
-    return downstream_vc.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
+    return git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
