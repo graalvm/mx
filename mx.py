@@ -13839,23 +13839,36 @@ def eclipseformat(args):
 
         jdk = get_jdk()
 
-        for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-            capture = OutputCapture()
-            rc = run([args.eclipse_exe,
-                '-nosplash',
-                '-application',
-                '-consolelog',
-                '-data', wsroot,
-                '-vm', jdk.java,
-                'org.eclipse.jdt.core.JavaCodeFormatter',
-                '-config', batch.path]
-                + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
-            if rc != 0:
-                log(capture.data)
-                abort("Error while running formatter")
-            for fi in chunk:
-                if fi.update(batch.removeTrailingWhitespace, args.restore):
-                    modified.append(fi)
+        with tempfile.NamedTemporaryFile(mode='w') as tmp_eclipseini:
+            with open(join(dirname(args.eclipse_exe), join('..', 'eclipse', 'eclipse.ini') if is_darwin() else 'eclipse.ini'), 'r') as src:
+                locking_added = False
+                for line in src.readlines():
+                    tmp_eclipseini.write(line)
+                    if line.strip() == '-vmargs':
+                        tmp_eclipseini.write('-Dosgi.locking=none\n')
+                        locking_added = True
+                if not locking_added:
+                    tmp_eclipseini.write('-vmargs\n-Dosgi.locking=none\n')
+            tmp_eclipseini.flush()
+
+            for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
+                capture = OutputCapture()
+                rc = run([args.eclipse_exe,
+                    '--launcher.ini', tmp_eclipseini.name,
+                    '-nosplash',
+                    '-application',
+                    '-consolelog',
+                    '-data', wsroot,
+                    '-vm', jdk.java,
+                    'org.eclipse.jdt.core.JavaCodeFormatter',
+                    '-config', batch.path]
+                    + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
+                if rc != 0:
+                    log(capture.data)
+                    abort("Error while running formatter")
+                for fi in chunk:
+                    if fi.update(batch.removeTrailingWhitespace, args.restore):
+                        modified.append(fi)
 
     log('{0} files were modified'.format(len(modified)))
 
@@ -19334,7 +19347,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.7")  # GR-20458 Reduce timeout int verifylibraryurls and print details
+version = VersionSpec("5.248.8")  # GR-2032 Add -Dosgi.locking=none in codeformatcheck to allow concurrent execution
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
