@@ -202,6 +202,14 @@ def checkout_downstream(args):
             raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
         return output
 
+    def get_current_branch(vc_dir):
+        """
+        :type vc_dir: str
+        :return: str
+        """
+        branch = run_git_cmd(vc_dir, ['rev-parse', '--abbrev-ref', 'HEAD'])
+        return 'master' if branch == 'HEAD' else branch
+
     mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
     git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
@@ -209,10 +217,24 @@ def checkout_downstream(args):
     upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
     upstream_commit = run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
 
-    mx.log("Searching local clone of '{}' in '{}' for a commit that imports revision '{}' of '{}'".format(git.default_pull(downstream_suite.vc_dir), downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
-    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the `origin/master` branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
-    downstream_commit_cmd = ['log', 'origin/master', '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
-    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}\n[a-f0-9]{40}$', flags=re.MULTILINE).split('\n')[0]
+    upstream_branch = get_current_branch(upstream_suite.vc_dir)
+    mx.log("The active branch of the upstream repository is '{}'".format(upstream_branch))
+
+    if upstream_branch == 'master':
+        downstream_branch = 'master'
+    else:
+        mx.log("Attempt to checkout branch '{}' of the downstream repository".format(upstream_branch))
+        run_git_cmd(downstream_suite.vc_dir, ['checkout', upstream_branch])
+        downstream_branch = get_current_branch(downstream_suite.vc_dir)
+
+        if upstream_branch != downstream_branch:
+            mx.log("The downstream repository does not contain a branch named '{}'. Defaulting to 'master'".format(upstream_branch))
+            downstream_branch = 'master'
+
+    mx.log("Searching branch '{}' of the local clone of '{}' in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, git.default_pull(downstream_suite.vc_dir), downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
+    downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', flags=re.MULTILINE).split('\n')[0]
 
     mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
     return git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
