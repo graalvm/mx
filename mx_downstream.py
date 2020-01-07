@@ -160,7 +160,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
 @mx.command('mx', 'checkout-downstream', usage_msg='[upstream suite] [downstream suite]\n\nWorks only with Git repositories.\n\nExample:\nmx checkout-downstream compiler graal-enterprise')
 @mx.no_suite_discovery
 def checkout_downstream(args):
-    """checkout a revision of the downstream suite that imports the most recent merge to master in the currently checked-out branch of the upstream suite"""
+    """checkout a revision of the downstream suite that imports the commit checked-out in the upstream suite, or the closest parent commit"""
     parser = ArgumentParser(prog='mx checkout-downstream', description='Checkout a revision of the downstream suite that imports the currently checked-out version of the upstream suite')
     parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
     parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
