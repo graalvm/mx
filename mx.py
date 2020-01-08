@@ -10249,8 +10249,9 @@ def maven_local_repository():  # pylint: disable=invalid-name
             """This singleton class represents mavens local repository (usually under ~/.m2/repository)"""
             def __init__(self):
                 try:
-                    res = {'lines': '', 'xml': False}
+                    res = {'lines': '', 'xml': False, 'total_output': ''}
                     def xml_settings_grabber(line):
+                        res['total_output'] += line
                         if not res['xml'] and not res['lines'] and line.startswith('<settings '):
                             res['xml'] = True
                         if res['xml']:
@@ -10262,7 +10263,8 @@ def maven_local_repository():  # pylint: disable=invalid-name
                     local_repo = dom.getElementsByTagName('localRepository')[0].firstChild.data
                     url = 'file://' + local_repo
                 except BaseException as e:
-                    raise abort('Unable to determine maven local repository URL{}Caused by: {}'.format(os.linesep, repr(e)))
+                    ls = os.linesep
+                    raise abort('Unable to determine maven local repository URL{}Caused by: {}{}Output:{}{}'.format(ls, repr(e), ls, ls, res['total_output']))
                 Repository.__init__(self, suite('mx'), 'maven local repository', url, url, [])
 
             def resolveLicenses(self):
@@ -19347,7 +19349,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.8")  # GR-2032 Add -Dosgi.locking=none in codeformatcheck to allow concurrent execution
+version = VersionSpec("5.248.9")  # GR-20483 Print error output of mvn when repository url could not be determined
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
