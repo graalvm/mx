@@ -133,6 +133,9 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
             f.write('</testcase>\n')
             f.write('</testsuite>\n')
     if failed:
+        print('\nThe signature check detected changes in the API by comparing it with previous signature files.')
+        print('To fix this restore the original API or regenerate the signature files with:')
+        print('mx sigtest --generate')
         mx.abort('Signature error in ' + failed)
     else:
         print('OK.')
