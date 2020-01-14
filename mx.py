@@ -19349,7 +19349,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.9")  # GR-20483 Print error output of mvn when repository url could not be determined
+version = VersionSpec("5.248.10")  # GR-4318
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
