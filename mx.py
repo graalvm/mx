@@ -4237,6 +4237,14 @@ def nyi(name, obj):
     abort('{} is not implemented for {}'.format(name, obj.__class__.__name__))
     raise NotImplementedError()
 
+
+def _first(g):
+    try:
+        return next(g)
+    except StopIteration:
+        return None
+
+
 ### Dependencies
 
 """
@@ -5905,29 +5913,71 @@ class LayoutDistribution(AbstractDistribution):
             return locations[0]
         return None
 
+    def _matched_result(self, source):
+        """
+        Try to find which file will be matched by the given 'dependency' or 'skip' source.
+        """
+        assert source['source_type'] in ('dependency', 'skip')
+        d = dependency(source['dependency'], context=self)
+        try:
+            if source['path'] is None:
+                _, arcname = next(d.getArchivableResults(single=True))
+                yield arcname
+            else:
+                for _, _arcname in d.getArchivableResults(single=False):
+                    if _arcname is None:
+                        continue
+                    matched = glob_match(source['path'], _arcname)
+                    if matched:
+                        strip_prefix = dirname(matched)
+                        arcname = _arcname
+                        if strip_prefix:
+                            arcname = arcname[len(strip_prefix) + 1:]
+                        yield arcname
+        except OSError as e:
+            logv("Ignoring OSError in getArchivableResults: " + str(e))
+
     def find_source_location(self, source, fatal_if_missing=True):
         if source not in self._source_location_cache:
-            source_dict = LayoutDistribution._as_source_dict(source, self.name, "??", self.path_substitutions, self.string_substitutions, self, self)
-            source_type = source_dict['source_type']
+            search_source = LayoutDistribution._as_source_dict(source, self.name, "??", self.path_substitutions, self.string_substitutions, self, self)
+            source_type = search_source['source_type']
             if source_type in ('dependency', 'extracted-dependency', 'skip'):
-                dep = source_dict['dependency']
-                if source_dict['path'] is None:
+                dep = search_source['dependency']
+                if search_source['path'] is None or not any((c in search_source['path'] for c in ('*', '[', '?'))):
+                    if search_source['path'] and source_type == 'extracted-dependency':
+                        raise abort("find_source_location: path is not supported for `extracted-dependency`: " + source)
                     found_dest = []
                     for destination, layout_source in self._walk_layout():
-                        if layout_source['source_type'] == source_type and layout_source['path'] is None and layout_source['dependency'] == dep:
+                        if layout_source['source_type'] == source_type and layout_source['dependency'] == dep:
                             dest = destination
                             if dest.startswith('./'):
                                 dest = dest[2:]
+                            if search_source['path'] is not None and layout_source['path'] is not None:
+                                # the search and this source have a `path`: check if they match
+                                if not glob_match(layout_source['path'], search_source['path']):
+                                    continue
+                            elif search_source['path'] is None and layout_source['path'] is not None:
+                                search_arcname = _first(self._matched_result(search_source))
+                                # check if the 'single' searched file matches this source's `path`
+                                if search_arcname is None or search_arcname not in self._matched_result(layout_source):
+                                    continue
+                            elif search_source['path'] is not None and layout_source['path'] is None:
+                                layout_arcname = _first(self._matched_result(layout_source))
+                                # check if the 'single' file from this source matches the searched `path`
+                                if layout_arcname is None or layout_arcname not in self._matched_result(search_source):
+                                    continue
                             if source_type == 'dependency' and destination.endswith('/'):
-                                d = dependency(source_dict['dependency'], context=self)
-                                _, arcname = next(d.getArchivableResults(single=True))
-                                dest = join(dest, basename(arcname))
-                            found_dest.append(dest)
+                                # the files given by this source are expended
+                                for arcname in self._matched_result(layout_source):
+                                    dest = join(dest, arcname)
+                                    found_dest.append(dest)
+                            else:
+                                found_dest.append(dest)
                     self._source_location_cache[source] = found_dest
                     if fatal_if_missing and not found_dest:
                         abort("Could not find '{}' in '{}'".format(source, self.name))
                 else:
-                    abort("find_source_location: path is not supported: " + source)
+                    abort("find_source_location: path with glob is not supported: " + source)
             else:
                 abort("find_source_location: source type not supported: " + source)
         return self._source_location_cache[source]
@@ -8887,14 +8937,8 @@ class HgConfig(VC):
                 return None
 
         if tagged_ids and current_id:
-            def first(it):
-                try:
-                    v = next(it)
-                    return v
-                except StopIteration:
-                    return None
             tag_re = re.compile(r"^{0}[0-9]+\.[0-9]+$".format(prefix))
-            tagged_ids = [(first((tag for tag in tags.split(' ') if tag_re.match(tag))), revid) for tags, revid in tagged_ids]
+            tagged_ids = [(_first((tag for tag in tags.split(' ') if tag_re.match(tag))), revid) for tags, revid in tagged_ids]
             tagged_ids = [(tag, revid) for tag, revid in tagged_ids if tag]
             version_ids = [([int(x) for x in tag[len(prefix):].split('.')], revid) for tag, revid in tagged_ids]
             version_ids = sorted(version_ids, key=lambda e: e[0], reverse=True)
