@@ -3117,6 +3117,7 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         BRANCH = 2
 
     worklist = deque()
+    dynamic_imports_added = [False]
 
     def _add_discovered_suite(_discovered_suite, first_importing_suite_name):
         if first_importing_suite_name:
@@ -3130,6 +3131,26 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
             if _discovered_suite.name == _suite_import.name:
                 abort("Error: suite '{}' imports itself".format(_discovered_suite.name))
             _log_discovery("Adding {discovered} -> {imported} in worklist after discovering {discovered}".format(discovered=_discovered_suite.name, imported=_suite_import.name))
+            if dynamic_imports_added[0] and (_suite_import.urlinfos or _suite_import.version):
+                # check if this provides coordinates for a dynamic import that is in the queue
+                def _is_weak_import(importing_suite_name, imported_suite_name):
+                    if imported_suite_name != _suite_import.name or importing_suite_name != primary.name:
+                        return False
+                    if importing_suite_name == _discovered_suite.name:
+                        importing_suite = _discovered_suite
+                    else:
+                        importing_suite = discovered[importing_suite_name]
+                    suite_import = importing_suite.get_import(imported_suite_name)
+                    return not suite_import.urlinfos and not suite_import.version and suite_import.dynamicImport
+                for importing_suite_name, imported_suite_name in worklist:
+                    if _is_weak_import(importing_suite_name, imported_suite_name):
+                        # remove those imports from the worklist
+                        if _opts.very_verbose:
+                            _log_discovery("Dropping weak imports from worklist: {}".format(["{}->{}".format(_f, _t) for _f, _t in worklist if _is_weak_import(_f, _t)]))
+                        new_worklist = [(_f, _t) for _f, _t in worklist if not _is_weak_import(_f, _t)]
+                        worklist.clear()
+                        worklist.extend(new_worklist)
+                        break
             worklist.append((_discovered_suite.name, _suite_import.name))
         if _discovered_suite.vc_dir:
             vc_dir_to_suite_names.setdefault(_discovered_suite.vc_dir, set()).add(_discovered_suite.name)
@@ -3302,7 +3323,6 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         return True
 
     try:
-        dynamic_imports_added = [False]
 
         def _maybe_add_dynamic_imports():
             if not worklist and not dynamic_imports_added[0]:
