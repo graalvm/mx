@@ -17966,6 +17966,8 @@ def sclone(args):
     if len(args.nonKWArgs) > 0:
         abort('unrecognized args: ' + ' '.join(args.nonKWArgs))
 
+    revision = args.revision if args.revision else "master"
+
     if args.source is None:
         # must be primary suite and dest is required
         if primary_suite() is None:
@@ -17992,7 +17994,7 @@ def sclone(args):
     dest_dir = join(dest, args.subdir) if args.subdir else dest
     source = mx_urlrewrites.rewriteurl(source)
     vc = vc_system(args.kind)
-    vc.clone(source, dest=dest)
+    vc.clone(source, rev=revision, dest=dest)
     mxDir = _is_suite_dir(dest_dir)
     if not mxDir:
         warn("'{}' is not an mx suite".format(dest_dir))
@@ -19349,7 +19351,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.11")  # GR-20589
+version = VersionSpec("5.248.12")  # GR-20688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
