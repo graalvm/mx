@@ -27,9 +27,12 @@
 
 from __future__ import print_function
 
+import os
+import pipes
+import re
 from os.path import join, exists, isabs, basename
 from argparse import ArgumentParser
-import os
+
 import mx
 import mx_urlrewrites
 
@@ -152,3 +155,80 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
     for command in mxCommands:
         mx.logv('[running "mx ' + ' '.join(command) + '" in ' + targetSuiteDir + ']')
         mx.run_mx(command, targetSuiteDir, mxpy=mxpy)
+
+
+@mx.command('mx', 'checkout-downstream', usage_msg='[upstream suite] [downstream suite]\n\nWorks only with Git repositories.\n\nExample:\nmx checkout-downstream compiler graal-enterprise')
+@mx.no_suite_discovery
+def checkout_downstream(args):
+    """checkout a revision of the downstream suite that imports the commit checked-out in the upstream suite, or the closest parent commit"""
+    parser = ArgumentParser(prog='mx checkout-downstream', description='Checkout a revision of the downstream suite that imports the currently checked-out version of the upstream suite')
+    parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
+    parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
+    args = parser.parse_args(args)
+
+    def get_suite(name):
+        suite = mx.suite(name, fatalIfMissing=False)
+        if suite is None:
+            raise mx.abort("Cannot load the '{}' suite. Did you forget a dynamic import or pass a repository name rather than a suite name (e.g., 'graal' rather than 'compiler')?".format(name))
+        return suite
+
+    upstream_suite = get_suite(args.upstream)
+    downstream_suite = get_suite(args.downstream)
+
+    if upstream_suite.vc_dir == downstream_suite.vc_dir:
+        raise mx.abort("Suites '{}' and '{}' are part of the same repository, cloned in '{}'".format(upstream_suite.name, downstream_suite.name, upstream_suite.vc_dir))
+    if len(downstream_suite.suite_imports) == 0:
+        raise mx.abort("Downstream suite '{}' does not have dependencies".format(downstream_suite.name))
+    if upstream_suite.name not in (suite_import.name for suite_import in downstream_suite.suite_imports):
+        raise mx.abort("'{}' is not a dependency of '{}'. Valid dependencies are:\n - {}".format(upstream_suite.name, downstream_suite.name, '\n - '.join([s.name for s in downstream_suite.suite_imports])))
+
+    git = mx.GitConfig()
+    for suite in upstream_suite, downstream_suite:
+        if not git.is_this_vc(suite.vc_dir):
+            raise mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
+
+    def run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
+        """
+        :type vc_dir: str
+        :type cmd: list[str]
+        :type regex: str | None
+        :rtype: str
+        """
+        output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
+        if regex is not None and re.match(regex, output, re.MULTILINE) is None:
+            if abortOnError:
+                raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+            else:
+                return None
+        return output
+
+    mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
+    git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
+
+    # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
+    upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
+    upstream_commit = run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
+
+    upstream_branch = run_git_cmd(upstream_suite.vc_dir, ['rev-parse', '--abbrev-ref', 'HEAD'])
+    if upstream_branch == 'HEAD':
+        upstream_branch = 'master'
+    mx.log("The active branch of the upstream repository is '{}'".format(upstream_branch))
+
+    rev_parse_output = run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
+    if rev_parse_output is None:
+        mx.log("The downstream repository does not contain a branch named '{}'. Defaulting to 'master'".format(upstream_branch))
+        downstream_branch = 'master'
+    else:
+        mx.log("The downstream repository contains a branch named '{}'".format(upstream_branch))
+        downstream_branch = upstream_branch
+
+    mx.log("Searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
+    downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
+    if downstream_commit is None:
+        raise mx.abort("Cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+    downstream_commit = downstream_commit.split('\n')[0]
+
+    mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
+    git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)

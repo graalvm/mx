@@ -9138,14 +9138,15 @@ class GitConfig(VC):
     def git_command(self, vcdir, args, abortOnError=False, quiet=True):
         args = ['git', '--no-pager'] + args
         if not quiet:
-            print('{0}'.format(" ".join(args)))
+            print(' '.join(map(pipes.quote, args)))
         out = OutputCapture()
-        rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out)
+        err = OutputCapture()
+        rc = self.run(args, cwd=vcdir, nonZeroIsFatal=False, out=out, err=err)
         if rc in (0, 1):
             return out.data
         else:
             if abortOnError:
-                abort(" ".join(args) + ' returned ' + str(rc))
+                abort("Running '{}' in '{}' returned '{}'.\nStdout:\n{}Stderr:\n{}".format(' '.join(map(pipes.quote, args)), vcdir, rc, out.data, err.data))
             return None
 
     def add(self, vcdir, path, abortOnError=True):
@@ -19351,7 +19352,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.248.12")  # GR-20688
+version = VersionSpec("5.249.0")  # GR-20331
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
