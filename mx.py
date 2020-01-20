@@ -19356,7 +19356,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.249.1")  # Warn if non-default dependencies are built by default
+version = VersionSpec("5.249.2")  # GR-20744
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
