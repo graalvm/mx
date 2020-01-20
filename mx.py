@@ -13521,6 +13521,7 @@ def build(cmd_args, parser=None):
                     t._end_time = time.time()
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
+                    _removeSubprocess(t.sub)
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
                     if hasattr(t.proc, 'close'):
                         t.proc.close()
