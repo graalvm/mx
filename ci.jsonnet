@@ -1,10 +1,11 @@
 local
+jdks = (import "common.json").jdks,
 java = {
   downloads+: {
-    JAVA_HOME: {name: 'oraclejdk', version: "8u221", platformspecific: true}
+    JAVA_HOME: jdks.oraclejdk8
   }
 },
-oraclejdk_jvmci = {name: 'oraclejdk', version: "8u231-jvmci-19.3-b04", platformspecific: true},
+oraclejdk_jvmci = jdks.oraclejdk8,
 gate = java + {
   targets: ['gate'],
   packages+: {
@@ -103,8 +104,8 @@ python3 = {
 {
   # Overlay
   java8: oraclejdk_jvmci,
-  java11: {name: 'labsjdk', version: "ee-11.0.6+8-jvmci-20.0-b01", platformspecific: true},
-  overlay: '2be8e19233241737eda05ac69a96558a12744f6e',
+  java11: jdks['labsjdk-ee-11'],
+  overlay: '880178a26b561fec09499eb7ba6978f9ecb87148',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
