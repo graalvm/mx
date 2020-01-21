@@ -13413,6 +13413,7 @@ def build(cmd_args, parser=None):
                           'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
                           'from within the plugins/ directory of an Eclipse IDE installation.')
     onlyDeps = None
+    removed = []
     if args.only is not None:
         # N.B. This build will not respect any dependencies (including annotation processor dependencies)
         onlyDeps = set(args.only.split(','))
@@ -13466,6 +13467,8 @@ def build(cmd_args, parser=None):
             return
         taskMap[dep] = task
         if onlyDeps is None or task.subject.name in onlyDeps:
+            if dep in removed:
+                warn("Adding non-default dependency {} as it is needed by {} {}".format(dep, edge.kind, edge.src))
             sortedTasks.append(task)
         lst = depsMap.setdefault(task.subject, [])
         for d in lst:
@@ -19352,7 +19355,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.249.0")  # GR-20331
+version = VersionSpec("5.249.1")  # Warn if non-default dependencies are built by default
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
