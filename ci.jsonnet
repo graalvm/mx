@@ -103,7 +103,7 @@ python3 = {
 {
   # Overlay
   java8: oraclejdk_jvmci,
-  java11: {name: 'labsjdk', version: "ee-11.0.5+10-jvmci-19.3-b04", platformspecific: true},
+  java11: {name: 'labsjdk', version: "ee-11.0.6+8-jvmci-20.0-b01", platformspecific: true},
   overlay: '2be8e19233241737eda05ac69a96558a12744f6e',
 
   builds: [
