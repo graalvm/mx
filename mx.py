@@ -13521,6 +13521,7 @@ def build(cmd_args, parser=None):
                     t._end_time = time.time()
                     if t.proc.exitcode != 0:
                         return ([], joinTasks(tasks))
+                    _removeSubprocess(t.sub)
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
                     if hasattr(t.proc, 'close'):
                         t.proc.close()
@@ -19355,7 +19356,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.249.1")  # Warn if non-default dependencies are built by default
+version = VersionSpec("5.249.2")  # GR-20744
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
