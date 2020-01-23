@@ -643,12 +643,15 @@ class JMHJsonRule(Rule):
     def getExtraJmhKeys(self):
         return JMHJsonRule.extra_jmh_keys
 
+    def getBenchmarkNameFromResult(self, result):
+        return result["benchmark"]
+
     def parse(self, text):
         r = []
         with open(self._prepend_working_dir(self.filename)) as fp:
             for result in json.load(fp):
 
-                benchmark = result["benchmark"]
+                benchmark = self.getBenchmarkNameFromResult(result)
                 mode = result["mode"]
 
                 pm = result["primaryMetric"]
