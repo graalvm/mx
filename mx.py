@@ -17109,10 +17109,13 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             # 1) Make an ant file for archiving the distributions.
             antXml = XMLDoc()
             antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
+            antXml.element('dirname', attributes={'file': '${java.home}', 'property': 'java_home'})
             for dist in validDistributions:
                 antXml.open('target', attributes={'name': antTargetName(dist)})
-                antXml.open('exec', attributes={'executable': sys.executable})
+                antXml.open('exec', attributes={'executable': sys.executable, 'failonerror': 'true'})
                 antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
+                antXml.element('arg', attributes={'value': '--java-home'})
+                antXml.element('arg', attributes={'value': '${java_home}'})
                 antXml.element('arg', attributes={'value': 'archive'})
                 antXml.element('arg', attributes={'value': '@' + dist.name})
                 antXml.close('exec')
@@ -17168,6 +17171,58 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
                 artifactFile = join(artifactsDir, artifactFileName(dist))
                 update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
+
+            # Default JUnit run configuration
+            def get_unittest_args():
+                """Gets the VM arguments used for running the unittests by doing a dry run."""
+
+                class DisabledUnittests(object):
+                    """Context manager that temporarily disables unittests from launching.
+
+                    It does this by replacing the mx.run with itself and examining the issued
+                    commands. If it detects the `mx_unittest_main_class` in the command, it
+                    captures the command and reports success without actually doing anything.
+                    """
+
+                    def __enter__(self):
+                        self.run = run
+                        globals()['run'] = self      # replace mx.run
+
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        globals()['run'] = self.run  # restore mx.run
+
+                    def __call__(self, args, **kwargs):
+                        if mx_unittest_main_class in args:
+                            self.cmd = args
+                            return 0
+                        return self.run(args, **kwargs)
+
+                mx_unittest_main_class = 'com.oracle.mxtool.junit.MxJUnitWrapper'
+
+                with DisabledUnittests():
+                    # dry run
+                    mx_unittest.unittest([])
+                    unittest_args = run.cmd[1:run.cmd.index(mx_unittest_main_class)]
+
+                # remove classpath from args, since IntelliJ will provide one
+                cp_index = unittest_args.index('-cp')
+                del unittest_args[cp_index:cp_index + 2]
+
+                return ' '.join(unittest_args)
+
+            # generate the minimum configuration and let IntelliJ fill in the rest
+            wsXml = XMLDoc()
+            wsXml.open('project', attributes={'version': '4'})
+            wsXml.open('component', attributes={'name': 'RunManager'})
+            wsXml.open('configuration', attributes={'default': 'true', 'type': 'JUnit', 'factoryName': 'JUnit'})
+            wsXml.element('option', attributes={'name': 'VM_PARAMETERS', 'value': get_unittest_args()})
+            wsXml.close('configuration')
+            wsXml.close('component')
+            wsXml.close('project')
+
+            # until the official solution becomes available (IDEA-65915), use `workspace.xml`
+            wsFile = join(ideaProjectDirectory, 'workspace.xml')
+            update_file(wsFile, wsXml.xml(indent='  ', newl='\n'))
 
         def intellij_scm_name(vc_kind):
             if vc_kind == 'git':
@@ -17234,10 +17289,13 @@ def ideclean(args):
         if exists(path):
             os.remove(path)
 
+    rm(join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml'))
+
     for s in suites() + [_mx_suite]:
         rm(join(s.get_mx_output_dir(), 'eclipse-config.zip'))
         rm(join(s.get_mx_output_dir(), 'netbeans-config.zip'))
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
+        rm(join(s.mxDir, basename(s.mxDir) + '.iml'))
 
     for p in projects() + _mx_suite.projects:
         if not p.isJavaProject():
