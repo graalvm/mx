@@ -68,8 +68,9 @@ def _sigtest_generate(args, suite=None, projects=None):
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.Setup',
+            '-BootCP',
             '-Static', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk),
         ]
         if args.human:
             cmd.append('-H')
@@ -103,8 +104,9 @@ def _sigtest_check(checktype, args, suite=None, projects=None):
             continue
         jdk = mx.get_jdk(javaCompliance)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.SignatureTest',
+            '-BootCP',
             '-Static', '-Mode', 'bin', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p, jdk=jdk) + os.pathsep + jdk.bootclasspath(),
+            '-ClassPath', mx.classpath(p, jdk=jdk),
         ]
         if args.human:
             cmd.append('-H')
