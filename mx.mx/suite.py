@@ -153,9 +153,9 @@ suite = {
       "maven": {
         "groupId": "org.netbeans.tools",
         "artifactId": "sigtest-maven-plugin",
-        "version": "1.1",
+        "version": "1.2",
       },
-      "sha1": "3837cc19378e6e20202c99cdf47b1c7dc189388f",
+      "sha1": "d5cc2cd2a20963b86cf95397784bc7e74101c7a9",
     },
 
     "CODESNIPPET-DOCLET" : {
