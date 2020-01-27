@@ -15147,7 +15147,8 @@ def _get_eclipse_output_path(p, linkedResources=None):
 
 #: Highest Execution Environment defined by most recent Eclipse release.
 #: https://wiki.eclipse.org/Execution_Environments
-_max_Eclipse_JavaExecutionEnvironment = 10 # pylint: disable=invalid-name
+#: https://git.eclipse.org/c/jdt/eclipse.jdt.debug.git/plain/org.eclipse.jdt.launching/plugin.properties
+_max_Eclipse_JavaExecutionEnvironment = 13 # pylint: disable=invalid-name
 
 _EclipseJRESystemLibraries = set()
 
@@ -19356,7 +19357,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.249.6")  # GR-20690
+version = VersionSpec("5.249.7")  # GR-20868
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
