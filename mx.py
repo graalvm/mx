@@ -18005,7 +18005,8 @@ def sclone(args):
     if not mxDir:
         warn("'{}' is not an mx suite".format(dest_dir))
         return
-    _discover_suites(mxDir, load=False, register=False)
+    if not args.no_imports:
+        _discover_suites(mxDir, load=False, register=False)
 
 
 @suite_context_free
@@ -19357,7 +19358,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.249.7")  # GR-20868
+version = VersionSpec("5.249.8")  # GR-20314
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
