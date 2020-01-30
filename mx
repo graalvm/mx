@@ -45,7 +45,10 @@ if [ ! -f "$dir/mx.py" ]; then
     exit 1
 fi
 
-if [ -n "${MX_PYTHON_VERSION}" ]; then
+# Prefer the interpreter specified by MX_PYTHON
+if [ -n "${MX_PYTHON}" ]; then
+    python_exe=${MX_PYTHON}
+elif [ -n "${MX_PYTHON_VERSION}" ]; then
     python_exe=python${MX_PYTHON_VERSION}
 else
     # Not all systems (e.g. Mac OS X) have 'python2' on the path.
