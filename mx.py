@@ -5467,7 +5467,7 @@ class LayoutDistribution(AbstractDistribution):
     @staticmethod
     def _walk_static_layout(layout, distribution_name, path_substitutions=None, string_substitutions=None, distribution_object=None, context=None):
         substs = mx_subst.as_engine(path_substitutions) if path_substitutions else None
-        for destination, sources in layout.items():
+        for destination, sources in sorted(layout.items()):
             if not isinstance(sources, list):
                 sources = [sources]
             for source in sources:
@@ -11483,7 +11483,7 @@ def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
 
     def add_props(d):
         if hasattr(d, "getJavaProperties"):
-            for key, value in d.getJavaProperties().items():
+            for key, value in sorted(d.getJavaProperties().items()):
                 ret.append("-D" + key + "=" + value)
 
     for dep in cpEntries:
@@ -19378,7 +19378,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.250.0")  # GR-17924
+version = VersionSpec("5.250.1")  # GR-20905
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
