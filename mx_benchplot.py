@@ -224,6 +224,8 @@ on the last point""", type=int, default=None)
 Otherwise the names are derived from the filenames.""", type=lambda s: s.split(','))
     parser.add_argument('-c', '--colors', help='Provide alternate colors for the results', type=lambda s: s.split(','))
     parser.add_argument('-C', '--columns', help='The number of columns in a warmup graph.  Defaults to 2.', type=int, default=None)
+    parser.add_argument('-L', '--legend-location', help='Location for the legend.', default='upper right',
+                        choices=['upper right', 'upper left', 'lower right', 'lower left'])
     parser.add_argument('-P', '--page-size', help='The width and height of the page.  Default to 11,8.5.', type=lambda s: [float(x) for x in s.split(',')], default=[11, 8.5])
     parser.add_argument('files', help='List of JSON benchmark result files', nargs=REMAINDER)
     args = parser.parse_args(args)
@@ -276,11 +278,15 @@ Otherwise the names are derived from the filenames.""", type=lambda s: s.split('
                         scores = result[b][scores_key]
                         xs = range(1, len(scores) + 1)
                         if args.samples:
-                            scores = scores[0:args.samples]
-                            xs = xs[0:args.samples]
+                            if args.samples > 0:
+                                scores = scores[:args.samples]
+                                xs = xs[:args.samples]
+                            else:
+                                scores = scores[args.samples:]
+                                xs = xs[args.samples:]
                     plt.plot(xs, scores, label=resultname, color=color)
                 handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles, labels, loc='upper right', fontsize='small', ncol=2)
+                ax.legend(handles, labels, loc=args.legend_location, fontsize='small', ncol=2)
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
                 ax.set_ylim(ymin=0)
                 index = index + 1
@@ -353,20 +359,29 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                 score = entry['metric.value']
                 iteration = entry['metric.iteration']
                 scores = result.get(benchmark)
-                if scores:
-                    if entry['metric.name'] == 'warmup':
-                        score_list = scores['scores']
-                        while len(score_list) <= iteration + 1:
-                            score_list.insert(-1, None)
-                        score_list[iteration] = score
-                else:
-                    if entry['metric.name'] != 'final-time':
-                        mx.abort('Unexpected data order final-time')
+                if not scores:
                     higher = entry['metric.better'] == 'higher'
-                    result[benchmark] = {'scores': [score], 'higher': higher, 'name': name}
+                    result[benchmark] = {'warmup': [], 'higher': higher, 'name': name}
+                    scores = result.get(benchmark)
+                if entry['metric.name'] == 'warmup':
+                    score_list = scores['warmup']
+                    while len(score_list) <= iteration + 1:
+                        score_list.insert(-1, None)
+                    score_list[iteration] = score
+                elif entry['metric.name'] == 'final-time':
+                    scores['final-time'] = score
+                elif entry['metric.name'] == 'throughput':
+                    scores['final-time'] = score
+                elif entry['metric.name'] == 'time':
+                    scores['final-time'] = score
 
         for _, entry in result.items():
-            if last_n and len(entry['scores']) > abs(last_n):
+            scores = entry['warmup']
+            if not scores:
+                scores = [None]
+            scores[len(scores) - 1] = entry['final-time']
+            entry['scores'] = scores
+            if last_n and len(entry['scores']) >= abs(last_n):
                 if last_n < 0:
                     entry['trimmed_scores'] = entry['scores'][:-last_n]
                 else:
