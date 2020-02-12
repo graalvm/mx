@@ -19422,7 +19422,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.251.0")  # find_source_location
+version = VersionSpec("5.251.1")  # Enable guest VMs (e.g. Espresso) in `mx benchmark`
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

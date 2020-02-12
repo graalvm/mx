@@ -118,7 +118,7 @@ class VmRegistry(object):
         avail = ['--{}={} --{}-config={}'.format(self.short_vm_type_name, vm.name(), self.short_vm_type_name, vm.config_name()) for vm in self._vms.values()]
         return 'The following {} configurations are available:\n  {}'.format(self.vm_type_name, '\n  '.join(avail))
 
-    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False):
+    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False, host=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
 
@@ -128,7 +128,7 @@ class VmRegistry(object):
         :return: a Vm as configured by the `bmSuiteArgs`.
         :rtype: Vm
         """
-        args, _ = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
+        args, bmSuiteArgsPending = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
         arg_vm_type_name = self.short_vm_type_name.replace('-', '_')
         vm = getattr(args, arg_vm_type_name)
         vm_config = getattr(args, arg_vm_type_name + '_config')
@@ -139,7 +139,7 @@ class VmRegistry(object):
                          self._vms_suite[(vm, config)] == mx.primary_suite(),
                          ('hosted' in config) == hosted,
                          self._vms_priority[(vm, config)]
-                         ) for (vm, config) in self._vms if vm_config is None or config == vm_config]
+                         ) for (vm, config), vm_obj in self._vms.items() if (vm_config is None or config == vm_config) and not (host and isinstance(vm_obj, GuestVm))]
                 if not vms:
                     mx.abort("Could not find a {} to default to.\n{avail}".format(self.vm_type_name, avail=self.get_available_vm_configs_help()))
                 vms.sort(key=lambda t: t[1:], reverse=True)
@@ -174,7 +174,7 @@ class VmRegistry(object):
                 notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
         if isinstance(vm_object, GuestVm):
-            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgs, hosted=True, quiet=quiet)
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgsPending, hosted=True, quiet=quiet, host=True)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
 
