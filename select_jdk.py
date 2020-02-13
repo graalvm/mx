@@ -107,7 +107,7 @@ def get_shell_commands(args, jdk, extra_jdks):
         if replace in path:
             path = [e if e != replace else jdk_bin for e in path]
         else:
-            path.append(jdk_bin)
+            path = [jdk_bin] + path
         print(setvar_format % ('PATH', get_PATH_sep(args.shell).join(path)), file=shell_commands)
     return shell_commands.getvalue().strip()
 
@@ -189,10 +189,12 @@ if __name__ == '__main__':
         invalid_jdks = [a for a in args.jdks if not is_valid_jdk(a)]
         if invalid_jdks:
             raise SystemExit('Following JDKs appear to be invalid (java executable not found):\n' + '\n'.join(invalid_jdks))
+        if not exists(jdk_cache_path):
+            os.makedirs(jdk_cache_path)
         with open(jdk_cache_path, 'a') as fp:
             for jdk in args.jdks:
-                print(jdk, file=fp)
-        apply_selection(args, args.jdks[0], args.jdks[1:])
+                print(abspath(jdk), file=fp)
+        apply_selection(args, abspath(args.jdks[0]), [abspath(a) for a in args.jdks[1:]])
     else:
         jdks = find_system_jdks()
         if exists(jdk_cache_path):

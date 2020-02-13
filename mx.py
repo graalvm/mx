@@ -19166,9 +19166,11 @@ update_commands("mx", {
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
+from mx_webserver import webserver
 _mx_commands.add_commands([
     unittest,
     jackpot,
+    webserver
 ])
 
 _argParser = ArgParser()
@@ -19422,7 +19424,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.251.2")  # GR-21276: provides-with directive must use fully-qualified non-binary name
+version = VersionSpec("5.252.0")  # GR-21254
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

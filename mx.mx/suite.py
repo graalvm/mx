@@ -521,6 +521,13 @@ suite = {
         "JOPTSIMPLE_4_6",
       ],
     },
+
+    "com.oracle.mxtool.webserver" : {
+      "subDir" : "java",
+      "sourceDirs" : ["src"],
+      "javaCompliance" : "1.8+",
+      "checkstyle" : "com.oracle.mxtool.junit",
+    },
    },
 
   "distributions" : {
