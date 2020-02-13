@@ -777,7 +777,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                                         assert '/' not in service
                                         with open(join(servicesDir, servicePathName)) as fp:
                                             serviceContent = fp.read()
-                                        provides.setdefault(service, set()).update(serviceContent.splitlines())
+                                        provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in serviceContent.splitlines())
                                         # Service types defined in the module are assumed to be used by the module
                                         serviceClassfile = service.replace('.', '/') + '.class'
                                         if exists(join(dest_dir, serviceClassfile)):
