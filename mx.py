@@ -12527,7 +12527,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             for t in joiners:
                 t.join(10)
         if isinstance(stdin, str):
-            p.stdin.write(stdin)
+            p.stdin.write(_encode(stdin))
             p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
