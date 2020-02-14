@@ -89,6 +89,23 @@ nocache = {
     ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
   ],
 },
+build_graalvm_ce_linux = {
+  packages+: {
+    git: '>=1.8.3',
+    gcc: '==4.9.2',
+    make: '>=3.83',
+    binutils: '==2.23.2',
+  },
+  downloads+: {
+    JAVA_HOME: jdks.openjdk8,
+  },
+  run: [
+    ['./mx', 'sclone', '--kind', 'git', '--source', 'https://github.com/oracle/graal.git', '--dest', '../graal'],
+    ['./mx', '-p', '../graal/vm', '--env', 'ce', 'build'],
+  ],
+  targets: ['gate'],
+  timelimit: '20:00',
+},
 python2 = {
   environment+: {
     MX_PYTHON_VERSION: "2",
@@ -105,7 +122,7 @@ python3 = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: jdks['labsjdk-ee-11'],
-  overlay: '880178a26b561fec09499eb7ba6978f9ecb87148',
+  overlay: '1f8eb0077242205d7e14fc4878493c701c6b62e4',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
@@ -116,6 +133,8 @@ python3 = {
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
     downstream_truffleruby +           {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle"},
     downstream_truffleruby + nocache + {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle-nocache"},
+    build_graalvm_ce_linux +           {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
+    build_graalvm_ce_linux +           {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,
 
     {
       capabilities: ['linux', 'amd64'], targets: ['gate'], name: "gate-version-update-check",
