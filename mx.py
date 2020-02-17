@@ -12527,7 +12527,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             for t in joiners:
                 t.join(10)
         if isinstance(stdin, str):
-            p.stdin.write(stdin)
+            p.stdin.write(_encode(stdin))
             p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
@@ -19424,7 +19424,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.252.1")  # GR-7292
+version = VersionSpec("5.252.2")  # GR-21299
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
