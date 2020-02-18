@@ -577,7 +577,7 @@ class CSVBaseRule(BaseRule):
         l = []
         files = self.getCSVFiles(text)
         for filename in files:
-            with open(self._prepend_working_dir(filename), 'rb') as csvfile:
+            with open(self._prepend_working_dir(filename), 'r') as csvfile:
                 csvReader = csv.DictReader(csvfile, fieldnames=self.colnames, **self.kwargs)
                 l = l + [r for r in (self.filter_fn(x) for x in csvReader) if r]
         return l
