@@ -14381,7 +14381,7 @@ def unstrip(args, **run_java_kwargs):
                     inputfiles.append(temp_file)
                 else:
                     inputfiles.append(arg)
-        with tempfile.NamedTemporaryFile() as catmapfile:
+        with tempfile.NamedTemporaryFile(mode='w') as catmapfile:
             _merge_file_contents(mapfiles, catmapfile)
             run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
     finally:
@@ -19424,7 +19424,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.252.3")  # GR-21308
+version = VersionSpec("5.252.4")  # GR-21456
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
