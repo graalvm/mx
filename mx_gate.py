@@ -563,7 +563,7 @@ def _run_gate(cleanArgs, args, tasks):
         if t:
             mx.command_function('verifylibraryurls')([])
 
-    jacoco_exec = JACOCO_EXEC
+    jacoco_exec = get_jacoco_dest_file()
     if exists(jacoco_exec):
         os.unlink(jacoco_exec)
 
@@ -599,7 +599,7 @@ def checkheaders(args):
     return 0
 
 
-JACOCO_EXEC = 'jacoco.exec'
+JACOCO_EXEC = None
 
 _jacoco = 'off'
 
@@ -658,6 +658,9 @@ def _jacoco_excludes_includes():
     excludes += [package + '.*' for package in baseExcludes]
     return excludes, includes
 
+def get_jacoco_dest_file():
+    return JACOCO_EXEC or mx.get_opts().jacoco_dest_file
+
 def get_jacoco_agent_path(resolve):
     return mx.library('JACOCOAGENT_0.8.4', True).get_path(resolve)
 
@@ -673,7 +676,7 @@ def get_jacoco_agent_args():
                         'inclbootstrapclasses' : 'true',
                         'includes' : ':'.join(includes),
                         'excludes' : ':'.join(excludes),
-                        'destfile' : JACOCO_EXEC,
+                        'destfile' : get_jacoco_dest_file(),
         }
         return ['-javaagent:' + get_jacoco_agent_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
     return None
@@ -716,7 +719,7 @@ def _jacocoreport(args):
                 includedprojects.append(p.name)
 
     def _run_reporter(extra_args=None):
-        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', JACOCO_EXEC, '--out',
+        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', get_jacoco_dest_file(), '--out',
                      args.output_directory, '--format', args.format] +
                     (extra_args or []) +
                     sorted(includedirs),
@@ -814,7 +817,7 @@ def coverage_upload(args):
                     sources.zf.add(dep.source_gen_dir(), dep.name)
         mx.walk_deps(mx.projects(), visit=_visit_deps)
 
-    files = [JACOCO_EXEC, 'coverage', coverage_sources, coverage_binaries]
+    files = [get_jacoco_dest_file(), 'coverage', coverage_sources, coverage_binaries]
     print("Syncing {} to {}:{}".format(" ".join(files), remote_host, upload_dir))
     mx.run([
         'bash',
@@ -1018,7 +1021,7 @@ def sonarqube_upload(args):
 
     javaCompliance = max([p.javaCompliance for p in includes]) if includes else mx.JavaCompliance('1.7')
 
-    jacoco_exec = JACOCO_EXEC
+    jacoco_exec = get_jacoco_dest_file()
     if not os.path.exists(jacoco_exec) and not args.skip_coverage:
         mx.abort('No JaCoCo report file found: ' + jacoco_exec)
 
