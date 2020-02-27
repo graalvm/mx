@@ -66,7 +66,7 @@ import json
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
@@ -12566,6 +12566,26 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
 
     return retcode
 
+@suite_context_free
+def quiet_run(args):
+    """run a command in a subprocess, redirect stdout and stderr to a file, and print it in case of failure"""
+    parser = ArgumentParser(prog='mx quiet-run')
+    parser.add_argument('output_file', metavar='FILE', action='store', help='file to redirect the output to')
+    parser.add_argument('cmd', metavar='CMD', nargs=PARSER, help='command to be executed')
+    parsed_args = parser.parse_args(args)
+
+    with open(parsed_args.output_file, 'w') as out:
+        out.write('$ {}\n'.format(' '.join(pipes.quote(c) for c in parsed_args.cmd)))
+        out.flush()
+        retcode = run(parsed_args.cmd, nonZeroIsFatal=False, out=out, err=out)
+
+    if retcode:
+        with open(parsed_args.output_file, 'r') as out:
+            print("From '{}':".format(out.name))
+            shutil.copyfileobj(out, sys.stdout)
+
+    return retcode
+
 def cmd_suffix(name):
     """
     Gets the platform specific suffix for a cmd file
@@ -19139,6 +19159,7 @@ update_commands("mx", {
     'projects': [show_projects, ''],
     'jar-distributions': [show_jar_distributions, ''],
     'pylint': [pylint, ''],
+    'quiet-run': [quiet_run, ''],
     'sbookmarkimports': [sbookmarkimports, '[options]'],
     'scheckimports': [scheckimports, '[options]'],
     'sclone': [sclone, '[options]'],
@@ -19425,7 +19446,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.253.0")  # GR-21511
+version = VersionSpec("5.254.0")  # GR-21550
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
