@@ -164,6 +164,7 @@ def checkout_downstream(args):
     parser = ArgumentParser(prog='mx checkout-downstream', description='Checkout a revision of the downstream suite that imports the currently checked-out version of the upstream suite')
     parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
     parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
+    parser.add_argument('--no-fetch', action='store_true', help='do not fetch remote content for the downstream repository')
     args = parser.parse_args(args)
 
     def get_suite(name):
@@ -202,33 +203,45 @@ def checkout_downstream(args):
                 return None
         return output
 
-    mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
-    git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
+    if not args.no_fetch:
+        mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
+        git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
     # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
     upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
     upstream_commit = run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
 
-    upstream_branch = run_git_cmd(upstream_suite.vc_dir, ['rev-parse', '--abbrev-ref', 'HEAD'])
-    if upstream_branch == 'HEAD':
-        upstream_branch = 'master'
-    mx.log("The active branch of the upstream repository is '{}'".format(upstream_branch))
+    # Print the list of branches that contain the upstream commit
+    upstream_branches_out = run_git_cmd(upstream_suite.vc_dir, ['branch', '-a', '--contains', upstream_commit])  # old git versions do not support `--format`
+    upstream_branches = []
+    for ub in upstream_branches_out.split('\n'):
+        ub = re.sub(r'^\*', '', ub).lstrip()
+        ub = re.sub('^remotes/origin/', '', ub)
+        if not re.match(r'\(HEAD detached at [a-z0-9]+\)$', ub):
+            upstream_branches.append(ub)
 
-    rev_parse_output = run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
-    if rev_parse_output is None:
-        mx.log("The downstream repository does not contain a branch named '{}'. Defaulting to 'master'".format(upstream_branch))
-        downstream_branch = 'master'
-    else:
-        mx.log("The downstream repository contains a branch named '{}'".format(upstream_branch))
-        downstream_branch = upstream_branch
+    mx.log("The most recent merge perfomed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branches)))
 
-    mx.log("Searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
-    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
-    downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
-    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
-    if downstream_commit is None:
-        raise mx.abort("Cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
-    downstream_commit = downstream_commit.split('\n')[0]
+    for upstream_branch in upstream_branches:
+        mx.log("Analyzing branch '{}':".format(upstream_branch))
+        rev_parse_output = run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
+        if rev_parse_output is None:
+            mx.log(" - the downstream repository does not contain a branch named '{}'".format(upstream_branch))
+            continue
+        else:
+            mx.log(" - the downstream repository contains a branch named '{}'".format(upstream_branch))
+            downstream_branch = upstream_branch
 
-    mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
-    git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
+        mx.log(" - searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+        # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
+        downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+        downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
+        if downstream_commit is None:
+            mx.log(" - cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+            continue
+        else:
+            downstream_commit = downstream_commit.split('\n')[0]
+            mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
+            git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
+            return 0
+    raise mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))

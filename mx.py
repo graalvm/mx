@@ -4564,7 +4564,7 @@ class NoOpTask(Task):
         pass
 
 
-class TaskSequence(Task):
+class TaskSequence(Task):  #pylint: disable=R0921
     """A Task that executes a sequence of subtasks."""
 
     def __init__(self, subject, args):
@@ -19446,7 +19446,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.254.0")  # GR-21550
+version = VersionSpec("5.254.1")  # GR-21576
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
