@@ -12,8 +12,8 @@ gate = java + {
     "pip:pylint": "==1.9.3",
   },
   downloads+: {
-    JDT: {name: 'ecj', version: "4.5.1", platformspecific: false},
-    ECLIPSE: {name: 'eclipse', version: "4.5.2", platformspecific: true},
+    JDT: {name: 'ecj', version: "4.14.0", platformspecific: false},
+    ECLIPSE: {name: 'eclipse', version: "4.14.0", platformspecific: true},
   },
   environment+: {
     # Required to keep pylint happy on Darwin
