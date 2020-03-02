@@ -164,6 +164,7 @@ def checkout_downstream(args):
     parser = ArgumentParser(prog='mx checkout-downstream', description='Checkout a revision of the downstream suite that imports the currently checked-out version of the upstream suite')
     parser.add_argument('upstream', action='store', help='the name of the upstream suite (e.g., compiler)')
     parser.add_argument('downstream', action='store', help='the name of the downstream suite (e.g., graal-enterprise)')
+    parser.add_argument('--no-fetch', action='store_true', help='do not fetch remote content for the upstream and downstream repositories')
     args = parser.parse_args(args)
 
     def get_suite(name):
@@ -187,48 +188,91 @@ def checkout_downstream(args):
         if not git.is_this_vc(suite.vc_dir):
             raise mx.abort("Suite '{}' is not part of a Git repo.".format(suite.name))
 
-    def run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
-        """
-        :type vc_dir: str
-        :type cmd: list[str]
-        :type regex: str | None
-        :rtype: str
-        """
-        output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
-        if regex is not None and re.match(regex, output, re.MULTILINE) is None:
-            if abortOnError:
-                raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
-            else:
-                return None
-        return output
-
-    mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
-    git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
+    if not args.no_fetch:
+        mx.log("Fetching remote content from '{}'".format(git.default_pull(downstream_suite.vc_dir)))
+        git.pull(downstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
     # Print the revision (`--pretty=%H`) of the first (`--max-count=1`) merge commit (`--merges`) in the upstream repository that contains `PullRequest: ` in the commit message (`--grep=...`)
     upstream_commit_cmd = ['log', '--pretty=%H', '--grep=PullRequest: ', '--merges', '--max-count=1']
-    upstream_commit = run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
+    upstream_commit = _run_git_cmd(upstream_suite.vc_dir, upstream_commit_cmd, regex=r'[a-f0-9]{40}$')
 
-    upstream_branch = run_git_cmd(upstream_suite.vc_dir, ['rev-parse', '--abbrev-ref', 'HEAD'])
-    if upstream_branch == 'HEAD':
-        upstream_branch = 'master'
-    mx.log("The active branch of the upstream repository is '{}'".format(upstream_branch))
+    # We now need to find a revision in `downstream_suite` that imports `upstream_commit` of `upstream_suite`.
+    # For doing this, we grep the log of a set of branches in `downstream_suite`, checking out the revision of the first branch that matches.
+    # As a consequence, the order in which we check branches in `downstream_suite` is fundamental:
+    # 1. we check if the `${DOWNSTREAM_BRANCH}` env var is set. If so, we look for branches named `${DOWNSTREAM_BRANCH}` and `${DOWNSTREAM_BRANCH}_gate`
+    # 2. we (optionally) fetch `upstream_suite` and ask git which branches of `upstream_suite` contain `upstream_commit`
 
-    rev_parse_output = run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
-    if rev_parse_output is None:
-        mx.log("The downstream repository does not contain a branch named '{}'. Defaulting to 'master'".format(upstream_branch))
-        downstream_branch = 'master'
-    else:
-        mx.log("The downstream repository contains a branch named '{}'".format(upstream_branch))
-        downstream_branch = upstream_branch
+    ci_upstream_branch_candidates = []
+    ci_downstream_branch = mx.get_env('DOWNSTREAM_BRANCH', None)
+    if ci_downstream_branch is not None:
+        ci_upstream_branch_candidates.extend([ci_downstream_branch, ci_downstream_branch + '_gate'])
+        mx.log("The '$DOWNSTREAM_BRANCH' env var is set. Adding '{}' to the list of upstream branch candidates.".format(ci_upstream_branch_candidates))
 
-    mx.log("Searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
-    # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
-    downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
-    downstream_commit = run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
-    if downstream_commit is None:
-        raise mx.abort("Cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
-    downstream_commit = downstream_commit.split('\n')[0]
+    if not _checkout_upstream_revision(upstream_commit, ci_upstream_branch_candidates, upstream_suite, downstream_suite):
+        if not args.no_fetch:
+            mx.log("Fetching remote content from '{}'".format(git.default_pull(upstream_suite.vc_dir)))
+            git.pull(upstream_suite.vc_dir, rev=None, update=False, abortOnError=True)
 
-    mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
-    git.update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
+        # Print the list of branches that contain the upstream commit
+        upstream_branches_out = _run_git_cmd(upstream_suite.vc_dir, ['branch', '-a', '--contains', upstream_commit])  # old git versions do not support `--format`
+        upstream_branch_candidates = []
+        for ub in upstream_branches_out.split('\n'):
+            ub = re.sub(r'^\*', '', ub).lstrip()
+            ub = re.sub('^remotes/origin/', '', ub)
+            if not re.match(r'\(HEAD detached at [a-z0-9]+\)$', ub):
+                upstream_branch_candidates.append(ub)
+
+        mx.log("The most recent merge perfomed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
+        if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
+            raise mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+
+
+def _run_git_cmd(vc_dir, cmd, regex=None, abortOnError=True):
+    """
+    :type vc_dir: str
+    :type cmd: list[str]
+    :type regex: str | None
+    :type abortOnError: bool
+    :rtype: str
+    """
+    git = mx.GitConfig()
+    output = (git.git_command(vc_dir, cmd, abortOnError=abortOnError) or '').strip()
+    if regex is not None and re.match(regex, output, re.MULTILINE) is None:
+        if abortOnError:
+            raise mx.abort("Unexpected output running command '{cmd}'. Expected a match for '{regex}', got:\n{output}".format(cmd=' '.join(map(pipes.quote, ['git', '-C', vc_dir, '--no-pager'] + cmd)), regex=regex, output=output))
+        else:
+            return None
+    return output
+
+
+def _checkout_upstream_revision(upstream_commit, candidate_upstream_branches, upstream_suite, downstream_suite):
+    """
+    :type upstream_commit: str
+    :type candidate_upstream_branches: str
+    :type upstream_suite: str
+    :type downstream_suite: str
+    :rtype: bool
+    """
+    for upstream_branch in candidate_upstream_branches:
+        mx.log("Analyzing branch '{}':".format(upstream_branch))
+        rev_parse_output = _run_git_cmd(downstream_suite.vc_dir, ['rev-parse', '--verify', 'origin/{}'.format(upstream_branch)], regex=r'[a-f0-9]{40}$', abortOnError=False)
+        if rev_parse_output is None:
+            mx.log(" - the downstream repository does not contain a branch named '{}'".format(upstream_branch))
+            continue
+        else:
+            mx.log(" - the downstream repository contains a branch named '{}'".format(upstream_branch))
+            downstream_branch = upstream_branch
+
+        mx.log(" - searching 'origin/{}' of the downstream repo in '{}' for a commit that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+        # Print the oldest (`--reverse`) revision (`--pretty=%H`) of a commit in the matching branch of the repository of the downstream suite that contains `PullRequest: ` in the commit message (`--grep=...` and `-m`) and mentions the upstream commit (`-S`)
+        downstream_commit_cmd = ['log', 'origin/{}'.format(downstream_branch), '--pretty=%H', '--grep=PullRequest: ', '--reverse', '-m', '-S', upstream_commit, '--', downstream_suite.suite_py()]
+        downstream_commit = _run_git_cmd(downstream_suite.vc_dir, downstream_commit_cmd, regex=r'[a-f0-9]{40}(\n[a-f0-9]{40})?$', abortOnError=False)
+        if downstream_commit is None:
+            mx.log(" - cannot find a revision in branch 'origin/{}' of '{}' that imports revision '{}' of '{}'".format(downstream_branch, downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
+            continue
+        else:
+            downstream_commit = downstream_commit.split('\n')[0]
+            mx.log("Checking out revision '{}' of downstream suite '{}', which imports revision '{}' of '{}'".format(downstream_commit, downstream_suite.name, upstream_commit, upstream_suite.name))
+            mx.GitConfig().update(downstream_suite.vc_dir, downstream_commit, mayPull=False, clean=False, abortOnError=True)
+            return True
+    return False
