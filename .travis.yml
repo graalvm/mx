@@ -5,9 +5,9 @@ python:
 addons:
   apt:
     packages:
-      - oracle-java8-installer
+      - openjdk-8-jdk
 install:
-  - pip install pylint==1.9.3
+  - pip install pylint==$(python -c 'import sys; print("1.9.3" if sys.version_info[0] == 2 else "2.4.4")')
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz
