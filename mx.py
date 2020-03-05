@@ -526,6 +526,7 @@ environment variables:
         self.add_argument('--version', action='store_true', help='print version and exit')
         self.add_argument('--mx-tests', action='store_true', help='load mxtests suite (mx debugging)')
         self.add_argument('--jdk', action='store', help='JDK to use for the "java" command', metavar='<tag:compliance>')
+        self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
@@ -1592,7 +1593,7 @@ class Suite(object):
         # This can later be relaxed to simply remove the extra modules
         # from the sys.modules name space if necessary.
         extraModules = frozenset(sys.modules.keys()) - snapshot
-        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join([m for m in extraModules])
+        assert len(extraModules) == 0, 'loading ' + modulePath + ' caused extra modules to be loaded: ' + ', '.join(extraModules)
 
         # revert the Python path
         del sys.path[0]
@@ -3670,7 +3671,7 @@ def cpu_count():
         return cpus
 
 def _is_continuous_integration():
-    return get_env("CONTINUOUS_INTEGRATION") != None
+    return get_env("CONTINUOUS_INTEGRATION") is not None
 
 
 def is_darwin():
@@ -4610,7 +4611,6 @@ class Buildable(object):
         with the newest modification time or None if no build output file exists.
         """
         nyi('newestOutput', self)
-
 
 class BuildTask(Buildable, Task):
     """A Task used to build a dependency."""
@@ -5922,7 +5922,7 @@ class LayoutDistribution(AbstractDistribution):
         d = dependency(source['dependency'], context=self)
         try:
             if source['path'] is None:
-                _, arcname = next(d.getArchivableResults(single=True))
+                _, arcname = next(d.getArchivableResults(single=True)) # pylint: disable=stop-iteration-return
                 yield arcname
             else:
                 for _, _arcname in d.getArchivableResults(single=False):
@@ -7693,7 +7693,7 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         if is_needed:
             return True, reason
 
-        output = self.newestOutput()
+        output = self.newestOutput() # pylint: disable=assignment-from-no-return
         if output is None:
             return True, None
 
@@ -12161,8 +12161,7 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
         while successful < repetitions:
             if run_with_heap(avg, args, timeout=maxTime):
                 break
-            else:
-                successful += 1
+            successful += 1
 
         if successful == repetitions:
             lastSuccess = avg
@@ -12560,8 +12559,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         if _opts.verbose:
             if _opts.very_verbose:
                 raise subprocess.CalledProcessError(retcode, ' '.join(args))
-            else:
-                log('[exit code: ' + str(retcode) + ']')
+            log('[exit code: ' + str(retcode) + ']')
         abort(retcode)
 
     return retcode
@@ -14018,6 +14016,10 @@ pylint_ver_map = {
     (2, 2): {
         'rcfile': '.pylintrc22',
         'additional_options': ['--score=n']
+    },
+    (2, 4): {
+        'rcfile': '.pylintrc24',
+        'additional_options': ['--score=n']
     }
 }
 
@@ -14289,7 +14291,7 @@ class Archiver(SafeFileCreation):
     def _add_provenance(self, archive_name, provenance):
         if self._provenance_map is None:
             return
-        if archive_name in self._provenance_map:
+        if archive_name in self._provenance_map: # pylint: disable=unsupported-membership-test
             msg = "Duplicate archive entry: '{}'".format(archive_name)
             old_provenance = self._provenance_map[archive_name]
             if old_provenance:
@@ -14297,7 +14299,7 @@ class Archiver(SafeFileCreation):
             if provenance:
                 msg += " added again by " + provenance
             abort_or_warn(msg, self.duplicates_action == 'abort', context=self.context)
-        self._provenance_map[archive_name] = provenance
+        self._provenance_map[archive_name] = provenance # pylint: disable=unsupported-assignment-operation
 
     def __enter__(self):
         if self.path:
@@ -15185,12 +15187,12 @@ def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
         return False
 
     if ide == 'eclipse':
-        for proj in [p for p in suite.projects]:
+        for proj in suite.projects:
             if not proj.eclipse_config_up_to_date(configZip):
                 return False
 
     if ide == 'netbeans':
-        for proj in [p for p in suite.projects]:
+        for proj in suite.projects:
             if not proj.netbeans_config_up_to_date(configZip):
                 return False
 
@@ -17731,8 +17733,7 @@ def javadoc(args, parser=None, docDir='javadoc', includeDeps=True, stdDoclet=Tru
             if not pkgs:
                 if quietForNoPackages:
                     continue
-                else:
-                    abort('No packages to generate javadoc for!')
+                abort('No packages to generate javadoc for!')
 
             # windowTitle onloy applies to the standard doclet processor
             windowTitle = []
@@ -18437,8 +18438,7 @@ def select_items(items, descriptions=None, allowMultiple=True):
                 if n not in range(1, len(items) + 1):
                     log('Invalid selection: ' + str(n))
                     continue
-                else:
-                    indexes.append(n - 1)
+                indexes.append(n - 1)
             if allowMultiple:
                 return [items[i] for i in indexes]
             if len(indexes) == 1:
@@ -19446,7 +19446,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.254.3")  # GR-21593
+version = VersionSpec("5.254.4")  # GR-21678
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

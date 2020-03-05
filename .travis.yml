@@ -1,13 +1,12 @@
 language: python
 python:
-  - "2.7"
   - "3.6"
 addons:
   apt:
     packages:
-      - oracle-java8-installer
+      - openjdk-8-jdk
 install:
-  - pip install pylint==1.9.3
+  - pip install pylint==2.4
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz

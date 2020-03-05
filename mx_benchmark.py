@@ -1045,8 +1045,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 if value == 'none':
                     mx.warn("VM {}:{} ({}) tried overwriting {}='{original}' with '{}', keeping '{original}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, value, original=dims[key]))
                     continue
-                else:
-                    mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
+                mx.warn("VM {}:{} ({}) is overwriting {}='{}' with '{}'".format(vm.name(), vm.config_name(), vm.__class__.__name__, key, dims[key], value))
             dims[key] = value
         return ret_code, out, dims
 

@@ -815,7 +815,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     javac_args.append('--system=none')
                     if requires:
                         javac_args.append('--limit-modules=' + ','.join(requires.keys()))
-                    jdk_jmods = join(jdk.home, 'jmods')
+                    jdk_jmods = (mx.get_opts().jmods_dir or join(jdk.home, 'jmods'))
                     if not exists(jdk_jmods):
                         mx.abort('Missing directory containing JMOD files: ' + jdk_jmods)
                     modulepath_jars.extend((join(jdk_jmods, m) for m in os.listdir(jdk_jmods) if m.endswith('.jmod')))
