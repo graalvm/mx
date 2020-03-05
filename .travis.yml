@@ -6,7 +6,7 @@ addons:
     packages:
       - openjdk-8-jdk
 install:
-  - pip install pylint==2.2
+  - pip install pylint==2.4
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz
