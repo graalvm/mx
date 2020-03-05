@@ -1,13 +1,12 @@
 language: python
 python:
-  - "2.7"
   - "3.6"
 addons:
   apt:
     packages:
       - openjdk-8-jdk
 install:
-  - pip install pylint==$(python -c 'import sys; print("1.9.3" if sys.version_info[0] == 2 else "2.4.4")')
+  - pip install pylint==2.2
   - pylint --version
   - |
       export ECLIPSE_TAR=$TRAVIS_BUILD_DIR/../eclipse.tar.gz
