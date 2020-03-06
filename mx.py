@@ -17158,6 +17158,31 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         if java_modules:
+            # Write codestyle settings
+            ensure_dir_exists(join(ideaProjectDirectory, 'codeStyles'))
+
+            codeStyleConfigXml = XMLDoc()
+            codeStyleConfigXml.open('component', attributes={'name': 'ProjectCodeStyleConfiguration'})
+            codeStyleConfigXml.open('state')
+            codeStyleConfigXml.element('option', attributes={'name': 'USE_PER_PROJECT_SETTINGS', 'value': 'true'})
+            codeStyleConfigXml.close('state')
+            codeStyleConfigXml.close('component')
+            codeStyleConfigFile = join(ideaProjectDirectory, 'codeStyles', 'codeStyleConfig.xml')
+            update_file(codeStyleConfigFile, codeStyleConfigXml.xml(indent='  ', newl='\n'))
+
+            codeStyleProjectXml = XMLDoc()
+            codeStyleProjectXml.open('component', attributes={'name': 'ProjectCodeStyleConfiguration'})
+            codeStyleProjectXml.open('code_scheme', attributes={'name': 'Project', 'version': '173'})
+            codeStyleProjectXml.open('JavaCodeStyleSettings')
+            # We cannot entirely disable wildcards import, but we can set the threshold to an insane number.
+            codeStyleProjectXml.element('option', attributes={'name': 'CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
+            codeStyleProjectXml.element('option', attributes={'name': 'CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
+            codeStyleProjectXml.close('JavaCodeStyleSettings')
+            codeStyleProjectXml.close('code_scheme')
+            codeStyleProjectXml.close('component')
+            codeStyleProjectFile = join(ideaProjectDirectory, 'codeStyles', 'Project.xml')
+            update_file(codeStyleProjectFile, codeStyleProjectXml.xml(indent='  ', newl='\n'))
+
             # Write checkstyle-idea.xml for the CheckStyle-IDEA
             checkstyleXml = XMLDoc()
             checkstyleXml.open('project', attributes={'version': '4'})
@@ -19446,7 +19471,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.254.4")  # GR-21678
+version = VersionSpec("5.254.5")  # 9iR/qDyJTKiN7236fDbR8A==
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
