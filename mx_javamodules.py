@@ -97,6 +97,12 @@ class JavaModuleDescriptor(mx.Comparable):
         assert isinstance(other, JavaModuleDescriptor)
         return (self.name > other.name) - (self.name < other.name)
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return isinstance(other, JavaModuleDescriptor) and self.name == other.name
+
     def get_jmod_path(self, respect_stripping=True, alt_module_info_name=None):
         """
         Gets the path to the .jmod file corresponding to this module descriptor.
