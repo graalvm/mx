@@ -30,7 +30,7 @@ from __future__ import print_function
 import os
 import pipes
 import re
-from os.path import join, exists, isabs, basename
+from os.path import join, exists, isabs, basename, dirname
 from argparse import ArgumentParser
 
 import mx
@@ -105,23 +105,30 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                     else:
                         suites_in_repo.append(matches[0])
 
+    vc_metadir = mx._safe_path(mx.VC.get_vc(suite.vc_dir).metadir())
+    blacklist = {
+        suite.vc_dir: [join(suite.vc_dir, vc_metadir)]
+    }
+
     for suite_in_repo in suites_in_repo:
-        if suite_in_repo.vc_dir and suite_in_repo.dir != suite_in_repo.vc_dir:
-            mirror = join(workDir, basename(suite_in_repo.vc_dir), suite_in_repo.name)
-        else:
-            mirror = join(workDir, suite_in_repo.name)
-        if exists(mirror):
-            mx.rmtree(mirror)
-
         output_root = mx._safe_path(suite_in_repo.get_output_root())
+        blacklist.setdefault(dirname(output_root), []).append(output_root)
 
-        def ignore_output_root(d, names):
-            mx.log('Copying ' + d)
-            if d == os.path.dirname(output_root):
-                mx.log('Omitting ' + output_root)
-                return [os.path.basename(output_root)]
-            return []
-        mx.copytree(suite_in_repo.dir, mirror, ignore=ignore_output_root, symlinks=True)
+    def omitted_dirs(d, names):
+        mx.log('Copying ' + d)
+        to_omit = []
+        for blacklisted_dir in blacklist.get(d, []):
+            mx.log('Omitting ' + blacklisted_dir)
+            to_omit.append(basename(blacklisted_dir))
+        return to_omit
+
+    if suite.vc_dir and suite.dir != suite.vc_dir:
+        mirror = join(workDir, basename(suite.vc_dir), suite.name)
+    else:
+        mirror = join(workDir, suite.name)
+    if exists(mirror):
+        mx.rmtree(mirror)
+    mx.copytree(suite.vc_dir, mirror, ignore=omitted_dirs, symlinks=True)
 
     targetDir = None
     for repoUrl in repoUrls:
