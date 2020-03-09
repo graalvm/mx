@@ -123,7 +123,7 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
         return to_omit
 
     if suite.vc_dir and suite.dir != suite.vc_dir:
-        mirror = join(workDir, basename(suite.vc_dir), suite.name)
+        mirror = join(workDir, basename(suite.vc_dir))
     else:
         mirror = join(workDir, suite.name)
     if exists(mirror):
