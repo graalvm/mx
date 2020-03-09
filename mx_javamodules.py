@@ -45,7 +45,7 @@ if sys.version_info[0] < 3:
 else:
     from io import StringIO
 
-class JavaModuleDescriptor(object):
+class JavaModuleDescriptor(mx.Comparable):
     """
     Describes a Java module. This class closely mirrors ``java.lang.module.ModuleDescriptor``.
 
