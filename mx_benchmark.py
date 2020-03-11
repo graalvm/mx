@@ -952,7 +952,7 @@ class AveragingBenchmarkMixin(object):
         """
         return min(20, iterations, max(6, int(iterations * 0.4)))
 
-    def addAverageAcrossLatestResults(self, results, metricName = "time"):
+    def addAverageAcrossLatestResults(self, results, metricName="time"):
         """
         Postprocess results to compute the resulting time by taking the average of last N runs,
         where N is obtained using getExtraIterationCount.
