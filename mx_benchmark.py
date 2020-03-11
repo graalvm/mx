@@ -938,7 +938,7 @@ class AveragingBenchmarkMixin(object):
     Note that this mixin expects that the main benchmark class produces a sequence of
     datapoints that have the metric.name dimension set to "warmup".
     To add the average, this mixin appends a new datapoint whose metric.name dimension
-    is set to "time".
+    is set to "time" by default.
 
     Benchmarks that mix in this class must manually invoke methods for computing extra
     iteration counts and averaging, usually in their run method.
@@ -949,9 +949,9 @@ class AveragingBenchmarkMixin(object):
         # iterations needed by the benchmark to compute a more stable average result.
         return min(20, iterations, max(6, int(iterations * 0.4)))
 
-    def addAverageAcrossLatestResults(self, results):
         # Postprocess results to compute the resulting time by taking the average of last N runs,
         # where N is 20% of the maximum number of iterations, at least 5 and at most 10.
+    def addAverageAcrossLatestResults(self, results, metricName = "time"):
         benchmarkNames = {r["benchmark"] for r in results}
         for benchmark in benchmarkNames:
             warmupResults = [result for result in results if result["metric.name"] == "warmup" and result["benchmark"] == benchmark]
@@ -974,7 +974,7 @@ class AveragingBenchmarkMixin(object):
 
                 averageResult = min(warmupResults, key=lambda result: result["metric.iteration"]).copy()
                 averageResult["metric.value"] = sum(scoresToAverage) / len(scoresToAverage)
-                averageResult["metric.name"] = "time"
+                averageResult["metric.name"] = metricName
                 averageResult["metric.average-over"] = resultIterations
                 results.append(averageResult)
 
