@@ -460,6 +460,51 @@ def _run_mx_suite_tests():
     """
     mx_javacompliance._test()
 
+    if mx.is_windows():
+        def win(s, min_length=0):
+            extra = min_length - len(s)
+            if extra > 0:
+                padding = 'X' * extra
+                s += padding
+            return s.replace('/', '\\')
+
+        def _test(value, expect, open_fp):
+            actual = mx._safe_path(value)
+            if actual != expect:
+                nl = os.linesep
+                assert False, 'Failed safe_path test{} input: {} (len={}){}expect: {} (len={}){}actual: {} (len={})'.format(nl,
+                    value, len(value), nl,
+                    expect, len(expect), nl,
+                    actual, len(actual))
+            if open_fp and value != open_fp.name:
+                try:
+                    with mx.open(value, 'w') as fp:
+                        fp.write('blah')
+                    with mx.open(value, 'r') as fp:
+                        contents = fp.read()
+                        assert contents == 'blah', contents
+                finally:
+                    if os.path.exists(value):
+                        os.unlink(value)
+
+        with tempfile.NamedTemporaryFile(prefix="safe_path_test", mode="w") as fp:
+            cases = {
+                win('C:/Home/mydir') : win('C:/Home/mydir'),
+                win('C:/Home/mydir', 258) : win('C:/Home/mydir', 258),
+                win('C:/Home/mydir', 259) : win('//?/') + win('C:/Home/mydir', 259),
+                win('C:/Home/mydir', 260) : win('//?/') + win('C:/Home/mydir', 260),
+                win('//Mac/Home/mydir') : win('//Mac/Home/mydir'),
+                win('//Mac/Home/mydir', 258) : win('//Mac/Home/mydir', 258),
+                win('//Mac/Home/mydir', 259) : win('//?/UNC/') + win('Mac/Home/mydir', 257),
+                win('//Mac/Home/mydir', 260) : win('//?/UNC/') + win('Mac/Home/mydir', 258),
+                win(fp.name) : win(fp.name),
+                win(fp.name, 258) : win(fp.name, 258),
+                win(fp.name, 259) : win('//?/') + win(fp.name, 259),
+                win(fp.name, 260) : win('//?/') + win(fp.name, 260),
+            }
+            for value, expect in cases.items():
+                _test(value, expect, fp if value.startswith(fp.name) else None)
+
 def _run_gate(cleanArgs, args, tasks):
     global _jacoco
     with Task('Versions', tasks, tags=[Tags.always]) as t:
@@ -479,7 +524,9 @@ def _run_gate(cleanArgs, args, tasks):
                         mx.log(fp.read().strip())
 
     if mx.primary_suite() is mx._mx_suite:
-        _run_mx_suite_tests()
+        with Task('MxTests', tasks, tags=[Tags.always]) as t:
+            if t:
+                _run_mx_suite_tests()
 
     with Task('VerifyMultiReleaseProjects', tasks, tags=[Tags.always]) as t:
         if t:
