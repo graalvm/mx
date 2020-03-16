@@ -324,14 +324,24 @@ def _safe_path(path):
             import traceback
             traceback.print_stack()
         path = normpath(path)
-        if isabs(path):
+        MAX_PATH = 260 # pylint: disable=invalid-name
+        path_len = len(path) + 1 # account for trailing NUL
+        if isabs(path) and path_len >= MAX_PATH:
             if path.startswith('\\\\'):
                 if path[2:].startswith('?\\'):
                     # if it already has a \\?\ don't do the prefix
                     pass
                 else:
-                    # only a UNC path has a double slash prefix
-                    path = '\\\\?\\UNC' + path
+                    # Only a UNC path has a double slash prefix.
+                    # Replace it with `\\?\UNC\'. For example:
+                    #
+                    #   \\Mac\Home\mydir
+                    #
+                    # becomes:
+                    #
+                    #   \\?\UNC\Mac\Home\mydir
+                    #
+                    path = '\\\\?\\UNC' + path[1:]
             else:
                 path = '\\\\?\\' + path
         path = _unicode(path)
@@ -19471,7 +19481,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.254.11")  # GR-21718
+version = VersionSpec("5.254.12")  # GR-21819
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
