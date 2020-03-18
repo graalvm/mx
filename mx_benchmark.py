@@ -1190,6 +1190,7 @@ def _get_default_java_vm(jvm_config, vms):
 
 
 java_vm_registry = VmRegistry("Java", "jvm", _get_default_java_vm)
+js_vm_registry = VmRegistry("JavaScript", "js", known_host_registries=[java_vm_registry])
 
 
 def _get_vm_options_for_config_extraction(run_args):
