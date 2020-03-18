@@ -259,8 +259,12 @@ public class MxJUnitWrapper {
         TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
         MxRunListener mxListener = config.enableTiming ? timings : textListener;
 
+        final boolean failingFast;
         if (config.failFast && config.maxClassFailures == 0) {
+            failingFast = true;
             config.maxClassFailures = 1;
+        } else {
+            failingFast = false;
         }
 
         if (config.color) {
@@ -296,8 +300,8 @@ public class MxJUnitWrapper {
                                 if (failure != lastFailure) {
                                     lastFailure = failure;
                                     ++failureCount;
-                                    if (failureCount == config.maxClassFailures) {
-                                        system.out().printf("Stopping after failures in %s test classes (use --max-failures option to adjust failure limit)%n", config.maxClassFailures);
+                                    if (failureCount == config.maxClassFailures && !failingFast) {
+                                        system.out().printf("Stopping after failures in %s test classes (use --max-class-failures option to adjust failure limit)%n", config.maxClassFailures);
                                     }
                                 }
                             }
