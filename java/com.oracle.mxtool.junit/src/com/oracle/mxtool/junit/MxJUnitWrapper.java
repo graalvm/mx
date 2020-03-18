@@ -75,6 +75,7 @@ public class MxJUnitWrapper {
         public boolean gcAfterTest = false;
         public boolean recordResults = false;
         public int repeatCount = 1;
+        public int maxClassFailures;
     }
 
     private static class RepeatingRunner extends Runner {
@@ -160,8 +161,10 @@ public class MxJUnitWrapper {
                     config.verbose = true;
                     config.veryVerbose = true;
                     config.enableTiming = true;
+                } else if (each.contentEquals("-JUnitMaxClassFailures")) {
+                    config.maxClassFailures = parseIntArg(system, expandedArgs, each, ++i);
                 } else if (each.contentEquals("-JUnitFailFast")) {
-                    config.failFast = true;
+                    config.maxClassFailures = 1;
                 } else if (each.contentEquals("-JUnitEnableTiming")) {
                     config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitColor")) {
@@ -173,16 +176,7 @@ public class MxJUnitWrapper {
                 } else if (each.contentEquals("-JUnitRecordResults")) {
                     config.recordResults = true;
                 } else if (each.contentEquals("-JUnitRepeat")) {
-                    if (i + 1 >= expandedArgs.length) {
-                        system.out().println("Must include argument for -JUnitRepeat");
-                        System.exit(1);
-                    }
-                    try {
-                        config.repeatCount = Integer.parseInt(expandedArgs[++i]);
-                    } catch (NumberFormatException e) {
-                        system.out().println("Expected integer argument for -JUnitRepeat. Found: " + expandedArgs[i]);
-                        System.exit(1);
-                    }
+                    config.repeatCount = parseIntArg(system, expandedArgs, each, ++i);
                 } else {
                     system.out().println("Unknown command line argument: " + each);
                 }
@@ -227,6 +221,20 @@ public class MxJUnitWrapper {
         System.exit(result.wasSuccessful() ? 0 : 1);
     }
 
+    public static int parseIntArg(JUnitSystem system, String[] args, String name, int index) {
+        if (index >= args.length) {
+            system.out().printf("Must include argument for %s%n", name);
+            System.exit(1);
+        }
+        try {
+            return Integer.parseInt(args[index]);
+        } catch (NumberFormatException e) {
+            system.out().printf("Expected integer argument for %s. Found: %s%n", name, args[index]);
+            System.exit(1);
+            throw e;
+        }
+    }
+
     private static PrintStream openFile(JUnitSystem system, String name) {
         File file = new File(name).getAbsoluteFile();
         try {
@@ -251,6 +259,10 @@ public class MxJUnitWrapper {
         TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
         MxRunListener mxListener = config.enableTiming ? timings : textListener;
 
+        if (config.failFast && config.maxClassFailures == 0) {
+            config.maxClassFailures = 1;
+        }
+
         if (config.color) {
             mxListener = new AnsiTerminalDecorator(mxListener);
         }
@@ -270,13 +282,26 @@ public class MxJUnitWrapper {
 
         Request request = mxRequest.getRequest();
         if (mxRequest.methodName == null) {
-            if (config.failFast) {
+            if (config.maxClassFailures > 0) {
                 Runner runner = request.getRunner();
                 if (runner instanceof ParentRunner) {
                     ParentRunner<?> parentRunner = (ParentRunner<?>) runner;
                     parentRunner.setScheduler(new RunnerScheduler() {
+                        int failureCount = 0;
+                        Failure lastFailure;
+
                         public void schedule(Runnable childStatement) {
-                            if (textListener.getLastFailure() == null) {
+                            Failure failure = textListener.getLastFailure();
+                            if (failure != null) {
+                                if (failure != lastFailure) {
+                                    lastFailure = failure;
+                                    ++failureCount;
+                                    if (failureCount == config.maxClassFailures) {
+                                        system.out().printf("Stopping after failures in %s test classes (use --max-failures option to adjust failure limit)%n", config.maxClassFailures);
+                                    }
+                                }
+                            }
+                            if (failureCount < config.maxClassFailures) {
                                 childStatement.run();
                             }
                         }
@@ -289,8 +314,8 @@ public class MxJUnitWrapper {
                 }
             }
         } else {
-            if (config.failFast) {
-                system.out().println("Single method selected - fail fast not supported");
+            if (config.maxClassFailures != 0) {
+                system.out().println("Single method selected - fail fast or max failure limit not supported");
             }
         }
 
