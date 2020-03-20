@@ -18201,11 +18201,11 @@ def sbookmarkimports(args):
         primary_suite().visit_imports(_sbookmark_visitor)
 
 
-def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted):
+def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitted, warn_only):
     """scheckimports visitor for Suite.visit_imports"""
-    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports, ignore_uncommitted)
+    _scheck_imports(s, suite(suite_import.name), suite_import, bookmark_imports, ignore_uncommitted, warn_only)
 
-def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted):
+def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted, warn_only):
     importedVersion = imported_suite.version()
     if imported_suite.isDirty() and not ignore_uncommitted:
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
@@ -18213,26 +18213,30 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
             msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
         abort(msg)
     if importedVersion != suite_import.version and suite_import.version is not None:
-        print('imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion))
-        if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
-            with open(importing_suite.suite_py()) as fp:
-                contents = fp.read()
-            if contents.count(str(suite_import.version)) >= 1:
-                oldVersion = suite_import.version
-                newContents = contents.replace(oldVersion, str(importedVersion))
-                if not update_file(importing_suite.suite_py(), newContents, showDiff=True):
-                    abort("Updating {} failed: update didn't change anything".format(importing_suite.suite_py()))
+        mismatch = 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
+        if warn_only:
+            warn(mismatch)
+        else:
+            print(mismatch)
+            if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
+                with open(importing_suite.suite_py()) as fp:
+                    contents = fp.read()
+                if contents.count(str(suite_import.version)) >= 1:
+                    oldVersion = suite_import.version
+                    newContents = contents.replace(oldVersion, str(importedVersion))
+                    if not update_file(importing_suite.suite_py(), newContents, showDiff=True):
+                        abort("Updating {} failed: update didn't change anything".format(importing_suite.suite_py()))
 
-                # Update the SuiteImport instances of this suite
-                def _update_suite_import(s, si):
-                    if si.version == oldVersion:
-                        si.version = importedVersion
-                importing_suite.visit_imports(_update_suite_import)
+                    # Update the SuiteImport instances of this suite
+                    def _update_suite_import(s, si):
+                        if si.version == oldVersion:
+                            si.version = importedVersion
+                    importing_suite.visit_imports(_update_suite_import)
 
-                if bookmark_imports:
-                    _sbookmark_visitor(importing_suite, suite_import)
-            else:
-                print('Could not find the substring {} in {}'.format(suite_import.version, importing_suite.suite_py()))
+                    if bookmark_imports:
+                        _sbookmark_visitor(importing_suite, suite_import)
+                else:
+                    print('Could not find the substring {} in {}'.format(suite_import.version, importing_suite.suite_py()))
 
 
 @no_suite_loading
@@ -18241,10 +18245,11 @@ def scheckimports(args):
     parser = ArgumentParser(prog='mx scheckimports')
     parser.add_argument('-b', '--bookmark-imports', action='store_true', help="keep the import bookmarks up-to-date when updating the suites.py file")
     parser.add_argument('-i', '--ignore-uncommitted', action='store_true', help="Ignore uncommitted changes in the suite")
+    parser.add_argument('-w', '--warn-only', action='store_true', help="Only warn imports not matching the checked out revision (no modification)")
     parsed_args = parser.parse_args(args)
     # check imports of all suites
     for s in suites():
-        s.visit_imports(_scheck_imports_visitor, bookmark_imports=parsed_args.bookmark_imports, ignore_uncommitted=parsed_args.ignore_uncommitted)
+        s.visit_imports(_scheck_imports_visitor, bookmark_imports=parsed_args.bookmark_imports, ignore_uncommitted=parsed_args.ignore_uncommitted, warn_only=parsed_args.warn_only)
     _suitemodel.verify_imports(suites(), args)
 
 
@@ -19481,7 +19486,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.256.3")  # GR-21939
+version = VersionSpec("5.256.4")  # GR-18688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
