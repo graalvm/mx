@@ -31,9 +31,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.junit.internal.builders.AllDefaultPossibilitiesBuilder;
+import org.junit.internal.runners.ErrorReportingRunner;
 import org.junit.runner.Description;
 import org.junit.runner.Request;
+import org.junit.runner.Runner;
 import org.junit.runner.notification.Failure;
+import org.junit.runners.Suite;
+import org.junit.runners.model.InitializationError;
 
 public final class MxJUnitRequest {
 
@@ -68,11 +73,15 @@ public final class MxJUnitRequest {
         }
     }
 
-    public static class Builder {
+    public static class Builder extends AllDefaultPossibilitiesBuilder {
 
         private final Set<Class<?>> classes = new LinkedHashSet<>();
         private String methodName = null;
         private final List<Failure> missingClasses = new ArrayList<>();
+
+        public Builder() {
+            super(true);
+        }
 
         protected Class<?> resolveClass(String name) throws ClassNotFoundException {
             return Class.forName(name, false, Builder.class.getClassLoader());
@@ -111,10 +120,44 @@ public final class MxJUnitRequest {
             }
         }
 
+        private static List<Runner> filterRunners(List<Runner> runners) {
+            /*
+             * Errors during unit test preparation are deferred by creating an ErrorReportingRunner.
+             * This can mask exceptions that cause other tests to fail which is confusing, so
+             * reorder the runners so that ErrorReportingRunner are visited first.
+             */
+            for (Runner runner : runners) {
+                if (runner instanceof ErrorReportingRunner) {
+                    List<Runner> result = new ArrayList<>(runners);
+                    result.removeIf((x) -> !(x instanceof ErrorReportingRunner));
+                    List<Runner> tail = new ArrayList<>(runners);
+                    tail.removeIf((x) -> x instanceof ErrorReportingRunner);
+                    result.addAll(tail);
+                    return result;
+                }
+            }
+            return runners;
+        }
+
+        @Override
+        public List<Runner> runners(Class<?> parent, List<Class<?>> children) throws InitializationError {
+            return filterRunners(super.runners(parent, children));
+        }
+
+        @Override
+        public List<Runner> runners(Class<?> parent, Class<?>[] children) throws InitializationError {
+            return filterRunners(super.runners(parent, children));
+        }
+
         public MxJUnitRequest build() {
             Request request;
             if (methodName == null) {
-                request = Request.classes(classes.toArray(new Class<?>[0]));
+                try {
+                    Runner suite = new Suite(this, classes.toArray(new Class<?>[0]));
+                    request = Request.runner(suite);
+                } catch (InitializationError e) {
+                    throw new RuntimeException(e);
+                }
             } else {
                 request = Request.method(classes.iterator().next(), methodName);
             }
