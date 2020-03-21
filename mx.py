@@ -19486,7 +19486,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.257.0")  # GR-21958
+version = VersionSpec("5.258.0")  # Allow nested VM configurations in `mx benchmark`
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
