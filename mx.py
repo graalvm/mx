@@ -17196,7 +17196,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             codeStyleProjectXml.open('JavaCodeStyleSettings')
             # We cannot entirely disable wildcards import, but we can set the threshold to an insane number.
             codeStyleProjectXml.element('option', attributes={'name': 'CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
-            codeStyleProjectXml.element('option', attributes={'name': 'CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
+            codeStyleProjectXml.element('option', attributes={'name': 'NAMES_COUNT_TO_USE_IMPORT_ON_DEMAND', 'value': '65536'})
             codeStyleProjectXml.close('JavaCodeStyleSettings')
             codeStyleProjectXml.close('code_scheme')
             codeStyleProjectXml.close('component')
@@ -19496,7 +19496,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.258.2")  # GR-18688
+version = VersionSpec("5.258.3")  # GR-21991
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
