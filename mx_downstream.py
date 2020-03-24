@@ -151,18 +151,26 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
 
         if branch is None:
             # no branch was requested or the requested branch does not exist, try the branch of the main repo
-            branch = [git.active_branch(suite.dir, abortOnError=False)]
+            active_branch = git.active_branch(suite.dir, abortOnError=False)
+            if active_branch:
+                branch = [active_branch]
         else:
             if isinstance(branch, str):
                 branch = [branch]
             else:
                 assert isinstance(branch, list)
             # fall back to the branch of the main repo
-            branch.append(git.active_branch(suite.dir, abortOnError=False))
+            active_branch = git.active_branch(suite.dir, abortOnError=False)
+            if active_branch:
+                branch.append(active_branch)
 
+        updated = False
         for branch_name in branch:
             if git.update_to_branch(repoWorkDir, branch_name, abortOnError=False) == 0:
+                updated = True
                 break
+        if not updated:
+            mx.warn('Could not update {} to any of the following branches: {}'.format(repoWorkDir, ', '.join(branch)))
         if not targetDir:
             targetDir = repoWorkDir
 
