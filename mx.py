@@ -9585,7 +9585,7 @@ class GitConfig(VC):
 
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         cmd = ['git', 'checkout', branch, '--']
-        self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir)
+        return self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir)
 
     def incoming(self, vcdir, abortOnError=True):
         """
@@ -19486,7 +19486,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.256.4")  # GR-18688
+version = VersionSpec("5.257.0")  # GR-21958
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
