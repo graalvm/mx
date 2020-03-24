@@ -13532,17 +13532,23 @@ def build(cmd_args, parser=None):
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
-            log('Dependencies removed from build:')
-            for _, reason in _removedDeps.items():
-                if isinstance(reason, tuple):
-                    reason, _ = reason
-                log(' {}'.format(reason))
+            if _opts.verbose:
+                log('Dependencies removed from build:')
+                for _, reason in _removedDeps.items():
+                    if isinstance(reason, tuple):
+                        reason, _ = reason
+                    log(' {}'.format(reason))
+            else:
+                log('{} unsatisfied dependencies were removed from build (use -v to list them)'.format(len(_removedDeps)))
 
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
-            log('Non-default dependencies removed from build (use mx build --all to build them):')
-            for d in removed:
-                log(' {}'.format(d))
+            if _opts.verbose:
+                log('Non-default dependencies removed from build (use mx build --all to build them):')
+                for d in removed:
+                    log(' {}'.format(d))
+            else:
+                log('{} non-default dependencies were removed from build (use -v to list them, mx build --all to build them)'.format(len(removed)))
 
         # Omit all libraries so that only the ones required to build other dependencies are downloaded
         roots = [d for d in deps if not d.isBaseLibrary()]
