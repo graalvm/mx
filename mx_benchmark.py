@@ -36,6 +36,7 @@ import traceback
 import uuid
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
+from argparse import SUPPRESS
 from collections import OrderedDict
 
 import mx
@@ -102,6 +103,8 @@ class VmRegistry(object):
         ))
         get_parser(self.get_parser_name()).add_argument("--{}".format(self.short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
         get_parser(self.get_parser_name()).add_argument("--{}-config".format(self.short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
+        # Separator to stack guest and host VM options. Though ignored, must be consumed by the parser.
+        get_parser(self.get_parser_name()).add_argument('--guest', action='store_true', dest=SUPPRESS, default=None, help='Separator for --{vm}=host --guest --{vm}=guest VM configurations.'.format(vm=self.short_vm_type_name))
 
     def get_parser_name(self):
         return self.vm_type_name + "_parser"
@@ -118,17 +121,27 @@ class VmRegistry(object):
         avail = ['--{}={} --{}-config={}'.format(self.short_vm_type_name, vm.name(), self.short_vm_type_name, vm.config_name()) for vm in self._vms.values()]
         return 'The following {} configurations are available:\n  {}'.format(self.vm_type_name, '\n  '.join(avail))
 
-    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False, host=False):
+    def get_vm_from_suite_args(self, bmSuiteArgs, hosted=False, quiet=False, host_vm_only_as_default=False):
         """
         Helper function for suites or other VMs that need to create a JavaVm based on mx benchmark arguments.
 
         Suites that might need this should add `java_vm_parser_name` to their `parserNames`.
 
         :param list[str] bmSuiteArgs: the suite args provided by mx benchmark
+        :param boolean host_vm_only_as_default:
+                if true and `bmSuiteArgs` does not specify a VM, picks a host VM as default, discarding guest VMs.
         :return: a Vm as configured by the `bmSuiteArgs`.
         :rtype: Vm
         """
-        args, bmSuiteArgsPending = get_parser(self.get_parser_name()).parse_known_args(splitArgs(bmSuiteArgs, '--')[0])
+        vm_config_args = splitArgs(bmSuiteArgs, '--')[0]
+
+        # Use --guest as separator to stack guest VMs (also within the same registry) e.g. --jvm=host_vm --guest --jvm=guest_vm.
+        rest, args = rsplitArgs(vm_config_args, '--guest')
+        check_guest_vm = '--guest' in vm_config_args
+
+        args, _ = get_parser(self.get_parser_name()).parse_known_args(args)
+        bmSuiteArgsPending = rest
+
         arg_vm_type_name = self.short_vm_type_name.replace('-', '_')
         vm = getattr(args, arg_vm_type_name)
         vm_config = getattr(args, arg_vm_type_name + '_config')
@@ -139,7 +152,7 @@ class VmRegistry(object):
                          self._vms_suite[(vm, config)] == mx.primary_suite(),
                          ('hosted' in config) == hosted,
                          self._vms_priority[(vm, config)]
-                         ) for (vm, config), vm_obj in self._vms.items() if (vm_config is None or config == vm_config) and not (host and isinstance(vm_obj, GuestVm))]
+                         ) for (vm, config), vm_obj in self._vms.items() if (vm_config is None or config == vm_config) and not (host_vm_only_as_default and isinstance(vm_obj, GuestVm))]
                 if not vms:
                     mx.abort("Could not find a {} to default to.\n{avail}".format(self.vm_type_name, avail=self.get_available_vm_configs_help()))
                 vms.sort(key=lambda t: t[1:], reverse=True)
@@ -173,8 +186,12 @@ class VmRegistry(object):
             if not quiet:
                 notice("Defaulting the {} config to '{}'. Consider using --{}-config {}.".format(self.vm_type_name, vm_config, self.short_vm_type_name, choice))
         vm_object = self.get_vm(vm, vm_config)
+
+        if check_guest_vm and not isinstance(vm_object, GuestVm):
+            mx.abort("{vm_type} '{vm}' with config '{vm_config}' is declared as --guest but it's NOT a guest VM.".format(vm=vm, vm_type=self.vm_type_name, vm_config=vm_config))
+
         if isinstance(vm_object, GuestVm):
-            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgsPending, hosted=True, quiet=quiet, host=True)
+            host_vm = vm_object.hosting_registry().get_vm_from_suite_args(bmSuiteArgsPending, hosted=True, quiet=quiet, host_vm_only_as_default=True)
             vm_object = vm_object.with_host_vm(host_vm)
         return vm_object
 
@@ -2062,6 +2079,17 @@ def splitArgs(args, separator):
     except ValueError:
         pass
     return before, after
+
+def rsplitArgs(args, separator):
+    """Splits the list of string arguments at the last separator argument.
+
+    :param list args: List of arguments.
+    :param str separator: Argument that is considered a separator.
+    :return: A tuple with the list of arguments before and a list after the separator.
+    :rtype: tuple
+    """
+    rafter, rbefore = splitArgs(list(reversed(args)), separator)
+    return list(reversed(rbefore)), list(reversed(rafter))
 
 
 def benchmark(args):
