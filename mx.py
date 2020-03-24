@@ -13524,9 +13524,11 @@ def build(cmd_args, parser=None):
         log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
         if _opts.java_home and _opts.java_home != get_env('JAVA_HOME', ''):
             log('--java-home: ' + _opts.java_home)
-        log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
-        if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
-            log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
+
+        if get_env('EXTRA_JAVA_HOMES') or _opts.extra_java_homes:
+            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
+            if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
+                log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
