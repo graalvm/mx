@@ -150,23 +150,20 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
             git.clone(repoUrl, repoWorkDir)
 
         if branch is None:
-            # no branch was requested or the requested branch does not exist, try the branch of the main repo
-            active_branch = git.active_branch(suite.dir, abortOnError=False)
-            if active_branch:
-                branch = [active_branch]
+            branch = []
+        elif isinstance(branch, str):
+            branch = [branch]
         else:
-            if isinstance(branch, str):
-                branch = [branch]
-            else:
-                assert isinstance(branch, list)
-            # fall back to the branch of the main repo
-            active_branch = git.active_branch(suite.dir, abortOnError=False)
-            if active_branch:
-                branch.append(active_branch)
+            assert isinstance(branch, list)
+
+        # fall back to the branch of the main repo
+        active_branch = git.active_branch(suite.dir, abortOnError=False)
+        if active_branch:
+            branch.append(active_branch)
 
         updated = False
         for branch_name in branch:
-            if git.update_to_branch(repoWorkDir, branch_name, abortOnError=False) == 0:
+            if git.update_to_branch(repoWorkDir, branch_name, abortOnError=False):
                 updated = True
                 break
         if not updated:
