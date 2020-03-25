@@ -8523,6 +8523,7 @@ class VC(_with_metaclass(ABCMeta, object)):
         :param str vcdir: a valid repository path
         :param str branch: a branch name
         :param bool abortOnError: if True abort on error
+        :return: True if update performed, False otherwise
         """
         abort(self.kind + " update_to_branch is not implemented")
 
@@ -8888,7 +8889,7 @@ class HgConfig(VC):
 
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         cmd = ['update', branch]
-        self.hg_command(vcdir, cmd, abortOnError=abortOnError)
+        return self.hg_command(vcdir, cmd, abortOnError=abortOnError) == 0
 
     def add(self, vcdir, path, abortOnError=True):
         return self.run(['hg', '-q', '-R', vcdir, 'add', path]) == 0
@@ -9585,7 +9586,7 @@ class GitConfig(VC):
 
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         cmd = ['git', 'checkout', branch, '--']
-        return self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir)
+        return self.run(cmd, nonZeroIsFatal=abortOnError, cwd=vcdir) == 0
 
     def incoming(self, vcdir, abortOnError=True):
         """
@@ -10121,6 +10122,7 @@ class BinaryVC(VC):
     def update_to_branch(self, vcdir, branch, abortOnError=True):
         if abortOnError:
             abort("A binary VC has no branch")
+        return False
 
 
 ### Maven, _private
@@ -19486,7 +19488,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.258.0")  # Allow nested VM configurations in `mx benchmark`
+version = VersionSpec("5.258.1")  # GR-21958 (part 2)
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
