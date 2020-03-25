@@ -13524,23 +13524,31 @@ def build(cmd_args, parser=None):
         log('JAVA_HOME: ' + get_env('JAVA_HOME', ''))
         if _opts.java_home and _opts.java_home != get_env('JAVA_HOME', ''):
             log('--java-home: ' + _opts.java_home)
-        log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
-        if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
-            log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
+
+        if get_env('EXTRA_JAVA_HOMES') or _opts.extra_java_homes:
+            log('EXTRA_JAVA_HOMES: ' + '\n                  '.join(get_env('EXTRA_JAVA_HOMES', '').split(os.pathsep)))
+            if _opts.extra_java_homes and _opts.extra_java_homes != get_env('EXTRA_JAVA_HOMES', ''):
+                log('--extra-java-homes: ' + '\n                  '.join(_opts.extra_java_homes.split(os.pathsep)))
 
         # ... and the dependencies that *will not* be built
         if _removedDeps:
-            log('Dependencies removed from build:')
-            for _, reason in _removedDeps.items():
-                if isinstance(reason, tuple):
-                    reason, _ = reason
-                log(' {}'.format(reason))
+            if _opts.verbose:
+                log('Dependencies removed from build:')
+                for _, reason in _removedDeps.items():
+                    if isinstance(reason, tuple):
+                        reason, _ = reason
+                    log(' {}'.format(reason))
+            else:
+                log('{} unsatisfied dependencies were removed from build (use -v to list them)'.format(len(_removedDeps)))
 
         removed, deps = ([], dependencies()) if args.all else defaultDependencies()
         if removed:
-            log('Non-default dependencies removed from build (use mx build --all to build them):')
-            for d in removed:
-                log(' {}'.format(d))
+            if _opts.verbose:
+                log('Non-default dependencies removed from build (use mx build --all to build them):')
+                for d in removed:
+                    log(' {}'.format(d))
+            else:
+                log('{} non-default dependencies were removed from build (use -v to list them, mx build --all to build them)'.format(len(removed)))
 
         # Omit all libraries so that only the ones required to build other dependencies are downloaded
         roots = [d for d in deps if not d.isBaseLibrary()]
@@ -19488,7 +19496,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.258.1")  # GR-21958 (part 2)
+version = VersionSpec("5.258.2")  # GR-18688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
