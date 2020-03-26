@@ -10862,8 +10862,9 @@ def maven_deploy(args):
     parser = ArgumentParser(prog='mx maven-deploy')
     parser.add_argument('-s', '--settings', action='store', help='Path to settings.mxl file used for Maven')
     parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
-    parser.add_argument('--only', action='store', help='Limit deployment to these distributions')
     parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
+    parser.add_argument('--only', action='store', help='Comma-separated list of globs of distributions to be deployed')
+    parser.add_argument('--skip', action='store', help='Comma-separated list of globs of distributions not to be deployed')
     parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
     parser.add_argument('--validate', help='Validate that maven metadata is complete enough for publication', default='compat', choices=['none', 'compat', 'full'])
     parser.add_argument('--suppress-javadoc', action='store_true', help='Suppress javadoc generation and deployment')
@@ -10896,6 +10897,9 @@ def maven_deploy(args):
 
     tags = args.tags.split(',') if args.tags is not None else None
 
+    only = args.only.split(',') if args.only is not None else None
+    skip = args.skip.split(',') if args.skip is not None else None
+
     def distMatcher(dist):
         maven = getattr(dist, 'maven', False)
         if tags is not None:
@@ -10908,15 +10912,16 @@ def maven_deploy(args):
             return True
         if not dist.isJARDistribution() and not args.all_distribution_types:
             return False
+        if only is not None:
+            return any(fnmatch.fnmatch(dist.name, o) or fnmatch.fnmatch(dist.qualifiedName(), o) for o in only)
+        if skip is not None and any(fnmatch.fnmatch(dist.name, s) or fnmatch.fnmatch(dist.qualifiedName(), s) for s in skip):
+            return False
         return getattr(dist, 'maven', False) and not dist.is_test_distribution()
 
     has_deployed_dist = False
+
     for s in _suites:
         dists = [d for d in s.dists if distMatcher(d)]
-        if args.only:
-            only = args.only.split(',')
-            dists = [d for d in dists if d.name in only or d.qualifiedName() in only]
-
         if args.url:
             licenses = get_license(args.licenses.split(','))
             repo = Repository(None, args.repository_id, args.url, args.url, licenses)
@@ -19496,7 +19501,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.258.3")  # GR-21991
+version = VersionSpec("5.259.0")  # Restrict maven deployment
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
