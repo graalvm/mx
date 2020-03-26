@@ -9147,22 +9147,17 @@ class HgConfig(VC):
             abort('exists failed')
 
     def root(self, directory, abortOnError=True):
-        metadata = VC._find_metadata_dir(directory, '.hg')
-        if metadata:
-            try:
-                out = _check_output_str(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
-                return out.strip()
-            except subprocess.CalledProcessError:
-                if abortOnError:
-                    self.check_for_hg()
-                    abort('hg root failed')
-                else:
-                    return None
-        else:
-            if abortOnError:
-                abort('No .hg directory')
-            else:
-                return None
+        if VC._find_metadata_dir(directory, '.hg'):
+            if self.check_for_hg(abortOnError=True):
+                try:
+                    out = _check_output_str(['hg', 'root'], cwd=directory, stderr=subprocess.STDOUT)
+                    return out.strip()
+                except subprocess.CalledProcessError:
+                    if abortOnError:
+                        abort('`hg root` failed')
+        elif abortOnError:
+            abort('No .hg directory')
+        return None
 
 
 class GitConfig(VC):
@@ -9903,7 +9898,7 @@ class GitConfig(VC):
 
     def root(self, directory, abortOnError=True):
         if VC._find_metadata_dir(directory, '.git'):
-            if self.check_for_git(abortOnError=abortOnError):
+            if self.check_for_git(abortOnError=True):
                 try:
                     out = _check_output_str(['git', 'rev-parse', '--show-toplevel'], cwd=directory, stderr=subprocess.STDOUT)
                     return out.strip()
@@ -19501,7 +19496,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.259.0")  # Restrict maven deployment
+version = VersionSpec("5.259.1")  # GR-22035
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
