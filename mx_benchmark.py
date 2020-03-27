@@ -139,8 +139,8 @@ class VmRegistry(object):
         rest, args = rsplitArgs(vm_config_args, '--guest')
         check_guest_vm = '--guest' in vm_config_args
 
-        args, _ = get_parser(self.get_parser_name()).parse_known_args(args)
-        bmSuiteArgsPending = rest
+        args, unparsed_args = get_parser(self.get_parser_name()).parse_known_args(args)
+        bmSuiteArgsPending = rest + unparsed_args
 
         arg_vm_type_name = self.short_vm_type_name.replace('-', '_')
         vm = getattr(args, arg_vm_type_name)
