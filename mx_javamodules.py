@@ -869,7 +869,10 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         os.remove(jmod_path)
 
                     jdk_jmod = join(jdk_jmods, basename(jmod_path))
-                    jmod_args = ['create', '--class-path=' + dest_dir]
+                    target_os = mx.get_os()
+                    target_os = 'macos' if target_os == 'darwin' else target_os
+                    target_arch = mx.get_arch()
+                    jmod_args = ['create', '--target-platform={}-{}'.format(target_os, target_arch), '--class-path=' + dest_dir]
                     if exists(jdk_jmod):
                         with ZipFile(jdk_jmod, 'r') as zf:
                             # Copy commands and legal notices (if any) from JDK version of the module
