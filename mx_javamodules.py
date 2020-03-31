@@ -869,10 +869,14 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         os.remove(jmod_path)
 
                     jdk_jmod = join(jdk_jmods, basename(jmod_path))
-                    target_os = mx.get_os()
-                    target_os = 'macos' if target_os == 'darwin' else target_os
-                    target_arch = mx.get_arch()
-                    jmod_args = ['create', '--target-platform={}-{}'.format(target_os, target_arch), '--class-path=' + dest_dir]
+                    jmod_args = ['create', '--class-path=' + dest_dir]
+                    if not dist.is_stripped():
+                        # There is a ProGuard bug that corrupts the ModuleTarget
+                        # attribute of module-info.class.
+                        target_os = mx.get_os()
+                        target_os = 'macos' if target_os == 'darwin' else target_os
+                        target_arch = mx.get_arch()
+                        jmod_args.append('--target-platform={}-{}'.format(target_os, target_arch))
                     if exists(jdk_jmod):
                         with ZipFile(jdk_jmod, 'r') as zf:
                             # Copy commands and legal notices (if any) from JDK version of the module
