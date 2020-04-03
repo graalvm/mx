@@ -16579,7 +16579,8 @@ def intellij_read_sdks():
     sdks = dict()
     if is_linux() or is_openbsd() or is_sunos() or is_windows():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
-          glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml"))
+          glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml"))
     elif is_darwin():
         xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
