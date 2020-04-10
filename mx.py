@@ -16580,7 +16580,8 @@ def intellij_read_sdks():
     if is_linux() or is_openbsd() or is_sunos() or is_windows():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")) + \
-          glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml"))
+          glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/.config/JetBrains/IntelliJIdea*/options/jdk.table.xml"))
     elif is_darwin():
         xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
@@ -19497,7 +19498,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.261.2")  # GR-22199
+version = VersionSpec("5.261.3")  # GR-22443
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
