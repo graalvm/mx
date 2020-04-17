@@ -16582,7 +16582,10 @@ def intellij_read_sdks():
           glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.config/JetBrains/IntelliJIdea*/options/jdk.table.xml"))
     elif is_darwin():
-        xmlSdks = glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
+        xmlSdks = \
+          glob.glob(os.path.expanduser("~/Library/Application Support/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/Library/Application Support/JetBrains/IntelliJIdea*/options/jdk.table.xml")) + \
+          glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
     else:
         warn("Location of IntelliJ SDK definitions on {} is unknown".format(get_os()))
@@ -19497,7 +19500,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.261.5")
+version = VersionSpec("5.261.6")
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
