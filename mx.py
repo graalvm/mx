@@ -19495,8 +19495,8 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 
-# The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.261.4")  # GR-18688
+# The version must be updated for every PR (checked in CI)
+version = VersionSpec("5.261.4")
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
