@@ -26,12 +26,12 @@ gate = java + {
   ],
   timelimit: "10:00",
 },
-gate_unix = gate + common.sulong.deps.linux + {
+gate_unix = common.sulong.deps.linux + gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/eclipse",
   }
 },
-gate_darwin = gate + common.sulong.deps.darwin + {
+gate_darwin = common.sulong.deps.darwin + gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/Contents/MacOS/eclipse",
   }
