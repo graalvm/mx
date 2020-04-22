@@ -1747,10 +1747,7 @@ class Suite(object):
             self.requiredMxVersion = mx_compat.minVersion()
             warn("The {} suite does not express any required mx version. Assuming version {}. Consider adding 'mxversion=<version>' to your suite file ({}).".format(self.name, self.requiredMxVersion, self.suite_py()))
         elif self.requiredMxVersion > version:
-            mx = join(_mx_home, 'mx')
-            if _mx_home in os.environ['PATH'].split(os.pathsep):
-                mx = 'mx'
-            abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"{} update\"".format(self.name, self.requiredMxVersion, version, mx))
+            abort("The {} suite requires mx version {} while your current mx version is {}.\nPlease update mx by running \"{} update\"".format(self.name, self.requiredMxVersion, version, _mx_path))
         if not self.getMxCompatibility():
             abort("The {} suite requires mx version {} while your version of mx only supports suite versions {} to {}.".format(self.name, self.requiredMxVersion, mx_compat.minVersion(), version))
 
@@ -3447,6 +3444,7 @@ from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_pa
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
 _mx_home = realpath(dirname(__file__))
+_mx_path = 'mx' if _mx_home in os.environ['PATH'].split(os.pathsep) else join(_mx_home, 'mx')
 
 try:
     # needed to work around https://bugs.python.org/issue1927
@@ -18227,7 +18225,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
     if importedVersion != suite_import.version and suite_import.version is not None:
         mismatch = 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if warn_only:
-            warn(mismatch)
+            warn(mismatch + '\nYou might want to run "{} sforceimports" to use the imported version or update the import with "{} scheckimports"'.format(_mx_path, _mx_path))
         else:
             print(mismatch)
             if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
@@ -19498,7 +19496,7 @@ def main():
 
 
 # The comment after VersionSpec should be changed in a random manner for every bump to force merge conflicts!
-version = VersionSpec("5.261.3")  # GR-22443
+version = VersionSpec("5.261.4")  # GR-18688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
