@@ -68,7 +68,6 @@ downstream_truffleruby = common.sulong.deps.linux + {
     JAVA_HOME: oraclejdk_jvmci,
   },
   packages+: {
-    llvm: "==3.8",
     ruby: ">=2.0.0",
   },
   environment+: {
