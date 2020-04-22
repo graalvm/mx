@@ -1,5 +1,6 @@
+local common = import "common.json";
+local jdks = common.jdks;
 local
-jdks = (import "common.json").jdks,
 java = {
   downloads+: {
     JAVA_HOME: jdks.oraclejdk8
@@ -25,12 +26,12 @@ gate = java + {
   ],
   timelimit: "10:00",
 },
-gate_unix = gate + {
+gate_unix = common.sulong.deps.linux + gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/eclipse",
   }
 },
-gate_darwin = gate + {
+gate_darwin = common.sulong.deps.darwin + gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/Contents/MacOS/eclipse",
   }
@@ -61,13 +62,12 @@ jmh_test = java + {
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
   ]
 },
-downstream_truffleruby = {
+downstream_truffleruby = common.sulong.deps.linux + {
   targets: ['gate'],
   downloads+: {
     JAVA_HOME: oraclejdk_jvmci,
   },
   packages+: {
-    llvm: "==3.8",
     ruby: ">=2.0.0",
   },
   environment+: {
@@ -89,7 +89,7 @@ nocache = {
     ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
   ],
 },
-build_graalvm_ce_linux = {
+build_graalvm_ce_linux = common.sulong.deps.linux + {
   packages+: {
     git: '>=1.8.3',
     gcc: '==4.9.2',
