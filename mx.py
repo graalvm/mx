@@ -13559,6 +13559,7 @@ def build(cmd_args, parser=None):
     sortedTasks = []
     taskMap = {}
     depsMap = {}
+    inverseDepsMap = {}
 
     def _createTask(dep, edge):
         if dep.name in deps_w_deprecation_errors:
@@ -13575,12 +13576,33 @@ def build(cmd_args, parser=None):
         lst = depsMap.setdefault(task.subject, [])
         for d in lst:
             task.deps.append(taskMap[d])
+            inverseDeps = inverseDepsMap.setdefault(taskMap[d], [])
+            inverseDeps.append(task)
 
     def _registerDep(src, dst, edge):
         lst = depsMap.setdefault(src, [])
         lst.append(dst)
 
     walk_deps(visit=_createTask, visitEdge=_registerDep, roots=roots, ignoredEdges=[DEP_EXCLUDED])
+
+    def _removeNativeTaskAndDependencies(task):
+        inverseDeps = inverseDepsMap[task]
+        # Remove only if the task is native or a no longer needed dependency
+        if isinstance(task, AbstractNativeBuildTask) or len(inverseDeps) == 0:
+            sortedTasks.remove(task)
+            # Remove removed task from the dependencies of other tasks
+            for r in inverseDeps:
+                r.deps.remove(task)
+            del inverseDepsMap[task]
+            for d in task.deps:
+                inverseDepsMap[d].remove(task)
+                # Recursively remove removed task's dependencies
+                _removeNativeTaskAndDependencies(d)
+
+    if not args.native:
+        for task in sortedTasks:
+            if isinstance(task, AbstractNativeBuildTask):
+                _removeNativeTaskAndDependencies(task)
 
     if _opts.very_verbose:
         log("++ Serialized build plan ++")
