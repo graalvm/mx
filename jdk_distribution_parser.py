@@ -44,7 +44,7 @@ class JdkDistribution(object):
     @staticmethod
     def parse_common_json(common_path):
         with open(common_path) as common_file:
-                common_cfg = json.load(common_file)
+            common_cfg = json.load(common_file)
 
         for distribution in common_cfg["jdks"]:
             JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
@@ -52,16 +52,16 @@ class JdkDistribution(object):
     @staticmethod
     def choose_dist(quiet=False):
         if quiet:
-           return JdkDistribution.by_name(JdkDistribution._DEFAULT_JDK)
- 
+            return JdkDistribution.by_name(JdkDistribution._DEFAULT_JDK)
+
         index = 1
         for dist in JdkDistribution._jdk_distributions:
             default = " " if dist.get_name() != JdkDistribution._DEFAULT_JDK else "*"
-            print("[{index}]{default} {name} | {version}".format(index=index, 
+            print("[{index}]{default} {name} | {version}".format(index=index,
             name=dist.get_name().ljust(15), version=dist.get_version(), default=default))
             index += 1
         while True:
-            print("Select JDK>"),
+            print("Select JDK>"), # pylint: disable=expression-not-assigned
             try:
                 index = int(input()) - 1
                 return JdkDistribution._jdk_distributions[index]
@@ -91,9 +91,6 @@ class JdkDistribution(object):
     def get_name(self):
         return self._name
 
-    def get_filename(self):
-        return self._filename
-    
     def get_version(self):
         return self._version
 
@@ -116,9 +113,8 @@ class OpenJDK8(JdkDistribution):
         self._archive = "{}.tar.gz".format(self._filename)
         self._url = ("{GITHUB_URL}/graalvm/openjdk8-jvmci-builder/"
                     "{GITHUB_RELEASES}/{short_version}/{archive}"
-                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES, 
-                    version=version, short_version=self._short_version, archive=self._archive, 
-                    machine=machine)
+                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                    short_version=self._short_version, archive=self._archive)
 
 class OpenJDK11(JdkDistribution):
     _name = "openjdk11"
@@ -130,9 +126,8 @@ class OpenJDK11(JdkDistribution):
         self._archive = "{}.tar.gz".format(self._filename)
         self._url = ("{GITHUB_URL}/AdoptOpenJDK/openjdk11-binaries/"
                     "{GITHUB_RELEASES}/jdk-{version}/{archive}"
-                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES, 
-                    version=version, short_version=self._short_version, archive=self._archive, 
-                    machine=machine)
+                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                    version=version, archive=self._archive)
 
     def get_machine(self):
         return mx.get_arch().replace("amd", "x") + "_" + mx.get_os().replace("darwin", "mac")
@@ -147,6 +142,5 @@ class LabsJDKCE(JdkDistribution):
         self._archive = "{}.tar.gz".format(self._filename)
         self._url = ("{GITHUB_URL}/graalvm/labs-openjdk-11/"
                     "{GITHUB_RELEASES}/{short_version}/{archive}"
-                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES, 
-                    version=version, short_version=self._short_version, archive=self._archive, 
-                    machine=machine)
+                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                    short_version=self._short_version, archive=self._archive)

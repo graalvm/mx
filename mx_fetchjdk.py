@@ -24,10 +24,11 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
+from __future__ import print_function
 import os, shutil
-from os.path import join, relpath, exists, abspath, isdir, islink
+from os.path import join, exists, abspath, isdir, islink
 from shutil import copytree
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, REMAINDER
 
 from mx import optional_suite_context, _mx_home, command
 from select_jdk import find_system_jdks
@@ -114,12 +115,12 @@ def _parse_fetchjdk_settings(args):
         if mx.primary_suite() is not None:
             common_location = join(mx.primary_suite().vc_dir, 'common.json') # Try fetching suite config
         else:
-            common_location = join(os.getcwd(), 'common.json') # Fallback to same folder 
+            common_location = join(os.getcwd(), 'common.json') # Fallback to same folder
             if not exists(common_location):
                 common_location = join(_mx_home, 'common.json') # Fallback to mx
             mx.warn("Selected `{}` as configuration location, since no location is provided".format(common_location))
     if not exists(common_location):
-            mx.abort("Configuration file doesn't exist")
+        mx.abort("Configuration file doesn't exist")
 
     JdkDistribution.parse_common_json(common_location)
 
@@ -139,7 +140,7 @@ def _parse_fetchjdk_settings(args):
             settings["jdk_path"] = jdk_paths[0]
         elif not settings["quiet"]:
             mx.warn("No standard JDK location. Using {}".format(settings["jdk_path"]))
-    
+
     if args.alias is not None:
         settings["alias"] = args.alias
 
