@@ -32,7 +32,7 @@ from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, FileType, Hel
 from mx import optional_suite_context, _mx_home, command
 from select_jdk import find_system_jdks
 from jdk_distribution_parser import JdkDistribution
-import mx
+import mx, mx_urlrewrites
 
 @command('mx', 'fetch-jdk', '[options]')
 @optional_suite_context
@@ -47,7 +47,7 @@ def fetch_jdk(args):
     jdk_path = args["jdk_path"]
     jdk_folder = distribution.get_jdk_folder()
     full_jdk_path = distribution.get_full_jdk_path(jdk_path)
-    jdk_url = distribution.get_url()
+    jdk_url = mx_urlrewrites.rewriteurl(distribution.get_url())
     jdk_archive = distribution.get_archive()
 
     if not exists(full_jdk_path):
