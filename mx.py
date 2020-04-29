@@ -749,7 +749,7 @@ def suite_context_free(func):
     """
     Decorator for commands that don't need a primary suite.
     """
-    _suite_context_free.append(func.__name__)
+    _suite_context_free.append(func.__name__.replace("_", "-"))
     return func
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
@@ -761,7 +761,7 @@ def optional_suite_context(func):
     """
     Decorator for commands that don't need a primary suite but will use one if it can be found.
     """
-    _optional_suite_context.append(func.__name__)
+    _optional_suite_context.append(func.__name__.replace("_", "-"))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
@@ -4110,7 +4110,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
     verify_errors = {}
     for url in urls:
-        if not verifyOnly or verbose:
+        if not verifyOnly and verbose:
             log('Downloading ' + url + ' to ' + path)
         m = jarURLPattern.match(url)
         jarEntryName = None
@@ -19245,6 +19245,8 @@ update_commands("mx", {
     'verifysourceinproject': [verifysourceinproject, ''],
     'version': [show_version, ''],
 })
+
+from mx_fetchjdk import fetch_jdk
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
