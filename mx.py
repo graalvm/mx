@@ -19246,7 +19246,7 @@ update_commands("mx", {
     'version': [show_version, ''],
 })
 
-from mx_fetchjdk import fetch_jdk
+import mx_fetchjdk # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
