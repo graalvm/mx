@@ -773,7 +773,7 @@ def no_suite_loading(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be loaded.
     """
-    _no_suite_loading.append(func.__name__)
+    _no_suite_loading.append(func.__name__.replace("_", "-"))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be discovered.
@@ -785,7 +785,7 @@ def no_suite_discovery(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be discovered.
     """
-    _no_suite_discovery.append(func.__name__)
+    _no_suite_discovery.append(func.__name__.replace("_", "-"))
     return func
 
 

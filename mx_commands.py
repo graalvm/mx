@@ -114,6 +114,9 @@ class MxCommands(object):
 class MxCommand(object):
 
     def __init__(self, mx_commands, command_function, suite_name, command, usage_msg='', doc_function=None, props=None):
+        if '_' in command:
+            import mx
+            mx.abort("An mx command cannot contain '_' in its name: {}. Use '-' instead.".format(command))
         self._mx_commands = mx_commands
         self._command_function = command_function
         self.suite_name = suite_name
