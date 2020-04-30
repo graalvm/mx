@@ -91,23 +91,46 @@ def fetch_jdk(args):
 
 
 def _parse_fetchjdk_settings(args):
+    settings = {}
+    settings["quiet"] = False
+    settings["keep-archive"] = False
+    settings["jdk_path"] = abspath(join('bin', 'jdks'))
+
+    jdk_paths = find_system_jdks()
+    if len(jdk_paths) > 0:
+        settings["jdk_path"] = jdk_paths[0]
+        found_jdk_path = True
+    else:
+        found_jdk_path = False
+
+    common_location = join(_mx_home, 'common.json')
+
     parser = ArgumentParser(prog='mx fetch-labsjdk')
-    parser.add_argument('--java-distribution', action='store', help='JDK distribution which should be downloaded')
-    parser.add_argument('--configuration', action='store', help='location of configuration json file')
-    parser.add_argument('--to', action='store', help='location where JDK would be downloaded')
+    parser.add_argument('--java-distribution', action='store', help='JDK distribution which should be downloaded (e.g. "labsjdk-ce-11" or "openjdk8")')
+    parser.add_argument('--configuration', action='store', help='location of configuration json file (default: \'{}\')'.format(common_location))
+    parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk_path"]))
     parser.add_argument('--alias', action='store', help='name of symlink to JDK')
-    parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
-    parser.add_argument('-q', '--quiet', action='store_true', help='suppress logging output')
+    parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive (default: {})'.format(settings["keep-archive"]))
+    parser.add_argument('-q', '--quiet', action='store_true', help='suppress logging output (default: {})'.format(settings["quiet"]))
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
 
-    settings = {}
-    settings["jdk_path"] = join('bin', 'jdks')
-    settings["quiet"] = False
-    settings["keep-archive"] = False
-
     if args.quiet is not None:
         settings["quiet"] = args.quiet
+
+    if args.to is not None:
+        settings["jdk_path"] = args.to
+    elif not found_jdk_path and not settings["quiet"]:
+        mx.warn("No standard JDK location. Using {}".format(settings["jdk_path"]))
+
+    try:
+        test_location = join(settings["jdk_path"], "test")
+        test_file = open(test_location, 'w')
+        test_file.close()
+        os.remove(test_location)
+    except IOError:
+        mx.abort("Path '"+settings["jdk_path"]+"' is not writable. " + os.linesep +
+        "Rerun command with elevated privileges, or choose different JDK download location.")
 
     if args.configuration is not None:
         common_location = args.configuration
@@ -131,15 +154,6 @@ def _parse_fetchjdk_settings(args):
 
     if args.keep_archive is not None:
         settings["keep-archive"] = args.keep_archive
-
-    if args.to is not None:
-        settings["jdk_path"] = args.to
-    else:
-        jdk_paths = find_system_jdks()
-        if len(jdk_paths) > 0:
-            settings["jdk_path"] = jdk_paths[0]
-        elif not settings["quiet"]:
-            mx.warn("No standard JDK location. Using {}".format(settings["jdk_path"]))
 
     if args.alias is not None:
         settings["alias"] = args.alias

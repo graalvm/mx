@@ -132,7 +132,7 @@ class OpenJDK11(JdkDistribution):
     def get_machine(self):
         return mx.get_arch().replace("amd", "x") + "_" + mx.get_os().replace("darwin", "mac")
 
-class LabsJDKCE(JdkDistribution):
+class LabsJDK11CE(JdkDistribution):
     _name = "labsjdk-ce-11"
     def __init__(self, version):
         JdkDistribution.__init__(self, version)
