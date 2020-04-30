@@ -66,6 +66,8 @@ def fetch_jdk(args):
         if not args["keep-archive"]:
             os.remove(join(jdk_path, jdk_archive))
         os.rename(join(jdk_path, curr_full_jdk_path), full_jdk_path)
+    elif not args["quiet"]:
+        mx.warn("Requested JDK was already present")
 
     if mx.get_os() == 'darwin':
         full_jdk_path = join(full_jdk_path, 'Contents', 'Home')
@@ -124,11 +126,13 @@ def _parse_fetchjdk_settings(args):
         mx.warn("No standard JDK location. Using {}".format(settings["jdk-path"]))
 
     try:
+        if not exists(settings["jdk-path"]):
+            os.makedirs(settings["jdk-path"])
         test_location = join(settings["jdk-path"], "test")
         test_file = open(test_location, 'w')
         test_file.close()
         os.remove(test_location)
-    except IOError:
+    except (IOError, OSError):
         mx.abort("Path '"+settings["jdk-path"]+"' is not writable. " + os.linesep +
         "Rerun command with elevated privileges, or choose different JDK download location.")
 
