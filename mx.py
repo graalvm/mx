@@ -3444,7 +3444,7 @@ from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_pa
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
 _mx_home = realpath(dirname(__file__))
-_mx_path = 'mx' if _mx_home in os.environ['PATH'].split(os.pathsep) else join(_mx_home, 'mx')
+_mx_path = 'mx' if _mx_home in os.environ.get('PATH', '').split(os.pathsep) else join(_mx_home, 'mx')
 
 try:
     # needed to work around https://bugs.python.org/issue1927
@@ -19500,7 +19500,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.262.0")
+version = VersionSpec("5.262.1")
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
