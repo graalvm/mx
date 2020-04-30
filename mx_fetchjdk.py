@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2020, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -44,8 +44,8 @@ def fetch_jdk(args):
     """
     args = _parse_fetchjdk_settings(args)
 
-    distribution = args["java_distribution"]
-    jdk_path = args["jdk_path"]
+    distribution = args["java-distribution"]
+    jdk_path = args["jdk-path"]
     jdk_folder = distribution.get_jdk_folder()
     full_jdk_path = distribution.get_full_jdk_path(jdk_path)
     jdk_url = mx_urlrewrites.rewriteurl(distribution.get_url())
@@ -94,11 +94,11 @@ def _parse_fetchjdk_settings(args):
     settings = {}
     settings["quiet"] = False
     settings["keep-archive"] = False
-    settings["jdk_path"] = abspath(join('bin', 'jdks'))
+    settings["jdk-path"] = abspath(join('bin', 'jdks'))
 
     jdk_paths = find_system_jdks()
     if len(jdk_paths) > 0:
-        settings["jdk_path"] = jdk_paths[0]
+        settings["jdk-path"] = jdk_paths[0]
         found_jdk_path = True
     else:
         found_jdk_path = False
@@ -108,10 +108,10 @@ def _parse_fetchjdk_settings(args):
     parser = ArgumentParser(prog='mx fetch-labsjdk')
     parser.add_argument('--java-distribution', action='store', help='JDK distribution which should be downloaded (e.g. "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', help='location of configuration json file (default: \'{}\')'.format(common_location))
-    parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk_path"]))
+    parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk-path"]))
     parser.add_argument('--alias', action='store', help='name of symlink to JDK')
-    parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive (default: {})'.format(settings["keep-archive"]))
-    parser.add_argument('-q', '--quiet', action='store_true', help='suppress logging output (default: {})'.format(settings["quiet"]))
+    parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
+    parser.add_argument('-q', '--quiet', action='store_true', help='suppress logging output')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
 
@@ -119,17 +119,17 @@ def _parse_fetchjdk_settings(args):
         settings["quiet"] = args.quiet
 
     if args.to is not None:
-        settings["jdk_path"] = args.to
+        settings["jdk-path"] = args.to
     elif not found_jdk_path and not settings["quiet"]:
-        mx.warn("No standard JDK location. Using {}".format(settings["jdk_path"]))
+        mx.warn("No standard JDK location. Using {}".format(settings["jdk-path"]))
 
     try:
-        test_location = join(settings["jdk_path"], "test")
+        test_location = join(settings["jdk-path"], "test")
         test_file = open(test_location, 'w')
         test_file.close()
         os.remove(test_location)
     except IOError:
-        mx.abort("Path '"+settings["jdk_path"]+"' is not writable. " + os.linesep +
+        mx.abort("Path '"+settings["jdk-path"]+"' is not writable. " + os.linesep +
         "Rerun command with elevated privileges, or choose different JDK download location.")
 
     if args.configuration is not None:
@@ -148,9 +148,9 @@ def _parse_fetchjdk_settings(args):
     JdkDistribution.parse_common_json(common_location)
 
     if args.java_distribution is not None:
-        settings["java_distribution"] = JdkDistribution.by_name(args.java_distribution)
+        settings["java-distribution"] = JdkDistribution.by_name(args.java_distribution)
     else:
-        settings["java_distribution"] = JdkDistribution.choose_dist(settings["quiet"])
+        settings["java-distribution"] = JdkDistribution.choose_dist(settings["quiet"])
 
     if args.keep_archive is not None:
         settings["keep-archive"] = args.keep_archive

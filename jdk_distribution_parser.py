@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2020, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -115,22 +115,6 @@ class OpenJDK8(JdkDistribution):
                     "{GITHUB_RELEASES}/{short_version}/{archive}"
                     ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
                     short_version=self._short_version, archive=self._archive)
-
-class OpenJDK11(JdkDistribution):
-    _name = "openjdk11"
-    def __init__(self, version):
-        JdkDistribution.__init__(self, version)
-        machine = self.get_machine()
-        self._short_version = version.replace("+", "_")
-        self._filename = "OpenJDK11U-jdk_{machine}_hotspot_{short_version}".format(short_version=self._short_version, machine=machine)
-        self._archive = "{}.tar.gz".format(self._filename)
-        self._url = ("{GITHUB_URL}/AdoptOpenJDK/openjdk11-binaries/"
-                    "{GITHUB_RELEASES}/jdk-{version}/{archive}"
-                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
-                    version=version, archive=self._archive)
-
-    def get_machine(self):
-        return mx.get_arch().replace("amd", "x") + "_" + mx.get_os().replace("darwin", "mac")
 
 class LabsJDK11CE(JdkDistribution):
     _name = "labsjdk-ce-11"
