@@ -106,7 +106,7 @@ def _parse_fetchjdk_settings(args):
     common_location = join(_mx_home, 'common.json')
 
     parser = ArgumentParser(prog='mx fetch-labsjdk')
-    parser.add_argument('--java-distribution', action='store', help='JDK distribution which should be downloaded (e.g. "labsjdk-ce-11" or "openjdk8")')
+    parser.add_argument('--java-distribution', action='store', help='JDK distribution that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', help='location of configuration json file (default: \'{}\')'.format(common_location))
     parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk-path"]))
     parser.add_argument('--alias', action='store', help='name of symlink to JDK')
