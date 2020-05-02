@@ -51,9 +51,11 @@ def fetch_jdk(args):
     jdk_archive = distribution.get_archive()
 
     if not exists(full_jdk_path):
-        mx._opts.no_download_progress = args["quiet"]
-        mx.download(join(jdk_path, jdk_archive), [jdk_url], verbose=not args["quiet"])
-        untar = mx.TarExtractor(join(jdk_path, jdk_archive))
+        archive_location = join(jdk_path, jdk_archive)
+        if not exists(archive_location) or not args["keep-archive"]:
+            mx._opts.no_download_progress = args["quiet"]
+            mx.download(archive_location, [jdk_url], verbose=not args["quiet"])
+        untar = mx.TarExtractor(archive_location)
 
         if not args["quiet"]:
             print("Installing...")
@@ -77,7 +79,7 @@ def fetch_jdk(args):
     if mx.is_darwin():
         if args["strip-contents-home"]:
             tmp_full_jdk_path = full_jdk_path + ".tmp"
-            os.rename(full_jdk_path, tmp_full_jdk_path)
+            shutil.move(full_jdk_path, tmp_full_jdk_path)
             shutil.move(join(tmp_full_jdk_path, 'Contents', 'Home'), full_jdk_path)
             shutil.rmtree(tmp_full_jdk_path)
         else:
