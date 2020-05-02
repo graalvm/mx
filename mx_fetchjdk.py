@@ -46,7 +46,6 @@ def fetch_jdk(args):
 
     distribution = args["java-distribution"]
     jdk_path = args["jdk-path"]
-    jdk_folder = distribution.get_jdk_folder()
     full_jdk_path = distribution.get_full_jdk_path(jdk_path)
     jdk_url = mx_urlrewrites.rewriteurl(distribution.get_url())
     jdk_archive = distribution.get_archive()
@@ -77,7 +76,7 @@ def fetch_jdk(args):
 
     if mx.is_darwin():
         if args["strip-contents-home"]:
-            tmp_full_jdk_path =  full_jdk_path + ".tmp"
+            tmp_full_jdk_path = full_jdk_path + ".tmp"
             os.rename(full_jdk_path, tmp_full_jdk_path)
             shutil.move(join(tmp_full_jdk_path, 'Contents', 'Home'), full_jdk_path)
             shutil.rmtree(tmp_full_jdk_path)
@@ -182,8 +181,8 @@ def _parse_fetchjdk_settings(args):
     return settings
 
 def parse_common_json(common_path):
-        with open(common_path) as common_file:
-            common_cfg = json.load(common_file)
+    with open(common_path) as common_file:
+        common_cfg = json.load(common_file)
 
-        for distribution in common_cfg["jdks"]:
-            JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
+    for distribution in common_cfg["jdks"]:
+        JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
