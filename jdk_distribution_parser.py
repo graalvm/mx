@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-import re, json
+import re
 import mx
 from os.path import join
 
@@ -41,13 +41,6 @@ class JdkDistribution(object):
             if dist._name == name:
                 dist(version)
                 return
-    @staticmethod
-    def parse_common_json(common_path):
-        with open(common_path) as common_file:
-            common_cfg = json.load(common_file)
-
-        for distribution in common_cfg["jdks"]:
-            JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
 
     @staticmethod
     def choose_dist(quiet=False):

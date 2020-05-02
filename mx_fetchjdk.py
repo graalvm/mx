@@ -25,7 +25,7 @@
 # ----------------------------------------------------------------------------------------------------
 #
 from __future__ import print_function
-import os, shutil
+import os, shutil, json
 from os.path import join, exists, abspath, isdir, islink
 from shutil import copytree
 from argparse import ArgumentParser, REMAINDER
@@ -62,15 +62,27 @@ def fetch_jdk(args):
         with untar._open() as tar_file:
             curr_full_jdk_path = untar._getnames(tar_file)[0]
 
-        untar.extract(jdk_path)
+        try:
+            untar.extract(jdk_path)
+        except:
+            os.remove(join(jdk_path, jdk_archive))
+            shutil.rmtree(curr_full_jdk_path)
+            mx.abort("Error parsing archive. Please try again")
         if not args["keep-archive"]:
             os.remove(join(jdk_path, jdk_archive))
         os.rename(join(jdk_path, curr_full_jdk_path), full_jdk_path)
+
     elif not args["quiet"]:
         mx.warn("Requested JDK was already present")
 
-    if mx.get_os() == 'darwin':
-        full_jdk_path = join(full_jdk_path, 'Contents', 'Home')
+    if mx.is_darwin():
+        if args["strip-contents-home"]:
+            tmp_full_jdk_path =  full_jdk_path + ".tmp"
+            os.rename(full_jdk_path, tmp_full_jdk_path)
+            shutil.move(join(tmp_full_jdk_path, 'Contents', 'Home'), full_jdk_path)
+            shutil.rmtree(tmp_full_jdk_path)
+        else:
+            full_jdk_path = join(full_jdk_path, 'Contents', 'Home')
 
     if "alias" in args:
         alias_full_path = join(jdk_path, args["alias"])
@@ -81,7 +93,7 @@ def fetch_jdk(args):
                 os.remove(alias_full_path)
 
         if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(jdk_folder, alias_full_path)
+            os.symlink(full_jdk_path, alias_full_path)
         else:
             copytree(full_jdk_path, alias_full_path, symlinks=True) # fallback for windows
         full_jdk_path = alias_full_path
@@ -100,19 +112,21 @@ def _parse_fetchjdk_settings(args):
 
     jdk_paths = find_system_jdks()
     if len(jdk_paths) > 0:
-        settings["jdk-path"] = jdk_paths[0]
+        settings["jdk-path"] = next(iter(jdk_paths))
         found_jdk_path = True
     else:
         found_jdk_path = False
 
     common_location = join(_mx_home, 'common.json')
 
-    parser = ArgumentParser(prog='mx fetch-labsjdk')
+    parser = ArgumentParser(prog='mx fetch-jdk')
     parser.add_argument('--java-distribution', action='store', help='JDK distribution that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', help='location of configuration json file (default: \'{}\')'.format(common_location))
     parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk-path"]))
     parser.add_argument('--alias', action='store', help='name of symlink to JDK')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
+    if mx.is_darwin():
+        parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress logging output')
     parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
     args = parser.parse_args(args)
@@ -149,17 +163,27 @@ def _parse_fetchjdk_settings(args):
     if not exists(common_location):
         mx.abort("Configuration file doesn't exist")
 
-    JdkDistribution.parse_common_json(common_location)
+    parse_common_json(common_location)
 
     if args.java_distribution is not None:
         settings["java-distribution"] = JdkDistribution.by_name(args.java_distribution)
     else:
         settings["java-distribution"] = JdkDistribution.choose_dist(settings["quiet"])
 
-    if args.keep_archive is not None:
-        settings["keep-archive"] = args.keep_archive
-
     if args.alias is not None:
         settings["alias"] = args.alias
 
+    if args.keep_archive is not None:
+        settings["keep-archive"] = args.keep_archive
+
+    if mx.is_darwin() and args.strip_contents_home is not None:
+        settings["strip-contents-home"] = True
+
     return settings
+
+def parse_common_json(common_path):
+        with open(common_path) as common_file:
+            common_cfg = json.load(common_file)
+
+        for distribution in common_cfg["jdks"]:
+            JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
