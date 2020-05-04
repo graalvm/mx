@@ -55,7 +55,10 @@ def fetch_jdk(args):
     if not exists(full_jdk_path):
         archive_location = join(jdk_path, jdk_archive)
         mx._opts.no_download_progress = args["quiet"]
-        sha1_hash = mx._hashFromUrl(jdk_url_sha)
+        try:
+            sha1_hash = mx._hashFromUrl(jdk_url_sha)
+        except:
+            mx.abort("Error fetching sha1 hash, check your download location")
         if not exists(archive_location) or not args["keep-archive"]:
             mx.download_file_with_sha1(jdk_artifact, archive_location, [jdk_url], sha1_hash, archive_location + '.sha1', resolve=True, mustExist=True, sources=False)
         untar = mx.TarExtractor(archive_location)
