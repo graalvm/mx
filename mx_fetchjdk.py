@@ -79,7 +79,7 @@ def fetch_jdk(args):
     elif not args["quiet"]:
         mx.warn("Requested JDK was already present")
 
-    if mx.is_darwin():
+    if mx.is_darwin() and exists(join(full_jdk_path, 'Contents', 'Home')):
         if args["strip-contents-home"]:
             tmp_full_jdk_path = full_jdk_path + ".tmp"
             shutil.move(full_jdk_path, tmp_full_jdk_path)
