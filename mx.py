@@ -6584,7 +6584,10 @@ class JavaProject(Project, ClasspathDependency):
                                     m = _java_package_regex.match(line)
                                     if m:
                                         java_package = m.group('package')
-                            if java_package != path_package:
+                            if self.is_test_project() and java_package is None and path_package == '':
+                                # Test projects are allowed to include classes without a package
+                                continue
+                            elif java_package != path_package:
                                 mismatched_imports[java_source] = java_package
 
             importedPackagesFromProjects = set()
@@ -14503,11 +14506,14 @@ def canonicalizeprojects(args):
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
             if p.suite.getMxCompatibility().check_package_locations():
+                errors = []
                 for source, package in p.mismatched_imports().items():
                     if package:
-                        p.abort('{} declares a package that does not match its location: {}'.format(source, package))
+                        errors.append('{} declares a package that does not match its location: {}'.format(source, package))
                     else:
-                        p.abort('{} does not declares a package to match its location'.format(source))
+                        errors.append('{} does not declare a package that matches its location'.format(source))
+                if errors:
+                    p.abort('\n'.join(errors))
             if p.is_test_project():
                 continue
             if p.checkPackagePrefix:
@@ -19500,7 +19506,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.262.1")
+version = VersionSpec("5.262.2")
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
