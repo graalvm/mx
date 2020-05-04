@@ -744,14 +744,20 @@ currently_loading_suite = DynamicVar(None)
 
 _suite_context_free = ['init', 'version', 'urlrewrite']
 
+def _command_function_names(func):
+    """
+    Generates list of guesses for command name based on its function name
+    """
+    command_names = [func.__name__]
+    if '_' in func.__name__:
+        command_names.append(func.__name__.replace("_", "-"))
+    return command_names
 
 def suite_context_free(func):
     """
     Decorator for commands that don't need a primary suite.
     """
-    _suite_context_free.append(func.__name__)
-    if '_' in func.__name__:
-        _suite_context_free.append(func.__name__.replace("_", "-"))
+    _suite_context_free.extend(_command_function_names(func))
     return func
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
@@ -763,9 +769,7 @@ def optional_suite_context(func):
     """
     Decorator for commands that don't need a primary suite but will use one if it can be found.
     """
-    _optional_suite_context.append(func.__name__)
-    if '_' in func.__name__:
-        _optional_suite_context.append(func.__name__.replace("_", "-"))
+    _optional_suite_context.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
@@ -777,9 +781,7 @@ def no_suite_loading(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be loaded.
     """
-    _no_suite_loading.append(func.__name__)
-    if '_' in func.__name__:
-        _no_suite_loading.append(func.__name__.replace("_", "-"))
+    _no_suite_loading.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be discovered.
@@ -791,9 +793,7 @@ def no_suite_discovery(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be discovered.
     """
-    _no_suite_discovery.append(func.__name__)
-    if '_' in func.__name__:
-        _no_suite_discovery.append(func.__name__.replace("_", "-"))
+    _no_suite_discovery.extend(_command_function_names(func))
     return func
 
 

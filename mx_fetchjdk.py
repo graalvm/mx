@@ -46,15 +46,18 @@ def fetch_jdk(args):
 
     distribution = args["java-distribution"]
     jdk_path = args["jdk-path"]
+    jdk_artifact = distribution.get_jdk_folder()
     full_jdk_path = distribution.get_full_jdk_path(jdk_path)
     jdk_url = mx_urlrewrites.rewriteurl(distribution.get_url())
+    jdk_url_sha = jdk_url + ".sha1"
     jdk_archive = distribution.get_archive()
 
     if not exists(full_jdk_path):
         archive_location = join(jdk_path, jdk_archive)
+        mx._opts.no_download_progress = args["quiet"]
+        sha1_hash = mx._hashFromUrl(jdk_url_sha)
         if not exists(archive_location) or not args["keep-archive"]:
-            mx._opts.no_download_progress = args["quiet"]
-            mx.download(archive_location, [jdk_url], verbose=not args["quiet"])
+            mx.download_file_with_sha1(jdk_artifact, archive_location, [jdk_url], sha1_hash, archive_location + '.sha1', resolve=True, mustExist=True, sources=False)
         untar = mx.TarExtractor(archive_location)
 
         if not args["quiet"]:
@@ -160,7 +163,8 @@ def _parse_fetchjdk_settings(args):
             common_location = join(os.getcwd(), 'common.json') # Fallback to same folder
             if not exists(common_location):
                 common_location = join(_mx_home, 'common.json') # Fallback to mx
-            mx.warn("Selected `{}` as configuration location, since no location is provided".format(common_location))
+            if not settings["quiet"]:
+                mx.warn("Selected `{}` as configuration location, since no location is provided".format(common_location))
     if not exists(common_location):
         mx.abort("Configuration file doesn't exist")
 

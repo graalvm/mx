@@ -40,7 +40,6 @@ class JdkDistribution(object):
         for dist in JdkDistribution.__subclasses__():
             if dist._name == name:
                 dist(version)
-                return
 
     @staticmethod
     def choose_dist(quiet=False):
@@ -51,7 +50,7 @@ class JdkDistribution(object):
         for dist in JdkDistribution._jdk_distributions:
             default = " " if dist.get_name() != JdkDistribution._DEFAULT_JDK else "*"
             print("[{index}]{default} {name} | {version}".format(index=index,
-            name=dist.get_name().ljust(15), version=dist.get_version(), default=default))
+            name=dist.get_name().ljust(25), version=dist.get_version(), default=default))
             index += 1
         while True:
             print("Select JDK>"), # pylint: disable=expression-not-assigned
@@ -104,10 +103,26 @@ class OpenJDK8(JdkDistribution):
         self._filename = "openjdk-{}-{}".format(version, machine)
         self._short_version = re.sub(r".*(jvmci.*)", "\\1", version)
         self._archive = "{}.tar.gz".format(self._filename)
-        self._url = ("{GITHUB_URL}/graalvm/openjdk8-jvmci-builder/"
+        self._url = ("{GITHUB_URL}/graalvm/graal-jvmci-8/"
                     "{GITHUB_RELEASES}/{short_version}/{archive}"
                     ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
                     short_version=self._short_version, archive=self._archive)
+
+class OpenJDK8Debug(JdkDistribution):
+    _name = "openjdk8"
+    def __init__(self, version):
+        JdkDistribution.__init__(self, version)
+        machine = mx.get_os() + '-' + mx.get_arch()
+        self._filename = "openjdk-{}-fastdebug-{}".format(version, machine)
+        self._short_version = re.sub(r".*(jvmci.*)", "\\1", version)
+        self._archive = "{}.tar.gz".format(self._filename)
+        self._url = ("{GITHUB_URL}/graalvm/graal-jvmci-8/"
+                    "{GITHUB_RELEASES}/{short_version}/{archive}"
+                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                    short_version=self._short_version, archive=self._archive)
+
+    def get_name(self):
+        return self._name + "-fastdebug"
 
 class LabsJDK11CE(JdkDistribution):
     _name = "labsjdk-ce-11"
@@ -121,3 +136,19 @@ class LabsJDK11CE(JdkDistribution):
                     "{GITHUB_RELEASES}/{short_version}/{archive}"
                     ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
                     short_version=self._short_version, archive=self._archive)
+
+class LabsJDK11CEDebug(JdkDistribution):
+    _name = "labsjdk-ce-11"
+    def __init__(self, version):
+        JdkDistribution.__init__(self, version)
+        machine = mx.get_os() + '-' + mx.get_arch()
+        self._filename = "labsjdk-{}-debug-{}".format(version, machine)
+        self._short_version = re.sub(r".*(jvmci.*)", "\\1", version)
+        self._archive = "{}.tar.gz".format(self._filename)
+        self._url = ("{GITHUB_URL}/graalvm/labs-openjdk-11/"
+                    "{GITHUB_RELEASES}/{short_version}/{archive}"
+                    ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                    short_version=self._short_version, archive=self._archive)
+
+    def get_name(self):
+        return self._name + "-debug"
