@@ -273,7 +273,6 @@ class JavaModuleDescriptor(mx.Comparable):
         for required_module_name in concealedRequires:
             required_packages = concealedRequires[required_module_name]
             for required_package_name in required_packages:
-                # print(' --> Adding:', (required_module_name, required_package_name), '-> add ', self)
                 required_exports[(required_module_name, required_package_name)].add(self)
 
 def lookup_package(modulepath, package, importer):
@@ -810,7 +809,6 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     module_info_java = join(dest_dir, 'module-info.java')
                     with open(module_info_java, 'w') as fp:
                         print(jmd.as_module_info(), file=fp)
-                        print('WROTE: ', module_info_java)
 
                 last_dest_dir = dest_dir
 
@@ -1051,12 +1049,9 @@ def requiredExports(distributions, jdk):
 
     required_exports = defaultdict(set)
 
-    # print('requiredExports:', distributions, jdk)
     for dist in distributions:
-        # print('Check if module:', dist)
         target_module = _opt_as_java_module(dist)
         if target_module:
-            # print(' -> module:', target_module)
             target_module.collect_required_exports(required_exports)
 
     return required_exports
