@@ -52,7 +52,7 @@ def fetch_jdk(args):
     jdk_archive = distribution.get_archive()
 
     if not args["quiet"] and not mx.ask_yes_no("Install {} to {}".format(jdk_artifact, jdk_path), default='y'):
-            mx.abort("JDK installation canceled")
+        mx.abort("JDK installation canceled")
 
     if not exists(full_jdk_path):
         if not args["quiet"]:
