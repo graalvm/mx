@@ -32,6 +32,7 @@ import zipfile
 import pickle
 import shutil
 from os.path import join, exists, dirname, basename
+from collections import defaultdict
 
 from zipfile import ZipFile
 
@@ -261,6 +262,17 @@ class JavaModuleDescriptor(mx.Comparable):
             return 'concealed'
         elif package in self.conceals:
             return 'concealed'
+
+    def collect_required_exports(self, required_exports):
+        """
+        Adds required exports information that is needed to use this module to `required_exports`.
+
+        :param defaultdict(set) required_exports: dict where required exports information of this module should be added
+        """
+        concealedRequires = self.concealedRequires
+        for module_name, packages in concealedRequires.items():
+            for package_name in packages:
+                required_exports[(module_name, package_name)].add(self)
 
 def lookup_package(modulepath, package, importer):
     """
@@ -1015,3 +1027,29 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
                 m, _ = lookup_package(all_modules, package, importer)
                 suffix = '' if not m else ' but in module {}'.format(m.name)
                 mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)
+
+def requiredExports(distributions, jdk):
+    """
+    Collects requiredExports information for all passed-in distributions that are modules. The structure of this
+    information is described in the return value documentation.
+
+    :param distributions: list of Distribution objects that should be looked through for requiredExports information
+    :param JDKConfig jdk: a JDK with a version >= 9 that can be used to compile the module-info class
+    :return: A dictionary with (module_name, package_name) keys and values that are sets of `JavaModuleDescriptors` that require the export
+    described by the given key. For example: ('java.base', 'jdk.internal.module'): set([module:org.graalvm.nativeimage.pointsto,
+    module:org.graalvm.nativeimage.builder]) means that module java.base needs to be updated to export (i.e. --add-exports)
+    jdk.internal.module to the modules org.graalvm.nativeimage.pointsto and org.graalvm.nativeimage.builder.
+    """
+    def _opt_as_java_module(dist):
+        if not mx.get_module_name(dist):
+            return None
+        return as_java_module(dist, jdk, fatalIfNotCreated=False)
+
+    required_exports = defaultdict(set)
+
+    for dist in distributions:
+        target_module = _opt_as_java_module(dist)
+        if target_module:
+            target_module.collect_required_exports(required_exports)
+
+    return required_exports
