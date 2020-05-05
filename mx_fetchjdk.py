@@ -41,64 +41,63 @@ def fetch_jdk(args):
 
     If called without --quiet flag, menu will be printed for available JDK selection.
     """
-    args = _parse_fetchjdk_settings(args)
+    args = _parse_fetchsettings(args)
 
     distribution = args["java-distribution"]
-    jdk_path = args["jdk-path"]
-    jdk_artifact = distribution.get_jdk_folder()
-    full_jdk_path = distribution.get_full_jdk_path(jdk_path)
-    jdk_url = mx_urlrewrites.rewriteurl(distribution.get_url())
-    jdk_url_sha = jdk_url + ".sha1"
-    jdk_archive = distribution.get_archive()
+    base_path = args["base-path"]
+    artifact = distribution.get_folder_name()
+    final_path = distribution.get_final_path(base_path)
+    url = mx_urlrewrites.rewriteurl(distribution.get_url())
+    sha_url = url + ".sha1"
+    archive_name = distribution.get_archive_name()
 
-    if not args["quiet"] and not mx.ask_yes_no("Install {} to {}".format(jdk_artifact, jdk_path), default='y'):
+    if not args["quiet"] and not mx.ask_yes_no("Install {} to {}".format(artifact, final_path), default='y'):
         mx.abort("JDK installation canceled")
 
-    if not exists(full_jdk_path):
+    if not exists(final_path):
         if not args["quiet"]:
-            print("Fetching {} archive...".format(jdk_artifact))
+            print("Fetching {} archive from {}...".format(artifact, url))
 
-        archive_location = join(jdk_path, jdk_archive)
+        archive_location = join(base_path, archive_name)
         mx._opts.no_download_progress = args["quiet"]
-        try:
-            sha1_hash = mx._hashFromUrl(jdk_url_sha)
-        except:
-            mx.abort("Error fetching sha1 hash, check your download location")
+        sha1_hash = mx._hashFromUrl(sha_url).decode('utf-8')
+
         if not exists(archive_location) or not args["keep-archive"]:
-            mx.download_file_with_sha1(jdk_artifact, archive_location, [jdk_url], sha1_hash, archive_location + '.sha1', resolve=True, mustExist=True, sources=False)
+            mx.download_file_with_sha1(artifact, archive_location, [url], sha1_hash, archive_location + '.sha1', resolve=True, mustExist=True, sources=False)
         untar = mx.TarExtractor(archive_location)
 
         if not args["quiet"]:
-            print("Installing {} to {}...".format(jdk_artifact, jdk_path))
+            print("Installing {} to {}...".format(artifact, final_path))
 
         with untar._open() as tar_file:
-            curr_full_jdk_path = untar._getnames(tar_file)[0]
+            curr_path = untar._getnames(tar_file)[0]
 
         try:
-            untar.extract(jdk_path)
+            untar.extract(base_path)
         except:
-            os.remove(join(jdk_path, jdk_archive))
-            shutil.rmtree(curr_full_jdk_path)
+            os.remove(join(base_path, archive_name))
+            shutil.rmtree(curr_path)
             mx.abort("Error parsing archive. Please try again")
+
         if not args["keep-archive"]:
-            os.remove(join(jdk_path, jdk_archive))
+            os.remove(join(base_path, archive_name))
             os.remove(archive_location + '.sha1')
-        os.rename(join(jdk_path, curr_full_jdk_path), full_jdk_path)
+        os.rename(join(base_path, curr_path), final_path)
 
     elif not args["quiet"]:
         mx.warn("Requested JDK was already present")
 
-    if mx.is_darwin() and exists(join(full_jdk_path, 'Contents', 'Home')):
-        if args["strip-contents-home"]:
-            tmp_full_jdk_path = full_jdk_path + ".tmp"
-            shutil.move(full_jdk_path, tmp_full_jdk_path)
-            shutil.move(join(tmp_full_jdk_path, 'Contents', 'Home'), full_jdk_path)
-            shutil.rmtree(tmp_full_jdk_path)
+    if mx.is_darwin() and exists(join(final_path, 'Contents', 'Home')):
+        if "strip-contents-home" in args:
+            tmp_path = final_path + ".tmp"
+            shutil.move(final_path, tmp_path)
+            shutil.move(join(tmp_path, 'Contents', 'Home'), final_path)
+            shutil.rmtree(tmp_path)
         else:
-            full_jdk_path = join(full_jdk_path, 'Contents', 'Home')
+            final_path = join(final_path, 'Contents', 'Home')
 
     if "alias" in args:
-        alias_full_path = join(jdk_path, args["alias"])
+        alias_full_path = join(base_path, args["alias"])
         if exists(alias_full_path) or islink(alias_full_path):
             if isdir(alias_full_path) and not islink(alias_full_path):
                 shutil.rmtree(alias_full_path)
@@ -106,29 +105,28 @@ def fetch_jdk(args):
                 os.remove(alias_full_path)
 
         if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(full_jdk_path, alias_full_path)
+            os.symlink(final_path, alias_full_path)
         else:
-            copytree(full_jdk_path, alias_full_path, symlinks=True) # fallback for windows
-        full_jdk_path = alias_full_path
+            copytree(final_path, alias_full_path, symlinks=True) # fallback for windows
+        final_path = alias_full_path
 
     if not args["quiet"]:
         print("Run the following to set JAVA_HOME in your shell:")
 
-    print('export JAVA_HOME={}'.format(abspath(full_jdk_path)))
+    print('export JAVA_HOME={}'.format(abspath(final_path)))
 
-
-def _parse_fetchjdk_settings(args):
+def _parse_fetchsettings(args):
     settings = {}
     settings["quiet"] = False
     settings["keep-archive"] = False
-    settings["jdk-path"] = default_jdk_path()
+    settings["base-path"] = default_base_path()
 
     common_location = join(_mx_home, 'common.json')
 
     parser = ArgumentParser(prog='mx fetch-jdk')
     parser.add_argument('--java-distribution', action='store', help='JDK distribution that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', help='location of configuration json file (default: \'{}\')'.format(common_location))
-    parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["jdk-path"]))
+    parser.add_argument('--to', action='store', help='location where JDK would be downloaded (default: \'{}\')'.format(settings["base-path"]))
     parser.add_argument('--alias', action='store', help='name of symlink to JDK')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     if mx.is_darwin():
@@ -141,18 +139,11 @@ def _parse_fetchjdk_settings(args):
         settings["quiet"] = args.quiet
 
     if args.to is not None:
-        settings["jdk-path"] = args.to
-    elif not settings["quiet"]:
-        mx.warn("JDK location hasn't been specified. Using {}".format(settings["jdk-path"]))
+        settings["base-path"] = args.to
 
-    if not check_access_jdk_path(settings["jdk-path"]):
-        warning_msg = "Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"])
-        settings["jdk-path"] = abspath(join("bin", "jdks"))
-        warning_msg += os.linesep + "Trying to fall back to {}".format(settings["jdk-path"])
-        if not settings["quiet"]:
-            mx.warn(warning_msg)
-        if not check_access_jdk_path(settings["jdk-path"]):
-            mx.abort("Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"]))
+    if not check_write_access(settings["base-path"]):
+        mx.abort("JDK installation directory {} is not writeable.".format(settings["base-path"]) + os.linesep +
+                "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
     if args.configuration is not None:
         common_location = args.configuration
@@ -193,7 +184,7 @@ def parse_common_json(common_path):
     for distribution in common_cfg["jdks"]:
         JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
 
-def default_jdk_path():
+def default_base_path():
     locations = {
         "darwin": '/Library/Java/JavaVirtualMachines',
         "linux" : '/usr/lib/jvm',
@@ -202,11 +193,11 @@ def default_jdk_path():
     }
     return locations[mx.get_os()]
 
-def check_access_jdk_path(jdk_path):
+def check_write_access(path):
     try:
-        if not exists(jdk_path):
-            os.makedirs(jdk_path)
-        if not os.access(jdk_path, os.W_OK):
+        if not exists(path):
+            os.makedirs(path)
+        if not os.access(path, os.W_OK):
             raise IOError
         return True
     except (IOError, OSError):

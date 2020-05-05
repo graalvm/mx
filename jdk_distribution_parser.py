@@ -58,10 +58,9 @@ class JdkDistribution(object):
             name=dist.get_name().ljust(25), version=dist.get_version(), default=default))
             index += 1
         while True:
-            print("Select JDK>"), # pylint: disable=expression-not-assigned
             try:
                 try:
-                    choice = input()
+                    choice = input("Select JDK>")
                 except SyntaxError: # Empty line
                     choice = ""
 
@@ -91,7 +90,7 @@ class JdkDistribution(object):
     def get_filename(self):
         return self._filename
 
-    def get_archive(self):
+    def get_archive_name(self):
         return self._archive
 
     def get_url(self):
@@ -106,11 +105,11 @@ class JdkDistribution(object):
     def get_short_version(self):
         return self._short_version
 
-    def get_jdk_folder(self):
+    def get_folder_name(self):
         return "{}-{}".format(self.get_name(), self.get_short_version())
 
-    def get_full_jdk_path(self, jdk_path):
-        return join(jdk_path, self.get_jdk_folder())
+    def get_final_path(self, jdk_path):
+        return join(jdk_path, self.get_folder_name())
 
 class OpenJDK8(JdkDistribution):
     _name = "openjdk8"
