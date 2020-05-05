@@ -47,18 +47,35 @@ class JdkDistribution(object):
             return JdkDistribution.by_name(JdkDistribution._DEFAULT_JDK)
 
         index = 1
+        default_choice = 1
         for dist in JdkDistribution._jdk_distributions:
-            default = " " if dist.get_name() != JdkDistribution._DEFAULT_JDK else "*"
+            if dist.get_name() == JdkDistribution._DEFAULT_JDK:
+                default_choice = index
+                default = "*"
+            else:
+                default = " "
             print("[{index}]{default} {name} | {version}".format(index=index,
             name=dist.get_name().ljust(25), version=dist.get_version(), default=default))
             index += 1
         while True:
             print("Select JDK>"), # pylint: disable=expression-not-assigned
             try:
-                index = int(input()) - 1
+                try:
+                    choice = input()
+                except SyntaxError: # Empty line
+                    choice = ""
+
+                if choice == "":
+                    index = default_choice - 1
+                else:
+                    index = int(choice) - 1
+
+                if index < 0:
+                    raise IndexError
+
                 return JdkDistribution._jdk_distributions[index]
             except (SyntaxError, NameError, IndexError):
-                pass
+                mx.warn("Invalid selection!")
 
     @staticmethod
     def by_name(name):

@@ -6595,7 +6595,7 @@ class JavaProject(Project, ClasspathDependency):
                             if self.is_test_project() and java_package is None and path_package == '':
                                 # Test projects are allowed to include classes without a package
                                 continue
-                            elif java_package != path_package:
+                            if java_package != path_package:
                                 mismatched_imports[java_source] = java_package
 
             importedPackagesFromProjects = set()

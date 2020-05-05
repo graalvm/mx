@@ -31,7 +31,6 @@ from shutil import copytree
 from argparse import ArgumentParser, REMAINDER
 
 from mx import optional_suite_context, _mx_home, command
-from select_jdk import find_system_jdks
 from jdk_distribution_parser import JdkDistribution
 import mx, mx_urlrewrites
 
@@ -64,7 +63,7 @@ def fetch_jdk(args):
         untar = mx.TarExtractor(archive_location)
 
         if not args["quiet"]:
-            print("Installing...")
+            print("Installing {} to {}...".format(jdk_artifact, jdk_path))
 
         with untar._open() as tar_file:
             curr_full_jdk_path = untar._getnames(tar_file)[0]
@@ -77,6 +76,7 @@ def fetch_jdk(args):
             mx.abort("Error parsing archive. Please try again")
         if not args["keep-archive"]:
             os.remove(join(jdk_path, jdk_archive))
+            os.remove(archive_location + '.sha1')
         os.rename(join(jdk_path, curr_full_jdk_path), full_jdk_path)
 
     elif not args["quiet"]:
@@ -115,14 +115,7 @@ def _parse_fetchjdk_settings(args):
     settings = {}
     settings["quiet"] = False
     settings["keep-archive"] = False
-    settings["jdk-path"] = abspath(join('bin', 'jdks'))
-
-    jdk_paths = find_system_jdks()
-    if len(jdk_paths) > 0:
-        settings["jdk-path"] = next(iter(jdk_paths))
-        found_jdk_path = True
-    else:
-        found_jdk_path = False
+    settings["jdk-path"] = default_jdk_path()
 
     common_location = join(_mx_home, 'common.json')
 
@@ -143,19 +136,16 @@ def _parse_fetchjdk_settings(args):
 
     if args.to is not None:
         settings["jdk-path"] = args.to
-    elif not found_jdk_path and not settings["quiet"]:
-        mx.warn("No standard JDK location. Using {}".format(settings["jdk-path"]))
+    elif not settings["quiet"]:
+        mx.warn("JDK location hasn't been specified. Using {}".format(settings["jdk-path"]))
 
-    try:
-        if not exists(settings["jdk-path"]):
-            os.makedirs(settings["jdk-path"])
-        test_location = join(settings["jdk-path"], "test")
-        test_file = open(test_location, 'w')
-        test_file.close()
-        os.remove(test_location)
-    except (IOError, OSError):
-        mx.abort("Path '"+settings["jdk-path"]+"' is not writable. " + os.linesep +
-        "Rerun command with elevated privileges, or choose different JDK download location.")
+    if not check_access_jdk_path(settings["jdk-path"]):
+        warning_msg = "Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"])
+        settings["jdk-path"] = abspath(join("bin", "jdks"))
+        warning_msg += os.linesep + "Trying to fall back to {}".format(settings["jdk-path"])
+        mx.warn(warning_msg)
+        if not check_access_jdk_path(settings["jdk-path"]):
+            mx.abort("Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"]))
 
     if args.configuration is not None:
         common_location = args.configuration
@@ -195,3 +185,22 @@ def parse_common_json(common_path):
 
     for distribution in common_cfg["jdks"]:
         JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
+
+def default_jdk_path():
+    locations = {
+        "darwin": '/Library/Java/JavaVirtualMachines',
+        "linux" : '/usr/lib/jvm',
+        "solaris": '/usr/jdk/instances',
+        "windows": r'C:\Program Files\Java'
+    }
+    return locations[mx.get_os()]
+
+def check_access_jdk_path(jdk_path):
+    try:
+        if not exists(jdk_path):
+            os.makedirs(jdk_path)
+        if not os.access(jdk_path, os.W_OK):
+            raise IOError
+        return True
+    except (IOError, OSError):
+        return False
