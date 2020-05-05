@@ -51,7 +51,13 @@ def fetch_jdk(args):
     jdk_url_sha = jdk_url + ".sha1"
     jdk_archive = distribution.get_archive()
 
+    if not args["quiet"] and not mx.ask_yes_no("Install {} to {}".format(jdk_artifact, jdk_path), default='y'):
+            mx.abort("JDK installation canceled")
+
     if not exists(full_jdk_path):
+        if not args["quiet"]:
+            print("Fetching {} archive...".format(jdk_artifact))
+
         archive_location = join(jdk_path, jdk_archive)
         mx._opts.no_download_progress = args["quiet"]
         try:
@@ -143,7 +149,8 @@ def _parse_fetchjdk_settings(args):
         warning_msg = "Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"])
         settings["jdk-path"] = abspath(join("bin", "jdks"))
         warning_msg += os.linesep + "Trying to fall back to {}".format(settings["jdk-path"])
-        mx.warn(warning_msg)
+        if not settings["quiet"]:
+            mx.warn(warning_msg)
         if not check_access_jdk_path(settings["jdk-path"]):
             mx.abort("Path '{}' is not writable (try running with elevated privileges). ".format(settings["jdk-path"]))
 
