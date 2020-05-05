@@ -265,15 +265,14 @@ class JavaModuleDescriptor(mx.Comparable):
 
     def collect_required_exports(self, required_exports):
         """
-        Adds required exports information that is needed to use this module to the given required_exports defaultdict(set).
+        Adds required exports information that is needed to use this module to required_exports.
 
         :param defaultdict(set) required_exports: dict where required exports information of this module should be added
         """
         concealedRequires = self.concealedRequires
-        for required_module_name in concealedRequires:
-            required_packages = concealedRequires[required_module_name]
-            for required_package_name in required_packages:
-                required_exports[(required_module_name, required_package_name)].add(self)
+        for module_name, packages in concealedRequires.items():
+            for package_name in packages:
+                required_exports[(module_name, package_name)].add(self)
 
 def lookup_package(modulepath, package, importer):
     """
@@ -1036,11 +1035,10 @@ def requiredExports(distributions, jdk):
 
     :param distributions: list of Distribution objects that should be looked through for requiredExports information
     :param JDKConfig jdk: a JDK with a version >= 9 that can be used to compile the module-info class
-    :return: A dictionary with (required_module_name, required_package_name) keys and values that are sets of
-    JavaModuleDescriptors that require the export described by the given key. For example:
-    ('java.base', 'jdk.internal.module'): set([module:org.graalvm.nativeimage.pointsto, module:org.graalvm.nativeimage.builder])
-    means that module java.base needs to be updated to export (i.e. --add-exports) jdk.internal.module to the modules
-    org.graalvm.nativeimage.pointsto and org.graalvm.nativeimage.builder.
+    :return: A dictionary with (module_name, package_name) keys and values that are sets of JavaModuleDescriptors that require the export
+    described by the given key. For example: ('java.base', 'jdk.internal.module'): set([module:org.graalvm.nativeimage.pointsto,
+    module:org.graalvm.nativeimage.builder]) means that module java.base needs to be updated to export (i.e. --add-exports)
+    jdk.internal.module to the modules org.graalvm.nativeimage.pointsto and org.graalvm.nativeimage.builder.
     """
     def _opt_as_java_module(dist):
         if not mx.get_module_name(dist):
