@@ -50,15 +50,15 @@ def fetch_jdk(args):
     url = mx_urlrewrites.rewriteurl(distribution.get_url())
     sha_url = url + ".sha1"
     archive_name = distribution.get_archive_name()
+    archive_location = join(base_path, archive_name)
 
     if not args["quiet"] and not mx.ask_yes_no("Install {} to {}".format(artifact, final_path), default='y'):
         mx.abort("JDK installation canceled")
 
     if not exists(final_path):
         if not args["quiet"]:
-            print("Fetching {} archive from {}...".format(artifact, url))
+            mx.log("Fetching {} archive from {}...".format(artifact, url))
 
-        archive_location = join(base_path, archive_name)
         mx._opts.no_download_progress = args["quiet"]
         sha1_hash = mx._hashFromUrl(sha_url).decode('utf-8')
 
@@ -67,7 +67,7 @@ def fetch_jdk(args):
         untar = mx.TarExtractor(archive_location)
 
         if not args["quiet"]:
-            print("Installing {} to {}...".format(artifact, final_path))
+            mx.log("Installing {} to {}...".format(artifact, final_path))
 
         with untar._open() as tar_file:
             curr_path = untar._getnames(tar_file)[0]
@@ -82,13 +82,17 @@ def fetch_jdk(args):
         if not args["keep-archive"]:
             os.remove(join(base_path, archive_name))
             os.remove(archive_location + '.sha1')
+        elif not args["quiet"] and args["keep-archive"]:
+            mx.log("Archive is located at {}".format(archive_location))
         os.rename(join(base_path, curr_path), final_path)
 
     elif not args["quiet"]:
-        mx.warn("Requested JDK was already present")
+        if args["keep-archive"]:
+            mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
+        mx.log("Requested JDK is already installed at {}".format(final_path))
 
     if mx.is_darwin() and exists(join(final_path, 'Contents', 'Home')):
-        if "strip-contents-home" in args:
+        if args["strip-contents-home"]:
             tmp_path = final_path + ".tmp"
             shutil.move(final_path, tmp_path)
             shutil.move(join(tmp_path, 'Contents', 'Home'), final_path)
@@ -111,9 +115,9 @@ def fetch_jdk(args):
         final_path = alias_full_path
 
     if not args["quiet"]:
-        print("Run the following to set JAVA_HOME in your shell:")
+        mx.log("Run the following to set JAVA_HOME in your shell:")
 
-    print('export JAVA_HOME={}'.format(abspath(final_path)))
+    mx.log('export JAVA_HOME={}'.format(abspath(final_path)))
 
 def _parse_fetchsettings(args):
     settings = {}
@@ -172,8 +176,8 @@ def _parse_fetchsettings(args):
     if args.keep_archive is not None:
         settings["keep-archive"] = args.keep_archive
 
-    if mx.is_darwin() and args.strip_contents_home is not None:
-        settings["strip-contents-home"] = True
+    if mx.is_darwin() and (args.strip_contents_home is not None):
+        settings["strip-contents-home"] = args.strip_contents_home
 
     return settings
 
