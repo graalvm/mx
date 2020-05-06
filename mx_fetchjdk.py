@@ -91,6 +91,7 @@ def fetch_jdk(args):
             mx.warn("The --keep-archive option is ignored when the JDK is already installed.")
         mx.log("Requested JDK is already installed at {}".format(final_path))
 
+    curr_path = final_path
     if mx.is_darwin() and exists(join(final_path, 'Contents', 'Home')):
         if args["strip-contents-home"]:
             tmp_path = final_path + ".tmp"
@@ -109,9 +110,9 @@ def fetch_jdk(args):
                 os.remove(alias_full_path)
 
         if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(final_path, alias_full_path)
+            os.symlink(curr_path, alias_full_path)
         else:
-            copytree(final_path, alias_full_path, symlinks=True) # fallback for windows
+            copytree(curr_path, alias_full_path, symlinks=True) # fallback for windows
         final_path = alias_full_path
 
     if not args["quiet"]:
