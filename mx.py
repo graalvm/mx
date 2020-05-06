@@ -744,12 +744,20 @@ currently_loading_suite = DynamicVar(None)
 
 _suite_context_free = ['init', 'version', 'urlrewrite']
 
+def _command_function_names(func):
+    """
+    Generates list of guesses for command name based on its function name
+    """
+    command_names = [func.__name__]
+    if '_' in func.__name__:
+        command_names.append(func.__name__.replace("_", "-"))
+    return command_names
 
 def suite_context_free(func):
     """
     Decorator for commands that don't need a primary suite.
     """
-    _suite_context_free.append(func.__name__)
+    _suite_context_free.extend(_command_function_names(func))
     return func
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
@@ -761,7 +769,7 @@ def optional_suite_context(func):
     """
     Decorator for commands that don't need a primary suite but will use one if it can be found.
     """
-    _optional_suite_context.append(func.__name__)
+    _optional_suite_context.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
@@ -773,7 +781,7 @@ def no_suite_loading(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be loaded.
     """
-    _no_suite_loading.append(func.__name__)
+    _no_suite_loading.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be discovered.
@@ -785,7 +793,7 @@ def no_suite_discovery(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be discovered.
     """
-    _no_suite_discovery.append(func.__name__)
+    _no_suite_discovery.extend(_command_function_names(func))
     return func
 
 
@@ -4110,7 +4118,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
     verify_errors = {}
     for url in urls:
-        if not verifyOnly or verbose:
+        if not verifyOnly and verbose:
             log('Downloading ' + url + ' to ' + path)
         m = jarURLPattern.match(url)
         jarEntryName = None
@@ -6587,7 +6595,7 @@ class JavaProject(Project, ClasspathDependency):
                             if self.is_test_project() and java_package is None and path_package == '':
                                 # Test projects are allowed to include classes without a package
                                 continue
-                            elif java_package != path_package:
+                            if java_package != path_package:
                                 mismatched_imports[java_source] = java_package
 
             importedPackagesFromProjects = set()
@@ -19246,6 +19254,8 @@ update_commands("mx", {
     'version': [show_version, ''],
 })
 
+import mx_fetchjdk # pylint: disable=unused-import
+
 from mx_unittest import unittest
 from mx_jackpot import jackpot
 from mx_webserver import webserver
@@ -19506,7 +19516,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.262.3") # GR-16855-mx
+version = VersionSpec("5.263.0") # fetch-jdk
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
