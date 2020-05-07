@@ -110,7 +110,7 @@ def fetch_jdk(args):
                 os.remove(alias_full_path)
 
         if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(curr_path, alias_full_path)
+            os.symlink(abspath(curr_path), alias_full_path)
         else:
             copytree(curr_path, alias_full_path, symlinks=True) # fallback for windows
         final_path = alias_full_path
