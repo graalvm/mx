@@ -117,12 +117,18 @@ python3 = {
   },
 },
 mx_fetchjdk_test = {
+  environment+: {
+    FETCH_JDK_TEST_FOLDER: "fetch-jdk-test-folder/",
+  },
   run: [
-    ['./mx', 'fetch-jdk', '--java-distribution', 'labsjdk-ce-11', '--to', 'jdk/', '--alias', 'jdk-11'],
-    ['./jdk/jdk-11/bin/java', '-version'],
-    ['./mx', 'fetch-jdk', '--java-distribution', 'openjdk8', '--to', 'jdk/', '--alias', 'jdk-8'],
-    ['./jdk/jdk-8/bin/java', '-version']
-  ]
+    ['./mx', 'fetch-jdk', '--java-distribution', 'labsjdk-ce-11', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-11'],
+    ['./$FETCH_JDK_TEST_FOLDER/jdk-11/bin/java', '-version'],
+    ['./mx', 'fetch-jdk', '--java-distribution', 'openjdk8', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-8'],
+    ['./$FETCH_JDK_TEST_FOLDER/jdk-8/bin/java', '-version'],
+  ],
+  teardown: [
+    ['rm', '-rf', '$FETCH_JDK_TEST_FOLDER'],
+  ],
 }
 ;
 
