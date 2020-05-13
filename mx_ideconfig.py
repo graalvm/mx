@@ -78,6 +78,16 @@ from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy
 
+from mx import log, logv, abort, log_error, warn
+from mx import get_os, is_cygwin, is_linux, is_openbsd, is_sunos, is_windows, is_darwin
+from mx import suites, suite, primary_suite, projects, dependencies, sorted_dists, BinarySuite, project
+from mx import get_jdk, JavaCompliance, classpath_entries
+from mx import ensure_dir_exists, update_file, get_transitive_closure, dir_contains_files_recursively, \
+    relpath_or_absolute, get_env, TimeStampFile, SafeFileCreation, ask_yes_no, command, VersionSpec, exe_suffix, \
+    getmtime, OutputCapture, run
+from mx import XMLDoc, StringIO, DEP_EXCLUDED
+from mx import _make_absolute, _VM_OPTS_SPACE_SEPARATED_ARG, _mx_suite, _processorjars_suite, _function_code, _mx_home, _dists, _removedDeps, _opts
+
 
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
