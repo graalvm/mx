@@ -81,6 +81,7 @@ from copy import copy
 import mx
 
 
+@mx.command('mx', 'eclipseformat')
 def eclipseformat(args):
     """run the Eclipse Code Formatter on the Java sources
 
@@ -449,6 +450,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     mx.update_file(sourcesFile, '\n'.join(sources))
     return mx.update_file(launchFile, launch)
 
+@mx.command('mx', 'eclipseinit')
 def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
     parser = ArgumentParser(prog='mx eclipseinit')
@@ -1293,6 +1295,7 @@ def _workingset_open(wsdoc, ws):
 def _workingset_element(wsdoc, p):
     wsdoc.element('item', {'elementID': '=' + p, 'factoryID': 'org.eclipse.jdt.ui.PersistableJavaElementFactory'})
 
+@mx.command('mx', 'netbeansinit')
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
@@ -2664,6 +2667,8 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
 
 ### ~~~~~~~~~~~~~ IDE, IntelliJ
 
+
+@mx.command('mx', 'ideclean')
 def ideclean(args):
     """remove all IDE project configurations"""
     def rm(path):
@@ -2700,6 +2705,8 @@ def ideclean(args):
         if d.get_ide_project_dir():
             shutil.rmtree(d.get_ide_project_dir(), ignore_errors=True)
 
+
+@mx.command('mx', 'ideinit')
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
     parser = ArgumentParser(prog='mx ideinit')
@@ -2717,6 +2724,7 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     if not refreshOnly:
         fsckprojects([])
 
+@mx.command('mx', 'fsckprojects')
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
     for suite in mx.suites(True, includeBinary=False):
