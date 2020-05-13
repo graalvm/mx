@@ -12507,13 +12507,13 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 log('    ' + key + '=' + env[key])
             log(' \\\n '.join(map(pipes.quote, args)))
         else:
-            if cwd is not None and cwd != _original_directory:
-                log('Directory: ' + os.path.abspath(cwd))
             s = ''
+            if cwd is not None and cwd != _original_directory:
+                s += '# Directory: ' + os.path.abspath(cwd) + os.linesep
             if env is not None:
                 env_diff = [(k, env[k]) for k in env if k not in _original_environ]
                 if len(env_diff):
-                    s = 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+                    s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
             s = s + list_to_cmd_line(args)
             if _opts.verbose:
                 log(s)
@@ -19530,7 +19530,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.2") # GR-23375
+version = VersionSpec("5.263.3") # GR-23375_2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
