@@ -24,10 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-r"""
-mx is a command line tool for managing the development of Java code organized as suites of projects.
 
-"""
 from __future__ import print_function
 
 import os, zipfile
