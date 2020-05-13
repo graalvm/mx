@@ -78,15 +78,7 @@ from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
 from copy import copy
 
-from mx import log, logv, abort, log_error, warn
-from mx import get_os, is_cygwin, is_linux, is_openbsd, is_sunos, is_windows, is_darwin
-from mx import suites, suite, primary_suite, projects, dependencies, sorted_dists, BinarySuite, project
-from mx import get_jdk, JavaCompliance, classpath_entries
-from mx import ensure_dir_exists, update_file, get_transitive_closure, dir_contains_files_recursively, \
-    relpath_or_absolute, get_env, TimeStampFile, SafeFileCreation, ask_yes_no, command, VersionSpec, exe_suffix, \
-    getmtime, OutputCapture, run
-from mx import XMLDoc, StringIO, DEP_EXCLUDED
-from mx import _make_absolute, _VM_OPTS_SPACE_SEPARATED_ARG, _mx_suite, _processorjars_suite, _function_code, _mx_home, _dists, _removedDeps, _opts
+import mx
 
 
 def eclipseformat(args):
@@ -106,29 +98,29 @@ def eclipseformat(args):
     if args.eclipse_exe is None:
         args.eclipse_exe = os.environ.get('ECLIPSE_EXE')
     if args.eclipse_exe is None:
-        abort('Could not find Eclipse executable. Use -e option or ensure ECLIPSE_EXE environment variable is set.')
+        mx.abort('Could not find Eclipse executable. Use -e option or ensure ECLIPSE_EXE environment variable is set.')
     if args.restore:
         args.backup = False
 
     # Maybe an Eclipse installation dir was specified - look for the executable in it
     if isdir(args.eclipse_exe):
-        args.eclipse_exe = join(args.eclipse_exe, exe_suffix('eclipse'))
-        warn("The eclipse-exe was a directory, now using " + args.eclipse_exe)
+        args.eclipse_exe = join(args.eclipse_exe, mx.exe_suffix('eclipse'))
+        mx.warn("The eclipse-exe was a directory, now using " + args.eclipse_exe)
 
     if not os.path.isfile(args.eclipse_exe):
-        abort('File does not exist: ' + args.eclipse_exe)
+        mx.abort('File does not exist: ' + args.eclipse_exe)
     if not os.access(args.eclipse_exe, os.X_OK):
-        abort('Not an executable file: ' + args.eclipse_exe)
+        mx.abort('Not an executable file: ' + args.eclipse_exe)
 
     wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
 
     # build list of projects to be processed
     if args.projects is not None:
-        projectsToProcess = [project(name) for name in args.projects.split(',')]
+        projectsToProcess = [mx.project(name) for name in args.projects.split(',')]
     elif args.primary:
-        projectsToProcess = projects(limit_to_primary=True)
+        projectsToProcess = mx.projects(limit_to_primary=True)
     else:
-        projectsToProcess = projects(opt_limit_to_suite=True)
+        projectsToProcess = mx.projects(opt_limit_to_suite=True)
 
     class Batch:
         def __init__(self, settingsDir):
@@ -165,7 +157,7 @@ def eclipseformat(args):
             self.path = path
             with open(path) as fp:
                 self.content = fp.read()
-            self.times = (os.path.getatime(path), getmtime(path))
+            self.times = (os.path.getatime(path), mx.getmtime(path))
 
         def update(self, removeTrailingWhitespace, restore):
             with open(self.path) as fp:
@@ -182,7 +174,7 @@ def eclipseformat(args):
                             fp.write(content)
 
                 if self.content != content:
-                    rpath = os.path.relpath(self.path, primary_suite().dir)
+                    rpath = os.path.relpath(self.path, mx.primary_suite().dir)
                     self.diff = difflib.unified_diff(self.content.splitlines(1), content.splitlines(1), fromfile=join('a', rpath), tofile=join('b', rpath))
                     if restore:
                         with open(self.path, 'w') as fp:
@@ -192,7 +184,7 @@ def eclipseformat(args):
                         self.content = content
                     file_modified = True
 
-            if not file_updated and (os.path.getatime(self.path), getmtime(self.path)) != self.times:
+            if not file_updated and (os.path.getatime(self.path), mx.getmtime(self.path)) != self.times:
                 # reset access and modification time of file
                 os.utime(self.path, self.times)
             return file_modified
@@ -207,8 +199,8 @@ def eclipseformat(args):
         batch = Batch(join(p.dir, '.settings'))
 
         if not exists(batch.path):
-            if _opts.verbose:
-                log('[no Eclipse Code Formatter preferences at {0} - skipping]'.format(batch.path))
+            if mx._opts.verbose:
+                mx.log('[no Eclipse Code Formatter preferences at {0} - skipping]'.format(batch.path))
             continue
 
         javafiles = []
@@ -217,23 +209,23 @@ def eclipseformat(args):
                 for f in [join(root, name) for name in files if name.endswith('.java')]:
                     javafiles.append(FileInfo(f))
         if len(javafiles) == 0:
-            logv('[no Java sources in {0} - skipping]'.format(p.name))
+            mx.logv('[no Java sources in {0} - skipping]'.format(p.name))
             continue
 
         res = batches.setdefault(batch, javafiles)
         if res is not javafiles:
             res.extend(javafiles)
 
-    log("we have: " + str(len(batches)) + " batches")
+    mx.log("we have: " + str(len(batches)) + " batches")
     batch_num = 0
     for batch, javafiles in batches.items():
         batch_num += 1
-        log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
+        mx.log("Processing batch {0} ({1} files)...".format(batch_num, len(javafiles)))
 
-        jdk = get_jdk()
+        jdk = mx.get_jdk()
 
         with tempfile.NamedTemporaryFile(mode='w') as tmp_eclipseini:
-            with open(join(dirname(args.eclipse_exe), join('..', 'eclipse', 'eclipse.ini') if is_darwin() else 'eclipse.ini'), 'r') as src:
+            with open(join(dirname(args.eclipse_exe), join('..', 'eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
                 locking_added = False
                 for line in src.readlines():
                     tmp_eclipseini.write(line)
@@ -244,9 +236,9 @@ def eclipseformat(args):
                     tmp_eclipseini.write('-vmargs\n-Dosgi.locking=none\n')
             tmp_eclipseini.flush()
 
-            for chunk in _chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
-                capture = OutputCapture()
-                rc = run([args.eclipse_exe,
+            for chunk in mx._chunk_files_for_command_line(javafiles, pathFunction=lambda f: f.path):
+                capture = mx.OutputCapture()
+                rc = mx.run([args.eclipse_exe,
                           '--launcher.ini', tmp_eclipseini.name,
                           '-nosplash',
                           '-application',
@@ -255,18 +247,18 @@ def eclipseformat(args):
                           '-vm', jdk.java,
                           'org.eclipse.jdt.core.JavaCodeFormatter',
                           '-config', batch.path]
-                         + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
+                            + [f.path for f in chunk], out=capture, err=capture, nonZeroIsFatal=False)
                 if rc != 0:
-                    log(capture.data)
-                    abort("Error while running formatter")
+                    mx.log(capture.data)
+                    mx.abort("Error while running formatter")
                 for fi in chunk:
                     if fi.update(batch.removeTrailingWhitespace, args.restore):
                         modified.append(fi)
 
-    log('{0} files were modified'.format(len(modified)))
+    mx.log('{0} files were modified'.format(len(modified)))
 
     if len(modified) != 0:
-        arcbase = primary_suite().dir
+        arcbase = mx.primary_suite().dir
         if args.backup:
             backup = os.path.abspath('eclipseformat.backup.zip')
             zf = zipfile.ZipFile(backup, 'w', zipfile.ZIP_DEFLATED)
@@ -275,23 +267,23 @@ def eclipseformat(args):
             if args.patchfile:
                 args.patchfile.write(diffs)
             name = os.path.relpath(fi.path, arcbase)
-            log(' - {0}'.format(name))
-            log('Changes:')
-            log(diffs)
+            mx.log(' - {0}'.format(name))
+            mx.log('Changes:')
+            mx.log(diffs)
             if args.backup:
                 arcname = name.replace(os.sep, '/')
                 zf.writestr(arcname, fi.content)
         if args.backup:
             zf.close()
-            log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
+            mx.log('Wrote backup of {0} modified files to {1}'.format(len(modified), backup))
         if args.patchfile:
-            log('Wrote patches to {0}'.format(args.patchfile.name))
+            mx.log('Wrote patches to {0}'.format(args.patchfile.name))
             args.patchfile.close()
         return 1
     return 0
 
 def _source_locator_memento(deps, jdk=None):
-    slm = XMLDoc()
+    slm = mx.XMLDoc()
     slm.open('sourceLookupDirector')
     slm.open('sourceContainers', {'duplicates' : 'false'})
 
@@ -301,30 +293,30 @@ def _source_locator_memento(deps, jdk=None):
     for dep in deps:
         if dep.isLibrary():
             if hasattr(dep, 'eclipse.container'):
-                memento = XMLDoc().element('classpathContainer', {'path' : getattr(dep, 'eclipse.container')}).xml(standalone='no')
+                memento = mx.XMLDoc().element('classpathContainer', {'path' : getattr(dep, 'eclipse.container')}).xml(standalone='no')
                 slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
                 sources.append(getattr(dep, 'eclipse.container') +' [classpathContainer]')
             elif dep.get_source_path(resolve=True):
-                memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
+                memento = mx.XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : dep.get_source_path(resolve=True)}).xml(standalone='no')
                 slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
                 sources.append(dep.get_source_path(resolve=True) + ' [externalArchive]')
         elif dep.isJdkLibrary():
             if jdk is None:
-                jdk = get_jdk(tag='default')
+                jdk = mx.get_jdk(tag='default')
             path = dep.get_source_path(jdk)
             if path:
                 if os.path.isdir(path):
-                    memento = XMLDoc().element('directory', {'nest' : 'false', 'path' : path}).xml(standalone='no')
+                    memento = mx.XMLDoc().element('directory', {'nest' : 'false', 'path' : path}).xml(standalone='no')
                     slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.directory'})
                     sources.append(path + ' [directory]')
                 else:
-                    memento = XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : path}).xml(standalone='no')
+                    memento = mx.XMLDoc().element('archive', {'detectRoot' : 'true', 'path' : path}).xml(standalone='no')
                     slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.debug.core.containerType.externalArchive'})
                     sources.append(path + ' [externalArchive]')
         elif dep.isProject():
             if not dep.isJavaProject():
                 continue
-            memento = XMLDoc().element('javaProject', {'name' : dep.name}).xml(standalone='no')
+            memento = mx.XMLDoc().element('javaProject', {'name' : dep.name}).xml(standalone='no')
             slm.element('container', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.javaProject'})
             sources.append(dep.name + ' [javaProject]')
             if javaCompliance is None or dep.javaCompliance > javaCompliance:
@@ -332,11 +324,11 @@ def _source_locator_memento(deps, jdk=None):
 
     if javaCompliance:
         jdkContainer = 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/' +  _to_EclipseJRESystemLibrary(javaCompliance)
-        memento = XMLDoc().element('classpathContainer', {'path' : jdkContainer}).xml(standalone='no')
+        memento = mx.XMLDoc().element('classpathContainer', {'path' : jdkContainer}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
         sources.append(jdkContainer + ' [classpathContainer]')
     else:
-        memento = XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'}).xml(standalone='no')
+        memento = mx.XMLDoc().element('classpathContainer', {'path' : 'org.eclipse.jdt.launching.JRE_CONTAINER'}).xml(standalone='no')
         slm.element('classpathContainer', {'memento' : memento, 'typeId':'org.eclipse.jdt.launching.sourceContainer.classpathContainer'})
         sources.append('org.eclipse.jdt.launching.JRE_CONTAINER [classpathContainer]')
 
@@ -361,7 +353,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     # to a waiting VM and leaves it hanging. Putting any valid project entry in the field seems to solve it.
     firstProjectName = javaProjects[0].name
 
-    launch = XMLDoc()
+    launch = mx.XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.remoteJavaApplication'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_id', 'value' : 'org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_memento', 'value' : '%s'})
@@ -376,17 +368,17 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
     if name is None:
-        if len(suites()) == 1:
+        if len(mx.suites()) == 1:
             suitePrefix = ''
         else:
             suitePrefix = suite.name + '-'
         name = suitePrefix + 'attach-' + hostname + '-' + port
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    ensure_dir_exists(eclipseLaunches)
+    mx.ensure_dir_exists(eclipseLaunches)
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
-    update_file(sourcesFile, '\n'.join(sources))
-    return update_file(launchFile, launch), launchFile
+    mx.update_file(sourcesFile, '\n'.join(sources))
+    return mx.update_file(launchFile, launch), launchFile
 
 def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     """
@@ -405,7 +397,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
             mainClass = '-jar'
             appArgs = list(reversed(argsCopy))
             break
-        if a in _VM_OPTS_SPACE_SEPARATED_ARG:
+        if a in mx._VM_OPTS_SPACE_SEPARATED_ARG:
             assert len(argsCopy) != 0
             cp = argsCopy.pop()
             vmArgs.append(a)
@@ -418,7 +410,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
             break
 
     if mainClass is None:
-        log('Cannot create Eclipse launch configuration without main class or jar file: java ' + ' '.join(javaArgs))
+        mx.log('Cannot create Eclipse launch configuration without main class or jar file: java ' + ' '.join(javaArgs))
         return False
 
     if name is None:
@@ -432,13 +424,13 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
 
     if cp is not None:
         for e in cp.split(os.pathsep):
-            for s in suites():
+            for s in mx.suites():
                 deps += [p for p in s.projects if e == p.output_dir()]
                 deps += [l for l in s.libs if e == l.get_path(False)]
 
     slm, sources = _source_locator_memento(deps)
 
-    launch = XMLDoc()
+    launch = mx.XMLDoc()
     launch.open('launchConfiguration', {'type' : 'org.eclipse.jdt.launching.localJavaApplication'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_id', 'value' : 'org.eclipse.jdt.launching.sourceLocator.JavaSourceLookupDirector'})
     launch.element('stringAttribute', {'key' : 'org.eclipse.debug.core.source_locator_memento', 'value' : '%s'})
@@ -451,11 +443,11 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
     eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    ensure_dir_exists(eclipseLaunches)
+    mx.ensure_dir_exists(eclipseLaunches)
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
-    update_file(sourcesFile, '\n'.join(sources))
-    return update_file(launchFile, launch)
+    mx.update_file(sourcesFile, '\n'.join(sources))
+    return mx.update_file(launchFile, launch)
 
 def eclipseinit_cli(args):
     """(re)generate Eclipse project configurations and working sets"""
@@ -468,26 +460,26 @@ def eclipseinit_cli(args):
     args = parser.parse_args(args)
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
     if _EclipseJRESystemLibraries:
-        log('----------------------------------------------')
+        mx.log('----------------------------------------------')
         executionEnvironments = [n for n in _EclipseJRESystemLibraries if n.startswith('JavaSE-')]
         installedJREs = [n for n in _EclipseJRESystemLibraries if not n.startswith('JavaSE-')]
         if executionEnvironments:
-            log('Ensure that these Execution Environments have a Compatible JRE in Eclipse (Preferences -> Java -> Installed JREs -> Execution Environments):')
+            mx.log('Ensure that these Execution Environments have a Compatible JRE in Eclipse (Preferences -> Java -> Installed JREs -> Execution Environments):')
             for name in executionEnvironments:
-                log('  ' + name)
+                mx.log('  ' + name)
         if installedJREs:
-            log('Ensure that there are Installed JREs with these exact names in Eclipse (Preferences -> Java -> Installed JREs):')
+            mx.log('Ensure that there are Installed JREs with these exact names in Eclipse (Preferences -> Java -> Installed JREs):')
             for name in installedJREs:
-                log('  ' + name)
-            log('You can set the "JRE name" field for a JDK when initially adding it or later with the "Edit..." button.')
-            log('See https://help.eclipse.org/photon/topic/org.eclipse.jdt.doc.user/tasks/task-add_new_jre.htm on how to add')
-            log('a new JDK to Eclipse. Be sure to select "Standard VM" (even on macOS) for the JRE type.')
-        log('----------------------------------------------')
+                mx.log('  ' + name)
+            mx.log('You can set the "JRE name" field for a JDK when initially adding it or later with the "Edit..." button.')
+            mx.log('See https://help.eclipse.org/photon/topic/org.eclipse.jdt.doc.user/tasks/task-add_new_jre.htm on how to add')
+            mx.log('a new JDK to Eclipse. Be sure to select "Standard VM" (even on macOS) for the JRE type.')
+        mx.log('----------------------------------------------')
 
 def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=False, doFsckProjects=True, force=False, absolutePaths=False, pythonProjects=False):
     """(re)generate Eclipse project configurations and working sets"""
 
-    for s in suites(True) + [_mx_suite]:
+    for s in mx.suites(True) + [mx._mx_suite]:
         _eclipseinit_suite(s, buildProcessorJars, refreshOnly, logToConsole, force, absolutePaths, pythonProjects)
 
     wsroot = generate_eclipse_workingsets()
@@ -570,8 +562,8 @@ def _to_EclipseJRESystemLibrary(compliance):
     Converts a Java compliance value to a JRE System Library that
     can be put on a project's Build Path.
     """
-    if not isinstance(compliance, JavaCompliance):
-        compliance = JavaCompliance(compliance)
+    if not isinstance(compliance, mx.JavaCompliance):
+        compliance = mx.JavaCompliance(compliance)
 
     if compliance.value > _max_Eclipse_JavaExecutionEnvironment:
         res = 'jdk-' + str(compliance)
@@ -581,22 +573,22 @@ def _to_EclipseJRESystemLibrary(compliance):
     return res
 
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
-    ensure_dir_exists(p.dir)
+    mx.ensure_dir_exists(p.dir)
 
     linkedResources = []
 
-    out = XMLDoc()
+    out = mx.XMLDoc()
     out.open('classpath')
 
     for src in p.srcDirs:
         srcDir = join(p.dir, src)
-        ensure_dir_exists(srcDir)
+        mx.ensure_dir_exists(srcDir)
         out.element('classpathentry', {'kind' : 'src', 'path' : src})
 
     processors = p.annotation_processors()
     if processors:
         genDir = p.source_gen_dir()
-        ensure_dir_exists(genDir)
+        mx.ensure_dir_exists(genDir)
         if not genDir.startswith(p.dir):
             genDirName = basename(genDir)
             out.open('classpathentry', {'kind' : 'src', 'path' : genDirName})
@@ -617,7 +609,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
 
     projectDeps = []
-    jdk = get_jdk(p.javaCompliance)
+    jdk = mx.get_jdk(p.javaCompliance)
 
     def preVisitDep(dep, edge):
         if dep.isLibrary() and hasattr(dep, 'eclipse.container'):
@@ -637,7 +629,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
 
         # It's important to use dep.suite as the location for when one suite references
         # a library in another suite.
-        path = _make_absolute(path, dep.suite.dir)
+        path = mx._make_absolute(path, dep.suite.dir)
 
         attributes = {'exported' : 'true', 'kind' : 'lib', 'path' : path}
 
@@ -668,14 +660,14 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             projectDeps.append(dep)
         elif dep.isJdkLibrary():
             processJdkLibraryDep(dep)
-        elif dep.isJARDistribution() and isinstance(dep.suite, BinarySuite):
+        elif dep.isJARDistribution() and isinstance(dep.suite, mx.BinarySuite):
             out.element('classpathentry', {'exported' : 'true', 'kind' : 'lib', 'path' : dep.path, 'sourcepath' : dep.sourcesPath})
         elif dep.isJreLibrary() or dep.isDistribution():
             pass
         elif dep.isProject():
-            logv('ignoring project ' + dep.name + ' for eclipseinit')
+            mx.logv('ignoring project ' + dep.name + ' for eclipseinit')
         else:
-            abort('unexpected dependency: ' + str(dep))
+            mx.abort('unexpected dependency: ' + str(dep))
 
     p.walk_deps(preVisit=preVisitDep, visit=processDep)
 
@@ -712,8 +704,8 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join(addExportsValue)})
                 roots = jdk.get_root_modules()
                 observable_modules = jdk.get_modules()
-                default_module_graph = get_transitive_closure(roots, observable_modules)
-                module_graph = get_transitive_closure(roots + exported_modules, observable_modules)
+                default_module_graph = mx.get_transitive_closure(roots, observable_modules)
+                module_graph = mx.get_transitive_closure(roots + exported_modules, observable_modules)
                 if default_module_graph != module_graph:
                     # https://github.com/eclipse/eclipse.jdt.core/blob/00dd337bcfe08d8b2d60529b0f7874b88e621c06/org.eclipse.jdt.core/model/org/eclipse/jdt/internal/core/JavaProject.java#L704-L715
                     out.element('attribute', {'name' : 'limit-modules', 'value' : ','.join([m.name for m in module_graph])})
@@ -729,13 +721,13 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
 
     out.close('classpath')
     classpathFile = join(p.dir, '.classpath')
-    update_file(classpathFile, out.xml(indent='\t', newl='\n'))
+    mx.update_file(classpathFile, out.xml(indent='\t', newl='\n'))
     if files:
         files.append(classpathFile)
 
     csConfig, _, checkstyleProj = p.get_checkstyle_config()
     if csConfig:
-        out = XMLDoc()
+        out = mx.XMLDoc()
 
         dotCheckstyle = join(p.dir, ".checkstyle")
         checkstyleConfigPath = '/' + checkstyleProj.name + '/.checkstyle_checks.xml'
@@ -760,7 +752,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             out.close('filter')
 
         out.close('fileset-config')
-        update_file(dotCheckstyle, out.xml(indent='  ', newl='\n'))
+        mx.update_file(dotCheckstyle, out.xml(indent='  ', newl='\n'))
         if files:
             files.append(dotCheckstyle)
     else:
@@ -769,7 +761,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         if exists(dotCheckstyle):
             os.unlink(dotCheckstyle)
 
-    out = XMLDoc()
+    out = mx.XMLDoc()
     out.open('projectDescription')
     out.element('name', data=p.name)
     out.element('comment', data='')
@@ -814,7 +806,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
         out.close('linkedResources')
     out.close('projectDescription')
     projectFile = join(p.dir, '.project')
-    update_file(projectFile, out.xml(indent='\t', newl='\n'))
+    mx.update_file(projectFile, out.xml(indent='\t', newl='\n'))
     if files:
         files.append(projectFile)
 
@@ -822,12 +814,12 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     _copy_eclipse_settings(p, files)
 
     if processors:
-        out = XMLDoc()
+        out = mx.XMLDoc()
         out.open('factorypath')
         out.element('factorypathentry', {'kind' : 'PLUGIN', 'id' : 'org.eclipse.jst.ws.annotations.core', 'enabled' : 'true', 'runInBatchMode' : 'false'})
-        processorsPath = classpath_entries(names=processors)
+        processorsPath = mx.classpath_entries(names=processors)
         for e in processorsPath:
-            if e.isDistribution() and not isinstance(e.suite, BinarySuite):
+            if e.isDistribution() and not isinstance(e.suite, mx.BinarySuite):
                 out.element('factorypathentry', {'kind' : 'WKSPJAR', 'id' : '/{0}/{1}'.format(e.name, basename(e.path)), 'enabled' : 'true', 'runInBatchMode' : 'false'})
             elif e.isJdkLibrary() or e.isJreLibrary():
                 path = e.classpath_repr(jdk, resolve=True)
@@ -838,7 +830,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
 
         if p.javaCompliance >= '9':
             concealedAPDeps = {}
-            for dep in classpath_entries(names=processors, preferProjects=True):
+            for dep in mx.classpath_entries(names=processors, preferProjects=True):
                 if dep.isJavaProject():
                     concealed = dep.get_concealed_imported_packages(jdk)
                     if concealed:
@@ -849,12 +841,12 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 for module, pkgs in concealedAPDeps.items():
                     for pkg in pkgs:
                         exports.append('--add-exports=' + module + '/' + pkg + '=ALL-UNNAMED')
-                warn('Annotation processor(s) for ' + p.name +' uses non-exported module packages, requiring ' +
+                mx.warn('Annotation processor(s) for ' + p.name + ' uses non-exported module packages, requiring ' +
                      'the following to be added to eclipse.ini:\n' +
                      '\n'.join(exports))
 
         out.close('factorypath')
-        update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
+        mx.update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
         if files:
             files.append(join(p.dir, '.factorypath'))
 
@@ -881,12 +873,12 @@ def _get_ide_envvars():
     Gets a dict of environment variables that must be captured in generated IDE configurations.
     """
     result = {
-        'JAVA_HOME' : get_env('JAVA_HOME') or get_jdk().home,
-        'EXTRA_JAVA_HOMES' : get_env('EXTRA_JAVA_HOMES'),
+        'JAVA_HOME' : mx.get_env('JAVA_HOME') or mx.get_jdk().home,
+        'EXTRA_JAVA_HOMES' : mx.get_env('EXTRA_JAVA_HOMES'),
     }
     for name, value in _ide_envvars.items():
         if value is None:
-            value = get_env(name)
+            value = mx.get_env(name)
         if value is not None:
             result[name] = value
     return result
@@ -903,36 +895,36 @@ def _capture_eclipse_settings(logToConsole, absolutePaths):
 def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConsole=False, force=False, absolutePaths=False, pythonProjects=False):
     # a binary suite archive is immutable and no project sources, only the -sources.jar
     # TODO We may need the project (for source debugging) but it needs different treatment
-    if isinstance(s, BinarySuite):
+    if isinstance(s, mx.BinarySuite):
         return
 
-    mxOutputDir = ensure_dir_exists(s.get_mx_output_dir())
-    configZip = TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
+    mxOutputDir = mx.ensure_dir_exists(s.get_mx_output_dir())
+    configZip = mx.TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
     configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
     settingsFile = join(mxOutputDir, 'eclipse-project-settings')
-    update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
+    mx.update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
     if not force and _check_ide_timestamp(s, configZip, 'eclipse', settingsFile):
-        logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
+        mx.logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
         return
 
     files = []
     libFiles = []
     if buildProcessorJars:
-        files += _processorjars_suite(s)
+        files += mx._processorjars_suite(s)
 
     for p in s.projects:
-        code = _function_code(p._eclipseinit)
+        code = mx._function_code(p._eclipseinit)
         if 'absolutePaths' in code.co_varnames[:code.co_argcount]:
             p._eclipseinit(files, libFiles, absolutePaths=absolutePaths)
         else:
             # Support legacy signature
             p._eclipseinit(files, libFiles)
 
-    jdk = get_jdk(tag='default')
-    _, launchFile = make_eclipse_attach(s, 'localhost', '8000', deps=dependencies(), jdk=jdk)
+    jdk = mx.get_jdk(tag='default')
+    _, launchFile = make_eclipse_attach(s, 'localhost', '8000', deps=mx.dependencies(), jdk=jdk)
     if launchFile:
         files.append(launchFile)
 
@@ -945,7 +937,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         projectDir = dist.get_ide_project_dir()
         if not projectDir:
             continue
-        ensure_dir_exists(projectDir)
+        mx.ensure_dir_exists(projectDir)
         relevantResources = []
         relevantResourceDeps = set(dist.archived_deps())
         for d in sorted(relevantResourceDeps):
@@ -956,7 +948,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
 
-        out = XMLDoc()
+        out = mx.XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
         out.element('comment', data='Updates ' + dist.path + ' if a project dependency of ' + dist.name + ' is updated')
@@ -986,23 +978,23 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         out.close('linkedResources')
         out.close('projectDescription')
         projectFile = join(projectDir, '.project')
-        update_file(projectFile, out.xml(indent='\t', newl='\n'))
+        mx.update_file(projectFile, out.xml(indent='\t', newl='\n'))
         files.append(projectFile)
 
     if pythonProjects:
-        projectXml = XMLDoc()
+        projectXml = mx.XMLDoc()
         projectXml.open('projectDescription')
-        projectXml.element('name', data=s.name if s is _mx_suite else 'mx.' + s.name)
+        projectXml.element('name', data=s.name if s is mx._mx_suite else 'mx.' + s.name)
         projectXml.element('comment')
         projectXml.open('projects')
-        if s is not _mx_suite:
-            projectXml.element('project', data=_mx_suite.name)
+        if s is not mx._mx_suite:
+            projectXml.element('project', data=mx._mx_suite.name)
         processed_suites = set([s.name])
         def _mx_projects_suite(visited_suite, suite_import):
             if suite_import.name in processed_suites:
                 return
             processed_suites.add(suite_import.name)
-            dep_suite = suite(suite_import.name)
+            dep_suite = mx.suite(suite_import.name)
             projectXml.element('project', data='mx.' + suite_import.name)
             dep_suite.visit_imports(_mx_projects_suite)
         s.visit_imports(_mx_projects_suite)
@@ -1017,8 +1009,8 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         projectXml.element('nature', data='org.python.pydev.pythonNature')
         projectXml.close('natures')
         projectXml.close('projectDescription')
-        projectFile = join(s.dir if s is _mx_suite else s.mxDir, '.project')
-        update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
+        projectFile = join(s.dir if s is mx._mx_suite else s.mxDir, '.project')
+        mx.update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
         files.append(projectFile)
 
         pydevProjectXml = """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -1030,16 +1022,16 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
 <path>/{}</path>
 </pydev_pathproperty>
 </pydev_project>
-""".format(s.name if s is _mx_suite else 'mx.' + s.name)
-        pydevProjectFile = join(s.dir if s is _mx_suite else s.mxDir, '.pydevproject')
-        update_file(pydevProjectFile, pydevProjectXml)
+""".format(s.name if s is mx._mx_suite else 'mx.' + s.name)
+        pydevProjectFile = join(s.dir if s is mx._mx_suite else s.mxDir, '.pydevproject')
+        mx.update_file(pydevProjectFile, pydevProjectXml)
         files.append(pydevProjectFile)
 
     _zip_files(files + [settingsFile], s.dir, configZip.path)
     _zip_files(libFiles, s.dir, configLibsZip)
 
 def _zip_files(files, baseDir, zipPath):
-    with SafeFileCreation(zipPath) as sfc:
+    with mx.SafeFileCreation(zipPath) as sfc:
         zf = zipfile.ZipFile(sfc.tmpPath, 'w')
         for f in sorted(set(files)):
             relpath = os.path.relpath(f, baseDir)
@@ -1055,7 +1047,7 @@ IRESOURCE_FOLDER = 2
 
 def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, isAsync=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
     externalToolDir = join(p.dir, '.externalToolBuilders')
-    launchOut = XMLDoc()
+    launchOut = mx.XMLDoc()
     consoleOn = 'true' if logToConsole else 'false'
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
     launchOut.element('booleanAttribute', {'key' : 'org.eclipse.debug.core.capture_output', 'value': consoleOn})
@@ -1092,7 +1084,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
     baseDir = dirname(os.path.abspath(__file__))
 
     cmd = 'mx'
-    if is_windows():
+    if mx.is_windows():
         cmd = 'mx.cmd'
     cmdPath = join(baseDir, cmd)
     if not os.path.exists(cmdPath):
@@ -1101,7 +1093,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
             cmd = 'mx.sh'
         cmdPath = join(dirname(baseDir), cmd)
         if not os.path.exists(cmdPath):
-            abort('cannot locate ' + cmd)
+            mx.abort('cannot locate ' + cmd)
 
     launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_LOCATION', 'value':  cmdPath})
     launchOut.element('stringAttribute', {'key' : 'org.eclipse.ui.externaltools.ATTR_RUN_BUILD_KINDS', 'value': 'auto,full,incremental'})
@@ -1112,9 +1104,9 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
 
     launchOut.close('launchConfiguration')
 
-    ensure_dir_exists(externalToolDir)
+    mx.ensure_dir_exists(externalToolDir)
     launchFile = join(externalToolDir, name + '.launch')
-    update_file(launchFile, launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
+    mx.update_file(launchFile, launchOut.xml(indent=xmlIndent, standalone=xmlStandalone, newl='\n'))
 
     dotProjectDoc.open('buildCommand')
     dotProjectDoc.element('name', data='org.eclipse.ui.externaltools.ExternalToolBuilder')
@@ -1146,7 +1138,7 @@ def generate_eclipse_workingsets():
     if 'WORKSPACE' in os.environ:
         expected_wsroot = os.environ['WORKSPACE']
     else:
-        expected_wsroot = primary_suite().dir
+        expected_wsroot = mx.primary_suite().dir
 
     wsroot = _find_eclipse_wsroot(expected_wsroot)
     if wsroot is None:
@@ -1156,7 +1148,7 @@ def generate_eclipse_workingsets():
     wsdir = join(wsroot, wsloc)
     if not exists(wsdir):
         wsdir = wsroot
-        logv('Could not find Eclipse metadata directory. Please place ' + wsfilename + ' in ' + wsloc + ' manually.')
+        mx.logv('Could not find Eclipse metadata directory. Please place ' + wsfilename + ' in ' + wsloc + ' manually.')
     wspath = join(wsdir, wsfilename)
 
     def _add_to_working_set(key, value):
@@ -1167,7 +1159,7 @@ def generate_eclipse_workingsets():
 
     # gather working set info from project data
     workingSets = dict()
-    for p in projects():
+    for p in mx.projects():
         if p.workingSets is None:
             continue
         for w in p.workingSets.split(","):
@@ -1175,7 +1167,7 @@ def generate_eclipse_workingsets():
 
     # the mx metdata directories are included in the appropriate working sets
     _add_to_working_set('MX', 'mxtool')
-    for suite in suites(True):
+    for suite in mx.suites(True):
         _add_to_working_set('MX', basename(suite.mxDir))
 
     if exists(wspath):
@@ -1183,7 +1175,7 @@ def generate_eclipse_workingsets():
     else:
         wsdoc = _make_workingset_xml(workingSets)
 
-    update_file(wspath, wsdoc.xml(newl='\n'))
+    mx.update_file(wspath, wsdoc.xml(newl='\n'))
     return wsroot
 
 def _find_eclipse_wsroot(wsdir):
@@ -1197,7 +1189,7 @@ def _find_eclipse_wsroot(wsdir):
         return _find_eclipse_wsroot(split[0])
 
 def _make_workingset_xml(workingSets):
-    wsdoc = XMLDoc()
+    wsdoc = mx.XMLDoc()
     wsdoc.open('workingSetManager')
 
     for w in sorted(workingSets.keys()):
@@ -1210,7 +1202,7 @@ def _make_workingset_xml(workingSets):
     return wsdoc
 
 def _copy_workingset_xml(wspath, workingSets):
-    target = XMLDoc()
+    target = mx.XMLDoc()
     target.open('workingSetManager')
 
     parser = xml.parsers.expat.ParserCreate()
@@ -1304,7 +1296,7 @@ def _workingset_element(wsdoc, p):
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
-    for suite in suites(True) + [_mx_suite]:
+    for suite in mx.suites(True) + [mx._mx_suite]:
         _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
 
     if doFsckProjects and not refreshOnly:
@@ -1312,17 +1304,17 @@ def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProject
 
 def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     dists = [] if dists is None else dists
-    ensure_dir_exists(join(p.dir, 'nbproject'))
+    mx.ensure_dir_exists(join(p.dir, 'nbproject'))
 
-    jdk = get_jdk(p.javaCompliance)
+    jdk = mx.get_jdk(p.javaCompliance)
     assert jdk
 
     if jdks:
         jdks.add(jdk)
 
-    execDir = primary_suite().dir
+    execDir = mx.primary_suite().dir
 
-    out = XMLDoc()
+    out = mx.XMLDoc()
     out.open('project', {'name' : p.name, 'default' : 'default', 'basedir' : '.'})
     out.element('description', data='Builds, tests, and runs the project ' + p.name + '.')
     out.element('available', {'file' : 'nbproject/build-impl.xml', 'property' : 'build.impl.exists'})
@@ -1491,11 +1483,11 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('nbbrowse', {'file' : 'javadoc/index.html'})
     out.close('target')
     out.close('project')
-    update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
+    mx.update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
     if files is not None:
         files.append(join(p.dir, 'build.xml'))
 
-    out = XMLDoc()
+    out = mx.XMLDoc()
     out.open('project', {'xmlns' : 'http://www.netbeans.org/ns/project/1'})
     out.element('type', data='org.netbeans.modules.java.j2seproject')
     out.open('configuration')
@@ -1531,18 +1523,18 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
             out.element('clean-target', data='clean')
             out.element('id', data='jar')
             out.close('reference') #pylint: disable=too-many-function-args
-    p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+    p.walk_deps(visit=processDep, ignoredEdges=[mx.DEP_EXCLUDED])
 
     if firstDep:
         out.close('references')
 
     out.close('configuration')
     out.close('project')
-    update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
+    mx.update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
-    out = StringIO()
+    out = mx.StringIO()
     jdkPlatform = 'JDK_' + str(jdk.version)
 
     annotationProcessorEnabled = "false"
@@ -1550,12 +1542,12 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     annotationProcessorSrcFolderRef = ""
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
-        ensure_dir_exists(p.source_gen_dir())
+        mx.ensure_dir_exists(p.source_gen_dir())
         annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), p.dir)
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
-    canSymlink = not (is_windows() or is_cygwin()) and 'symlink' in dir(os)
+    canSymlink = not (mx.is_windows() or mx.is_cygwin()) and 'symlink' in dir(os)
     if canSymlink:
         nbBuildDir = join(p.dir, 'nbproject', 'build')
         apSourceOutRef = "annotation.processing.source.output=" + annotationProcessorSrcFolder
@@ -1565,7 +1557,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     else:
         nbBuildDir = p.output_dir()
         apSourceOutRef = ""
-    ensure_dir_exists(p.output_dir())
+    mx.ensure_dir_exists(p.output_dir())
 
     _copy_eclipse_settings(p)
 
@@ -1676,7 +1668,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     mainSrc = True
     for src in p.srcDirs:
         srcDir = join(p.dir, src)
-        ensure_dir_exists(srcDir)
+        mx.ensure_dir_exists(srcDir)
         ref = 'file.reference.' + p.name + '-' + src
         print(ref + '=' + src, file=out)
         if mainSrc:
@@ -1773,7 +1765,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print('javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences), file=out)
     print('javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences), file=out)
 
-    update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
+    mx.update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
     out.close()
 
     if files is not None:
@@ -1782,20 +1774,20 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
         with open(source) as fp:
             content = fp.read()
-    update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
+    mx.update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
 
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
 def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
-    mxOutputDir = ensure_dir_exists(suite.get_mx_output_dir())
-    configZip = TimeStampFile(join(mxOutputDir, 'netbeans-config.zip'))
+    mxOutputDir = mx.ensure_dir_exists(suite.get_mx_output_dir())
+    configZip = mx.TimeStampFile(join(mxOutputDir, 'netbeans-config.zip'))
     configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
     if _check_ide_timestamp(suite, configZip, 'netbeans'):
-        logv('[NetBeans configurations are up to date - skipping]')
+        mx.logv('[NetBeans configurations are up to date - skipping]')
         return
 
     files = []
@@ -1810,13 +1802,13 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 
         includedInDists = [d for d in suite.dists if p in d.archived_deps()]
         _netbeansinit_project(p, jdks, files, libFiles, includedInDists)
-    log('If using NetBeans:')
+    mx.log('If using NetBeans:')
     # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
-    log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
-    log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
+    mx.log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
+    mx.log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
     for jdk in jdks:
-        log('        JDK_' + str(jdk.version))
-    log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
+        mx.log('        JDK_' + str(jdk.version))
+    mx.log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
 
     _zip_files(files, suite.dir, configZip.path)
     _zip_files(libFiles, suite.dir, configLibsZip)
@@ -1828,7 +1820,7 @@ intellij_python_sdk_type = 'Python SDK'
 intellij_ruby_sdk_type = 'RUBY_SDK'
 
 
-@command('mx', 'intellijinit')
+@mx.command('mx', 'intellijinit')
 def intellijinit_cli(args):
     """(re)generate Intellij project configurations"""
     parser = ArgumentParser(prog='mx ideinit')
@@ -1850,55 +1842,55 @@ def intellijinit(args, refreshOnly=False, doFsckProjects=True, mx_python_modules
     declared_modules = set()
     referenced_modules = set()
     sdks = intellij_read_sdks()
-    for suite in suites(True) + ([_mx_suite] if mx_python_modules else []):
+    for suite in mx.suites(True) + ([mx._mx_suite] if mx_python_modules else []):
         _intellij_suite(args, suite, declared_modules, referenced_modules, sdks, refreshOnly, mx_python_modules,
-                        generate_external_projects, java_modules and not suite.isBinarySuite(), suite != primary_suite(),
+                        generate_external_projects, java_modules and not suite.isBinarySuite(), suite != mx.primary_suite(),
                         generate_native_projects=native_projects)
 
     if len(referenced_modules - declared_modules) != 0:
-        abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
+        mx.abort('Some referenced modules are missing from modules.xml: {}'.format(referenced_modules - declared_modules))
 
     if mx_python_modules:
         # mx module
-        moduleXml = XMLDoc()
+        moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
-        for d in set((p.subDir for p in _mx_suite.projects if p.subDir)):
+        for d in set((p.subDir for p in mx._mx_suite.projects if p.subDir)):
             moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
-        if dirname(_mx_suite.get_output_root()) == _mx_suite.dir:
-            moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + basename(_mx_suite.get_output_root())})
+        if dirname(mx._mx_suite.get_output_root()) == mx._mx_suite.dir:
+            moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + basename(mx._mx_suite.get_output_root())})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         moduleXml.close('component')
         moduleXml.close('module')
-        mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
-        update_file(mxModuleFile, moduleXml.xml(indent='  ', newl='\n'))
+        mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
+        mx.update_file(mxModuleFile, moduleXml.xml(indent='  ', newl='\n'))
 
     if doFsckProjects and not refreshOnly:
         fsckprojects([])
 
 def intellij_read_sdks():
     sdks = dict()
-    if is_linux() or is_openbsd() or is_sunos() or is_windows():
+    if mx.is_linux() or mx.is_openbsd() or mx.is_sunos() or mx.is_windows():
         xmlSdks = glob.glob(os.path.expanduser("~/.IdeaIC*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.IntelliJIdea*/config/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.config/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/.config/JetBrains/IntelliJIdea*/options/jdk.table.xml"))
-    elif is_darwin():
+    elif mx.is_darwin():
         xmlSdks = \
           glob.glob(os.path.expanduser("~/Library/Application Support/JetBrains/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Application Support/JetBrains/IntelliJIdea*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IdeaIC*/options/jdk.table.xml")) + \
           glob.glob(os.path.expanduser("~/Library/Preferences/IntelliJIdea*/options/jdk.table.xml"))
     else:
-        warn("Location of IntelliJ SDK definitions on {} is unknown".format(get_os()))
+        mx.warn("Location of IntelliJ SDK definitions on {} is unknown".format(mx.get_os()))
         return sdks
     if len(xmlSdks) == 0:
-        warn("IntelliJ SDK definitions not found")
+        mx.warn("IntelliJ SDK definitions not found")
         return sdks
 
     verRE = re.compile(r'^.*[/\\]\.?(IntelliJIdea|IdeaIC)([^/\\]+)[/\\].*$')
@@ -1908,7 +1900,7 @@ def intellij_read_sdks():
 
     xmlSdks.sort(key=verSort)
     xmlSdk = xmlSdks[-1]  # Pick the most recent IntelliJ version, preferring Ultimate over Community edition.
-    log("Using SDK definitions from {}".format(xmlSdk))
+    mx.log("Using SDK definitions from {}".format(xmlSdk))
 
     versionRegexes = {}
     versionRegexes[intellij_java_sdk_type] = re.compile(r'^java\s+version\s+"([^"]+)"$|^([\d._]+)$')
@@ -1934,9 +1926,9 @@ def intellij_read_sdks():
         if match:
             version = match.group(1)
             sdks[home] = {'name': name, 'type': kind, 'version': version}
-            logv("Found SDK {} with values {}".format(home, sdks[home]))
+            mx.logv("Found SDK {} with values {}".format(home, sdks[home]))
         else:
-            warn("Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
+            mx.warn("Couldn't understand Java version specification \"{}\" for {} in {}".format(sdk.find("version").get("value"), home, xmlSdk))
     return sdks
 
 def intellij_get_java_sdk_name(sdks, jdk):
@@ -1988,11 +1980,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     ideaProjectDirectory = join(s.dir, '.idea')
 
-    modulesXml = XMLDoc()
+    modulesXml = mx.XMLDoc()
     if not module_files_only and not s.isBinarySuite():
-        ensure_dir_exists(ideaProjectDirectory)
+        mx.ensure_dir_exists(ideaProjectDirectory)
         nameFile = join(ideaProjectDirectory, '.name')
-        update_file(nameFile, s.name)
+        mx.update_file(nameFile, s.name)
         modulesXml.open('project', attributes={'version': '4'})
         modulesXml.open('component', attributes={'name': 'ProjectModuleManager'})
         modulesXml.open('modules')
@@ -2019,19 +2011,19 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         if externalProjects:
             for project_name, project_definition in externalProjects.items():
                 if not project_definition.get('path', None):
-                    abort("external project {} is missing path attribute".format(project_name))
+                    mx.abort("external project {} is missing path attribute".format(project_name))
                 if not project_definition.get('type', None):
-                    abort("external project {} is missing type attribute".format(project_name))
+                    mx.abort("external project {} is missing type attribute".format(project_name))
 
                 supported = ['path', 'type', 'source', 'test', 'excluded', 'load_path']
                 unknown = set(project_definition.keys()) - frozenset(supported)
                 if unknown:
-                    abort("There are unsupported {} keys in {} external project".format(unknown, project_name))
+                    mx.abort("There are unsupported {} keys in {} external project".format(unknown, project_name))
 
                 path = os.path.realpath(join(host.dir, project_definition["path"]))
                 module_type = project_definition["type"]
 
-                moduleXml = XMLDoc()
+                moduleXml = mx.XMLDoc()
                 moduleXml.open('module',
                                attributes={'type': {'ruby': 'RUBY_MODULE',
                                                     'python': 'PYTHON_MODULE',
@@ -2060,7 +2052,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     # nothing to do
                     pass
                 else:
-                    abort("External project type {} not supported".format(module_type))
+                    mx.abort("External project type {} not supported".format(module_type))
 
                 moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
                 moduleXml.close('component')
@@ -2068,7 +2060,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 load_paths = project_definition.get('load_path', [])
                 if load_paths:
                     if not module_type == "ruby":
-                        abort("load_path is supported only for ruby type external project")
+                        mx.abort("load_path is supported only for ruby type external project")
                     moduleXml.open('component', attributes={'name': 'RModuleSettingsStorage'})
                     load_paths_attributes = {}
                     load_paths_attributes['number'] = str(len(load_paths))
@@ -2079,7 +2071,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
                 moduleXml.close('module')
                 moduleFile = join(path, project_name + '.iml')
-                update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+                mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
                 if not module_files_only:
                     declared_modules.add(project_name)
@@ -2087,7 +2079,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
     if generate_external_projects:
-        for p in s.projects_recursive() + _mx_suite.projects_recursive():
+        for p in s.projects_recursive() + mx._mx_suite.projects_recursive():
             _intellij_external_project(getattr(p, 'externalProjects', None), sdks, p)
 
     max_checkstyle_version = None
@@ -2095,7 +2087,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     if java_modules:
         if not module_files_only:
-            compilerXml = XMLDoc()
+            compilerXml = mx.XMLDoc()
             compilerXml.open('project', attributes={'version': '4'})
 
         # The IntelliJ parser seems to mishandle empty ADDITIONAL_OPTIONS_OVERRIDE elements
@@ -2103,14 +2095,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         additionalOptionsOverrides = False
         assert not s.isBinarySuite()
         # create the modules (1 IntelliJ module = 1 mx project/distribution)
-        for p in s.projects_recursive() + _mx_suite.projects_recursive():
+        for p in s.projects_recursive() + mx._mx_suite.projects_recursive():
             if not p.isJavaProject():
                 continue
 
-            jdk = get_jdk(p.javaCompliance)
+            jdk = mx.get_jdk(p.javaCompliance)
             assert jdk
 
-            ensure_dir_exists(p.dir)
+            mx.ensure_dir_exists(p.dir)
 
             processors = p.annotation_processors()
             if processors:
@@ -2118,7 +2110,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             intellijLanguageLevel = _complianceToIntellijLanguageLevel(p.javaCompliance)
 
-            moduleXml = XMLDoc()
+            moduleXml = mx.XMLDoc()
             moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
 
             moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'LANGUAGE_LEVEL': intellijLanguageLevel, 'inherit-compiler-output': 'false'})
@@ -2127,7 +2119,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
             for src in p.srcDirs:
                 srcDir = join(p.dir, src)
-                ensure_dir_exists(srcDir)
+                mx.ensure_dir_exists(srcDir)
                 moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': str(p.is_test_project())})
             for name in ['.externalToolBuilders', '.settings', 'nbproject']:
                 _intellij_exclude_if_exists(moduleXml, p, name)
@@ -2136,7 +2128,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if processors:
                 moduleXml.open('content', attributes={'url': 'file://' + p.get_output_root()})
                 genDir = p.source_gen_dir()
-                ensure_dir_exists(genDir)
+                mx.ensure_dir_exists(genDir)
                 moduleXml.element('sourceFolder', attributes={'url':'file://' + p.source_gen_dir(), 'isTestSource': str(p.is_test_project()), 'generated': 'true'})
                 for name in [basename(p.output_dir())]:
                     _intellij_exclude_if_exists(moduleXml, p, name, output=True)
@@ -2150,7 +2142,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             def should_process_dep(dep, edge):
                 if dep.isTARDistribution() or dep.isNativeProject() or dep.isArchivableProject() or dep.isResourceLibrary():
-                    logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
+                    mx.logv("Ignoring dependency from {} to {}".format(proj.name, dep.name))
                     return False
                 return True
 
@@ -2169,15 +2161,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                     if jdk.javaCompliance < dep.jdkStandardizedSince:
                         moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                     else:
-                        logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
+                        mx.logv("{} skipping {} for {}".format(p, dep, jdk)) #pylint: disable=undefined-loop-variable
                 elif dep.isJreLibrary():
                     pass
                 elif dep.isClasspathDependency():
                     moduleXml.element('orderEntry', attributes={'type': 'library', 'name': dep.name, 'level': 'project'})
                 else:
-                    abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
+                    mx.abort("Dependency not supported: {0} ({1})".format(dep, dep.__class__.__name__))
 
-            p.walk_deps(preVisit=should_process_dep, visit=process_dep, ignoredEdges=[DEP_EXCLUDED])
+            p.walk_deps(preVisit=should_process_dep, visit=process_dep, ignoredEdges=[mx.DEP_EXCLUDED])
 
             moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_java_sdk_type, 'jdkName': intellij_get_java_sdk_name(sdks, jdk)})
 
@@ -2195,8 +2187,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                             exported_modules.add(m)
                         roots = set(jdk.get_root_modules())
                         observable_modules = jdk.get_modules()
-                        default_module_graph = get_transitive_closure(roots, observable_modules)
-                        module_graph = get_transitive_closure(roots | exported_modules, observable_modules)
+                        default_module_graph = mx.get_transitive_closure(roots, observable_modules)
+                        module_graph = mx.get_transitive_closure(roots | exported_modules, observable_modules)
                         extra_modules = module_graph - default_module_graph
                         if extra_modules:
                             args.append('--add-modules=' + ','.join((m.name for m in extra_modules)))
@@ -2209,7 +2201,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             # Checkstyle
             csConfig, checkstyleVersion, checkstyleProj = p.get_checkstyle_config()
             if csConfig:
-                max_checkstyle_version = max(max_checkstyle_version, VersionSpec(checkstyleVersion)) if max_checkstyle_version else VersionSpec(checkstyleVersion)
+                max_checkstyle_version = max(max_checkstyle_version, mx.VersionSpec(checkstyleVersion)) if max_checkstyle_version else mx.VersionSpec(checkstyleVersion)
 
                 moduleXml.open('component', attributes={'name': 'CheckStyle-IDEA-Module'})
                 moduleXml.open('option', attributes={'name': 'configuration'})
@@ -2222,7 +2214,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             moduleXml.close('module')
             moduleFile = join(p.dir, p.name + '.iml')
-            update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+            mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
             if not module_files_only:
                 declared_modules.add(p.name)
@@ -2234,7 +2226,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     if mx_python_modules:
         # mx.<suite> python module:
-        moduleXml = XMLDoc()
+        moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
@@ -2242,7 +2234,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
         for d in os.listdir(s.mxDir):
             directory = join(s.mxDir, d)
-            if isdir(directory) and dir_contains_files_recursively(directory, r".*\.java"):
+            if isdir(directory) and mx.dir_contains_files_recursively(directory, r".*\.java"):
                 moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
@@ -2253,7 +2245,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if suite_import.name in processes_suites:
                 return
             processes_suites.add(suite_import.name)
-            dep_suite = suite(suite_import.name)
+            dep_suite = mx.suite(suite_import.name)
             moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': basename(dep_suite.mxDir)})
             moduleFile = join(dep_suite.mxDir, basename(dep_suite.mxDir) + '.iml')
             if not module_files_only:
@@ -2266,14 +2258,14 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         moduleXml.close('component')
         moduleXml.close('module')
         moduleFile = join(s.mxDir, basename(s.mxDir) + '.iml')
-        update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+        mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
         if not module_files_only:
             declared_modules.add(basename(s.mxDir))
             moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
 
-            declared_modules.add(basename(_mx_suite.dir))
-            mxModuleFile = join(_mx_suite.dir, basename(_mx_suite.dir) + '.iml')
+            declared_modules.add(basename(mx._mx_suite.dir))
+            mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
             mxModuleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, s.dir)
             modulesXml.element('module', attributes={'fileurl': 'file://' + mxModuleFilePath, 'filepath': mxModuleFilePath})
 
@@ -2288,31 +2280,31 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         modulesXml.close('component')
         modulesXml.close('project')
         moduleXmlFile = join(ideaProjectDirectory, 'modules.xml')
-        update_file(moduleXmlFile, modulesXml.xml(indent='  ', newl='\n'))
+        mx.update_file(moduleXmlFile, modulesXml.xml(indent='  ', newl='\n'))
 
     if java_modules and not module_files_only:
         unique_library_file_names = set()
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
 
-        ensure_dir_exists(librariesDirectory)
+        mx.ensure_dir_exists(librariesDirectory)
 
         def make_library(name, path, source_path, suite_dir):
-            libraryXml = XMLDoc()
+            libraryXml = mx.XMLDoc()
 
             libraryXml.open('component', attributes={'name': 'libraryTable'})
             libraryXml.open('library', attributes={'name': name})
             libraryXml.open('CLASSES')
-            pathX = relpath_or_absolute(path, suite_dir, prefix='$PROJECT_DIR$')
+            pathX = mx.relpath_or_absolute(path, suite_dir, prefix='$PROJECT_DIR$')
             libraryXml.element('root', attributes={'url': 'jar://' + pathX + '!/'})
             libraryXml.close('CLASSES')
             libraryXml.element('JAVADOC')
             if sourcePath:
                 libraryXml.open('SOURCES')
                 if os.path.isdir(sourcePath):
-                    sourcePathX = relpath_or_absolute(sourcePath, suite_dir, prefix='$PROJECT_DIR$')
+                    sourcePathX = mx.relpath_or_absolute(sourcePath, suite_dir, prefix='$PROJECT_DIR$')
                     libraryXml.element('root', attributes={'url': 'file://' + sourcePathX})
                 else:
-                    source_pathX = relpath_or_absolute(source_path, suite_dir, prefix='$PROJECT_DIR$')
+                    source_pathX = mx.relpath_or_absolute(source_path, suite_dir, prefix='$PROJECT_DIR$')
                     libraryXml.element('root', attributes={'url': 'jar://' + source_pathX + '!/'})
                 libraryXml.close('SOURCES')
             else:
@@ -2321,7 +2313,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             libraryXml.close('component')
 
             libraryFile = join(librariesDirectory, _intellij_library_file_name(name, unique_library_file_names))
-            return update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
+            return mx.update_file(libraryFile, libraryXml.xml(indent='  ', newl='\n'))
 
         # Setup the libraries that were used above
         for library in libraries:
@@ -2340,17 +2332,17 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             elif library.isClasspathDependency():
                 path = library.classpath_repr()
             else:
-                abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
+                mx.abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
             make_library(library.name, path, sourcePath, s.dir)
 
-        jdk = get_jdk()
+        jdk = mx.get_jdk()
         updated = False
         for library in jdk_libraries:
             if library.classpath_repr(jdk) is not None:
                 if make_library(library.name, library.classpath_repr(jdk), library.get_source_path(jdk), s.dir):
                     updated = True
         if jdk_libraries and updated:
-            log("Setting up JDK libraries using {0}".format(jdk))
+            mx.log("Setting up JDK libraries using {0}".format(jdk))
 
         # Set annotation processor profiles up, and link them to modules in compiler.xml
 
@@ -2378,9 +2370,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 for apDep in processors:
                     def processApDep(dep, edge):
                         if dep.isLibrary() or dep.isJARDistribution():
-                            compilerXml.element('entry', attributes={'name': relpath_or_absolute(dep.path, s.dir, prefix='$PROJECT_DIR$')})
+                            compilerXml.element('entry', attributes={'name': mx.relpath_or_absolute(dep.path, s.dir, prefix='$PROJECT_DIR$')})
                         elif dep.isProject():
-                            compilerXml.element('entry', attributes={'name': relpath_or_absolute(dep.output_dir(), s.dir, prefix='$PROJECT_DIR$')})
+                            compilerXml.element('entry', attributes={'name': mx.relpath_or_absolute(dep.output_dir(), s.dir, prefix='$PROJECT_DIR$')})
                     apDep.walk_deps(visit=processApDep)
                 compilerXml.close('processorPath')
                 for module in modules:
@@ -2393,15 +2385,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
     if compilerXml:
         compilerXml.close('project')
         compilerFile = join(ideaProjectDirectory, 'compiler.xml')
-        update_file(compilerFile, compilerXml.xml(indent='  ', newl='\n'))
+        mx.update_file(compilerFile, compilerXml.xml(indent='  ', newl='\n'))
 
     if not module_files_only:
         # Write misc.xml for global JDK config
-        miscXml = XMLDoc()
+        miscXml = mx.XMLDoc()
         miscXml.open('project', attributes={'version' : '4'})
 
         if java_modules:
-            mainJdk = get_jdk()
+            mainJdk = mx.get_jdk()
             miscXml.open('component', attributes={'name' : 'ProjectRootManager', 'version': '2', 'languageLevel': _complianceToIntellijLanguageLevel(mainJdk.javaCompliance), 'project-jdk-name': intellij_get_java_sdk_name(sdks, mainJdk), 'project-jdk-type': intellij_java_sdk_type})
             miscXml.element('output', attributes={'url' : 'file://$PROJECT_DIR$/' + os.path.relpath(s.get_output_root(), s.dir)})
             miscXml.close('component')
@@ -2410,10 +2402,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         miscXml.close('project')
         miscFile = join(ideaProjectDirectory, 'misc.xml')
-        update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+        mx.update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         # Generate a default configuration for debugging Graal
-        runConfig = XMLDoc()
+        runConfig = mx.XMLDoc()
         runConfig.open('component', attributes={'name' : 'ProjectRunConfigurationManager'})
         runConfig.open('configuration', attributes={'default' :'false', 'name' : 'GraalDebug', 'type' : 'Remote', 'factoryName': 'Remote'})
         runConfig.element('option', attributes={'name' : 'USE_SOCKET_TRANSPORT', 'value' : 'true'})
@@ -2429,17 +2421,17 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         runConfig.close('configuration')
         runConfig.close('component')
         runConfigFile = join(ideaProjectDirectory, 'runConfigurations', 'GraalDebug.xml')
-        ensure_dir_exists(join(ideaProjectDirectory, 'runConfigurations'))
-        update_file(runConfigFile, runConfig.xml(indent='  ', newl='\n'))
+        mx.ensure_dir_exists(join(ideaProjectDirectory, 'runConfigurations'))
+        mx.update_file(runConfigFile, runConfig.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Eclipse formatter config
             corePrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.core.prefs')
             uiPrefsSources = s.eclipse_settings_sources().get('org.eclipse.jdt.ui.prefs')
             if corePrefsSources:
-                miscXml = XMLDoc()
+                miscXml = mx.XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
-                out = StringIO()
+                out = mx.StringIO()
                 print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
                     print('# Source:', source, file=out)
@@ -2448,10 +2440,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                             if line.startswith('org.eclipse.jdt.core.formatter.'):
                                 print(line.strip(), file=out)
                 formatterConfigFile = join(ideaProjectDirectory, 'EclipseCodeFormatter.prefs')
-                update_file(formatterConfigFile, out.getvalue())
+                mx.update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
-                    out = StringIO()
+                    out = mx.StringIO()
                     print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
                         print('# Source:', source, file=out)
@@ -2462,18 +2454,18 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                                         or line.startswith('org.eclipse.jdt.ui.staticondemandthreshold'):
                                     print(line.strip(), file=out)
                     importConfigFile = join(ideaProjectDirectory, 'EclipseImports.prefs')
-                    update_file(importConfigFile, out.getvalue())
+                    mx.update_file(importConfigFile, out.getvalue())
                 miscXml.open('component', attributes={'name' : 'EclipseCodeFormatterProjectSettings'})
                 miscXml.open('option', attributes={'name' : 'projectSpecificProfile'})
                 miscXml.open('ProjectSpecificProfile')
                 miscXml.element('option', attributes={'name' : 'formatter', 'value' : 'ECLIPSE'})
-                custom_eclipse_exe = get_env('ECLIPSE_EXE')
+                custom_eclipse_exe = mx.get_env('ECLIPSE_EXE')
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
-                    if is_darwin():
+                    if mx.is_darwin():
                         custom_eclipse = join(dirname(custom_eclipse), 'Eclipse', 'plugins')
                     if not exists(custom_eclipse_exe):
-                        abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
+                        mx.abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
                     miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
                     miscXml.element('option', attributes={'name' : 'pathToEclipse', 'value' : custom_eclipse})
                 miscXml.element('option', attributes={'name' : 'pathToConfigFileJava', 'value' : '$PROJECT_DIR$/.idea/' + basename(formatterConfigFile)})
@@ -2486,22 +2478,22 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 miscXml.close('component')
                 miscXml.close('project')
                 miscFile = join(ideaProjectDirectory, 'eclipseCodeFormatter.xml')
-                update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
+                mx.update_file(miscFile, miscXml.xml(indent='  ', newl='\n'))
 
         if java_modules:
             # Write codestyle settings
-            ensure_dir_exists(join(ideaProjectDirectory, 'codeStyles'))
+            mx.ensure_dir_exists(join(ideaProjectDirectory, 'codeStyles'))
 
-            codeStyleConfigXml = XMLDoc()
+            codeStyleConfigXml = mx.XMLDoc()
             codeStyleConfigXml.open('component', attributes={'name': 'ProjectCodeStyleConfiguration'})
             codeStyleConfigXml.open('state')
             codeStyleConfigXml.element('option', attributes={'name': 'USE_PER_PROJECT_SETTINGS', 'value': 'true'})
             codeStyleConfigXml.close('state')
             codeStyleConfigXml.close('component')
             codeStyleConfigFile = join(ideaProjectDirectory, 'codeStyles', 'codeStyleConfig.xml')
-            update_file(codeStyleConfigFile, codeStyleConfigXml.xml(indent='  ', newl='\n'))
+            mx.update_file(codeStyleConfigFile, codeStyleConfigXml.xml(indent='  ', newl='\n'))
 
-            codeStyleProjectXml = XMLDoc()
+            codeStyleProjectXml = mx.XMLDoc()
             codeStyleProjectXml.open('component', attributes={'name': 'ProjectCodeStyleConfiguration'})
             codeStyleProjectXml.open('code_scheme', attributes={'name': 'Project', 'version': '173'})
             codeStyleProjectXml.open('JavaCodeStyleSettings')
@@ -2512,10 +2504,10 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             codeStyleProjectXml.close('code_scheme')
             codeStyleProjectXml.close('component')
             codeStyleProjectFile = join(ideaProjectDirectory, 'codeStyles', 'Project.xml')
-            update_file(codeStyleProjectFile, codeStyleProjectXml.xml(indent='  ', newl='\n'))
+            mx.update_file(codeStyleProjectFile, codeStyleProjectXml.xml(indent='  ', newl='\n'))
 
             # Write checkstyle-idea.xml for the CheckStyle-IDEA
-            checkstyleXml = XMLDoc()
+            checkstyleXml = mx.XMLDoc()
             checkstyleXml.open('project', attributes={'version': '4'})
             checkstyleXml.open('component', attributes={'name': 'CheckStyle-IDEA'})
             checkstyleXml.open('option', attributes={'name' : "configuration"})
@@ -2540,7 +2532,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             checkstyleXml.close('component')
             checkstyleXml.close('project')
             checkstyleFile = join(ideaProjectDirectory, 'checkstyle-idea.xml')
-            update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
+            mx.update_file(checkstyleFile, checkstyleXml.xml(indent='  ', newl='\n'))
 
             # mx integration
             def antTargetName(dist):
@@ -2548,15 +2540,15 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             def artifactFileName(dist):
                 return dist.name.replace('.', '_').replace('-', '_') + '.xml'
-            validDistributions = [dist for dist in sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
+            validDistributions = [dist for dist in mx.sorted_dists() if not dist.suite.isBinarySuite() and not dist.isTARDistribution()]
 
             # 1) Make an ant file for archiving the distributions.
-            antXml = XMLDoc()
+            antXml = mx.XMLDoc()
             antXml.open('project', attributes={'name': s.name, 'default': 'archive'})
             for dist in validDistributions:
                 antXml.open('target', attributes={'name': antTargetName(dist)})
                 antXml.open('exec', attributes={'executable': sys.executable})
-                antXml.element('arg', attributes={'value': join(_mx_home, 'mx.py')})
+                antXml.element('arg', attributes={'value': join(mx._mx_home, 'mx.py')})
                 antXml.element('arg', attributes={'value': 'archive'})
                 antXml.element('arg', attributes={'value': '@' + dist.name})
                 antXml.close('exec')
@@ -2564,11 +2556,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             antXml.close('project')
             antFile = join(ideaProjectDirectory, 'ant-mx-archive.xml')
-            update_file(antFile, antXml.xml(indent='  ', newl='\n'))
+            mx.update_file(antFile, antXml.xml(indent='  ', newl='\n'))
 
             # 2) Tell IDEA that there is an ant-build.
             ant_mx_archive_xml = 'file://$PROJECT_DIR$/.idea/ant-mx-archive.xml'
-            metaAntXml = XMLDoc()
+            metaAntXml = mx.XMLDoc()
             metaAntXml.open('project', attributes={'version': '4'})
             metaAntXml.open('component', attributes={'name': 'AntConfiguration'})
             metaAntXml.open('buildFile', attributes={'url': ant_mx_archive_xml})
@@ -2576,19 +2568,19 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             metaAntXml.close('component')
             metaAntXml.close('project')
             metaAntFile = join(ideaProjectDirectory, 'ant.xml')
-            update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
+            mx.update_file(metaAntFile, metaAntXml.xml(indent='  ', newl='\n'))
 
             # 3) Make an artifact for every distribution
             validArtifactNames = {artifactFileName(dist) for dist in validDistributions}
             artifactsDir = join(ideaProjectDirectory, 'artifacts')
-            ensure_dir_exists(artifactsDir)
+            mx.ensure_dir_exists(artifactsDir)
             for fileName in os.listdir(artifactsDir):
                 filePath = join(artifactsDir, fileName)
                 if os.path.isfile(filePath) and fileName not in validArtifactNames:
                     os.remove(filePath)
 
             for dist in validDistributions:
-                artifactXML = XMLDoc()
+                artifactXML = mx.XMLDoc()
                 artifactXML.open('component', attributes={'name': 'ArtifactManager'})
                 artifactXML.open('artifact', attributes={'build-on-make': 'true', 'name': dist.name})
                 artifactXML.open('output-path', data='$PROJECT_DIR$/mxbuild/artifacts/' + dist.name)
@@ -2611,7 +2603,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 artifactXML.close('component')
 
                 artifactFile = join(artifactsDir, artifactFileName(dist))
-                update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
+                mx.update_file(artifactFile, artifactXML.xml(indent='  ', newl='\n'))
 
         def intellij_scm_name(vc_kind):
             if vc_kind == 'git':
@@ -2619,11 +2611,11 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             elif vc_kind == 'hg':
                 return 'hg4idea'
 
-        vcsXml = XMLDoc()
+        vcsXml = mx.XMLDoc()
         vcsXml.open('project', attributes={'version': '4'})
         vcsXml.open('component', attributes={'name': 'VcsDirectoryMappings'})
 
-        suites_for_vcs = suites() + ([_mx_suite] if mx_python_modules else [])
+        suites_for_vcs = mx.suites() + ([mx._mx_suite] if mx_python_modules else [])
         sourceSuitesWithVCS = [vc_suite for vc_suite in suites_for_vcs if vc_suite.isSourceSuite() and vc_suite.vc is not None]
         uniqueSuitesVCS = {(vc_suite.vc_dir, vc_suite.vc.kind) for vc_suite in sourceSuitesWithVCS}
         for vcs_dir, kind in uniqueSuitesVCS:
@@ -2633,19 +2625,19 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         vcsXml.close('project')
 
         vcsFile = join(ideaProjectDirectory, 'vcs.xml')
-        update_file(vcsFile, vcsXml.xml(indent='  ', newl='\n'))
+        mx.update_file(vcsFile, vcsXml.xml(indent='  ', newl='\n'))
 
         # TODO look into copyright settings
 
 
 def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml):
-    for p in s.projects_recursive() + _mx_suite.projects_recursive():
+    for p in s.projects_recursive() + mx._mx_suite.projects_recursive():
         if not p.isNativeProject():
             continue
 
-        ensure_dir_exists(p.dir)
+        mx.ensure_dir_exists(p.dir)
 
-        moduleXml = XMLDoc()
+        moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'CPP_MODULE'})
 
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'false'})
@@ -2653,7 +2645,7 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
         for src in p.srcDirs:
             srcDir = join(p.dir, src)
-            ensure_dir_exists(srcDir)
+            mx.ensure_dir_exists(srcDir)
             moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + src,
                                                           'isTestSource': str(p.is_test_project())})
         moduleXml.close('content')
@@ -2663,7 +2655,7 @@ def _intellij_native_projects(s, module_files_only, declared_modules, modulesXml
         moduleXml.close('component')
         moduleXml.close('module')
         moduleFile = join(p.dir, p.name + '.iml')
-        update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+        mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
 
         if not module_files_only:
             declared_modules.add(p.name)
@@ -2678,12 +2670,12 @@ def ideclean(args):
         if exists(path):
             os.remove(path)
 
-    for s in suites() + [_mx_suite]:
+    for s in mx.suites() + [mx._mx_suite]:
         rm(join(s.get_mx_output_dir(), 'eclipse-config.zip'))
         rm(join(s.get_mx_output_dir(), 'netbeans-config.zip'))
         shutil.rmtree(join(s.dir, '.idea'), ignore_errors=True)
 
-    for p in projects() + _mx_suite.projects:
+    for p in mx.projects() + mx._mx_suite.projects:
         if not p.isJavaProject():
             continue
 
@@ -2700,9 +2692,9 @@ def ideclean(args):
         try:
             rm(join(p.dir, p.name + '.jar'))
         except:
-            log_error("Error removing {0}".format(p.name + '.jar'))
+            mx.log_error("Error removing {0}".format(p.name + '.jar'))
 
-    for d in _dists.values():
+    for d in mx._dists.values():
         if not d.isJARDistribution():
             continue
         if d.get_ide_project_dir():
@@ -2727,7 +2719,7 @@ def ideinit(args, refreshOnly=False, buildProcessorJars=True):
 
 def fsckprojects(args):
     """find directories corresponding to deleted Java projects and delete them"""
-    for suite in suites(True, includeBinary=False):
+    for suite in mx.suites(True, includeBinary=False):
         projectDirs = [p.dir for p in suite.projects]
         distIdeDirs = [d.get_ide_project_dir() for d in suite.dists if d.isJARDistribution() and d.get_ide_project_dir() is not None]
         for dirpath, dirnames, files in os.walk(suite.dir):
@@ -2752,7 +2744,7 @@ def fsckprojects(args):
                 dirnames[:] = []
             else:
                 maybe_project = basename(dirpath)
-                if not _removedDeps.get(maybe_project):
+                if not mx._removedDeps.get(maybe_project):
                     projectConfigFiles = frozenset(['.classpath', '.project', 'nbproject', maybe_project + '.iml'])
                     indicators = projectConfigFiles.intersection(files)
                     if len(indicators) != 0:
@@ -2760,15 +2752,15 @@ def fsckprojects(args):
                         indicatorsInVC = suite.vc.locate(suite.vc_dir, indicators)
                         # Only proceed if there are indicator files that are not under VC
                         if len(indicators) > len(indicatorsInVC):
-                            if ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
+                            if mx.ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                                 shutil.rmtree(dirpath)
-                                log('Deleted ' + dirpath)
+                                mx.log('Deleted ' + dirpath)
         ideaProjectDirectory = join(suite.dir, '.idea')
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
         if exists(librariesDirectory):
             neededLibraries = set()
             unique_library_file_names = set()
-            for p in suite.projects_recursive() + _mx_suite.projects_recursive():
+            for p in suite.projects_recursive() + mx._mx_suite.projects_recursive():
                 if not p.isJavaProject():
                     continue
                 def processDep(dep, edge):
@@ -2776,15 +2768,15 @@ def fsckprojects(args):
                         return
                     if dep.isLibrary() or dep.isJARDistribution() or dep.isJdkLibrary() or dep.isMavenProject() or dep.isClasspathDependency():
                         neededLibraries.add(dep)
-                p.walk_deps(visit=processDep, ignoredEdges=[DEP_EXCLUDED])
+                p.walk_deps(visit=processDep, ignoredEdges=[mx.DEP_EXCLUDED])
             neededLibraryFiles = frozenset([_intellij_library_file_name(l.name, unique_library_file_names) for l in neededLibraries])
             existingLibraryFiles = frozenset(os.listdir(librariesDirectory))
             for library_file in existingLibraryFiles - neededLibraryFiles:
                 file_path = join(librariesDirectory, library_file)
                 relative_file_path = os.path.relpath(file_path, os.curdir)
-                if ask_yes_no(relative_file_path + ' looks like a removed library -- delete it', 'n'):
+                if mx.ask_yes_no(relative_file_path + ' looks like a removed library -- delete it', 'n'):
                     os.remove(file_path)
-                    log('Deleted ' + relative_file_path)
+                    mx.log('Deleted ' + relative_file_path)
 
 ### ~~~~~~~~~~~~~ _private, eclipse
 
@@ -2792,22 +2784,22 @@ def _copy_eclipse_settings(p, files=None):
     processors = p.annotation_processors()
 
     settingsDir = join(p.dir, ".settings")
-    ensure_dir_exists(settingsDir)
+    mx.ensure_dir_exists(settingsDir)
 
     for name, sources in p.eclipse_settings_sources().items():
-        out = StringIO()
+        out = mx.StringIO()
         print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
             print('# Source:', source, file=out)
             with open(source) as f:
                 print(f.read(), file=out)
         if p.javaCompliance:
-            jc = p.javaCompliance if p.javaCompliance.value < _max_Eclipse_JavaExecutionEnvironment else JavaCompliance(_max_Eclipse_JavaExecutionEnvironment)
+            jc = p.javaCompliance if p.javaCompliance.value < _max_Eclipse_JavaExecutionEnvironment else mx.JavaCompliance(_max_Eclipse_JavaExecutionEnvironment)
             content = out.getvalue().replace('${javaCompliance}', str(jc))
         else:
             content = out.getvalue()
         if processors:
             content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
-        update_file(join(settingsDir, name), content)
+        mx.update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
