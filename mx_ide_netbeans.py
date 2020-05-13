@@ -37,6 +37,7 @@ from os.path import join, exists
 
 import mx
 import mx_ideconfig
+import mx_ide_eclipse
 
 # Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
 if sys.version_info[0] < 3:
@@ -312,7 +313,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         apSourceOutRef = ""
     mx.ensure_dir_exists(p.output_dir())
 
-    mx_ideconfig._copy_eclipse_settings(p)
+    mx_ide_eclipse._copy_eclipse_settings(p)
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """

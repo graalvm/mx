@@ -3468,7 +3468,8 @@ import mx_benchmark
 import mx_benchplot
 import mx_downstream
 import mx_subst
-import mx_ideconfig
+import mx_ideconfig # pylint: disable=unused-import
+import mx_ide_eclipse
 
 from mx_javamodules import make_java_module # pylint: disable=unused-import
 from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -6736,7 +6737,7 @@ class JavaProject(Project, ClasspathDependency):
         """
         Generates an Eclipse project configuration for this project.
         """
-        mx_ideconfig._eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
+        mx_ide_eclipse._eclipseinit_project(self, files=files, libFiles=libFiles, absolutePaths=absolutePaths)
 
     def get_overlay_flatten_map(self):
         """
