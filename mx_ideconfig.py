@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2020, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -32,54 +32,31 @@ from __future__ import print_function
 
 import sys
 
-if sys.version_info < (2, 7):
-    major, minor, micro, _, _ = sys.version_info
-    raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
+import mx_javamodules
 
-from abc import ABCMeta, abstractmethod, abstractproperty
-
-if __name__ == '__main__':
-    # Rename this module as 'mx' so it is not re-executed when imported by other modules.
-    sys.modules['mx'] = sys.modules.pop('__main__')
 
 try:
     import defusedxml #pylint: disable=unused-import
     from defusedxml.ElementTree import parse as etreeParse
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
-import os, errno, time, subprocess, shlex, zipfile, signal, tempfile, platform
-import textwrap
-import socket
-import tarfile, gzip
-import hashlib
-import itertools
-from functools import cmp_to_key
+import os, time, zipfile, tempfile
 # TODO use defusedexpat?
 import xml.parsers.expat, xml.sax.saxutils, xml.dom.minidom
-from xml.dom.minidom import parseString as minidomParseString
 import shutil, re
-import pipes
 import difflib
 import glob
-import filecmp
-import json
-from collections import OrderedDict, namedtuple, deque
-from datetime import datetime
-from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
-from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
-from tempfile import mkdtemp, mkstemp
-from io import BytesIO
-import fnmatch
-import operator
-import calendar
-import multiprocessing
-from stat import S_IWRITE
-from mx_commands import MxCommands, MxCommand
-from copy import copy
+from collections import namedtuple
+from argparse import ArgumentParser, REMAINDER, FileType
+from os.path import join, basename, dirname, exists, isdir, realpath
 
 import mx
 
+# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 @mx.command('mx', 'eclipseformat')
 def eclipseformat(args):
@@ -706,8 +683,8 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                 out.element('attribute', {'name' : 'add-exports', 'value' : ':'.join(addExportsValue)})
                 roots = jdk.get_root_modules()
                 observable_modules = jdk.get_modules()
-                default_module_graph = mx.get_transitive_closure(roots, observable_modules)
-                module_graph = mx.get_transitive_closure(roots + exported_modules, observable_modules)
+                default_module_graph = mx_javamodules.get_transitive_closure(roots, observable_modules)
+                module_graph = mx_javamodules.get_transitive_closure(roots + exported_modules, observable_modules)
                 if default_module_graph != module_graph:
                     # https://github.com/eclipse/eclipse.jdt.core/blob/00dd337bcfe08d8b2d60529b0f7874b88e621c06/org.eclipse.jdt.core/model/org/eclipse/jdt/internal/core/JavaProject.java#L704-L715
                     out.element('attribute', {'name' : 'limit-modules', 'value' : ','.join([m.name for m in module_graph])})
@@ -1537,7 +1514,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'project.xml'))
 
-    out = mx.StringIO()
+    out = StringIO()
     jdkPlatform = 'JDK_' + str(jdk.version)
 
     annotationProcessorEnabled = "false"
@@ -2434,7 +2411,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             if corePrefsSources:
                 miscXml = mx.XMLDoc()
                 miscXml.open('project', attributes={'version' : '4'})
-                out = mx.StringIO()
+                out = StringIO()
                 print('# GENERATED -- DO NOT EDIT', file=out)
                 for source in corePrefsSources:
                     print('# Source:', source, file=out)
@@ -2446,7 +2423,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 mx.update_file(formatterConfigFile, out.getvalue())
                 importConfigFile = None
                 if uiPrefsSources:
-                    out = mx.StringIO()
+                    out = StringIO()
                     print('# GENERATED -- DO NOT EDIT', file=out)
                     for source in uiPrefsSources:
                         print('# Source:', source, file=out)
@@ -2795,7 +2772,7 @@ def _copy_eclipse_settings(p, files=None):
     mx.ensure_dir_exists(settingsDir)
 
     for name, sources in p.eclipse_settings_sources().items():
-        out = mx.StringIO()
+        out = StringIO()
         print('# GENERATED -- DO NOT EDIT', file=out)
         for source in sources:
             print('# Source:', source, file=out)

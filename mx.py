@@ -66,7 +66,7 @@ import json
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, FileType, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
@@ -86,7 +86,6 @@ if sys.version_info[0] < 3:
     def input(prompt=None):                    # pylint: disable=redefined-builtin
         return raw_input(prompt)               # pylint: disable=undefined-variable
 
-    from StringIO import StringIO
     import __builtin__ as builtins
     import urllib2                             # pylint: disable=unused-import
     _urllib_request = urllib2
@@ -99,7 +98,6 @@ if sys.version_info[0] < 3:
         return x
     _unicode = unicode                         # pylint: disable=undefined-variable
 else:
-    from io import StringIO
     import builtins                            # pylint: disable=unused-import,no-name-in-module
     import urllib.request as _urllib_request   # pylint: disable=unused-import,no-name-in-module
     import urllib.error as _urllib_error       # pylint: disable=unused-import,no-name-in-module
@@ -3474,7 +3472,7 @@ import mx_ideconfig
 
 from mx_javamodules import make_java_module # pylint: disable=unused-import
 from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
-                           get_transitive_closure, get_module_name, parse_requiresConcealed_attribute, \
+                           get_module_name, parse_requiresConcealed_attribute, \
                            as_java_module
 
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
