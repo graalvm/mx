@@ -472,6 +472,7 @@ environment variables:
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
+  MX_EXEC_LOG           Specifies default value for --exec-log option.
   MX_GIT_CACHE          Use a cache for git objects during clones.
                          * Setting it to `reference` will clone repositories using the cache and let them
                            reference the cache (if the cache gets deleted these repositories will be
@@ -507,6 +508,7 @@ environment variables:
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
         self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
+        self.add_argument('--exec-log', help='A file to which the environment and command line for each subprocess executed by mx is appended', metavar='<path>', default=get_env("MX_EXEC_LOG"))
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
         self.add_argument('--cp-sfx', dest='cp_suffix', help='class path suffix', metavar='<arg>')
         jargs = self.add_mutually_exclusive_group()
@@ -633,6 +635,15 @@ environment variables:
             mx_gate._jacoco_whitelisted_packages.extend(opts.jacoco_whitelist_package)
             mx_gate.add_jacoco_excluded_annotations(opts.jacoco_exclude_annotation)
             mx_gate.Task.verbose = opts.verbose
+
+            if opts.exec_log:
+                try:
+                    ensure_dir_exists(dirname(opts.exec_log))
+                    with open(opts.exec_log, 'a'):
+                        pass
+                except IOError as e:
+                    abort('Error opening {} specified by --exec-log: {}'.format(opts.exec_log, e))
+
         else:
             parser = ArgParser(parents=[self])
             parser.add_argument('commandAndArgs', nargs=REMAINDER, metavar='command args...')
@@ -12489,7 +12500,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
-    if _opts.verbose or cmdlinefile:
+    if _opts.verbose or cmdlinefile or _opts.exec_log:
         if _opts.very_verbose:
             log('Environment variables:')
             for key in sorted(env.keys()):
@@ -12497,7 +12508,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             log(' \\\n '.join(map(pipes.quote, args)))
         else:
             if cwd is not None and cwd != _original_directory:
-                log('Directory: ' + cwd)
+                log('Directory: ' + os.path.abspath(cwd))
             s = ''
             if env is not None:
                 env_diff = [(k, env[k]) for k in env if k not in _original_environ]
@@ -12508,7 +12519,10 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 log(s)
             if cmdlinefile:
                 with open(cmdlinefile, 'w') as fp:
-                    fp.write(s)
+                    fp.write(s + os.linesep)
+            if _opts.exec_log:
+                with open(_opts.exec_log, 'a') as fp:
+                    fp.write(s + os.linesep)
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -12569,7 +12583,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     except OSError as e:
         if not nonZeroIsFatal:
             raise e
-        abort('Error executing \'' + ' '.join(args) + '\': ' + str(e))
+        abort('Error executing: {}{}{}'.format(list_to_cmd_line(args), os.linesep, e))
     except KeyboardInterrupt:
         abort(1, killsig=signal.SIGINT)
     finally:
@@ -19516,7 +19530,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.1") # GR-23162
+version = VersionSpec("5.263.2") # GR-23375
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
