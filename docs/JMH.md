@@ -61,7 +61,7 @@ mx benchmark jmh-jar:* --results-file=results.json -- --jmh-name=api-benchmarks 
 
 This executes the [JMH] benchmarks in the `benchmarks.jar` with the `default` JVM config.
 [mx benchmark] will create a file `results.json` with the results and the dimensions
-`group=Graal`, `subgroup=mx`, `bench.suite=jmh-api-benchmark`.
+`group=Graal`, `subgroup=mx`, `bench-suite=jmh-api-benchmark`.
 Other dimensions, like `benchmark`, `metric.name`, and of course `metric.value`,
 are extracted from the [JMH] output.
 
