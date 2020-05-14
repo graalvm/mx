@@ -193,19 +193,6 @@ To do so replace asterisk (`*`) in the mx benchmark command line with the distri
 > They should define their own sub-class of `JMHDistBenchmarkSuite` and set an appropriate `group` and `subgroup`.
 
 
-
-# Legacy JMH Integration
-
-> **Warning:** all legacy systems are *deprecated* and/or *broken*.
-> They are no longer available.
-> Use the [mx distributions] based system instead.
-
-The legacy [JMH] integration was not based on [distributions](#in-reop).
-Instead, [mx] iterated all projects an collected those with a dependency to JMH.
-The first version (`mx microbench`) only invoked [JMH] without parsing the results.
-The second iteration was already integrated into [mx benchmark] and processed the results.
-
-
 [JMH]: http://openjdk.java.net/projects/code-tools/jmh/
 [mx]: ../README.md
 [JUnit]: ../README.md#junit
