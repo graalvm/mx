@@ -115,6 +115,20 @@ python3 = {
   environment+: {
     MX_PYTHON_VERSION: "3",
   },
+},
+mx_fetchjdk_test = {
+  environment+: {
+    FETCH_JDK_TEST_FOLDER: "fetch-jdk-test-folder/",
+  },
+  run: [
+    ['./mx', 'fetch-jdk', '--java-distribution', 'labsjdk-ce-11', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-11'],
+    ['./$FETCH_JDK_TEST_FOLDER/jdk-11/bin/java', '-version'],
+    ['./mx', 'fetch-jdk', '--java-distribution', 'openjdk8', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-8'],
+    ['./$FETCH_JDK_TEST_FOLDER/jdk-8/bin/java', '-version'],
+  ],
+  teardown: [
+    ['rm', '-rf', '$FETCH_JDK_TEST_FOLDER'],
+  ],
 }
 ;
 
@@ -127,6 +141,7 @@ python3 = {
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-fetch-jdk-test"} + python3 + mx_fetchjdk_test,
     gate_darwin +  {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},

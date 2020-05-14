@@ -347,6 +347,22 @@ def _safe_path(path):
         path = _unicode(path)
     return path
 
+def atomic_file_move_with_fallback(source_path, destination_path):
+    is_directory = isdir(source_path) and not islink(source_path)
+    copy_function = copytree if is_directory else shutil.copyfile
+    remove_function = rmtree if is_directory else os.remove
+    temp_function = mkdtemp if is_directory else mkstemp
+    try:
+        # This can fail if we move across file systems.
+        os.rename(source_path, destination_path)
+    except:
+        destination_temp_path = temp_function(prefix=basename(destination_path), dir=dirname(destination_path))
+        # This can get interrupted mid-copy. Since we cannot guarantee the atomicity of copytree,
+        # we copy to a .tmp folder first and then atomically rename.
+        copy_function(source_path, destination_temp_path)
+        os.rename(destination_temp_path, destination_path)
+        remove_function(source_path)
+
 def _tarfile_chown(tf, tarinfo, targetpath):
     if sys.version_info < (3, 5):
         tf.chown(tarinfo, targetpath)
@@ -693,7 +709,7 @@ def ask_yes_no(question, default=None):
     return ask_question(question, '[yn]', default, _opts.answer).startswith('y')
 
 def warn(msg, context=None):
-    if _opts.warn:
+    if _opts.warn and not _opts.quiet:
         if context is not None:
             if callable(context):
                 contextMsg = context()
@@ -3913,7 +3929,7 @@ def rmtree(path, ignore_errors=False):
     else:
         def on_error(*args):
             raise  # pylint: disable=misplaced-bare-raise
-    if isdir(path):
+    if isdir(path) and not islink(path):
         shutil.rmtree(path, onerror=on_error)
     else:
         try:
@@ -12082,6 +12098,9 @@ def is_interactive():
 
 _probed_JDKs = {}
 
+def is_quiet():
+    return _opts.quiet
+
 def _probe_JDK(home):
     res = _probed_JDKs.get(home)
     if not res:
@@ -19530,7 +19549,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.3") # GR-23375_2
+version = VersionSpec("5.263.4") # GR-23190
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
