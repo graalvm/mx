@@ -355,6 +355,8 @@ def atomic_file_move_with_fallback(source_path, destination_path):
         os.rename(source_path, destination_path)
     except:
         destination_temp_path = temp_function(prefix=basename(destination_path), dir=dirname(destination_path))
+        # We are only interested in a path, not a file itself. For directories, using copytree on an existing directory can fail.
+        remove_function(destination_temp_path)
         # This can get interrupted mid-copy. Since we cannot guarantee the atomicity of copytree,
         # we copy to a .tmp folder first and then atomically rename.
         copy_function(source_path, destination_temp_path)
@@ -16832,7 +16834,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.6") # documentation update for JMH
+version = VersionSpec("5.263.7") # GR-23574
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
