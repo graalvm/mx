@@ -84,7 +84,7 @@ def fetch_jdk(args):
             if args["keep-archive"]:
                 atomic_file_move_with_fallback(archive_location, archive_target_location)
                 atomic_file_move_with_fallback(archive_location + '.sha1', archive_target_location + ".sha1")
-                mx.log("Archive is located at {}".format(archive_location))
+                mx.log("Archive is located at {}".format(archive_target_location))
 
             atomic_file_move_with_fallback(join(extracted_path, jdk_root_folder), final_path)
 
