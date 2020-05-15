@@ -16832,7 +16832,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.5") # outsource ide configs
+version = VersionSpec("5.263.6") # documentation update for JMH
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
