@@ -814,13 +814,10 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                 with mx.Timer('compile@' + version, times):
                     def safe_path_arg(p):
                         r"""
-                        If on Windows and `p` contains spaces, then return `p` with
-                        all `\` characters replaced with `\\`, all spaces replaced
+                        Return `p` with all `\` characters replaced with `\\`, all spaces replaced
                         with `\ ` and the result enclosed in double quotes.
                         """
-                        if mx.is_windows() and ' ' in p:
-                            return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
-                        return p
+                        return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
 
                     javac_args = ['-d', safe_path_arg(dest_dir)]
                     modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]
