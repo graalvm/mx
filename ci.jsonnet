@@ -7,7 +7,23 @@ java = {
   }
 },
 oraclejdk_jvmci = jdks.oraclejdk8,
-gate = java + {
+
+# Copy mx to a directory with a space in its name to ensure
+# mx can work in that context.
+setup_mx = {
+    path(unixpath):: unixpath,
+    exe(unixpath):: unixpath,
+    copydir(src, dst):: ["cp", "-r", src, dst],
+    environment+: {
+        MX_COPY: $.path("${PWD}/../path with a space")
+    },
+    setup+: [
+        self.copydir("$PWD", "${MX_COPY}"),
+        ["cd", "${MX_COPY}"],
+    ]
+},
+
+gate = setup_mx + java + {
   targets: ['gate'],
   packages+: {
     "pip:pylint": "==1.9.3",
@@ -37,6 +53,9 @@ gate_darwin = common.sulong.deps.darwin + gate + {
   }
 },
 gate_windows = gate + {
+  path(unixpath):: std.strReplace(unixpath, "/", "\\"),
+  exe(unixpath):: self.path(unixpath) + ".exe",
+  copydir(src, dst):: ["xcopy", self.path(src), self.path(dst), "/e", "/i", "/q"],
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE\\eclipse.exe",
   },
@@ -44,7 +63,7 @@ gate_windows = gate + {
     ["./mx", "--strict-compliance", "gate", "--strict-mode", "--tags", "fullbuild"],
   ],
 },
-bench_test = java + {
+bench_test = setup_mx + java + {
   targets: ['gate'],
   run: [
     ["./mx", "benchmark", "--results-file", "bench-results.json", "--ignore-suite-commit-info=mx", "test"],
@@ -53,7 +72,7 @@ bench_test = java + {
     ["bench-uploader.py", "bench-results.json"],
   ],
 },
-jmh_test = java + {
+jmh_test = setup_mx + java + {
   targets: ['gate'],
   setup:  [
     ["./mx", "build"],
@@ -89,7 +108,7 @@ nocache = {
     ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
   ],
 },
-build_graalvm_ce_linux = common.sulong.deps.linux + {
+build_graalvm_ce_linux = setup_mx + common.sulong.deps.linux + {
   packages+: {
     git: '>=1.8.3',
     gcc: '==4.9.2',

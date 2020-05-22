@@ -7216,8 +7216,7 @@ class JavacLikeCompiler(JavaCompiler):
 
         fileList = join(project.get_output_root(), 'javafilelist.txt')
         with open(fileList, 'w') as fp:
-            if get_os() == 'windows':
-                sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
+            sourceFiles = ['"' + sourceFile.replace("\\", "\\\\") + '"' for sourceFile in sourceFiles]
             fp.write(os.linesep.join(sourceFiles))
         javacArgs.append('@' + _cygpathU2W(fileList))
 
@@ -16834,7 +16833,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.7") # GR-23574
+version = VersionSpec("5.263.8") # GR-23699
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -112,7 +112,7 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
         mx.run_java(['-cp', cp, 'com.oracle.mxtool.junit.FindClassesByAnnotatedMethods'] + annotations + jarsToParse, out=out, addDefaultArgs=False)
 
         for line in out.lines:
-            parts = line.split(' ')
+            parts = line.split(os.pathsep)
             jar = parts[0]
             reportedclasses = parts[1:] if len(parts) > 1 else []
             testclasses = [c for c in reportedclasses if not c.startswith("!")]
