@@ -11606,15 +11606,15 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
             for root, dirs, files in os.walk(entry):
                 for d in dirs:
                     entryPath = join(root[len(entry) + 1:], d)
-                    yield entry, _encode(entryPath)
+                    yield entry, entryPath
                 for f in files:
                     entryPath = join(root[len(entry) + 1:], f)
-                    yield entry, _encode(entryPath)
+                    yield entry, entryPath
         elif entry.endswith('.jar') or entry.endswith('.zip'):
             with zipfile.ZipFile(entry, 'r') as zf:
                 for zi in zf.infolist():
                     entryPath = zi.filename
-                    yield zf, _encode(entryPath)
+                    yield zf, entryPath
 
 
 def read_annotation_processors(path):
@@ -16833,7 +16833,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.8") # GR-23699
+version = VersionSpec("5.263.9") # GR-23826
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
