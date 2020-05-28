@@ -520,7 +520,7 @@ environment variables:
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
-        self.add_argument('--dbg', type=int, dest='java_dbg_port', help='make Java processes wait on <port> for a debugger', metavar='<port>')
+        self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<address>:]<port> for a debugger', metavar='[<address>:]<port>')
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
         self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
         self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
@@ -11606,15 +11606,15 @@ def classpath_walk(names=None, resolve=True, includeSelf=True, includeBootClassp
             for root, dirs, files in os.walk(entry):
                 for d in dirs:
                     entryPath = join(root[len(entry) + 1:], d)
-                    yield entry, _encode(entryPath)
+                    yield entry, entryPath
                 for f in files:
                     entryPath = join(root[len(entry) + 1:], f)
-                    yield entry, _encode(entryPath)
+                    yield entry, entryPath
         elif entry.endswith('.jar') or entry.endswith('.zip'):
             with zipfile.ZipFile(entry, 'r') as zf:
                 for zi in zf.infolist():
                     entryPath = zi.filename
-                    yield zf, _encode(entryPath)
+                    yield zf, entryPath
 
 
 def read_annotation_processors(path):
@@ -16833,7 +16833,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.8") # GR-23699
+version = VersionSpec("5.263.9") # GR-23826
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
