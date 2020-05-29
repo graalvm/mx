@@ -3715,12 +3715,41 @@ def cpu_count():
     else:
         return cpus
 
-def _is_continuous_integration():
-    return get_env("CONTINUOUS_INTEGRATION") is not None
+
+def env_var_to_bool(name, default='false'):
+    """
+    :type name: str
+    :type default: str
+    :rtype: bool
+    """
+    val = get_env(name, default)
+    b = str_to_bool(val)
+    if isinstance(b, bool):
+        return b
+    else:
+        raise abort("Invalid boolean env var value {}={}; expected: <true | false>".format(name, val))
+
+
+def str_to_bool(val):
+    """
+    :type val: str
+    :rtype: str | bool
+    """
+    low_val = val.lower()
+    if low_val in ('false', '0', 'no'):
+        return False
+    elif low_val in ('true', '1', 'yes'):
+        return True
+    return val
+
+
+def is_continuous_integration():
+    return env_var_to_bool("CONTINUOUS_INTEGRATION")
 
 
 def is_darwin():
     return sys.platform.startswith('darwin')
+
 
 def is_linux():
     return sys.platform.startswith('linux')
@@ -7752,7 +7781,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         super(NativeBuildTask, self).__init__(args, project)
         if hasattr(project, 'single_job') or not project.suite.getMxCompatibility().useJobsForMakeByDefault():
             self.parallelism = 1
-        elif (is_darwin() and _is_continuous_integration()) and not _opts.cpu_count:
+        elif (is_darwin() and is_continuous_integration()) and not _opts.cpu_count:
             # work around darwin bug where make randomly fails in our CI (GR-6892) if compilation is too parallel
             self.parallelism = 1
         self._newestOutput = None
@@ -12093,7 +12122,7 @@ def _sorted_unique_jdk_configs(configs):
     return sorted(unique_configs, key=cmp_to_key(_compare_configs), reverse=True)
 
 def is_interactive():
-    if _is_continuous_integration():
+    if is_continuous_integration():
         return False
     return not sys.stdin.closed and sys.stdin.isatty()
 
@@ -16833,7 +16862,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.9") # GR-23826
+version = VersionSpec("5.264.0") # GR-23849
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
