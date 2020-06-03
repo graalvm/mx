@@ -379,8 +379,10 @@ def gate(args):
     def mx_command_entered(command, *args, **kwargs):
         global _command_level
         if _command_level == 0:
-            all_commands.append((command.command, args, kwargs))
-            mx.log(mx.colorize('Running: ' + command_in_gate_message(command.command, args, kwargs), color='blue'))
+            gate_command_str = command_in_gate_message(command.command, args, kwargs)
+            # store the formatted gate command as the command might modify args/kwargs
+            all_commands.append(gate_command_str)
+            mx.log(mx.colorize('Running: ' + gate_command_str, color='blue'))
         _command_level = _command_level + 1
 
     def mx_command_left(_, *__, **___):
@@ -393,8 +395,8 @@ def gate(args):
         sys.stderr.flush()
 
         mx.log_error('\nThe sequence of mx commands that were executed until the failure follows:\n')
-        for command, command_args, kwargs in all_commands:
-            mx.log_error(command_in_gate_message(command, command_args, kwargs))
+        for gate_command_str in all_commands:
+            mx.log_error(gate_command_str)
 
         mx.log_error('\nIf the previous sequence is incomplete or some commands were executed programmatically use:\n')
         mx.log_error('mx' + shell_quoted_args(_mx_args + _mx_command_and_args) + '\n')
