@@ -3945,6 +3945,10 @@ def copytree(src, dst, symlinks=False, ignore=None):
     shutil.copytree(_safe_path(src), _safe_path(dst), symlinks, ignore)
 
 
+def copyfile(src, dst):
+    shutil.copyfile(_safe_path(src), _safe_path(dst))
+
+
 def rmtree(path, ignore_errors=False):
     path = _safe_path(path)
     if ignore_errors:
@@ -16647,6 +16651,18 @@ def _install_socks_proxy_opener(proxytype, proxyaddr, proxyport=None):
     opener = _urllib_request.build_opener(SocksiPyHandler(proxytype, proxyaddr, proxyport))
     _urllib_request.install_opener(opener)
 
+_mx_args = []
+_mx_command_and_args = []
+
+def shell_quoted_args(args):
+    args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
+    if args_string != '':
+        args_string = ' ' + args_string
+    return args_string
+
+
+def current_mx_command(injected_args=None):
+    return 'mx' + shell_quoted_args(_mx_args) + '' + shell_quoted_args(injected_args if injected_args else _mx_command_and_args)
 
 def main():
     # make sure logv, logvv and warn work as early as possible
@@ -16813,8 +16829,10 @@ def main():
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
-    mx_gate._mx_command_and_args = commandAndArgs
-    mx_gate._mx_args = sys.argv[1:sys.argv.index(command)]
+    global _mx_command_and_args
+    _mx_command_and_args = commandAndArgs
+    global _mx_args
+    _mx_args = sys.argv[1:sys.argv.index(command)]
     command_args = commandAndArgs[1:]
 
     if command not in _mx_commands.commands():
@@ -16862,7 +16880,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.264.3") # GR-24021
+version = VersionSpec("5.264.4") # GR-24041
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
