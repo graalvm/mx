@@ -172,10 +172,20 @@ def _parse_fetchsettings(args):
 
 def parse_common_json(common_path):
     with open(common_path) as common_file:
-        common_cfg = json.load(common_file)
+        try:
+            common_cfg = json.load(common_file)
+        except ValueError as e:
+            mx.abort('The common.json file ({}) does not contain legal JSON: {}'.format(common_path, e))
 
-    for distribution in common_cfg["jdks"]:
-        JdkDistribution.parse(distribution, common_cfg["jdks"][distribution]["version"])
+    if 'jdks' in common_cfg:
+        for distribution in common_cfg['jdks']:
+            jdk_description = common_cfg['jdks'][distribution]
+            if 'version' in jdk_description:
+                JdkDistribution.parse(distribution, jdk_description['version'])
+            else:
+                mx.abort('Distribution {} does not have a "version" property. Has the common.json({}) layout changed?'.format(distribution, common_path))
+    else:
+        mx.abort('Could not find property "jdks" in common.json ({}). Has the common.json layout changed?'.format(common_path))
 
 def default_base_path():
     locations = {
