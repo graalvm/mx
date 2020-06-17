@@ -1083,7 +1083,7 @@ class SuiteImport:
         if version is None and version_from is None:
             if not (in_subdir and (importer.vc_dir != importer.dir or isinstance(importer, BinarySuite))):
                 abort("In import for '{}': No version given and not a 'subdir' suite of the same repository".format(name), context=context)
-            if importer.isSourceSuite():
+            if importer.isSourceSuite() and importer.vc_dir is not None:
                 suite_dir = join(importer.vc_dir, name)
             version = importer.version()
         if urls is None:
@@ -1490,8 +1490,6 @@ class Suite(object):
     :type dists: list[Distribution]
     """
     def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
-        if primary is True and vc_dir is None:
-            abort("The primary suite must be in a vcs repository")
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
@@ -1520,6 +1518,8 @@ class Suite(object):
         self._preloaded_suite_dict = None
         self.vc = vc
         self.vc_dir = vc_dir
+        if vc is None != vc_dir is None:
+            abort('Suite {} must define "vc" and "vc_dir" attributes to both be None or neither be None'.format(self.name))
         self._preload_suite_dict()
         self._init_imports()
         if load:
@@ -19538,7 +19538,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.263.1") # GR-23162
+version = VersionSpec("5.265.1") # GR-24244
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

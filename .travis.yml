@@ -26,4 +26,4 @@ jobs:
     script:
       - |
           cd $TRAVIS_BUILD_DIR/../graal-master/compiler
-          $TRAVIS_BUILD_DIR/mx help
+          $TRAVIS_BUILD_DIR/mx build --no-native
