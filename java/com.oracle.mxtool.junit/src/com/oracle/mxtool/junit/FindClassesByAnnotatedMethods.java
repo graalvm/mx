@@ -26,6 +26,7 @@ package com.oracle.mxtool.junit;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -41,8 +42,22 @@ public class FindClassesByAnnotatedMethods {
 
     /**
      * Finds classes in a given set of jar files that contain at least one method with an annotation
-     * from a given set of annotations. The qualified name and containing jar file (separated by a
-     * space) is written to {@link System#out} for each matching class.
+     * from a given set of annotations. For each jar, a single line is written to {@link System#out}
+     * containing the jar file and 0 or more entries separated by {@link File#pathSeparator}. If an
+     * entry starts with {@code '!'} then it's the name of a class whose class file version is not
+     * supported. Otherwise, the entry is the name of a class matched by one of the annotations. The
+     * jar file is separated from the entries also by {@link File#pathSeparator}.
+     *
+     * Example of output:
+     * 
+     * <pre>
+     * /Users/graal/ws/sdk/mxbuild/dists/jdk11/graal-sdk.jar
+     * /Users/graal/ws/graal/sdk/mxbuild/dists/jdk1.8/sdk-test.jar:!org.hamcrest.BaseDescription:org.graalvm.collections.test.EconomicMapImplTest
+     * </pre>
+     *
+     * There are no test or unsupported classes in graal-sdk.jar. In sdk-test.jar there is one
+     * unsupported class (i.e. org.hamcrest.BaseDescription) and one test class (i.e.,
+     * org.graalvm.collections.test.EconomicMapImplTest).
      *
      * @param args jar file names, annotations and snippets patterns. Annotations are those starting
      *            with "@" and can be either qualified or unqualified annotation class names,
@@ -91,12 +106,12 @@ public class FindClassesByAnnotatedMethods {
                 }
                 String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
                 if (!isSupported) {
-                    System.out.print(" !" + className);
+                    System.out.print(File.pathSeparator + "!" + className);
                 }
                 for (String annotationType : methodAnnotationTypes) {
                     if (!qualifiedAnnotations.isEmpty()) {
                         if (qualifiedAnnotations.contains(annotationType)) {
-                            System.out.print(" " + className);
+                            System.out.print(File.pathSeparator + className);
                         }
                     }
                     if (!unqualifiedAnnotations.isEmpty()) {
@@ -108,7 +123,7 @@ public class FindClassesByAnnotatedMethods {
                                 simpleName = simpleName.substring(lastDollar + 1);
                             }
                             if (unqualifiedAnnotations.contains(simpleName)) {
-                                System.out.print(" " + className);
+                                System.out.print(File.pathSeparator + className);
                             }
                         }
                     }

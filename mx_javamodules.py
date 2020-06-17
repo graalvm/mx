@@ -586,6 +586,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
             return res
 
         def _process_exports(export_specs, available_packages, project_scope=None):
+            unqualified_exports = []
             for export in export_specs:
                 if ' to ' in export:
                     splitpackage = export.split(' to ')
@@ -596,8 +597,11 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
                         exports.setdefault(p, set()).update(targets)
                 else:
-                    for p in _parse_packages_spec(export, available_packages, project_scope):
-                        exports.setdefault(p, set())
+                    unqualified_exports.append(export)
+
+            for unqualified_export in unqualified_exports:
+                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope):
+                    exports[p] = set()
 
         module_info = getattr(dist, 'moduleInfo', None)
         alt_module_info = None
@@ -814,13 +818,10 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                 with mx.Timer('compile@' + version, times):
                     def safe_path_arg(p):
                         r"""
-                        If on Windows and `p` contains spaces, then return `p` with
-                        all `\` characters replaced with `\\`, all spaces replaced
+                        Return `p` with all `\` characters replaced with `\\`, all spaces replaced
                         with `\ ` and the result enclosed in double quotes.
                         """
-                        if mx.is_windows() and ' ' in p:
-                            return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
-                        return p
+                        return '"{}"'.format(p.replace('\\', '\\\\').replace(' ', '\\ '))
 
                     javac_args = ['-d', safe_path_arg(dest_dir)]
                     modulepath_jars = [m.jarpath for m in modulepath if m.jarpath]

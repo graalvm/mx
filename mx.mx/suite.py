@@ -175,6 +175,137 @@ suite = {
       }
     },
 
+    "JUNIT-JUPITER": {
+      "sha1": "b5c481685b6a8ca91c0d46f28f886a444354daa5",
+      "sourceSha1": "ae586ef6525ed85ec75557768ff63a5a68755102",
+      "license": "EPL-2.0",
+      "dependencies": ["JUNIT-JUPITER-API", "JUNIT-JUPITER-PARAMS"],
+      "maven": {
+        "groupId": "org.junit.jupiter",
+        "artifactId": "junit-jupiter",
+        "version": "5.6.2",
+      }
+    },
+
+    "JUNIT-JUPITER-API": {
+        "sha1": "c9ba885abfe975cda123bf6f8f0a69a1b46956d0",
+        "sourceSha1": "ce1129e07053701f7458120b12229aedb05bcd4a",
+        "license": "EPL-2.0",
+        "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
+        "maven": {
+            "groupId": "org.junit.jupiter",
+            "artifactId": "junit-jupiter-api",
+            "version": "5.6.2",
+        }
+    },
+
+    "APIGUARDIAN-API": {
+        "sha1": "fc9dff4bb36d627bdc553de77e1f17efd790876c",
+        "sourceSha1": "f3c15fe970af864390c8d0634c9f16aca1b064a8",
+        "license": "EPL-2.0",
+        "maven": {
+            "groupId": "org.apiguardian",
+            "artifactId": "apiguardian-api",
+            "version": "1.1.0",
+        }
+    },
+
+    "OPENTEST4J": {
+        "sha1": "28c11eb91f9b6d8e200631d46e20a7f407f2a046",
+        "sourceSha1": "41d55b3c2254de9837b4ec8923cbd371b8a7eab5",
+        "license": "EPL-2.0",
+        "dependencies": ["JUNIT-PLATFORM-COMMONS"],
+        "maven": {
+            "groupId": "org.opentest4j",
+            "artifactId": "opentest4j",
+            "version": "1.2.0",
+        }
+    },
+
+    "JUNIT-PLATFORM-COMMONS": {
+        "sha1": "7644a14b329e76b5fe487628b50fb5eab6ba7d26",
+        "sourceSha1": "bada08402ff53506b1446bc8b3caf5a2aec6c7d1",
+        "license": "EPL-2.0",
+        "dependencies": ["APIGUARDIAN-API"],
+        "maven": {
+            "groupId": "org.junit.platform",
+            "artifactId": "junit-platform-commons",
+            "version": "1.6.2",
+        }
+    },
+
+    "JUNIT-JUPITER-PARAMS": {
+      "sha1": "f2a64a42cf73077062c2386db0598062b7480d91",
+      "sourceSha1": "f09c69685e20753eaf05577f5da1f9a220783def",
+      "license": "EPL-2.0",
+      "dependencies": ["APIGUARDIAN-API"],
+      "maven": {
+        "groupId": "org.junit.jupiter",
+        "artifactId": "junit-jupiter-params",
+        "version": "5.6.2",
+      }
+    },
+
+    "JUNIT-PLATFORM-ENGINE": {
+      "sha1": "1752cad2579e20c2b224602fe846fc660fb35805",
+      "sourceSha1": "9240cb4f3ee7693f8f18f4140acc7f8c83336e30",
+      "license": "EPL-2.0",
+      "dependencies": ["APIGUARDIAN-API", "OPENTEST4J"],
+      "maven": {
+        "groupId": "org.junit.platform",
+        "artifactId": "junit-platform-engine",
+        "version": "1.6.2",
+      }
+    },
+
+    "JUNIT-JUPITER-ENGINE": {
+      "sha1": "c0833bd6de29dd77f8d071025b97b8b434308cd3",
+      "sourceSha1": "2116c399709549a3094a8f2bd96bb3f94b98a341",
+      "license": "EPL-2.0",
+      "dependencies": ["JUNIT-JUPITER-API", "APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
+      "maven": {
+        "groupId": "org.junit.jupiter",
+        "artifactId": "junit-jupiter-engine",
+        "version": "5.6.2",
+      }
+    },
+
+    "JUNIT-PLATFORM-LAUNCHER": {
+      "sha1": "d866de2950859ca1c7996351d7b3d97428083cd0",
+      "sourceSha1": "d9efa09350f724e7e7defa0e74c4f4573e276fe1",
+      "license": "EPL-2.0",
+      "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-ENGINE"],
+      "maven": {
+        "groupId": "org.junit.platform",
+        "artifactId": "junit-platform-launcher",
+        "version": "1.6.2",
+      }
+    },
+
+    "JUNIT-PLATFORM-REPORTING": {
+      "sha1": "517d3b96b4ed89700a5086ec504fc02d8b526e79",
+      "sourceSha1": "e0c1e87c6a973aef33f9c8eb73b47f369a6d2b3f",
+      "license": "EPL-2.0",
+      "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-LAUNCHER"],
+      "maven": {
+        "groupId": "org.junit.platform",
+        "artifactId": "junit-platform-reporting",
+        "version": "1.6.2",
+      }
+    },
+
+    "JUNIT-PLATFORM-CONSOLE": {
+      "sha1": "dfdeb2688341f7566c5943be7607a413d753ab70",
+      "sourceSha1": "10efd3f7acdc66e185d9fd60e7c5a475c2ee9474",
+      "license": "EPL-2.0",
+      "dependencies": ["APIGUARDIAN-API", "JUNIT-PLATFORM-REPORTING"],
+      "maven": {
+        "groupId": "org.junit.platform",
+        "artifactId": "junit-platform-console",
+        "version": "1.6.2",
+      }
+    },
+
     "CHECKSTYLE_6.0" : {
       "urls" : [
         "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/checkstyle-6.0-all.jar",
@@ -449,6 +580,10 @@ suite = {
     "EPL-1.0": {
       "name": "Eclipse Public License 1.0",
       "url": "https://opensource.org/licenses/EPL-1.0",
+    },
+    "EPL-2.0": {
+      "name": "Eclipse Public License 2.0",
+      "url": "https://opensource.org/licenses/EPL-2.0",
     },
   },
 

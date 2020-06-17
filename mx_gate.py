@@ -28,7 +28,6 @@ from __future__ import print_function
 
 import os, re, time, datetime, json
 import tempfile
-import pipes
 import zipfile
 from os.path import join, exists
 from argparse import ArgumentParser
@@ -192,8 +191,6 @@ class Task:
 _gate_runners = []
 _pre_gate_runners = []
 _extra_gate_arguments = []
-_mx_args = []
-_mx_command_and_args = []
 
 def add_gate_argument(*args, **kwargs):
     """
@@ -283,6 +280,8 @@ def parse_tags_argument(tags_arg, exclude):
             # init counter
             Task.tags_count[tag] = 0
         Task.tags.append(tag)
+
+
 _command_level = 0
 def gate(args):
     """run the tests used to validate a push
@@ -370,17 +369,13 @@ def gate(args):
     total = Task('Gate')
     all_commands = []
 
-    def shell_quoted_args(args):
-        args_string = ' '.join([pipes.quote(str(arg)) for arg in args])
-        if args_string != '':
-            args_string = ' ' + args_string
-        return args_string
-
     def mx_command_entered(command, *args, **kwargs):
         global _command_level
         if _command_level == 0:
-            all_commands.append((command.command, args, kwargs))
-            mx.log(mx.colorize('Running: ' + command_in_gate_message(command.command, args, kwargs), color='blue'))
+            gate_command_str = command_in_gate_message(command.command, args, kwargs)
+            # store the formatted gate command as the command might modify args/kwargs
+            all_commands.append(gate_command_str)
+            mx.log(mx.colorize('Running: ' + gate_command_str, color='blue'))
         _command_level = _command_level + 1
 
     def mx_command_left(_, *__, **___):
@@ -393,11 +388,11 @@ def gate(args):
         sys.stderr.flush()
 
         mx.log_error('\nThe sequence of mx commands that were executed until the failure follows:\n')
-        for command, command_args, kwargs in all_commands:
-            mx.log_error(command_in_gate_message(command, command_args, kwargs))
+        for gate_command_str in all_commands:
+            mx.log_error(gate_command_str)
 
         mx.log_error('\nIf the previous sequence is incomplete or some commands were executed programmatically use:\n')
-        mx.log_error('mx' + shell_quoted_args(_mx_args + _mx_command_and_args) + '\n')
+        mx.log_error(mx.current_mx_command() + '\n')
 
         sys.stderr.flush()
 
@@ -405,8 +400,7 @@ def gate(args):
         one_list = len(command_args) == 1 and isinstance(command_args[0], list)
         kwargs_absent = len(kwargs) == 0
         if one_list and kwargs_absent:  # gate command reproducible on the command line
-            quoted_args = (' '.join([pipes.quote(str(arg)) for arg in command_args[0]]))
-            message = 'mx' + shell_quoted_args(_mx_args) + ' ' + command + ' ' + quoted_args
+            message = mx.current_mx_command([command] + command_args[0])
         else:
             args_message = '(Programmatically executed. '
             if not one_list:
@@ -414,7 +408,7 @@ def gate(args):
             if not kwargs_absent:
                 args_message += 'Kwargs: ' + str(kwargs)
             args_message += ')'
-            message = 'mx' + shell_quoted_args(_mx_args) + ' ' + command + ' ' + args_message
+            message = mx.current_mx_command([command, args_message])
         return message
 
     try:

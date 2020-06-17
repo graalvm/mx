@@ -353,7 +353,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                     with zipfile.ZipFile(jarPath, 'r') as source_zf:
                         for info in source_zf.infolist():
                             arcname = info.filename
-                            if arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                            if arcname == 'module-info.class':
+                                mx.logv(jarPath + ' contains ' + arcname + '. It will not be included in ' + arc.path)
+                            elif arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
                                 service = arcname[len('META-INF/services/'):]
                                 assert '/' not in service
                                 services.setdefault(service, []).extend(mx._decode(source_zf.read(arcname)).splitlines())

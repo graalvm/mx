@@ -230,6 +230,7 @@ class BenchmarkSuite(object):
     """
     def __init__(self, *args, **kwargs):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
+        self._desired_version = None
         self._suite_dimensions = {}
 
     def name(self):
@@ -274,6 +275,17 @@ class BenchmarkSuite(object):
     def benchmarks(self):
         # Deprecated, consider using `benchmarkList` instead!
         raise NotImplementedError()
+
+    def desiredVersion(self):
+        """Returns the benchmark suite version that is requested for execution.
+
+        :return: suite version.
+        :rtype: str
+        """
+        return self._desired_version
+
+    def setDesiredVersion(self, version):
+        self._desired_version = version
 
     def validateEnvironment(self):
         """Validates the environment and raises exceptions if validation fails.
@@ -1837,6 +1849,8 @@ class BenchmarkExecutor(object):
         suite = _bm_suites.get(suitename)
         if not suite:
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
+        if args.bench_suite_version:
+            suite.setDesiredVersion(args.bench_suite_version)
         if benchspec == "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif benchspec.startswith("*[") and benchspec.endswith("]"):
@@ -1919,6 +1933,8 @@ class BenchmarkExecutor(object):
             "--results-file",
             default="bench-results.json",
             help="Path to JSON output file with benchmark results.")
+        parser.add_argument(
+            "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
