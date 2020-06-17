@@ -744,12 +744,20 @@ currently_loading_suite = DynamicVar(None)
 
 _suite_context_free = ['init', 'version', 'urlrewrite']
 
+def _command_function_names(func):
+    """
+    Generates list of guesses for command name based on its function name
+    """
+    command_names = [func.__name__]
+    if '_' in func.__name__:
+        command_names.append(func.__name__.replace("_", "-"))
+    return command_names
 
 def suite_context_free(func):
     """
     Decorator for commands that don't need a primary suite.
     """
-    _suite_context_free.append(func.__name__)
+    _suite_context_free.extend(_command_function_names(func))
     return func
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
@@ -761,7 +769,7 @@ def optional_suite_context(func):
     """
     Decorator for commands that don't need a primary suite but will use one if it can be found.
     """
-    _optional_suite_context.append(func.__name__)
+    _optional_suite_context.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be loaded.
@@ -773,7 +781,7 @@ def no_suite_loading(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be loaded.
     """
-    _no_suite_loading.append(func.__name__)
+    _no_suite_loading.extend(_command_function_names(func))
     return func
 
 # Names of commands that need a primary suite but don't need suites to be discovered.
@@ -785,7 +793,7 @@ def no_suite_discovery(func):
     """
     Decorator for commands that need a primary suite but don't need suites to be discovered.
     """
-    _no_suite_discovery.append(func.__name__)
+    _no_suite_discovery.extend(_command_function_names(func))
     return func
 
 
@@ -3444,7 +3452,7 @@ from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_pa
 ERROR_TIMEOUT = 0x700000000 # not 32 bits
 
 _mx_home = realpath(dirname(__file__))
-_mx_path = 'mx' if _mx_home in os.environ['PATH'].split(os.pathsep) else join(_mx_home, 'mx')
+_mx_path = 'mx' if _mx_home in os.environ.get('PATH', '').split(os.pathsep) else join(_mx_home, 'mx')
 
 try:
     # needed to work around https://bugs.python.org/issue1927
@@ -4110,7 +4118,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     jarURLPattern = re.compile('jar:(.*)!/(.*)')
     verify_errors = {}
     for url in urls:
-        if not verifyOnly or verbose:
+        if not verifyOnly and verbose:
             log('Downloading ' + url + ' to ' + path)
         m = jarURLPattern.match(url)
         jarEntryName = None
@@ -6584,6 +6592,9 @@ class JavaProject(Project, ClasspathDependency):
                                     m = _java_package_regex.match(line)
                                     if m:
                                         java_package = m.group('package')
+                            if self.is_test_project() and java_package is None and path_package == '':
+                                # Test projects are allowed to include classes without a package
+                                continue
                             if java_package != path_package:
                                 mismatched_imports[java_source] = java_package
 
@@ -14525,11 +14536,14 @@ def canonicalizeprojects(args):
     for s in suites(True, includeBinary=False):
         for p in (p for p in s.projects if p.isJavaProject()):
             if p.suite.getMxCompatibility().check_package_locations():
+                errors = []
                 for source, package in p.mismatched_imports().items():
                     if package:
-                        p.abort('{} declares a package that does not match its location: {}'.format(source, package))
+                        errors.append('{} declares a package that does not match its location: {}'.format(source, package))
                     else:
-                        p.abort('{} does not declares a package to match its location'.format(source))
+                        errors.append('{} does not declare a package that matches its location'.format(source))
+                if errors:
+                    p.abort('\n'.join(errors))
             if p.is_test_project():
                 continue
             if p.checkPackagePrefix:
@@ -19262,6 +19276,8 @@ update_commands("mx", {
     'version': [show_version, ''],
 })
 
+import mx_fetchjdk # pylint: disable=unused-import
+
 from mx_unittest import unittest
 from mx_jackpot import jackpot
 from mx_webserver import webserver
@@ -19522,7 +19538,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.262.0")
+version = VersionSpec("5.263.1") # GR-23162
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
