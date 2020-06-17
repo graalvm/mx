@@ -13304,27 +13304,27 @@ def get_env(key, default=None):
     return value
 
 ### ~~~~~~~~~~~~~ Logging
-def logv(msg=None):
+def logv(msg=None, end='\n'):
     if vars(_opts).get('verbose') is None:
         def _deferrable():
-            logv(msg)
+            logv(msg, end=end)
         _opts_parsed_deferrables.append(_deferrable)
         return
 
     if _opts.verbose:
-        log(msg)
+        log(msg, end=end)
 
-def logvv(msg=None):
+def logvv(msg=None, end='\n'):
     if vars(_opts).get('very_verbose') is None:
         def _deferrable():
-            logvv(msg)
+            logvv(msg, end=end)
         _opts_parsed_deferrables.append(_deferrable)
         return
 
     if _opts.very_verbose:
-        log(msg)
+        log(msg, end=end)
 
-def log(msg=None):
+def log(msg=None, end='\n'):
     """
     Write a message to the console.
     All script output goes through this method thus allowing a subclass
@@ -13348,7 +13348,7 @@ def log(msg=None):
         # instruction is omitted. By manually adding the newline to the string,
         # there is only a single PRINT_ITEM instruction which is executed
         # atomically, but still prints the newline.
-        print(str(msg), end='\n')
+        print(str(msg), end=end)
 
 # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 _ansi_color_table = {
@@ -16880,7 +16880,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.265.1") # GR-24244
+version = VersionSpec("5.265.2") # GR-24177
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
