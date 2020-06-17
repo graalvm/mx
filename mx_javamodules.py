@@ -586,6 +586,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
             return res
 
         def _process_exports(export_specs, available_packages, project_scope=None):
+            unqualified_exports = []
             for export in export_specs:
                 if ' to ' in export:
                     splitpackage = export.split(' to ')
@@ -596,8 +597,11 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
                         exports.setdefault(p, set()).update(targets)
                 else:
-                    for p in _parse_packages_spec(export, available_packages, project_scope):
-                        exports.setdefault(p, set())
+                    unqualified_exports.append(export)
+
+            for unqualified_export in unqualified_exports:
+                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope):
+                    exports[p] = set()
 
         module_info = getattr(dist, 'moduleInfo', None)
         alt_module_info = None
