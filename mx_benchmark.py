@@ -287,6 +287,14 @@ class BenchmarkSuite(object):
     def setDesiredVersion(self, version):
         self._desired_version = version
 
+    def version(self):
+        """Actual suite version used that will be stored in the results file.
+
+        :return: suite version.
+        :rtype: str
+        """
+        return "unknown"
+
     def validateEnvironment(self):
         """Validates the environment and raises exceptions if validation fails.
 
@@ -1782,6 +1790,7 @@ class BenchmarkExecutor(object):
           "group": self.group(suite),
           "subgroup": suite.subgroup(),
           "bench-suite": suite.name(),
+          "bench-suite-version": suite.version(),
           "config.vm-flags": " ".join(suite.vmArgs(bmSuiteArgs)),
           "config.run-flags": " ".join(suite.runArgs(bmSuiteArgs)),
           "config.build-flags": self.buildFlags(),
