@@ -150,7 +150,7 @@ By default only report the last data point""", type=int, default=None)
         if len(widths) == 0:
             widths = w
         else:
-            widths = map(max, widths, w)
+            widths = list(map(max, widths, w))
 
     if args.format == 'text':
         handle.write('  '.join(['%' + str(w) + 's' for w in  widths]) % tuple(headers) + '\n')
