@@ -148,6 +148,19 @@ mx_fetchjdk_test = {
   teardown: [
     ['rm', '-rf', '$FETCH_JDK_TEST_FOLDER'],
   ],
+},
+mx_bisect_test = {
+  setup: [
+    ['git', 'config', 'user.email', "andrii.rodionov@oracle.com"],
+    ['git', 'config', 'user.name', "Andrii Rodionov"],
+  ],
+  run: [
+    ['./mx', 'bisect', '--strategy', 'bayesian', 'selfcheck'],
+    ['./mx', 'bisect', '--strategy', 'bisect', 'selfcheck'],
+  ],
+  teardown: [
+    ['rm', '-f', 'mxbuild/bisect_*.log'],
+  ],
 }
 ;
 
@@ -161,6 +174,7 @@ mx_fetchjdk_test = {
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-fetch-jdk-test"} + python3 + mx_fetchjdk_test,
+    gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-bisect-test"} + python3 + mx_bisect_test,
     gate_darwin +  {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
