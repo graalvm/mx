@@ -16446,13 +16446,14 @@ def maven_install(args):
     parser.add_argument('--no-checks', action='store_true', help='checks on status are disabled')
     parser.add_argument('--test', action='store_true', help='print info about JARs to be installed')
     parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
-    parser.add_argument('--only', action='store', help='comma separated set of distributions to deploy')
+    parser.add_argument('--only', action='store', help='comma separated set of distributions to install')
+    parser.add_argument('--version-string', action='store', help='Provide custom version string for installment')
     args = parser.parse_args(args)
 
     _mvn.check()
     s = primary_suite()
     nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
-    version = s.vc.parent(s.vc_dir)
+    version = args.version_string if args.version_string else s.vc.parent(s.vc_dir)
     releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
     arcdists = []
     only = []
