@@ -1323,11 +1323,12 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
 
                     version_output = command_output.splitlines()
                     assert len(version_output) >= 3
-                    if len(version_output) > 3:
-                        # removing the output of PrintCommandLineFlags from above
-                        # and any other warnings or info like "Picked up : <ENV VAR>"
-                        version_output = version_output[-3:]
-                    assert "version" in version_output[0]
+                    version_start_line = 0
+                    for i, line in enumerate(version_output):
+                        if " version " in line:
+                            version_start_line = i
+                            break
+                    version_output = version_output[version_start_line:version_start_line+3]
                     jdk_version_number = version_output[0].split("\"")[1]
                     version = mx.VersionSpec(jdk_version_number)
                     jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
@@ -1335,6 +1336,11 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                     self._vm_info["platform.jdk-version-number"] = jdk_version_number
                     self._vm_info["platform.jdk-major-version"] = jdk_major_version
                     self._vm_info["platform.jdk-version-string"] = jdk_version_string
+                    if "GraalVM" in jdk_version_string:
+                        m = re.search(r'GraalVM (CE|EE) ((\.?\d+)*)', jdk_version_string)
+                        self._vm_info["platform.graalvm-version-string"] = m.group(0)
+                        self._vm_info["platform.graalvm-edition"] = m.group(1)
+                        self._vm_info["platform.graalvm-version"] = m.group(2)
                 else:
                     mx.log_error("VM info extraction failed ! (code={})".format(code))
 
@@ -1369,7 +1375,7 @@ class DefaultJavaVm(OutputCapturingJavaVm):
         return args
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
-        mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
+        return mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
 
 
 class DummyJavaVm(OutputCapturingJavaVm):
