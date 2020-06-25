@@ -12608,14 +12608,6 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             # Don't make the reader thread a daemon otherwise output can be droppped
             t.start()
             joiners.append(t)
-        while any([t.is_alive() for t in joiners]):
-            # Need to use timeout otherwise all signals (including CTRL-C) are blocked
-            # see: http://bugs.python.org/issue1167930
-            for t in joiners:
-                t.join(10)
-        if isinstance(stdin, str):
-            p.stdin.write(_encode(stdin))
-            p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
                 try:
@@ -12632,6 +12624,14 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             if is_windows():
                 abort('Use of timeout not (yet) supported on Windows')
             retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
+        while any([t.is_alive() for t in joiners]):
+            # Need to use timeout otherwise all signals (including CTRL-C) are blocked
+            # see: http://bugs.python.org/issue1167930
+            for t in joiners:
+                t.join(10)
+        if isinstance(stdin, str):
+            p.stdin.write(_encode(stdin))
+            p.stdin.close()
     except OSError as e:
         if not nonZeroIsFatal:
             raise e
@@ -16883,7 +16883,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.265.12") # GR-24474
+version = VersionSpec("5.265.13") # GR-24436
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
