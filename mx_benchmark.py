@@ -1338,9 +1338,10 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                     self._vm_info["platform.jdk-version-string"] = jdk_version_string
                     if "GraalVM" in jdk_version_string:
                         m = re.search(r'GraalVM (CE|EE) ((\.?\d+)*)', jdk_version_string)
-                        self._vm_info["platform.graalvm-version-string"] = m.group(0)
-                        self._vm_info["platform.graalvm-edition"] = m.group(1)
-                        self._vm_info["platform.graalvm-version"] = m.group(2)
+                        if m:
+                            self._vm_info["platform.graalvm-version-string"] = m.group(0)
+                            self._vm_info["platform.graalvm-edition"] = m.group(1)
+                            self._vm_info["platform.graalvm-version"] = m.group(2)
                 else:
                     mx.log_error("VM info extraction failed ! (code={})".format(code))
 
