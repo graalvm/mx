@@ -12206,11 +12206,11 @@ def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=No
         jdk = get_jdk()
     return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
 
-def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None, run_with_heap=None):
     """computes the minimum heap size required to run a Java program within a certain overhead factor"""
     assert minHeap <= maxHeap
 
-    def run_with_heap(heap, args, timeout=timeout, suppressStderr=True, nonZeroIsFatal=False):
+    def _run_with_heap(heap, args, timeout, suppressStderr=True, nonZeroIsFatal=False):
         log('Trying with %sMB of heap...' % heap)
         with open(os.devnull, 'w') as fnull:
             vmArgs, pArgs = extract_VM_args(args=args, useDoubleDash=False, allowClasspath=True, defaultAllVMArgs=True)
@@ -12220,10 +12220,11 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
             else:
                 log('succeeded')
             return exitCode
+    run_with_heap = run_with_heap or _run_with_heap
 
     if overheadFactor > 0:
         t = time.time()
-        if run_with_heap(maxHeap, args, timeout=timeout, suppressStderr=False):
+        if run_with_heap(maxHeap, args, timeout, suppressStderr=False):
             log('The command line is wrong, there is a bug in the program, or the reference heap (%sMB) is too low.' % maxHeap)
             return 1
         referenceTime = round(time.time() - t, 2)
@@ -12243,7 +12244,7 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
 
         successful = 0
         while successful < repetitions:
-            if run_with_heap(avg, args, timeout=maxTime):
+            if run_with_heap(avg, args, maxTime):
                 break
             successful += 1
 
