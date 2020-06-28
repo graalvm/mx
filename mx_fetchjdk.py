@@ -91,16 +91,19 @@ def fetch_jdk(args):
     curr_path = final_path
     if mx.is_darwin() and exists(join(final_path, 'Contents', 'Home')):
         if args["strip-contents-home"]:
-            with mx.TempDir(parent_dir=final_path) as tmp_path:
-                shutil.move(final_path, tmp_path)
-                shutil.move(join(tmp_path, 'Contents', 'Home'), final_path)
+            with mx.TempDir() as tmp_path:
+                shutil.move(final_path, join(tmp_path, 'jdk'))
+                shutil.move(join(tmp_path, 'jdk', 'Contents', 'Home'), final_path)
         else:
             final_path = join(final_path, 'Contents', 'Home')
 
     if "alias" in args:
         alias_full_path = join(base_path, args["alias"])
-        if exists(alias_full_path):
-            mx.rmtree(alias_full_path)
+        if os.path.islink(alias_full_path):
+            os.unlink(alias_full_path)
+        elif exists(alias_full_path):
+            mx.abort(alias_full_path + ' exists and it is not an existing symlink so it can not be used for a new symlink. Please remove it manually.')
+
         if not (mx.is_windows() or mx.is_cygwin()):
             os.symlink(abspath(curr_path), alias_full_path)
         else:
@@ -112,7 +115,7 @@ def fetch_jdk(args):
     shell = os.environ.get("SHELL")
     if shell is None:
         shell = ''
-    print(get_setvar_format(shell) % ("JAVA_HOME", abspath(final_path)))
+    mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(final_path)))
 
 def _parse_fetchsettings(args):
     settings = {}
