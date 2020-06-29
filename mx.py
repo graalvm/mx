@@ -16460,9 +16460,7 @@ def maven_install(args):
         version = args.version_string if args.version_string else s.vc.parent(s.vc_dir)
         releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
         arcdists = []
-        only = []
-        if args.only is not None:
-            only = args.only.split(',')
+        only = args.only.split(',') if args.only is not None else None
         dists = [d for d in s.dists if distMatcher(d, None, False, only, None, False)]
         for dist in dists:
             # ignore non-exported dists
