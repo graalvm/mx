@@ -10919,6 +10919,24 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
+def distMatcher(dist, tags, all_distributions, only, skip, all_distribution_types):
+    maven = getattr(dist, 'maven', False)
+    if tags is not None:
+        maven_tag = 'default'
+        if isinstance(maven, dict) and 'tag' in maven:
+            maven_tag = maven['tag']
+        if maven_tag not in tags:
+            return False
+    if all_distributions:
+        return True
+    if not dist.isJARDistribution() and not all_distribution_types:
+        return False
+    if only is not None:
+        return any(fnmatch.fnmatch(dist.name, o) or fnmatch.fnmatch(dist.qualifiedName(), o) for o in only)
+    if skip is not None and any(fnmatch.fnmatch(dist.name, s) or fnmatch.fnmatch(dist.qualifiedName(), s) for s in skip):
+        return False
+    return getattr(dist, 'maven', False) and not dist.is_test_distribution()
+
 def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository
 
@@ -10961,32 +10979,13 @@ def maven_deploy(args):
         _suites = primary_or_specific_suites()
 
     tags = args.tags.split(',') if args.tags is not None else None
-
     only = args.only.split(',') if args.only is not None else None
     skip = args.skip.split(',') if args.skip is not None else None
-
-    def distMatcher(dist):
-        maven = getattr(dist, 'maven', False)
-        if tags is not None:
-            maven_tag = 'default'
-            if isinstance(maven, dict) and 'tag' in maven:
-                maven_tag = maven['tag']
-            if maven_tag not in tags:
-                return False
-        if args.all_distributions:
-            return True
-        if not dist.isJARDistribution() and not args.all_distribution_types:
-            return False
-        if only is not None:
-            return any(fnmatch.fnmatch(dist.name, o) or fnmatch.fnmatch(dist.qualifiedName(), o) for o in only)
-        if skip is not None and any(fnmatch.fnmatch(dist.name, s) or fnmatch.fnmatch(dist.qualifiedName(), s) for s in skip):
-            return False
-        return getattr(dist, 'maven', False) and not dist.is_test_distribution()
 
     has_deployed_dist = False
 
     for s in _suites:
-        dists = [d for d in s.dists if distMatcher(d)]
+        dists = [d for d in s.dists if distMatcher(d, tags, args.all_distributions, only, skip, args.all_distribution_types)]
         if args.url:
             licenses = get_license(args.licenses.split(','))
             repo = Repository(None, args.repository_id, args.url, args.url, licenses)
@@ -16448,41 +16447,46 @@ def maven_install(args):
     parser.add_argument('--repo', action='store', help='path to local Maven repository to install to')
     parser.add_argument('--only', action='store', help='comma separated set of distributions to install')
     parser.add_argument('--version-string', action='store', help='Provide custom version string for installment')
+    parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
     args = parser.parse_args(args)
 
     _mvn.check()
-    s = primary_suite()
-    nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
-    version = args.version_string if args.version_string else s.vc.parent(s.vc_dir)
-    releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
-    arcdists = []
-    only = []
-    if args.only is not None:
-        only = args.only.split(',')
-    for dist in s.dists:
-        # ignore non-exported dists
-        if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
-            if len(only) == 0 or dist.name in only:
+    if args.all_suites:
+        _suites = suites()
+    else:
+        _suites = [primary_suite()]
+    for s in _suites:
+        nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
+        version = args.version_string if args.version_string else s.vc.parent(s.vc_dir)
+        releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
+        arcdists = []
+        only = []
+        if args.only is not None:
+            only = args.only.split(',')
+        dists = [d for d in s.dists if distMatcher(d, None, False, only, None, False)]
+        for dist in dists:
+            # ignore non-exported dists
+            if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
                 arcdists.append(dist)
 
-    mxMetaName = _mx_binary_distribution_root(s.name)
-    s.create_mx_binary_distribution_jar()
-    mxMetaJar = s.mx_binary_distribution_jar_path()
-    if not args.test:
-        if nolocalchanges:
-            mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
-        else:
-            print('Local changes found, skipping install of ' + version + ' version')
-        mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
-        for dist in arcdists:
+        mxMetaName = _mx_binary_distribution_root(s.name)
+        s.create_mx_binary_distribution_jar()
+        mxMetaJar = s.mx_binary_distribution_jar_path()
+        if not args.test:
             if nolocalchanges:
-                mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
-            mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, releaseVersion, args.repo)
-    else:
-        print('jars to deploy manually for version: ' + version)
-        print('name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir))
-        for dist in arcdists:
-            print('name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir))
+                mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, version, args.repo)
+            else:
+                print('Local changes found, skipping install of ' + version + ' version')
+            mvn_local_install(_mavenGroupId(s.name), _map_to_maven_dist_name(mxMetaName), mxMetaJar, releaseVersion, args.repo)
+            for dist in arcdists:
+                if nolocalchanges:
+                    mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, version, args.repo)
+                mvn_local_install(dist.maven_group_id(), dist.maven_artifact_id(), dist.path, releaseVersion, args.repo)
+        else:
+            print('jars to deploy manually for version: ' + version)
+            print('name: ' + _map_to_maven_dist_name(mxMetaName) + ', path: ' + os.path.relpath(mxMetaJar, s.dir))
+            for dist in arcdists:
+                print('name: ' + dist.maven_artifact_id() + ', path: ' + os.path.relpath(dist.path, s.dir))
 
 
 ### ~~~~~~~~~~~~~ commands
