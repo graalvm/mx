@@ -10919,7 +10919,7 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
-def distMatcher(dist, tags, all_distributions, only, skip, all_distribution_types):
+def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_types):
     maven = getattr(dist, 'maven', False)
     if tags is not None:
         maven_tag = 'default'
@@ -10985,7 +10985,7 @@ def maven_deploy(args):
     has_deployed_dist = False
 
     for s in _suites:
-        dists = [d for d in s.dists if distMatcher(d, tags, args.all_distributions, only, skip, args.all_distribution_types)]
+        dists = [d for d in s.dists if _dist_matcher(d, tags, args.all_distributions, only, skip, args.all_distribution_types)]
         if args.url:
             licenses = get_license(args.licenses.split(','))
             repo = Repository(None, args.repository_id, args.url, args.url, licenses)
@@ -16461,7 +16461,7 @@ def maven_install(args):
         releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
         arcdists = []
         only = args.only.split(',') if args.only is not None else None
-        dists = [d for d in s.dists if distMatcher(d, None, False, only, None, False)]
+        dists = [d for d in s.dists if _dist_matcher(d, None, False, only, None, False)]
         for dist in dists:
             # ignore non-exported dists
             if not dist.internal and not dist.name.startswith('COM_ORACLE') and hasattr(dist, 'maven') and dist.maven:
