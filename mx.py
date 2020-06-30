@@ -911,10 +911,11 @@ class SuiteModel:
             _, primary_vc_root = VC.get_vc_root(suite_dir, abortOnError=False)
             if not primary_vc_root:
                 suite_parent = dirname(suite_dir)
-                # Use the heuristic of a 'ci.hocon' file being
+                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
                 # at the root of a repo that contains multiple suites.
                 hocon = join(suite_parent, 'ci.hocon')
-                if exists(hocon):
+                mx_vcs_root = join(suite_parent, '.mx_vcs_root')
+                if exists(hocon) or exists(mx_vcs_root):
                     return dirname(suite_parent)
                 return suite_parent
         else:
@@ -1518,7 +1519,7 @@ class Suite(object):
     """
     def __init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=False):
         if primary is True and vc_dir is None:
-            abort("The primary suite must be in a vcs repository")
+            abort("The primary suite must be in a vcs repository or under a directory containing a file called '.mx_vcs_root' or 'ci.hocon'")
         self.imported_by = [] if primary else [importing_suite]
         self.mxDir = mxDir
         self.dir = dirname(mxDir)
@@ -2453,6 +2454,19 @@ class SourceSuite(Suite):
     """A source suite"""
     def __init__(self, mxDir, primary=False, load=True, internal=False, importing_suite=None, dynamicallyImported=False):
         vc, vc_dir = VC.get_vc_root(dirname(mxDir), abortOnError=False)
+        if not vc_dir:
+            current_dir = realpath(dirname(mxDir))
+            while True:
+                # Use the heuristic of a 'ci.hocon' or '.mx_vcs_root' file being
+                # at the root of a repo that contains multiple suites.
+                hocon = join(current_dir, 'ci.hocon')
+                mx_vcs_root = join(current_dir, '.mx_vcs_root')
+                if exists(hocon) or exists(mx_vcs_root):
+                    vc_dir = current_dir
+                    # don't break here to get the top most directory as the vc_dir
+                if os.path.splitdrive(current_dir)[1] == os.sep:
+                    break
+                current_dir = dirname(current_dir)
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
