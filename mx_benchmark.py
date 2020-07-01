@@ -1299,6 +1299,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
     def __init__(self):
         super(OutputCapturingJavaVm, self).__init__()
         self._vm_info = {}
+        # prevents an infinite loop when the host-vm is a GraalVm since its `run_java()` function calls `extract_vm_info()`, which calls `run_java()`
+        self.currently_extracting_vm_info = False
 
     def extract_vm_info(self, args=None):
         if args is None:
@@ -1307,44 +1309,48 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             args = []
         args = self.post_process_command_line_args(args)
         args_str = ' '.join(args)
-        if args_str not in self._vm_info:
-            vm_info = {}
-            with mx.DisableJavaDebugging():
-                java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
-                vm_opts = _get_vm_options_for_config_extraction(args)
-                vm_args = vm_opts + ["-version"]
-                mx.logv("Extracting vm info by calling : java {}".format(' '.join(vm_args)))
-                code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
-                if code == 0:
-                    command_output = java_version_out.underlying.data
-                    gc, initial_heap, max_heap = _get_gc_info(command_output)
-                    vm_info["platform.gc"] = gc
-                    vm_info["platform.initial-heap-size"] = initial_heap
-                    vm_info["platform.max-heap-size"] = max_heap
+        if not self.currently_extracting_vm_info and args_str not in self._vm_info:
+            self.currently_extracting_vm_info = True
+            try:
+                vm_info = {}
+                with mx.DisableJavaDebugging():
+                    java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
+                    vm_opts = _get_vm_options_for_config_extraction(args)
+                    vm_args = vm_opts + ["-version"]
+                    mx.logv("Extracting vm info by calling : java {}".format(' '.join(vm_args)))
+                    code = self.run_java(vm_args, out=java_version_out, err=java_version_out, cwd=".")
+                    if code == 0:
+                        command_output = java_version_out.underlying.data
+                        gc, initial_heap, max_heap = _get_gc_info(command_output)
+                        vm_info["platform.gc"] = gc
+                        vm_info["platform.initial-heap-size"] = initial_heap
+                        vm_info["platform.max-heap-size"] = max_heap
 
-                    version_output = command_output.splitlines()
-                    assert len(version_output) >= 3
-                    version_start_line = 0
-                    for i, line in enumerate(version_output):
-                        if " version " in line:
-                            version_start_line = i
-                            break
-                    version_output = version_output[version_start_line:version_start_line+3]
-                    jdk_version_number = version_output[0].split("\"")[1]
-                    version = mx.VersionSpec(jdk_version_number)
-                    jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
-                    jdk_version_string = version_output[2]
-                    vm_info["platform.jdk-version-number"] = jdk_version_number
-                    vm_info["platform.jdk-major-version"] = jdk_major_version
-                    vm_info["platform.jdk-version-string"] = jdk_version_string
-                    if "GraalVM" in jdk_version_string:
-                        m = re.search(r'GraalVM (CE|EE) ((\.?\d+)*)', jdk_version_string)
-                        if m:
-                            vm_info["platform.graalvm-version-string"] = m.group(0)
-                            vm_info["platform.graalvm-edition"] = m.group(1)
-                            vm_info["platform.graalvm-version"] = m.group(2)
-                else:
-                    mx.log_error("VM info extraction failed ! (code={})".format(code))
+                        version_output = command_output.splitlines()
+                        assert len(version_output) >= 3
+                        version_start_line = 0
+                        for i, line in enumerate(version_output):
+                            if " version " in line:
+                                version_start_line = i
+                                break
+                        version_output = version_output[version_start_line:version_start_line+3]
+                        jdk_version_number = version_output[0].split("\"")[1]
+                        version = mx.VersionSpec(jdk_version_number)
+                        jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
+                        jdk_version_string = version_output[2]
+                        vm_info["platform.jdk-version-number"] = jdk_version_number
+                        vm_info["platform.jdk-major-version"] = jdk_major_version
+                        vm_info["platform.jdk-version-string"] = jdk_version_string
+                        if "GraalVM" in jdk_version_string:
+                            m = re.search(r'GraalVM (CE|EE) ((\.?\d+)*)', jdk_version_string)
+                            if m:
+                                vm_info["platform.graalvm-version-string"] = m.group(0)
+                                vm_info["platform.graalvm-edition"] = m.group(1)
+                                vm_info["platform.graalvm-version"] = m.group(2)
+                    else:
+                        mx.log_error("VM info extraction failed ! (code={})".format(code))
+            finally:
+                self.currently_extracting_vm_info = False
             self._vm_info[args_str] = vm_info
 
     def dimensions(self, cwd, args, code, out):
