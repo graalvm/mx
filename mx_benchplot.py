@@ -224,11 +224,12 @@ on the last point""", type=int, default=None)
 Otherwise the names are derived from the filenames.""", type=lambda s: s.split(','))
     parser.add_argument('-c', '--colors', help='Provide alternate colors for the results', type=lambda s: s.split(','))
     parser.add_argument('-C', '--columns', help='The number of columns in a warmup graph.  Defaults to 2.', type=int, default=None)
-    parser.add_argument('-L', '--legend-location', help='Location for the legend.', default='upper right',
-                        choices=['upper right', 'upper left', 'lower right', 'lower left'])
+    parser.add_argument('-L', '--legend-location', help='Location for the legend.', default='upper-right',
+                        choices=['upper-right', 'upper-left', 'lower-right', 'lower-left'])
     parser.add_argument('-P', '--page-size', help='The width and height of the page.  Default to 11,8.5.', type=lambda s: [float(x) for x in s.split(',')], default=[11, 8.5])
     parser.add_argument('files', help='List of JSON benchmark result files', nargs=REMAINDER)
     args = parser.parse_args(args)
+    args.legend_location = args.legend_location.replace('-', ' ')
 
     if not args.warmup:
         if args.columns:
@@ -347,7 +348,10 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
         result = {}
         results.append(result)
         with open(filename) as fp:
-            for entry in json.load(fp)['queries']:
+            data = json.load(fp)
+            if not isinstance(data, dict) or not data.get('queries'):
+                mx.abort('{} doesn\'t appear to be a benchmark results file'.format(filename))
+            for entry in data['queries']:
                 benchmark = entry['benchmark']
                 if benchmark not in benchmarks:
                     benchmarks.append(benchmark)
@@ -361,25 +365,23 @@ def extract_results(files, names, last_n=None, selected_benchmarks=None):
                 scores = result.get(benchmark)
                 if not scores:
                     higher = entry['metric.better'] == 'higher'
-                    result[benchmark] = {'warmup': [], 'higher': higher, 'name': name}
+                    result[benchmark] = {'scores': [], 'higher': higher, 'name': name}
                     scores = result.get(benchmark)
                 if entry['metric.name'] == 'warmup':
-                    score_list = scores['warmup']
-                    while len(score_list) <= iteration + 1:
-                        score_list.insert(-1, None)
+                    score_list = scores['scores']
+                    while len(score_list) < iteration + 1:
+                        score_list.append(None)
                     score_list[iteration] = score
                 elif entry['metric.name'] == 'final-time':
-                    scores['final-time'] = score
-                elif entry['metric.name'] == 'throughput':
-                    scores['final-time'] = score
-                elif entry['metric.name'] == 'time':
-                    scores['final-time'] = score
+                    # ignore this value
+                    pass
+                elif entry['metric.name'] == 'time' or entry['metric.name'] == 'throughput':
+                    scores['last-score'] = score
 
         for _, entry in result.items():
-            scores = entry['warmup']
-            if not scores:
-                scores = [None]
-            scores[len(scores) - 1] = entry['final-time']
+            scores = entry['scores']
+            if entry.get('last-score'):
+                scores.append(entry['last-score'])
             entry['scores'] = scores
             if last_n and len(entry['scores']) >= abs(last_n):
                 if last_n < 0:
