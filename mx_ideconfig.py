@@ -192,6 +192,9 @@ def fsckprojects(args):
             elif dirpath in distIdeDirs:
                 # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
+            elif not suite.vc:
+                # skip suites not in a vcs repository
+                dirnames[:] = []
             else:
                 maybe_project = basename(dirpath)
                 if not mx._removedDeps.get(maybe_project):

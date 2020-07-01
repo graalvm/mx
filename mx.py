@@ -2400,7 +2400,7 @@ def _resolve_suite_version_conflict(suiteName, existingSuite, existingVersion, e
             warn("mismatched import versions on '{}' in '{}' ({}) and '{}' ({})".format(suiteName, otherImportingSuite.name, otherImport.version, existingImporter.name if existingImporter else '?', existingVersion))
         return None
     elif conflict_resolution in ('latest', 'latest_all'):
-        if not existingSuite:
+        if not existingSuite or not existingSuite.vc:
             return None # can not resolve at the moment
         if existingSuite.vc.kind != otherImport.kind:
             return None
@@ -2505,6 +2505,8 @@ class SourceSuite(Suite):
         _release = self._get_early_suite_dict_property('release')
         if _release is not None:
             return _release
+        if not self.vc:
+            return False
         _version = self._get_early_suite_dict_property('version')
         if _version:
             return '{}-{}'.format(self.name, _version) in self.vc.parent_tags(self.vc_dir)
@@ -2520,7 +2522,7 @@ class SourceSuite(Suite):
             if _version and self.getMxCompatibility().addVersionSuffixToExplicitVersion():
                 if not self.is_release():
                     _version = _version + '-' + snapshotSuffix
-            if not _version:
+            if not _version and self.vc:
                 _version = self.vc.release_version_from_tags(self.vc_dir, self.name, snapshotSuffix=snapshotSuffix)
             if not _version:
                 _version = 'unknown-{0}-{1}'.format(platform.node(), time.strftime('%Y-%m-%d_%H-%M-%S_%Z'))
@@ -3241,6 +3243,9 @@ def _discover_suites(primary_suite_dir, load=True, register=True, update_existin
         return _discovered_suite.vc_dir is not None and _discovered_suite.vc_dir in original_version
 
     def _update_repo(_discovered_suite, update_version, forget=False, update_reason="to resolve conflict"):
+        if not _discovered_suite.vc:
+            warn('No version control info for suite ' + _discovered_suite)
+            return False
         current_version = _discovered_suite.vc.parent(_discovered_suite.vc_dir)
         if _discovered_suite.vc_dir not in original_version:
             branch = _discovered_suite.vc.active_branch(_discovered_suite.vc_dir, abortOnError=False)
@@ -5835,7 +5840,7 @@ class LayoutDistribution(AbstractDistribution):
             def _rel_arcname(_source_file):
                 return os.path.relpath(_source_file, files_root)
             _arcname_f = _rel_arcname
-            if not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
+            if not self.suite.vc or not self.suite.vc.locate(self.suite.vc_dir, file_path, abortOnError=False):
                 absolute_source = isabs(source_path)
                 if absolute_source:
                     _arcname_f = lambda a: a
@@ -10542,13 +10547,16 @@ def _genPom(dist, versionGetter, validateMetadata='none'):
                     l.abort("Library is missing maven metadata")
                 l.warn("Library's suite version is too old to have maven metadata")
         pom.close('dependencies')
-    pom.open('scm')
-    scm = dist.suite.scm_metadata(abortOnError=validateMetadata != 'none')
-    pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.read))
-    if scm.read != scm.write or validateMetadata == 'full':
-        pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.write))
-    pom.element('url', data=scm.url)
-    pom.close('scm')
+    if dist.suite.vc:
+        pom.open('scm')
+        scm = dist.suite.scm_metadata(abortOnError=validateMetadata != 'none')
+        pom.element('connection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.read))
+        if scm.read != scm.write or validateMetadata == 'full':
+            pom.element('developerConnection', data='scm:{}:{}'.format(dist.suite.vc.kind, scm.write))
+        pom.element('url', data=scm.url)
+        pom.close('scm')
+    elif validateMetadata == 'full':
+        abort("Suite {} is not in a vcs repository, as a result 'scm' attribute cannot be generated for it".format(dist.suite.name))
     pom.close('project')
     return pom.xml(indent='  ', newl='\n')
 
@@ -11018,7 +11026,12 @@ def maven_url(args):
     _artifact_url(args, 'mx maven-url', 'mx maven-deploy', lambda s: s.release_version('SNAPSHOT'))
 
 def binary_url(args):
-    _artifact_url(args, 'mx binary-url', 'mx deploy-binary', lambda s: '{0}-SNAPSHOT'.format(s.vc.parent(s.vc_dir)))
+    def snapshot_version(suite):
+        if suite.vc:
+            '{0}-SNAPSHOT'.format(suite.vc.parent(suite.vc_dir))
+        else:
+            abort('binary_url requires suite to be under a vcs repository')
+    _artifact_url(args, 'mx binary-url', 'mx deploy-binary', snapshot_version)
 
 def _artifact_url(args, prog, deploy_prog, snapshot_version_fun):
     parser = ArgumentParser(prog=prog)
@@ -13960,24 +13973,30 @@ def pylint(args):
 
     additional_options = pylint_ver_map[ver]['additional_options']
 
+    def walk_suite(suite):
+        for root, dirs, files in os.walk(suite.dir if args.all else suite.mxDir):
+            for f in files:
+                if f.endswith('.py'):
+                    pyfile = join(root, f)
+                    pyfiles.append(pyfile)
+            if 'bin' in dirs:
+                dirs.remove('bin')
+            if 'lib' in dirs:
+                # avoids downloaded .py files
+                dirs.remove('lib')
+
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
                 continue
-            for root, dirs, files in os.walk(suite.dir if args.all else suite.mxDir):
-                for f in files:
-                    if f.endswith('.py'):
-                        pyfile = join(root, f)
-                        pyfiles.append(pyfile)
-                if 'bin' in dirs:
-                    dirs.remove('bin')
-                if 'lib' in dirs:
-                    # avoids downloaded .py files
-                    dirs.remove('lib')
+            walk_suite(suite)
 
     def findfiles_by_vc(pyfiles):
         for suite in suites(True, includeBinary=False):
             if args.primary and not suite.primary:
+                continue
+            if not suite.vc:
+                walk_suite(suite)
                 continue
             suite_location = os.path.relpath(suite.dir if args.all else suite.mxDir, suite.vc_dir)
             files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
@@ -14996,6 +15015,10 @@ def verifysourceinproject(args):
                 # skip maven suites
                 dirnames[:] = []
                 continue
+            elif not suite.vc:
+                # skip suites not in a vcs repository
+                dirnames[:] = []
+                continue
             elif ignorePath(os.path.relpath(dirpath, suite.vc_dir), whitelist):
                 # skip whitelisted directories
                 dirnames[:] = []
@@ -15019,6 +15042,9 @@ def verifysourceinproject(args):
                 dirnames[:] = []
             elif 'pom.xml' in files:
                 # skip maven suites
+                dirnames[:] = []
+            elif not vc:
+                # skip suites not in a vcs repository
                 dirnames[:] = []
             else:
                 javaSources = [x for x in files if x.endswith('.java')]
@@ -15642,7 +15668,8 @@ def _supdate_import_visitor(s, suite_import, **extra_args):
 
 def _supdate(s, suite_import):
     s.visit_imports(_supdate_import_visitor)
-    s.vc.update(s.vc_dir)
+    if s.vc:
+        s.vc.update(s.vc_dir)
 
 
 @no_suite_loading
@@ -15655,7 +15682,7 @@ def supdate(args):
 
 def _sbookmark_visitor(s, suite_import):
     imported_suite = suite(suite_import.name)
-    if isinstance(imported_suite, SourceSuite):
+    if imported_suite.vc and isinstance(imported_suite, SourceSuite):
         imported_suite.vc.bookmark(imported_suite.vc_dir, s.name + '-import', suite_import.version)
 
 
@@ -15678,7 +15705,7 @@ def _scheck_imports_visitor(s, suite_import, bookmark_imports, ignore_uncommitte
 
 def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_imports, ignore_uncommitted, warn_only):
     importedVersion = imported_suite.version()
-    if imported_suite.isDirty() and not ignore_uncommitted:
+    if imported_suite.vc and imported_suite.isDirty() and not ignore_uncommitted:
         msg = 'uncommitted changes in {}, please commit them and re-run scheckimports'.format(imported_suite.name)
         if isinstance(imported_suite, SourceSuite) and imported_suite.vc and imported_suite.vc.kind == 'hg':
             msg = '{}\nIf the only uncommitted change is an updated imported suite version, then you can run:\n\nhg -R {} commit -m "updated imported suite version"'.format(msg, imported_suite.vc_dir)
@@ -15748,6 +15775,8 @@ def _spull(importing_suite, imported_suite, suite_import, update_versions, only_
     if not primary or not only_imports:
         # skip pull of primary if only_imports = True
         vcs = imported_suite.vc
+        if not vcs:
+            abort('spull requires suites to be in a vcs repository')
         # by default we pull to the revision id in the import, but pull head if update_versions = True
         rev = suite_import.version if not update_versions and suite_import and suite_import.version else None
         if rev and vcs.kind != suite_import.kind:
@@ -15800,9 +15829,12 @@ def _sincoming_import_visitor(s, suite_import, **extra_args):
 def _sincoming(s, suite_import):
     s.visit_imports(_sincoming_import_visitor)
 
-    output = s.vc.incoming(s.vc_dir)
-    if output:
-        print(output)
+    if s.vc:
+        output = s.vc.incoming(s.vc_dir)
+        if output:
+            print(output)
+    else:
+        print('No version control info for suite ' + s.name)
 
 
 @no_suite_loading
@@ -15844,7 +15876,10 @@ def _stip_import_visitor(s, suite_import, **extra_args):
 def _stip(s, suite_import):
     s.visit_imports(_stip_import_visitor)
 
-    print('tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir))
+    if not s.vc:
+        print('No version control info for suite ' + s.name)
+    else:
+        print('tip of ' + s.name + ': ' + s.vc.tip(s.vc_dir))
 
 
 @no_suite_loading
@@ -16518,7 +16553,7 @@ def maven_install(args):
     else:
         _suites = [primary_suite()]
     for s in _suites:
-        nolocalchanges = args.no_checks or s.vc.can_push(s.vc_dir, strict=False)
+        nolocalchanges = args.no_checks or not s.vc or s.vc.can_push(s.vc_dir, strict=False)
         version = args.version_string if args.version_string else s.vc.parent(s.vc_dir)
         releaseVersion = s.release_version(snapshotSuffix='SNAPSHOT')
         arcdists = []

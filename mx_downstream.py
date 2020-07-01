@@ -107,10 +107,13 @@ def testdownstream(suite, repoUrls, relTargetSuiteDir, mxCommands, branch=None):
                     else:
                         suites_in_repo.append(matches[0])
 
-    vc_metadir = mx._safe_path(mx.VC.get_vc(suite.vc_dir).metadir())
-    blacklist = {
-        suite.vc_dir: [join(suite.vc_dir, vc_metadir)]
-    }
+    if suite.vc:
+        vc_metadir = mx._safe_path(mx.VC.get_vc(suite.vc_dir).metadir())
+        blacklist = {
+            suite.vc_dir: [join(suite.vc_dir, vc_metadir)]
+        }
+    else:
+        blacklist = {}
 
     for suite_in_repo in suites_in_repo:
         output_root = mx._safe_path(suite_in_repo.get_output_root())
