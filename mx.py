@@ -12206,28 +12206,29 @@ def run_java(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=No
         jdk = get_jdk()
     return jdk.run_java(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
 
-def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None):
+def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=0, maxHeap=2048, repetitions=1, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, jdk=None, run_with_heap=None):
     """computes the minimum heap size required to run a Java program within a certain overhead factor"""
     assert minHeap <= maxHeap
 
-    def run_with_heap(heap, args, timeout=timeout, suppressStderr=True, nonZeroIsFatal=False):
+    def _run_with_heap(heap, args, timeout, suppressStderr=True, nonZeroIsFatal=False):
         log('Trying with %sMB of heap...' % heap)
         with open(os.devnull, 'w') as fnull:
             vmArgs, pArgs = extract_VM_args(args=args, useDoubleDash=False, allowClasspath=True, defaultAllVMArgs=True)
-            exitCode = run_java(vmArgs + ['-Xmx%dM' % heap] + pArgs, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs)
+            exitCode = run_java(vmArgs + ['-Xmx%dM' % heap] + pArgs, nonZeroIsFatal=nonZeroIsFatal, out=out, err=fnull if suppressStderr else err, cwd=cwd, timeout=timeout, env=env, addDefaultArgs=addDefaultArgs, jdk=jdk)
             if exitCode:
                 log('failed')
             else:
                 log('succeeded')
             return exitCode
+    run_with_heap = run_with_heap or _run_with_heap
 
     if overheadFactor > 0:
         t = time.time()
-        if run_with_heap(maxHeap, args, timeout=timeout, suppressStderr=False):
-            log('The reference heap (%sMB) is too low.' % maxHeap)
+        if run_with_heap(maxHeap, args, timeout, suppressStderr=False):
+            log('The command line is wrong, there is a bug in the program, or the reference heap (%sMB) is too low.' % maxHeap)
             return 1
-        referenceTime = time.time() - t
-        maxTime = referenceTime * overheadFactor
+        referenceTime = round(time.time() - t, 2)
+        maxTime = round(referenceTime * overheadFactor, 2)
         log('Reference time = ' + str(referenceTime))
         log('Maximum time = ' + str(maxTime))
     else:
@@ -12235,15 +12236,15 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
 
     currMin = minHeap
     currMax = maxHeap
-    lastSuccess = maxHeap
+    lastSuccess = None
 
     while currMax >= currMin:
         logv('Min = %s; Max = %s' % (currMin, currMax))
-        avg = (currMax + currMin) / 2
+        avg = int((currMax + currMin) / 2)
 
         successful = 0
         while successful < repetitions:
-            if run_with_heap(avg, args, timeout=maxTime):
+            if run_with_heap(avg, args, maxTime):
                 break
             successful += 1
 
@@ -12254,7 +12255,10 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
             currMin = avg + 1
 
     # We cannot bisect further. The last succesful attempt is the result.
-    log('%s %s' % (benchName, lastSuccess))
+    _log = out if out is not None else log
+    _log('%s %s' % (benchName, lastSuccess))
+    return 0 if lastSuccess is not None else 2
+
 
 def _kill_process(pid, sig):
     """
@@ -16883,7 +16887,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.265.13") # GR-24436
+version = VersionSpec("5.266.0") # GR-24440
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

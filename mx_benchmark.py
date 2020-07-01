@@ -1298,7 +1298,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
 
     def __init__(self):
         super(OutputCapturingJavaVm, self).__init__()
-        self._vm_info = None
+        self._vm_info = {}
 
     def extract_vm_info(self, args=None):
         if args is None:
@@ -1306,8 +1306,9 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             mx.log_deprecation("Downstream suite must pass the VM arguments to ensure valid VM info extraction !")
             args = []
         args = self.post_process_command_line_args(args)
-        if self._vm_info is None:
-            self._vm_info = {}
+        args_str = ' '.join(args)
+        if args_str not in self._vm_info:
+            vm_info = {}
             with mx.DisableJavaDebugging():
                 java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
                 vm_opts = _get_vm_options_for_config_extraction(args)
@@ -1317,9 +1318,9 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                 if code == 0:
                     command_output = java_version_out.underlying.data
                     gc, initial_heap, max_heap = _get_gc_info(command_output)
-                    self._vm_info["platform.gc"] = gc
-                    self._vm_info["platform.initial-heap-size"] = initial_heap
-                    self._vm_info["platform.max-heap-size"] = max_heap
+                    vm_info["platform.gc"] = gc
+                    vm_info["platform.initial-heap-size"] = initial_heap
+                    vm_info["platform.max-heap-size"] = max_heap
 
                     version_output = command_output.splitlines()
                     assert len(version_output) >= 3
@@ -1333,22 +1334,24 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                     version = mx.VersionSpec(jdk_version_number)
                     jdk_major_version = version.parts[1] if version.parts[0] == 1 else version.parts[0]
                     jdk_version_string = version_output[2]
-                    self._vm_info["platform.jdk-version-number"] = jdk_version_number
-                    self._vm_info["platform.jdk-major-version"] = jdk_major_version
-                    self._vm_info["platform.jdk-version-string"] = jdk_version_string
+                    vm_info["platform.jdk-version-number"] = jdk_version_number
+                    vm_info["platform.jdk-major-version"] = jdk_major_version
+                    vm_info["platform.jdk-version-string"] = jdk_version_string
                     if "GraalVM" in jdk_version_string:
                         m = re.search(r'GraalVM (CE|EE) ((\.?\d+)*)', jdk_version_string)
                         if m:
-                            self._vm_info["platform.graalvm-version-string"] = m.group(0)
-                            self._vm_info["platform.graalvm-edition"] = m.group(1)
-                            self._vm_info["platform.graalvm-version"] = m.group(2)
+                            vm_info["platform.graalvm-version-string"] = m.group(0)
+                            vm_info["platform.graalvm-edition"] = m.group(1)
+                            vm_info["platform.graalvm-version"] = m.group(2)
                 else:
                     mx.log_error("VM info extraction failed ! (code={})".format(code))
+            self._vm_info[args_str] = vm_info
 
     def dimensions(self, cwd, args, code, out):
         dims = super(OutputCapturingJavaVm, self).dimensions(cwd, args, code, out)
-        if self._vm_info:
-            dims.update(self._vm_info)
+        vm_info = self._vm_info.get(' '.join(args), None)
+        if vm_info is not None:
+            dims.update(vm_info)
         return dims
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
