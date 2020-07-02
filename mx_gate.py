@@ -259,7 +259,7 @@ def _warn_or_abort(msg, strict_mode):
 
 
 def parse_tags_argument(tags_arg, exclude):
-    pattern = re.compile(r"^(?P<tag>[^:]*)(?::(?P<from>\d+):(?P<to>\d+)?)?$")
+    pattern = re.compile(r"^(?P<tag>[^:]*)(?::(?P<from>\d+)(?::(?P<to>\d+))?)?$")
     tags = tags_arg.split(',')
     Task.tags = []
     for tag_spec in tags:
