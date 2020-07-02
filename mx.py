@@ -16931,7 +16931,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.266.1") # GR-24440 infinite recursion
+version = VersionSpec("5.267.0")  # GR-24046 SafeDirectoryUpdater
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
