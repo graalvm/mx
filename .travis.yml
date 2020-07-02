@@ -15,4 +15,8 @@ install:
       export ECLIPSE_EXE=$TRAVIS_BUILD_DIR/../eclipse/eclipse
       export JDT=$TRAVIS_BUILD_DIR/ecj.jar
       wget https://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
-script: ./mx --strict-compliance gate --strict-mode
+script:
+  - ./mx --strict-compliance gate --strict-mode --dry-run --tags style
+  - ./mx --strict-compliance gate --strict-mode --dry-run --tags style:0:2
+  - ./mx --strict-compliance gate --strict-mode --dry-run --tags style:2
+  - ./mx --strict-compliance gate --strict-mode
