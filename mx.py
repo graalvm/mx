@@ -8053,28 +8053,8 @@ class PackedResourceLibrary(ResourceLibrary):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = super(PackedResourceLibrary, self).get_path(resolve)
         if resolve and self._check_extract_needed(extract_path, download_path):
-            extract_path_tmp = tempfile.mkdtemp(suffix=basename(extract_path), dir=dirname(extract_path))
-            try:
-                # extract archive
-                Extractor.create(download_path).extract(extract_path_tmp)
-                # ensure modification time is up to date
-                os.utime(extract_path_tmp, None)
-                logv("Moving temporary directory {} to {}".format(extract_path_tmp, extract_path))
-                try:
-                    # attempt atomic overwrite
-                    os.rename(extract_path_tmp, extract_path)
-                except OSError:
-                    # clean destination & re-try for cases where atomic overwrite doesn't work
-                    rmtree(extract_path, ignore_errors=True)
-                    os.rename(extract_path_tmp, extract_path)
-            except OSError as ose:
-                # Rename failed. Race with other process?
-                if self._check_extract_needed(extract_path, download_path):
-                    # ok something really went wrong
-                    abort("Extracting {} failed!".format(download_path), context=ose)
-            finally:
-                rmtree(extract_path_tmp, ignore_errors=True)
-
+            with SafeDirectoryUpdater(extract_path, create=True) as sdu:
+                Extractor.create(download_path).extract(sdu.directory)
         return extract_path
 
     def _check_download_needed(self):
@@ -14117,6 +14097,70 @@ class SafeFileCreation(object):
         _handle_file(self.tmpPath, self.path)
         for companion_pattern in self.companion_patterns:
             _handle_file(companion_pattern.format(path=self.tmpPath), companion_pattern.format(path=self.path))
+
+
+class SafeDirectoryUpdater(object):
+    """
+    Multi-thread safe context manager for creating/updating a directory.
+
+    :Example:
+    # Compiles `sources` into `dst` with javac. If multiple threads/processes are
+    # performing this compilation concurrently, the contents of `dst`
+    # will reflect the complete results of one of the compilations
+    # from the perspective of other threads/processes.
+    with SafeDirectoryUpdater(dst) as sdu:
+        mx.run([jdk.javac, '-d', sdu.directory, sources])
+
+    """
+    def __init__(self, directory, create=False):
+        """
+
+        :param directory: the target directory that will be created/updated within the context.
+                          The working copy of the directory is accessed via `self.directory`
+                          within the context.
+        """
+
+        self.target = directory
+        self._workspace = None
+        self.directory = None
+        self.create = create
+
+    def __enter__(self):
+        parent = dirname(self.target)
+        self._workspace = tempfile.mkdtemp(dir=parent)
+        self.directory = join(self._workspace, basename(self.target))
+        if self.create:
+            ensure_dir_exists(self.directory)
+        self.target_timestamp = TimeStampFile(self.target)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            rmtree(self._workspace)
+            raise
+
+        # Try delete the target directory if it existed prior to creating
+        # self.workspace and has not been modified in between.
+        if self.target_timestamp.timestamp is not None and self.target_timestamp.timestamp == TimeStampFile(self.target).timestamp:
+            old_target = join(self._workspace, 'to_delete_' + basename(self.target))
+            try:
+                os.rename(self.target, old_target)
+            except:
+                # Silently assume another process won the race to rename dst_jdk_dir
+                pass
+
+        # Try atomically move self.directory to self.target
+        try:
+            os.rename(self.directory, self.target)
+        except:
+            if not exists(self.target):
+                raise
+            else:
+                # Silently assume another process won the race to create self.target
+                pass
+
+        rmtree(self._workspace)
+
 
 def _derived_path(base_path, suffix, prefix='.', prepend_dirname=True):
     """
