@@ -418,6 +418,10 @@ def unittest(args):
     parser.add_argument('--color', help='enable color output', dest='JUnitColor', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--gc-after-test', help='force a GC after each test', dest='JUnitGCAfterTest', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--record-results', help='record test class results to passed.txt and failed.txt', dest='JUnitRecordResults', action=MxJUnitWrapperBoolArg)
+    record_help_msg_shared = 'If <file> is "-", the tests will be printed to stdout. ' +\
+                  'In contrast to --record-results this prints not only the test class but also the test method.'
+    parser.add_argument('--print-passed', metavar="<file>", dest='JUnitRecordPassed', action=MxJUnitWrapperArg, help='record passed test class results in <file>. ' + record_help_msg_shared)
+    parser.add_argument('--print-failed', metavar="<file>", dest='JUnitRecordFailed', action=MxJUnitWrapperArg, help='record failed test class results in <file>.  ' + record_help_msg_shared)
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
     parser.add_argument('--repeat', help='run each test <n> times', dest='JUnitRepeat', action=MxJUnitWrapperArg, type=is_strictly_positive, metavar='<n>')
     parser.add_argument('--open-packages', dest='JUnitOpenPackages', action=MxJUnitWrapperArg, metavar='<module>/<package>[=<target-module>(,<target-module>)*]',
