@@ -16931,7 +16931,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.267.0")  # GR-24046 SafeDirectoryUpdater
+version = VersionSpec("5.268.0")  # mx unittest --print-passed=<file> --print-failed=<file>
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

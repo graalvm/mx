@@ -76,6 +76,8 @@ public class MxJUnitWrapper {
         public boolean recordResults = false;
         public int repeatCount = 1;
         public int maxClassFailures;
+        public String recordFailed;
+        public String recordPassed;
     }
 
     private static class RepeatingRunner extends Runner {
@@ -152,11 +154,7 @@ public class MxJUnitWrapper {
                     config.verbose = true;
                     config.enableTiming = true;
                 } else if (each.contentEquals("-JUnitOpenPackages")) {
-                    if (i + 1 >= expandedArgs.length) {
-                        system.out().println("Must include argument for -JUnitAddExports");
-                        System.exit(1);
-                    }
-                    openPackagesSpecs.add(expandedArgs[++i]);
+                    openPackagesSpecs.add(parseStringArg(system, expandedArgs, each, ++i));
                 } else if (each.contentEquals("-JUnitVeryVerbose")) {
                     config.verbose = true;
                     config.veryVerbose = true;
@@ -175,6 +173,10 @@ public class MxJUnitWrapper {
                     config.gcAfterTest = true;
                 } else if (each.contentEquals("-JUnitRecordResults")) {
                     config.recordResults = true;
+                } else if (each.contentEquals("-JUnitRecordPassed")) {
+                    config.recordPassed = parseStringArg(system, expandedArgs, each, ++i);
+                } else if (each.contentEquals("-JUnitRecordFailed")) {
+                    config.recordFailed = parseStringArg(system, expandedArgs, each, ++i);
                 } else if (each.contentEquals("-JUnitRepeat")) {
                     config.repeatCount = parseIntArg(system, expandedArgs, each, ++i);
                 } else {
@@ -235,6 +237,14 @@ public class MxJUnitWrapper {
         }
     }
 
+    public static String parseStringArg(JUnitSystem system, String[] args, String name, int index) {
+        if (index >= args.length) {
+            system.out().printf("Must include argument for %s%n", name);
+            System.exit(1);
+        }
+        return args[index];
+    }
+
     private static PrintStream openFile(JUnitSystem system, String name) {
         File file = new File(name).getAbsoluteFile();
         try {
@@ -258,6 +268,7 @@ public class MxJUnitWrapper {
         }
         TimingDecorator timings = config.enableTiming ? new TimingDecorator(textListener) : null;
         MxRunListener mxListener = config.enableTiming ? timings : textListener;
+        ResultCollectorDecorator resultLoggerDecorator = null;
 
         final boolean failingFast;
         if (config.failFast && config.maxClassFailures == 0) {
@@ -280,6 +291,10 @@ public class MxJUnitWrapper {
             PrintStream passed = openFile(system, "passed.txt");
             PrintStream failed = openFile(system, "failed.txt");
             mxListener = new TestResultLoggerDecorator(passed, failed, mxListener);
+        }
+        if (config.recordFailed != null || config.recordPassed != null) {
+            resultLoggerDecorator = new ResultCollectorDecorator(mxListener);
+            mxListener = resultLoggerDecorator;
         }
 
         junitCore.addListener(TextRunListener.createRunListener(mxListener));
@@ -327,14 +342,17 @@ public class MxJUnitWrapper {
             request = new RepeatingRequest(request, config.repeatCount);
         }
 
-        if (config.enableTiming) {
-            Runtime.getRuntime().addShutdownHook(new Thread() {
-                @Override
-                public void run() {
-                    printTimings(timings);
-                }
-            });
-        }
+        final ResultCollectorDecorator finalResultLoggerDecorator = resultLoggerDecorator;
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (config.enableTiming) {
+                printTimings(timings);
+            }
+            if (config.recordFailed != null || config.recordPassed != null) {
+                PrintStream passed = getResultStream(system, config.recordPassed);
+                PrintStream failed = getResultStream(system, config.recordFailed);
+                printResult(finalResultLoggerDecorator, passed, failed);
+            }
+        }));
 
         Result result = junitCore.run(request);
         for (Failure each : mxRequest.missingClasses) {
@@ -342,6 +360,16 @@ public class MxJUnitWrapper {
         }
 
         return result;
+    }
+
+    private static PrintStream getResultStream(JUnitSystem system, String file) {
+        if (file == null) {
+            return null;
+        }
+        if (file.equals("-")) {
+            return System.out;
+        }
+        return openFile(system, file);
     }
 
     private static class Timing<T> implements Comparable<Timing<T>> {
@@ -398,6 +426,29 @@ public class MxJUnitWrapper {
             }
 
         }
+    }
+
+    private static void printResult(ResultCollectorDecorator results, PrintStream passed, PrintStream failed) {
+        if (passed != null && !results.getPassed().isEmpty()) {
+            boolean isStdOut = passed.equals(System.out);
+            if (isStdOut) {
+                System.out.println("Passed tests:");
+            }
+            String prefix = isStdOut ? "  " : "";
+            results.getPassed().stream().map(d -> prefix + getFormattedDescription(d)).forEach(passed::println);
+        }
+        if (failed != null && !results.getFailed().isEmpty()) {
+            boolean isStdout = failed.equals(System.out);
+            if (isStdout) {
+                System.out.println("Failing tests:");
+            }
+            String prefix = isStdout ? "  " : "";
+            results.getFailed().stream().map(d -> prefix + getFormattedDescription(d.getDescription())).forEach(failed::println);
+        }
+    }
+
+    private static String getFormattedDescription(Description description) {
+        return description.getClassName() + "#" + description.getMethodName();
     }
 
     /**
