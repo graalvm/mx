@@ -12592,6 +12592,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             # Don't make the reader thread a daemon otherwise output can be droppped
             t.start()
             joiners.append(t)
+        if isinstance(stdin, str):
+            p.stdin.write(_encode(stdin))
+            p.stdin.close()
         if timeout is None or timeout == 0:
             while True:
                 try:
@@ -12613,9 +12616,6 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             # see: http://bugs.python.org/issue1167930
             for t in joiners:
                 t.join(10)
-        if isinstance(stdin, str):
-            p.stdin.write(_encode(stdin))
-            p.stdin.close()
     except OSError as e:
         if not nonZeroIsFatal:
             raise e
@@ -16931,7 +16931,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.268.0")  # mx unittest --print-passed=<file> --print-failed=<file>
+version = VersionSpec("5.268.1")  # GR-24637
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
