@@ -517,7 +517,7 @@ public class CheckCopyright {
     private static final Option<String> CUSTOM_COPYRIGHT_DIR = Options.newStringOption("custom-copyright-dir", null, "file containing filenames with custom copyrights");
 
     private static final String CANNOT_FOLLOW_FILE = "abort: cannot follow";
-    private static boolean error;
+    private static volatile boolean error;
     private static boolean verbose;
     private static boolean veryVerbose;
     private static VC vc;
@@ -854,7 +854,9 @@ public class CheckCopyright {
             RegexCopyrightConfig copyright = copyrightHandler.getRegexCopyright(fileName);
             Matcher copyrightMatcher = copyright.pattern.matcher(fileContent);
             if (copyrightMatcher.matches()) {
-                error = error | !copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info);
+                if (!copyrightHandler.checkYearInfo(fileName, fileContent, copyrightMatcher, info)) {
+                    error = true;
+                }
             } else {
                 /*
                  * If copyright is missing, insert it, otherwise user has to manually fix existing
