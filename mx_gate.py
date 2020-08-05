@@ -832,6 +832,8 @@ def coverage_upload(args):
         mx.abort('Cannot determine remote host from {}'.format(args.upload_url))
 
     primary = mx.primary_suite()
+    if not primary.vc:
+        mx.abort('coverage_upload requires the primary suite to be in a vcs repository')
     info = primary.vc.parent_info(primary.dir)
     rev = primary.vc.parent(primary.dir)
     if len(remote_basedir) > 0 and not remote_basedir.endswith('/'):
