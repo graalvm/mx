@@ -16705,6 +16705,7 @@ update_commands("mx", {
 })
 
 import mx_fetchjdk # pylint: disable=unused-import
+import mx_bisect # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
@@ -16980,7 +16981,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.270.0")  # no vcs
+version = VersionSpec("5.270.1")  # GR-23396
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
