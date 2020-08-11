@@ -7820,7 +7820,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = [gmake_cmd()]
+        cmdline = [gmake_cmd()] if bear_cmd() is None else bear_cmd() + [gmake_cmd()]
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -13486,6 +13486,20 @@ def gmake_cmd():
             abort('Could not find a GNU make executable on the current path.')
     return _gmake_cmd
 
+_bear_cmd = '<uninitialized>'
+
+
+def bear_cmd():
+    global _bear_cmd
+    if _bear_cmd == '<uninitialized>':
+        try:
+            output = _check_output_str(['bear', '--help'], stderr=subprocess.STDOUT)
+        except OSError:
+            output = ''
+        _bear_cmd = ['bear', '-a'] if 'usage: bear' in output else None
+    return _bear_cmd
+
+
 def expandvars_in_property(value):
     result = expandvars(value)
     if '$' in result or '%' in result:
@@ -16981,7 +16995,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.270.2")  # GR-17874
+version = VersionSpec("5.270.3") # GR-25554
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
