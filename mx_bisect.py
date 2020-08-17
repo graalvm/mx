@@ -29,6 +29,7 @@ import mx
 from mx import VC
 from datetime import datetime
 from argparse import ArgumentParser
+from threading import Thread
 
 
 class BuildSteps:
@@ -313,32 +314,39 @@ class IssueSearchInfra:
                                                            universal_newlines=True).strip()
 
     def execute_commands_in_parallel(self, cmd):
+
+        def redirect(stream):
+            while True:
+                try:
+                    line = stream.readline()
+                    if line:
+                        mx.logv(line.strip())
+                        self.log_file.write(line)
+                    else:
+                        return
+                except ValueError:
+                    return
+
         process_number = len(self.paths)
         new_env = os.environ.copy()
         self.log_file.write('-- Running command: ' + str(cmd) + '\n')
         arr = [None] * process_number
+        joiners = [None] * process_number
         for i in range(process_number):
             self._set_env_variables(self.paths[i], new_env)
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, env=new_env,
                                        cwd=self.paths[i], universal_newlines=True)
             arr[i] = process
-
-        should_continue = True
-        while should_continue:
-            should_continue = False
-            for i in range(process_number):
-                process = arr[i]
-                line = process.stdout.readline()
-                if line:
-                    mx.logv(line.strip())
-                    self.log_file.write(line)
-                    should_continue = True
+            th = Thread(target=redirect, args=(process.stdout,))
+            joiners[i] = th
+            th.start()
 
         pattern = self.config.error_pattern
         for i in range(process_number):
             process = arr[i]
             try:
                 _, stderr = process.communicate(timeout=self.config.timeout)
+                joiners[i].join(10)
                 if process.returncode != 0:
                     mx.log('Error: {}'.format(stderr))
                     self.log_file.write(stderr)
@@ -358,6 +366,7 @@ class IssueSearchInfra:
         if self.config.java_home:
             new_env['JAVA_HOME'] = self.config.java_home
         mx.logv('JAVA_HOME: ' + new_env['JAVA_HOME'])
+        new_env['JVMCI_VERSION_CHECK'] = 'ignore'
         new_env['MX_PRIMARY_SUITE_PATH'] = path
         build_dir = self._get_build_dir(path)
         new_env['BUILD_DIR'] = build_dir
