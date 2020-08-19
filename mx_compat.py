@@ -67,6 +67,9 @@ class MxCompatibility500(object):
     def mavenDeployJavadoc(self):
         return False
 
+    def validate_maven_javadoc(self):
+        return False
+
     def mavenSupportsClassifier(self):
         return False
 
@@ -475,6 +478,16 @@ class MxCompatibility52310(MxCompatibility52290):
 
     def enhanced_module_usage_info(self):
         return True
+
+
+class MxCompatibility52710(MxCompatibility52310):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.271.0")
+
+    def validate_maven_javadoc(self):
+        return True
+
 
 def minVersion():
     _ensureCompatLoaded()
