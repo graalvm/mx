@@ -10861,6 +10861,8 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                                     arc.write(src, dst)
                         shutil.rmtree(tmpDir)
                         if emptyJavadoc:
+                            if validateMetadata == 'full' and dist.suite.getMxCompatibility().validate_maven_javadoc():
+                                raise abort("Missing javadoc for {}".format(dist.name))
                             javadocPath = None
                             warn('Javadoc for {0} was empty'.format(dist.name))
 
