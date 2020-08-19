@@ -409,10 +409,11 @@ def get_library_as_module(dep, jdk):
     save = False
     if not exists(cache) or mx.TimeStampFile(fullpath).isNewerThan(cache) or mx.TimeStampFile(__file__).isNewerThan(cache):
         out = mx.LinesOutputCapture()
-        rc = mx.run([jdk.java, '--module-path', fullpath, '--describe-module', moduleName], out=out, err=out, nonZeroIsFatal=False)
+        err = mx.LinesOutputCapture()
+        rc = mx.run([jdk.java, '--module-path', fullpath, '--describe-module', moduleName], out=out, err=err, nonZeroIsFatal=False)
         lines = out.lines
         if rc != 0:
-            mx.abort("java --describe-module {} failed. Please verify the moduleName attribute of {}.\n{}".format(moduleName, dep.name, "\n".join(lines)))
+            mx.abort("java --describe-module {} failed. Please verify the moduleName attribute of {}.\nstdout:\n{}\nstderr:\n{}".format(moduleName, dep.name, "\n".join(lines), "\n".join(err.lines)))
         save = True
     else:
         with open(cache) as fp:
