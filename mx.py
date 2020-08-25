@@ -16997,7 +16997,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.271.4") # GR-25945
+version = VersionSpec("5.272.0")  # global unittest ignore
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
