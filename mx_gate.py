@@ -887,7 +887,7 @@ def coverage_upload(args):
         'primary_info': info,
         'excludes': [str(e) for e in excludes],
         'includes': [str(i) for i in includes]}), upload_dir + '/description.json')
-    mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do if \[ -s \$i \];then cat \$i; echo ,; fi done; echo null\]) |jq \'del(.. | .excludes?, .includes?)\' > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
+    mx.run(['ssh', remote_host, 'bash', '-c', r'"(echo \[; for i in {remote_basedir}/*/description.json; do if \[ -s \$i \];then cat \$i; echo ,; fi done; echo null\]) |jq \"del(.. | .excludes?, .includes?)\" > {remote_basedir}/index.json"'.format(remote_basedir=remote_basedir)])
     upload_string("""<html>
 <script language="javascript">
   function urlChange(url) {
