@@ -416,7 +416,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                                                 contents = fp.read()
                                             if not participants__add__(arcname, contents, addsrc=True):
                                                 info = zipfile.ZipInfo(arcname, time.localtime(mx.getmtime(join(root, f)))[:6])
-                                                info.compress_type = arc.zf.compression
+                                                info.compress_type = srcArc.zf.compression
                                                 info.external_attr = S_IMODE(mx.stat(join(root, f)).st_mode) << 16
                                                 srcArc.zf.writestr(info, contents)
 
