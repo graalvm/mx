@@ -1,0 +1,32 @@
+on: [push, pull_request]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ '3.6', '3.x' ]
+    name: Python ${{ matrix.python-version }} gate
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+      - uses: actions/setup-java@v1
+        with:
+            java-version: 8
+      - run: pip install pylint==2.4
+      - run: pylint --version
+      - name: Download and set up dependencies
+        run: |
+          export ECLIPSE_TAR=${{ github.workspace }}/../eclipse.tar.gz
+          wget https://archive.eclipse.org/eclipse/downloads/drops4/R-4.5.2-201602121500/eclipse-SDK-4.5.2-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
+          tar -C ${{ github.workspace }}/.. -xf $ECLIPSE_TAR
+          export ECLIPSE_EXE=${{ github.workspace }}/../eclipse/eclipse
+          export JDT=${{ github.workspace }}/ecj.jar
+          wget https://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
+      - name: mx gate
+        run: ./mx --strict-compliance gate --strict-mode
