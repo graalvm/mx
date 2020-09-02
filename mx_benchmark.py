@@ -2056,36 +2056,45 @@ class BenchmarkExecutor(object):
         try:
             suite.before(bmSuiteArgs)
             start_time = time.time()
+            skipped_benchmarks = []
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
                 fork_count = 1
                 if fork_count_spec and benchnames and len(benchnames) == 1:
-                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]), fork_count_spec.get(benchnames[0]))
+                    fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]))
+                    if fork_count is None and benchnames[0] in fork_count_spec:
+                        mx.warn("[FORKS] Found a fallback entry '{}' in the fork counts file. "
+                                "Please use the full benchmark name instead: '{}:{}'".format(benchnames[0],
+                                                                                             suite.name(),
+                                                                                             benchnames[0]))
+                        fork_count = fork_count_spec.get(benchnames[0])
                 elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
                     # single benchmark suites executed by providing the suite name only or a wildcard
                     fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name())))
                 elif fork_count_spec:
-                    mx.abort("The fork-count feature is only supported when the suite is asked to run a single benchmark within a fork.")
+                    mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.")
                 if fork_count_spec and fork_count is None:
-                    fork_count = 1
-                    mx.log("Defaulting fork count to 1 for {}:{} since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
-                for fork_num in range(0, fork_count):
-                    if fork_count_spec:
-                        mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
-                    try:
-                        partialResults = self.execute(
-                            suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
-                        results.extend(partialResults)
-                    except (BenchmarkFailureError, RuntimeError):
-                        failures_seen = True
-                        mx.log(traceback.format_exc())
+                    mx.log("[FORKS] Skipping benchmark '{}:{}' since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
+                    skipped_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
+                else:
+                    for fork_num in range(0, fork_count):
+                        if fork_count_spec:
+                            mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
+                        try:
+                            partialResults = self.execute(
+                                suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
+                            results.extend(partialResults)
+                        except (BenchmarkFailureError, RuntimeError):
+                            failures_seen = True
+                            mx.log(traceback.format_exc())
             end_time = time.time()
+            if skipped_benchmarks:
+                mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmarks)))
         finally:
             try:
                 suite.after(bmSuiteArgs)
             except RuntimeError:
                 failures_seen = True
-
 
         for result in results:
             result["benchmarking.start-ts"] = int(start_time)
