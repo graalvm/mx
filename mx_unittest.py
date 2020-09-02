@@ -147,6 +147,14 @@ class _VMLauncher(object):
             return self._jdk()
         return self._jdk
 
+
+_global_ignore_globs = []
+
+
+def add_global_ignore_glob(ignore):
+    _global_ignore_globs.append(re.compile(fnmatch.translate(ignore)))
+
+
 def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
     vmArgs, tests = mx.extract_VM_args(args)
     for t in tests:
@@ -216,8 +224,10 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                 if not found:
                     mx.abort('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
 
-    if blacklist:
-        classes = [c for c in classes if not any((glob.match(c) for glob in blacklist))]
+    full_ignorelist = blacklist or []
+    full_ignorelist += _global_ignore_globs
+    if full_ignorelist:
+        classes = [c for c in classes if not any((glob.match(c) for glob in full_ignorelist))]
 
     if whitelist:
         classes = [c for c in classes if any((glob.match(c) for glob in whitelist))]
