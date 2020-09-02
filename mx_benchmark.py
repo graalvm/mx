@@ -2055,7 +2055,6 @@ class BenchmarkExecutor(object):
         failures_seen = False
         try:
             suite.before(bmSuiteArgs)
-            start_time = time.time()
             skipped_benchmarks = []
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
@@ -2081,13 +2080,16 @@ class BenchmarkExecutor(object):
                         if fork_count_spec:
                             mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                         try:
+                            start_time = time.time()
                             partialResults = self.execute(
                                 suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
+                            for res in partialResults:
+                                res["benchmarking.start-ts"] = int(start_time)
+                                res["benchmarking.end-ts"] = int(time.time())
                             results.extend(partialResults)
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
                             mx.log(traceback.format_exc())
-            end_time = time.time()
             if skipped_benchmarks:
                 mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmarks)))
         finally:
@@ -2095,10 +2097,6 @@ class BenchmarkExecutor(object):
                 suite.after(bmSuiteArgs)
             except RuntimeError:
                 failures_seen = True
-
-        for result in results:
-            result["benchmarking.start-ts"] = int(start_time)
-            result["benchmarking.end-ts"] = int(end_time)
 
         topLevelJson = {
           "queries": results
