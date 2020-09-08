@@ -922,7 +922,7 @@ def coverage_upload(args):
                         .filter(x => !x.hasOwnProperty('merge'))
                         .filter( // filter builds that are unique per suite with revision as key
                             x => !data
-                                .filter(z => x != z && x.jdk_version == z.jdk_version x.suite == z.suite) // exclude self build and build for other suites.
+                                .filter(z => x != z && x.jdk_version == z.jdk_version && x.suite == z.suite) // exclude self build and build for other suites.
                                 .map(z => z.revision) // map from array of build to array of revision
                                 .includes(x.revision) // check if revision of x is index data.
                         ).concat(data.filter(x => x.hasOwnProperty('merge'))); // concat unique build with merged build.
