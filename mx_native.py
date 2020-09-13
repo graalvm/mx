@@ -132,7 +132,7 @@ class Ninja(object):
             os.chmod(self.binary, 0o755)
             self._run(*args, **kwargs)  # retry
         else:
-            not rc or mx.abort(rc if mx.get_opts().verbose else out.data)  # pylint: disable=expression-not-assigned
+            not rc or mx.abort(rc if mx.get_opts().verbose else out.lines)  # pylint: disable=expression-not-assigned
 
 
 class NativeDependency(mx.Dependency):
