@@ -14205,7 +14205,6 @@ class SafeDirectoryUpdater(object):
             if not exists(self.target):
                 raise
             # Silently assume another process won the race to create self.target
-            pass
 
         rmtree(self._workspace)
 
@@ -16996,7 +16995,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.272.3")  # GR-26074
+version = VersionSpec("5.272.4")  # GR-26130
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
