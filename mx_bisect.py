@@ -456,8 +456,8 @@ class IssueSearchInfra:
 
     def reset_original_commit(self):
         if self.original_commit:
-            subprocess.run(['git', 'checkout', '-q', self.original_branch])
-            subprocess.run(['git', 'reset', '--hard', self.original_commit])
+            subprocess.run(['git', 'checkout', '-q', self.original_branch], check=True)
+            subprocess.run(['git', 'reset', '--hard', self.original_commit], check=True)
 
 
 class BisectStrategy:
@@ -766,14 +766,14 @@ def _generate_tmp_test_commits(failure_rate=5):
     for i in range(10):
         with open(script_name, 'w') as f:
             f.write('echo ' + '.' * i + '\n')
-        subprocess.run(['git', 'add', script_name])
-        subprocess.run(['git', 'commit', '-m', 'Good script ' + str(i)])
+        subprocess.run(['git', 'add', script_name], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Good script ' + str(i)], check=True)
 
     for i in range(20):
         with open(script_name, 'w') as f:
             f.write('if [ $(( ( RANDOM % ' + str(
                 failure_rate) + ' )  + 1 )) == 1 ]\n then\n echo "An error occurred" 1>&2 \n exit 1\n else echo ' + '.' * i + '\n fi')
-        subprocess.run(['git', 'add', script_name])
-        subprocess.run(['git', 'commit', '-m', 'Failure script ' + str(i)])
+        subprocess.run(['git', 'add', script_name], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Failure script ' + str(i)], check=True)
 
     return script_name

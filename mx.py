@@ -14204,9 +14204,8 @@ class SafeDirectoryUpdater(object):
         except:
             if not exists(self.target):
                 raise
-            else:
-                # Silently assume another process won the race to create self.target
-                pass
+            # Silently assume another process won the race to create self.target
+            pass
 
         rmtree(self._workspace)
 
