@@ -668,9 +668,18 @@ def _jacoco_is_package_whitelisted(package):
         return True
     return any(package.startswith(w) for w in _jacoco_whitelisted_packages)
 
+_jacoco_excludes = []
+
+def add_jacoco_excludes(patterns):
+    """
+    Adds to the list of JaCoCo includes.
+    """
+    _jacoco_excludes.extend(patterns)
+
+
 def _jacoco_excludes_includes():
     includes = list(_jacoco_includes)
-    baseExcludes = []
+    baseExcludes = list(_jacoco_excludes)
     for p in mx.projects():
         if p.isJavaProject():
             projsetting = getattr(p, 'jacoco', '')
