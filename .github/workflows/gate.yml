@@ -1,5 +1,10 @@
 on: [push, pull_request]
 
+env:
+  JDT: ${{ github.workspace }}/ecj.jar
+  ECLIPSE_TAR: ${{ github.workspace }}/../eclipse.tar.gz
+  ECLIPSE_EXE: ${{ github.workspace }}/../eclipse/eclipse
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -22,11 +27,8 @@ jobs:
       - run: pylint --version
       - name: Download and set up dependencies
         run: |
-          export ECLIPSE_TAR=${{ github.workspace }}/../eclipse.tar.gz
           wget https://archive.eclipse.org/eclipse/downloads/drops4/R-4.5.2-201602121500/eclipse-SDK-4.5.2-linux-gtk-x86_64.tar.gz -O $ECLIPSE_TAR
           tar -C ${{ github.workspace }}/.. -xf $ECLIPSE_TAR
-          export ECLIPSE_EXE=${{ github.workspace }}/../eclipse/eclipse
-          export JDT=${{ github.workspace }}/ecj.jar
           wget https://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
       - name: mx gate
         run: ./mx --strict-compliance gate --strict-mode
