@@ -48,6 +48,7 @@ try:
 except ImportError:
     from xml.etree.ElementTree import parse as etreeParse
 import os, errno, time, subprocess, shlex, zipfile, signal, tempfile, platform
+from platform import system
 import textwrap
 import socket
 import tarfile, gzip
@@ -16779,6 +16780,17 @@ def shell_quoted_args(args):
 def current_mx_command(injected_args=None):
     return 'mx' + shell_quoted_args(_mx_args) + '' + shell_quoted_args(injected_args if injected_args else _mx_command_and_args)
 
+
+def force_fork_multiprocessing_on_darwin():
+    """
+        Python version 3.8 and newest switch multiprocessing from fork
+        to spawn witch leads mx to undesirable behavior on the CI,
+        this function force set multiprocessing context to fork for
+        newest python version on darwin system. GR-26022
+    """
+    if sys.version_info > (3, 7) and system().lower() == "darwin":
+        multiprocessing.set_start_method('fork', force=True)
+
 def main():
     # make sure logv, logvv and warn work as early as possible
     _opts.__dict__['verbose'] = '-v' in sys.argv or '-V' in sys.argv
@@ -16995,7 +17007,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.273.1")  # GR-23396
+version = VersionSpec("5.273.2")  # GR-26022
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
@@ -17003,6 +17015,6 @@ _mx_start_datetime = datetime.utcnow()
 if __name__ == '__main__':
     # Capture the current umask since there's no way to query it without mutating it.
     currentUmask = os.umask(0)
+    force_fork_multiprocessing_on_darwin()  # GR-26022
     os.umask(currentUmask)
-
     main()
