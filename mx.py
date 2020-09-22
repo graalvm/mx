@@ -521,9 +521,9 @@ environment variables:
         self.add_argument('-y', action='store_const', const='y', dest='answer', help='answer \'y\' to all questions asked')
         self.add_argument('-n', action='store_const', const='n', dest='answer', help='answer \'n\' to all questions asked')
         self.add_argument('-p', '--primary-suite-path', help='set the primary suite directory', metavar='<path>')
-        self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<address>:]<port> for a debugger', metavar='[<address>:]<port>')
+        self.add_argument('--dbg', dest='java_dbg_port', help='make Java processes wait on [<host>:]<port> for a debugger', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('-d', action='store_const', const=8000, dest='java_dbg_port', help='alias for "-dbg 8000"')
-        self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<address>:]<port>')
+        self.add_argument('--attach', dest='attach', help='Connect to existing server running at [<host>:]<port>', metavar='<address>')  # metavar=[<host>:]<port> https://bugs.python.org/issue11874
         self.add_argument('--backup-modified', action='store_true', help='backup generated files if they pre-existed and are modified')
         self.add_argument('--exec-log', help='A file to which the environment and command line for each subprocess executed by mx is appended', metavar='<path>', default=get_env("MX_EXEC_LOG"))
         self.add_argument('--cp-pfx', dest='cp_prefix', help='class path prefix', metavar='<arg>')
@@ -17007,7 +17007,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.273.2")  # GR-26022
+version = VersionSpec("5.273.3")  # GR-26237
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
