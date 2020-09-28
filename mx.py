@@ -15728,7 +15728,7 @@ def _scheck_imports(importing_suite, imported_suite, suite_import, bookmark_impo
     if importedVersion != suite_import.version and suite_import.version is not None:
         mismatch = 'imported version of {} in {} ({}) does not match parent ({})'.format(imported_suite.name, importing_suite.name, suite_import.version, importedVersion)
         if warn_only:
-            warn(mismatch + '\nYou might want to run "{} sforceimports" to use the imported version or update the import with "{} scheckimports"'.format(_mx_path, _mx_path))
+            warn(mismatch)
         else:
             print(mismatch)
             if exists(importing_suite.suite_py()) and ask_yes_no('Update ' + importing_suite.suite_py()):
@@ -17007,7 +17007,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.273.3")  # GR-26237
+version = VersionSpec("5.273.4")  # GR-18688
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
