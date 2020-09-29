@@ -2157,15 +2157,15 @@ def benchmark(args):
 
     :Example:
 
-        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [bmSuiteArgs]
+        mx benchmark bmSuiteName[:benchName] [mxBenchmarkArgs] -- [vmArgs] -- [bmSuiteArgs]
         mx benchmark --help
 
     :param list args:
         List of arguments (see below).
 
-        `bmSuiteName`: Benchmark suite name (e.g. `dacapo`, `octane`, `specjvm08`, ...).
+        `bmSuiteName`: Benchmark suite name (e.g. `dacapo`, `renaissance`, `octane`, ...).
         `benchName`: Name of particular benchmark within the benchmark suite
-            (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard indicating that
+            (e.g. `raytrace`, `deltablue`, `avrora`, ...), or a wildcard (`*`) indicating that
             all the benchmarks need to be executed as separate runs. If omitted, all the
             benchmarks must be executed as part of one run. If `benchName` starts with
             `~`, then all the specified benchmarks are excluded and the unspecified
@@ -2174,21 +2174,22 @@ def benchmark(args):
             then only the subset of the benchmarks from the list is run.
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
-            --results-file: Path to the file into which to dump the benchmark results.
+            --results-file: Target path where the results will be stored (default: bench-results.json).
             --machine-name: Abstract name of a machine with specific capabilities
                             (e.g. `x52`).
 
     Note that arguments to `mx benchmark` are separated with double dashes (`--`).
     Everything before the first `--` is passed to the `mx benchmark` command directly.
-    Arguments after the `--` are passed to the specific benchmark suite, and they can
-    include additional, benchmark-specific `--` occurrences.
+    Arguments after the first `--` are used to configure the underlying VM, so they can be JVM
+    options for instance. The last set of parameters are parameters that are passed
+    directly to the benchmark suite.
 
     Examples:
-        mx benchmark dacapo:avrora --results-file ./results.json -- \\
-          -jar dacapo-9.12-bach.jar
+        mx benchmark dacapo:fop
+        mx benchmark dacapo:avrora -- -- -n 3
+        mx benchmark renaissance:* -- -XX:PrintCompilation=true --
         mx benchmark octane:richards -p ./results.json -- -XX:+PrintGC -- --iters=10
         mx benchmark dacapo:* --results-file ./results.json --
-        mx benchmark specjvm --results-file ./output.json
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
     return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
