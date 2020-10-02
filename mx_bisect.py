@@ -24,7 +24,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-import os, subprocess, math, signal, sys, time
+import os, subprocess, math, signal, sys, time, re
 import mx
 from mx import VC
 from datetime import datetime
@@ -89,6 +89,10 @@ def define_bisect_default_build_steps(bs):
     global _build_steps_strategy
     _build_steps_strategy = bs
 
+def _update_cmd_if_stripped(cmd_to_update):
+    if mx._opts.strip_jars and cmd_to_update.find('--strip-jars') == -1:
+        cmd_to_update = re.sub(r'\b(mx)\b', 'mx --strip-jars', cmd_to_update)
+    return cmd_to_update
 
 @mx.command('mx', 'bisect', '[options]')
 @mx.optional_suite_context
@@ -220,6 +224,8 @@ def mx_bisect(args):
     if (passed == 0) ^ (failed == 0):
         mx.log("You should specify both 'passed' and 'failed' tests count for the same time period")
         return
+
+    cmd = _update_cmd_if_stripped(cmd)
 
     config = Config(cmd=cmd, after=after, before=before, start_commit=start_commit, end_commit=end_commit,
                     passed=passed, failed=failed, commits_filter=commits_filter,
@@ -441,6 +447,7 @@ class IssueSearchInfra:
             cmd = self.build_steps.get_default_setup_cmd()
         else:
             return None
+        cmd = _update_cmd_if_stripped(cmd)
         mx.log('---------- Stage: Setup Start')
         self.log_file.write('---------- Running setup step \n')
         start_time = time.time()
@@ -457,6 +464,7 @@ class IssueSearchInfra:
         else:
             return None
         mx.log('---------- Stage: Prepare')
+        cmd = _update_cmd_if_stripped(cmd)
         return self.execute_commands_in_parallel(cmd)
 
     def commit_info(self, commit_hash, formatter):
