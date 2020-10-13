@@ -68,12 +68,13 @@ class JavaModuleDescriptor(mx.Comparable):
     :param JDKConfig jdk: the JDK containing this module
     """
     def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
-                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None):
+                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None, opens=None):
         self.name = name
         self.exports = exports
         self.requires = requires
         self.concealedRequires = concealedRequires if concealedRequires else {}
         self.uses = frozenset(uses)
+        self.opens = opens if opens else {}
         self.provides = provides
         exportedPackages = frozenset(exports.keys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
@@ -228,6 +229,8 @@ class JavaModuleDescriptor(mx.Comparable):
             print('    exports ' + source + targets_string + ';', file=out)
         for use in sorted(self.uses):
             print('    uses ' + use + ';', file=out)
+        for opens in sorted(self.opens):
+            print('    opens ' + opens + ';', file=out)
         for service, providers in sorted(self.provides.items()):
             print('    provides ' + service + ' with ' + ', '.join((p for p in providers)) + ';', file=out)
         if extras_as_comments:
@@ -425,6 +428,7 @@ def get_library_as_module(dep, jdk):
     requires = {}
     exports = {}
     provides = {}
+    opens = {}
     uses = set()
     packages = set()
 
@@ -448,6 +452,8 @@ def get_library_as_module(dep, jdk):
             exports[source] = targets
         elif a == 'uses':
             uses.update(parts[1:])
+        elif a == 'opens':
+            opens.update(parts[1:])
         elif a == 'contains':
             packages.update(parts[1:])
         elif a == 'provides':
@@ -467,7 +473,7 @@ def get_library_as_module(dep, jdk):
             mx.warn('Error writing to ' + cache + ': ' + str(e))
             os.remove(cache)
 
-    return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath)
+    return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath, opens=opens)
 
 
 _versioned_prefix = 'META-INF/versions/'
@@ -517,6 +523,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
         moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
         exports = {}
         requires = {}
+        opens = {}
         concealedRequires = {}
         base_uses = set()
 
@@ -644,6 +651,8 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                 requires.setdefault(name, set()).update(qualifiers)
             base_uses.update(module_info.get('uses', []))
             _process_exports((alt_module_info or module_info).get('exports', []), module_packages)
+
+            opens = module_info.get('opens', {})
 
             requires_concealed = module_info.get('requiresConcealed', None)
             if requires_concealed is not None:
@@ -807,7 +816,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                                             uses.add(service)
 
                     jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
-                                               jarpath=moduleJar, dist=dist, modulepath=modulepath, alternatives=alternatives)
+                                               jarpath=moduleJar, dist=dist, modulepath=modulepath, alternatives=alternatives, opens=opens)
 
                     # Compile module-info.class
                     module_info_java = join(dest_dir, 'module-info.java')

@@ -13174,6 +13174,7 @@ class JDKConfig(Comparable):
             exports = {}
             provides = {}
             uses = set()
+            opens = {}
             packages = set()
             boot = None
 
@@ -13187,11 +13188,12 @@ class JDKConfig(Comparable):
                 if len(parts) == 1:
                     if name is not None:
                         assert name not in modules, 'duplicate module: ' + name
-                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
+                        modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self, opens=opens)
                     name = parts[0]
                     requires = {}
                     exports = {}
                     provides = {}
+                    opens = {}
                     uses = set()
                     packages = set()
                     boot = None
@@ -13214,6 +13216,8 @@ class JDKConfig(Comparable):
                         exports[source] = targets
                     elif a == 'uses':
                         uses.update(parts[1:])
+                    elif a == 'opens':
+                        opens.update(parts[1:])
                     elif a == 'package':
                         packages.update(parts[1:])
                     elif a == 'provides':
@@ -13225,7 +13229,7 @@ class JDKConfig(Comparable):
                         abort('Cannot parse module descriptor line: ' + str(parts))
             if name is not None:
                 assert name not in modules, 'duplicate module: ' + name
-                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self)
+                modules[name] = JavaModuleDescriptor(name, exports, requires, uses, provides, packages, boot=boot, jdk=self, opens=opens)
             setattr(self, '.modules', tuple(modules.values()))
         return getattr(self, '.modules')
 
@@ -17013,7 +17017,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.273.8")  # GR-23396
+version = VersionSpec("5.273.9")  # GR-26717
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
