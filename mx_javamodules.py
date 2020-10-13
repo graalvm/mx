@@ -68,13 +68,13 @@ class JavaModuleDescriptor(mx.Comparable):
     :param JDKConfig jdk: the JDK containing this module
     """
     def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
-                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None, opens=None):
+                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None, opens={}):
         self.name = name
         self.exports = exports
         self.requires = requires
         self.concealedRequires = concealedRequires if concealedRequires else {}
         self.uses = frozenset(uses)
-        self.opens = opens if opens else {}
+        self.opens = frozenset(opens)
         self.provides = provides
         exportedPackages = frozenset(exports.keys())
         self.packages = exportedPackages if packages is None else frozenset(packages)
