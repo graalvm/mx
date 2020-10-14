@@ -189,8 +189,8 @@ if __name__ == '__main__':
         invalid_jdks = [a for a in args.jdks if not is_valid_jdk(a)]
         if invalid_jdks:
             raise SystemExit('Following JDKs appear to be invalid (java executable not found):\n' + '\n'.join(invalid_jdks))
-        if not exists(jdk_cache_path):
-            os.makedirs(jdk_cache_path)
+        if not exists(dirname(jdk_cache_path)):
+            os.makedirs(dirname(jdk_cache_path))
         with open(jdk_cache_path, 'a') as fp:
             for jdk in args.jdks:
                 print(abspath(jdk), file=fp)
