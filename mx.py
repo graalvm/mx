@@ -13594,17 +13594,26 @@ def gmake_cmd():
             abort('Could not find a GNU make executable on the current path.')
     return _gmake_cmd
 
+
 _bear_cmd = '<uninitialized>'
+_bear_version_regex = re.compile(r"bear ([0-9]+).([0-9]+).([0-9]+)", re.IGNORECASE)
 
 
 def bear_cmd():
     global _bear_cmd
     if _bear_cmd == '<uninitialized>':
         try:
-            output = _check_output_str(['bear', '--help'], stderr=subprocess.STDOUT)
+            output = _check_output_str(['bear', '--version'], stderr=subprocess.STDOUT)
         except OSError:
             output = ''
-        _bear_cmd = ['bear', '-a'] if 'usage: bear' in output else None
+        m = _bear_version_regex.search(output)
+        if m:
+            if int(m.group(1)) >= 3:
+                _bear_cmd = ['bear', '--append', '--']
+            else:
+                _bear_cmd = ['bear', '-a']
+        else:
+            _bear_cmd = None
     return _bear_cmd
 
 
