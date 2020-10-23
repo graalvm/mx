@@ -423,8 +423,21 @@ public class MxJUnitWrapper {
             Object[] current = timings.getCurrentTestDuration();
             if (current != null) {
                 System.out.printf("Test %s not finished after %d ms%n", current[0], current[1]);
-            }
 
+                System.out.println();
+                System.out.println("---- DUMPING ALL THREADS ----");
+                System.out.println();
+
+                for (Map.Entry<Thread, StackTraceElement[]> e : Thread.getAllStackTraces().entrySet()) {
+                    Thread thread = e.getKey();
+                    StackTraceElement[] els = e.getValue();
+                    System.out.println(thread);
+                    for (StackTraceElement el : els) {
+                        System.out.println("\tat " + el);
+                    }
+                    System.out.println();
+                }
+            }
         }
     }
 
