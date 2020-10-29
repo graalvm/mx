@@ -2009,7 +2009,7 @@ class BenchmarkExecutor(object):
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))
                 for name in suite.benchmarkList(bmSuiteArgs):
                     print("  " + name)
-                if isinstance(suite.get_vm_registry(), VmBenchmarkSuite):
+                if isinstance(suite, VmBenchmarkSuite):
                     print("\n{}".format(suite.get_vm_registry().get_available_vm_configs_help()))
             else:
                 vmregToSuites = {}
