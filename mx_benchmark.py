@@ -2071,7 +2071,7 @@ class BenchmarkExecutor(object):
                     # single benchmark suites executed by providing the suite name only or a wildcard
                     fork_count = fork_count_spec.get(suite.name(), fork_count_spec.get("{}:*".format(suite.name())))
                 elif fork_count_spec:
-                    mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.")
+                    mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
                 if fork_count_spec and fork_count is None:
                     mx.log("[FORKS] Skipping benchmark '{}:{}' since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
                     skipped_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
