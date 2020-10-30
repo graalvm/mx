@@ -3871,6 +3871,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
                 if _is_process_alive(p):
                     log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
+    sys.stdout.flush()
     if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
         import traceback
         traceback.print_stack()
@@ -8906,10 +8907,11 @@ class LinesOutputCapture:
         self.lines.append(data.rstrip())
 
 class TeeOutputCapture:
-    def __init__(self, underlying):
+    def __init__(self, underlying, tee_output=None):
         self.underlying = underlying
+        self.tee_output = tee_output if tee_output else log
     def __call__(self, data):
-        log(data.rstrip())
+        self.tee_output(data)
         self.underlying(data)
 
 class HgConfig(VC):
@@ -17017,7 +17019,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.274.4")  # GR-26172
+version = VersionSpec("5.274.5")  # GR-26623
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
