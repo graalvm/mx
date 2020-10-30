@@ -73,12 +73,12 @@ def find_system_jdks():
                     jdks.add(realpath(jdk))
     return jdks
 
-def get_suite_env_file(suite_dir=None):
-    for n in os.listdir(suite_dir or '.'):
+def get_suite_env_file(suite_dir='.'):
+    for n in os.listdir(suite_dir):
         if n.startswith('mx.'):
-            suite_py = join('.', n, 'suite.py')
+            suite_py = join(suite_dir, n, 'suite.py')
             if exists(suite_py):
-                return abspath(join(suite_dir or '.', n, 'env'))
+                return abspath(join(suite_dir, n, 'env'))
     return None
 
 def get_setvar_format(shell):
