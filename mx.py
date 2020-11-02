@@ -13940,6 +13940,43 @@ def _processorjars_suite(s):
     build(['--dependencies', ",".join(names)])
     return [ap.path for ap in apDists]
 
+@no_suite_loading
+def autopep8(args):
+    """run the autopep8 formatter (if available) over Python source files"""
+    parser = ArgumentParser(prog='mx autopep8')
+    _add_command_primary_option(parser)
+    parser.add_argument('--check', action='store_true', help='don\'t write the files back but just return the status.')
+    parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
+    parser.add_argument('--all', action='store_true', help='check all files, not just files in the mx.* directory.')
+    args = parser.parse_args(args)
+
+    try:
+        output = _check_output_str(['autopep8', '--version'], stderr=subprocess.STDOUT)
+    except OSError as e:
+        log_error('autopep8 is not available: ' + str(e))
+        return -1
+
+    m = re.search(r'^autopep8 (\d+)\.(\d+)\.(\d+).*', output, re.MULTILINE)
+    if not m:
+        log_error('could not detect autopep8 version from ' + output)
+    major, minor, micro = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    log("Detected autopep8 version: {0}.{1}.{2}".format(major, minor, micro))
+    if (major, minor) != (1, 5):
+        log_error('autopep8 version must be 1.5.x')
+        return -1
+
+    pyfiles = _find_pyfiles(args.all, args.primary, args.walk)
+    env = _get_env_with_pythonpath()
+    if args.check:
+        log('Running pycodestyle on ' + ' '.join(pyfiles) + '...')
+        run(['pycodestyle'] + pyfiles, env=env)
+    else:
+        for pyfile in pyfiles:
+            log('Running autopep8 --in-place on ' + pyfile + '...')
+            run(['autopep8', '--in-place', pyfile], env=env)
+
+    return 0
+
 pylint_ver_map = {
     (1, 1): {
         'rcfile': '.pylintrc11',
@@ -13961,7 +13998,7 @@ pylint_ver_map = {
 
 @no_suite_loading
 def pylint(args):
-    """run pylint (if available) over Python source files (found by '<vc> locate' or by tree walk with -walk)"""
+    """run pylint (if available) over Python source files (found by '<vc> locate' or by tree walk with --walk)"""
 
     parser = ArgumentParser(prog='mx pylint')
     _add_command_primary_option(parser)
@@ -14001,9 +14038,25 @@ def pylint(args):
         return -1
 
     additional_options = pylint_ver_map[ver]['additional_options']
+    pyfiles = _find_pyfiles(args.all, args.primary, args.walk)
+    env = _get_env_with_pythonpath()
+    for pyfile in pyfiles:
+        log('Running pylint on ' + pyfile + '...')
+        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
 
+    return 0
+
+
+def _find_pyfiles(find_all, primary, walk):
+    """
+    Find files ending in `.py`.
+    :param find_all: If `True`, finds all files, not just those in the `mx.*` directory
+    :param primary: If `True`, limit the search to the primary suite
+    :param walk: If `True`, use a tree walk instead of `<vc> locate`
+    :return: List of `.py` files
+    """
     def walk_suite(suite):
-        for root, dirs, files in os.walk(suite.dir if args.all else suite.mxDir):
+        for root, dirs, files in os.walk(suite.dir if find_all else suite.mxDir):
             for f in files:
                 if f.endswith('.py'):
                     pyfile = join(root, f)
@@ -14016,18 +14069,18 @@ def pylint(args):
 
     def findfiles_by_walk(pyfiles):
         for suite in suites(True, includeBinary=False):
-            if args.primary and not suite.primary:
+            if primary and not suite.primary:
                 continue
             walk_suite(suite)
 
     def findfiles_by_vc(pyfiles):
         for suite in suites(True, includeBinary=False):
-            if args.primary and not suite.primary:
+            if primary and not suite.primary:
                 continue
             if not suite.vc:
                 walk_suite(suite)
                 continue
-            suite_location = os.path.relpath(suite.dir if args.all else suite.mxDir, suite.vc_dir)
+            suite_location = os.path.relpath(suite.dir if find_all else suite.mxDir, suite.vc_dir)
             files = suite.vc.locate(suite.vc_dir, [join(suite_location, '**.py')])
             compat = suite.getMxCompatibility()
             if compat.makePylintVCInputsAbsolute():
@@ -14037,7 +14090,6 @@ def pylint(args):
                     pyfiles.append(pyfile)
 
     pyfiles = []
-
     # Process mxtool's own py files only if mx is the primary suite
     if primary_suite() is _mx_suite:
         for root, _, files in os.walk(dirname(__file__)):
@@ -14046,25 +14098,19 @@ def pylint(args):
                     pyfile = join(root, f)
                     pyfiles.append(pyfile)
     else:
-        if args.walk:
+        if walk:
             findfiles_by_walk(pyfiles)
         else:
             findfiles_by_vc(pyfiles)
+    return pyfiles
 
+def _get_env_with_pythonpath():
     env = os.environ.copy()
-
     pythonpath = dirname(__file__)
     for suite in suites(True):
         pythonpath = os.pathsep.join([pythonpath, suite.mxDir])
-
     env['PYTHONPATH'] = pythonpath
-
-    for pyfile in pyfiles:
-        log('Running pylint on ' + pyfile + '...')
-        run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
-
-    return 0
-
+    return env
 
 class NoOpContext(object):
     def __init__(self, value=None):
@@ -16668,6 +16714,7 @@ _utilities_commands = ['suites', 'envs', 'findclass', 'javap']
 
 
 update_commands("mx", {
+    'autopep8': [autopep8, '[options]'],
     'archive': [_archive, '[options]'],
     'benchmark' : [mx_benchmark.benchmark, '--vmargs [vmargs] --runargs [runargs] suite:benchname'],
     'benchtable': [mx_benchplot.benchtable, '[options]'],
@@ -17019,7 +17066,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.274.5")  # GR-26623
+version = VersionSpec("5.274.6")  # GR-26618
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
