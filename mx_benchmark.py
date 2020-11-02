@@ -1827,6 +1827,7 @@ class BenchmarkExecutor(object):
           "machine.ip": self.machineIp(mxBenchmarkArgs),
           "machine.hostname": self.machineHostname(),
           "machine.arch": self.machineArch(),
+          "machine.os": self.machineOs(),
           "machine.cpu-cores": self.machineCpuCores(),
           "machine.cpu-clock": self.machineCpuClock(),
           "machine.cpu-family": self.machineCpuFamily(),
