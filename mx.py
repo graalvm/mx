@@ -1403,7 +1403,7 @@ class Dependency(SuiteConstituent):
                 return
         else:
             visited = set()
-        if not ignoredEdges:
+        if ignoredEdges is None:
             # Default ignored edges
             ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD]
         self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
@@ -1411,8 +1411,8 @@ class Dependency(SuiteConstituent):
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
-        visited.add(self)
         if not preVisit or preVisit(self, edge):
+            visited.add(self)
             self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
@@ -4965,7 +4965,7 @@ class Distribution(Dependency):
         indirect distribution dependencies and libraries).
         """
         if not hasattr(self, '.archived_deps'):
-            excluded = set(self.excludedLibs)
+            excluded = set()
             def _visitDists(dep, edges):
                 if dep is not self:
                     excluded.add(dep)
@@ -4974,6 +4974,16 @@ class Distribution(Dependency):
                             excluded.add(o)
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
+
+            def _list_excluded(dst, edge):
+                if not edge:
+                    assert dst == self
+                    return True
+                if edge and edge.kind == DEP_EXCLUDED:
+                    assert edge.src == self
+                    excluded.add(dst)
+                return False
+            self.walk_deps(preVisit=_list_excluded, ignoredEdges=[])  # shallow walk to get excluded elements
             deps = []
             def _visit(dep, edges):
                 if dep is not self:
@@ -11551,11 +11561,13 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             return False
         if edge and edge.src.isLayoutJARDistribution():
             return False
-        if dst in roots or dst.isLibrary() or dst.isJdkLibrary() or dst.isLayoutJARDistribution():
+        if dst in roots:
             return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
-            preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
-            return dst.isJARDistribution() if preferDist else dst.isProject()
+            if isinstance(edge.src.suite, BinarySuite) or not preferProjects:
+                return dst.isJARDistribution()
+            else:
+                return dst.isProject()
         return True
     def _visit(dep, edge):
         if preferProjects and dep.isJARDistribution() and not isinstance(dep.suite, BinarySuite):
