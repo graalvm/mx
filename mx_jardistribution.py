@@ -869,8 +869,8 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 try:
                     with open(pickle_path, 'rb') as fp:
                         pickle.load(fp)
-                except ValueError:
-                    return 'Bad or incompatible module pickle'
+                except ValueError as e:
+                    return 'Bad or incompatible module pickle: {}'.format(e)
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
