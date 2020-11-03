@@ -34,6 +34,7 @@ import os
 import zipfile
 import time
 import re
+import pickle
 
 from os.path import join, exists, basename, dirname
 from argparse import ArgumentTypeError
@@ -858,6 +859,11 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                         last_build_jdk = fp.read()
                     if last_build_jdk != jdk.home:
                         return 'build JDK changed from {} to {}'.format(last_build_jdk, jdk.home)
+                try:
+                    with open(pickle_path, 'rb') as fp:
+                        pickle.load(fp)
+                except ValueError:
+                    return 'Bad or incompatible module pickle'
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
