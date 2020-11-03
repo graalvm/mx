@@ -8111,7 +8111,7 @@ class PackedResourceLibrary(ResourceLibrary):
                 self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
             else:
                 # custom path: use generated path for archive and specified for the result
-                assert self.path is not None
+                assert self.optional or self.path is not None
                 self.extract_path = self.path
                 self.path = archive_path
 
