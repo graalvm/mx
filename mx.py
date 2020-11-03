@@ -15033,13 +15033,13 @@ def projectgraph(args, suite=None):
         started_dists = set()
 
         used_libraries = set()
-        for p in projects():
+        for p in projects(opt_limit_to_suite=True):
             if should_ignore(p.name):
                 continue
             for dep in p.deps:
                 if dep.isLibrary():
                     used_libraries.add(dep)
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             if should_ignore(d.name):
                 continue
             for dep in d.excludedLibs:
@@ -15080,13 +15080,13 @@ def projectgraph(args, suite=None):
                 print_edge(_d, dep)
 
         in_overlap = set()
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             in_overlap.update(d.overlapped_distributions())
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             if d not in started_dists and d not in in_overlap:
                 print_distribution(d)
 
-    for p in projects():
+    for p in projects(opt_limit_to_suite=True):
         if should_ignore(p.name):
             continue
         for dep in p.deps:
@@ -15098,6 +15098,14 @@ def projectgraph(args, suite=None):
                 if should_ignore(apd.name):
                     continue
                 print_edge(p, apd, {"style": "dashed"})
+    if not args.dist:
+        for d in distributions(opt_limit_to_suite=True):
+            if should_ignore(d.name):
+                continue
+            for dep in d.deps:
+                if should_ignore(dep.name):
+                    continue
+                print_edge(d, dep)
     print('}')
 
 
