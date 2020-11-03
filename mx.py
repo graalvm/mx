@@ -17094,7 +17094,7 @@ def main():
 
     for s_ in suites(True, includeBinary=False):
         for d in s_.dists:
-            if _has_jmh_dep(d):
+            if d.isJARDistribution() and _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
