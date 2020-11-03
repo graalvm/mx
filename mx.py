@@ -8096,8 +8096,9 @@ class PackedResourceLibrary(ResourceLibrary):
         # self.path points to the archive
         # self.extract_path points to the extracted content of the archive
         if pre_extracted_path:
-            self.extract_path = _make_absolute(pre_extracted_path.replace('/', os.sep), suite.dir)
-            self.path = None
+            self.extract_path = _make_absolute(pre_extracted_path.replace('/', os.sep), self.suite.dir)
+            if self.path:
+                raise self.abort("At most one of the `preExtractedPath` or `path` attributes should be used on a packed resource library")
         else:
             if not self.urls or not self.sha1:
                 if not self.optional:
