@@ -663,6 +663,12 @@ def add_jacoco_excluded_annotations(annotations):
 
 _jacoco_whitelisted_packages = []
 
+def add_jacoco_whitelisted_packages(packages):
+    """
+    Adds to the list of JaCoCo whitelisted packages.
+    """
+    _jacoco_whitelisted_packages.extend(packages)
+
 def _jacoco_is_package_whitelisted(package):
     if not _jacoco_whitelisted_packages:
         return True
