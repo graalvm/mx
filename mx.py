@@ -77,7 +77,7 @@ import calendar
 import multiprocessing
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
-from copy import copy
+from copy import copy, deepcopy
 
 _mx_commands = MxCommands("mx")
 
@@ -1356,6 +1356,18 @@ class Dependency(SuiteConstituent):
         assert self.isJdkLibrary()
         return _jdkLibs
 
+    def getGlobalRemovedRegistry(self):
+        if self.isProject():
+            return _removed_projects
+        if self.isLibrary():
+            return _removed_libs
+        if self.isDistribution():
+            return _removed_dists
+        if self.isJreLibrary():
+            return _removed_jreLibs
+        assert self.isJdkLibrary()
+        return _removed_jdkLibs
+
     def getSuiteRegistry(self):
         if self.isProject():
             return self.suite.projects
@@ -1367,6 +1379,18 @@ class Dependency(SuiteConstituent):
             return self.suite.jreLibs
         assert self.isJdkLibrary()
         return self.suite.jdkLibs
+
+    def getSuiteRemovedRegistry(self):
+        if self.isProject():
+            return self.suite.removed_projects
+        if self.isLibrary():
+            return self.suite.removed_libs
+        if self.isDistribution():
+            return self.suite.removed_dists
+        if self.isJreLibrary():
+            return self.suite.removed_jreLibs
+        assert self.isJdkLibrary()
+        return self.suite.removed_jdkLibs
 
     def get_output_base(self):
         return self.suite.get_output_root(platformDependent=self.isPlatformDependent())
@@ -1551,11 +1575,24 @@ class Suite(object):
         self.vc_dir = vc_dir
         self._preload_suite_dict()
         self._init_imports()
+        self.removed_dists = []
+        self.removed_libs = []
+        self.removed_jreLibs = []
+        self.removed_jdkLibs = []
         if load:
             self._load()
 
     def __str__(self):
         return self.name
+
+    def all_dists(self):
+        return self.dists + self.removed_dists
+
+    def all_projects(self):
+        return self.projects + self.removed_projects
+
+    def all_libs(self):
+        return self.libs + self.removed_libs
 
     def _load(self):
         """
@@ -2173,6 +2210,7 @@ class Suite(object):
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.items()):
             context = 'library ' + name
+            orig_attrs = deepcopy(attrs)
             attrs.pop('native', False)  # TODO use to make non-classpath libraries
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
@@ -2243,6 +2281,7 @@ class Suite(object):
                 l = ResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             else:
                 l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
+            l._orig_attrs = orig_attrs
             self.libs.append(l)
 
     def _load_licenses(self, licenseDefs):
@@ -2471,6 +2510,7 @@ class SourceSuite(Suite):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
+        self.removed_projects = []
         self._releaseVersion = {}
 
     def dependency(self, name, fatalIfMissing=True, context=None):
@@ -4298,6 +4338,13 @@ _jdkLibs = dict()
 :type: dict[str, JdkLibrary]
 """
 _dists = dict()
+
+_removed_projects = dict()
+_removed_libs = dict()
+_removed_jreLibs = dict()
+_removed_jdkLibs = dict()
+_removed_dists = dict()
+
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
@@ -4469,7 +4516,9 @@ def _remove_unsatisfied_deps():
             assert isinstance(reason, tuple)
         res[dep.name] = reason
         dep.getSuiteRegistry().remove(dep)
+        dep.getSuiteRemovedRegistry().append(dep)
         dep.getGlobalRegistry().pop(dep.name)
+        dep.getGlobalRemovedRegistry()[dep.name] = dep
     return res
 
 DEP_STANDARD = "standard dependency"
@@ -11794,6 +11843,12 @@ def sorted_dists():
     for d in _dists.values():
         add_dist(d)
     return dists
+
+def distributions(opt_limit_to_suite=False):
+    sorted_dists = sorted((d for d in _dists.values() if not d.suite.internal))
+    if opt_limit_to_suite:
+        sorted_dists = _dependencies_opt_limit_to_suites(sorted_dists)
+    return sorted_dists
 
 #: The HotSpot options that have an argument following them on the command line
 _VM_OPTS_SPACE_SEPARATED_ARG = ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m',
