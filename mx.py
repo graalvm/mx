@@ -1120,7 +1120,7 @@ class SuiteImport:
                 if import_dict.get("subdir") is None and importer.vc_dir != importer.dir:
                     warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
                     in_subdir = True
-                else:
+                elif not import_dict.get('noUrl'):
                     abort("In import for '{}': No urls given and not a 'subdir' suite".format(name), context=context)
             return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir)
         # urls a list of alternatives defined as dicts
