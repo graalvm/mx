@@ -666,8 +666,6 @@ suite = {
       "subDir" : "java",
       "dependencies" : [
         "com.oracle.mxtool.junit",
-        "JUNIT",
-        "HAMCREST",
       ],
       "exclude" : [
         "JUNIT",

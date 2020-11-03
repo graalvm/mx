@@ -77,7 +77,7 @@ import calendar
 import multiprocessing
 from stat import S_IWRITE
 from mx_commands import MxCommands, MxCommand
-from copy import copy
+from copy import copy, deepcopy
 
 _mx_commands = MxCommands("mx")
 
@@ -1120,7 +1120,7 @@ class SuiteImport:
                 if import_dict.get("subdir") is None and importer.vc_dir != importer.dir:
                     warn("In import for '{}': No urls given but 'subdir' is not set, assuming 'subdir=True'".format(name), context)
                     in_subdir = True
-                else:
+                elif not import_dict.get('noUrl'):
                     abort("In import for '{}': No urls given and not a 'subdir' suite".format(name), context=context)
             return SuiteImport(name, version, None, None, dynamicImport=dynamicImport, in_subdir=in_subdir, version_from=version_from, suite_dir=suite_dir)
         # urls a list of alternatives defined as dicts
@@ -1356,6 +1356,18 @@ class Dependency(SuiteConstituent):
         assert self.isJdkLibrary()
         return _jdkLibs
 
+    def getGlobalRemovedRegistry(self):
+        if self.isProject():
+            return _removed_projects
+        if self.isLibrary():
+            return _removed_libs
+        if self.isDistribution():
+            return _removed_dists
+        if self.isJreLibrary():
+            return _removed_jreLibs
+        assert self.isJdkLibrary()
+        return _removed_jdkLibs
+
     def getSuiteRegistry(self):
         if self.isProject():
             return self.suite.projects
@@ -1367,6 +1379,18 @@ class Dependency(SuiteConstituent):
             return self.suite.jreLibs
         assert self.isJdkLibrary()
         return self.suite.jdkLibs
+
+    def getSuiteRemovedRegistry(self):
+        if self.isProject():
+            return self.suite.removed_projects
+        if self.isLibrary():
+            return self.suite.removed_libs
+        if self.isDistribution():
+            return self.suite.removed_dists
+        if self.isJreLibrary():
+            return self.suite.removed_jreLibs
+        assert self.isJdkLibrary()
+        return self.suite.removed_jdkLibs
 
     def get_output_base(self):
         return self.suite.get_output_root(platformDependent=self.isPlatformDependent())
@@ -1403,7 +1427,7 @@ class Dependency(SuiteConstituent):
                 return
         else:
             visited = set()
-        if not ignoredEdges:
+        if ignoredEdges is None:
             # Default ignored edges
             ignoredEdges = [DEP_ANNOTATION_PROCESSOR, DEP_EXCLUDED, DEP_BUILD]
         self._walk_deps_helper(visited, None, preVisit, visit, ignoredEdges, visitEdge)
@@ -1411,8 +1435,8 @@ class Dependency(SuiteConstituent):
     def _walk_deps_helper(self, visited, edge, preVisit=None, visit=None, ignoredEdges=None, visitEdge=None):
         _debug_walk_deps_helper(self, edge, ignoredEdges)
         assert self not in visited, self
-        visited.add(self)
         if not preVisit or preVisit(self, edge):
+            visited.add(self)
             self._walk_deps_visit_edges(visited, edge, preVisit, visit, ignoredEdges, visitEdge)
             if visit:
                 visit(self, edge)
@@ -1551,11 +1575,24 @@ class Suite(object):
         self.vc_dir = vc_dir
         self._preload_suite_dict()
         self._init_imports()
+        self.removed_dists = []
+        self.removed_libs = []
+        self.removed_jreLibs = []
+        self.removed_jdkLibs = []
         if load:
             self._load()
 
     def __str__(self):
         return self.name
+
+    def all_dists(self):
+        return self.dists + self.removed_dists
+
+    def all_projects(self):
+        return self.projects + self.removed_projects
+
+    def all_libs(self):
+        return self.libs + self.removed_libs
 
     def _load(self):
         """
@@ -2173,6 +2210,7 @@ class Suite(object):
     def _load_libraries(self, libsMap):
         for name, attrs in sorted(libsMap.items()):
             context = 'library ' + name
+            orig_attrs = deepcopy(attrs)
             attrs.pop('native', False)  # TODO use to make non-classpath libraries
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
@@ -2194,25 +2232,13 @@ class Suite(object):
                     maven['classifier'] = maven['suffix']
                     del maven['suffix']
 
-            def _maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
-                if baseURL is None:
-                    baseURLs = _mavenRepoBaseURLs
-                else:
-                    baseURLs = [baseURL]
-                args = {
-                    'groupId': groupId.replace('.', '/'),
-                    'artifactId': artifactId,
-                    'version': version,
-                    'classifier' : '-{0}'.format(classifier) if classifier else ''
-                }
-                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
-
             optional = attrs.pop('optional', False)
             if not urls and maven is not None:
                 _check_maven(maven)
-                urls = _maven_download_urls(**maven)
+                urls = maven_download_urls(**maven)
 
-            if path is None and not optional:
+            packedResource = attrs.pop('packedResource', False)
+            if path is None and not optional and not (packedResource and "preExtractedPath" in attrs):
                 if not urls:
                     abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
@@ -2229,20 +2255,20 @@ class Suite(object):
                         _check_maven(maven)
                         if 'classifier' in maven:
                             abort('Cannot download sources for "maven" library with "classifier" attribute', context)
-                        sourceUrls = _maven_download_urls(classifier='sources', **maven)
+                        sourceUrls = maven_download_urls(classifier='sources', **maven)
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
                     sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             resource = attrs.pop('resource', False)
-            packedResource = attrs.pop('packedResource', False)
             if packedResource:
                 l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             elif resource:
                 l = ResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             else:
                 l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
+            l._orig_attrs = orig_attrs
             self.libs.append(l)
 
     def _load_licenses(self, licenseDefs):
@@ -2471,6 +2497,7 @@ class SourceSuite(Suite):
         Suite.__init__(self, mxDir, primary, internal, importing_suite, load, vc, vc_dir, dynamicallyImported=dynamicallyImported)
         logvv("SourceSuite.__init__({}), got vc={}, vc_dir={}".format(mxDir, self.vc, self.vc_dir))
         self.projects = []
+        self.removed_projects = []
         self._releaseVersion = {}
 
     def dependency(self, name, fatalIfMissing=True, context=None):
@@ -4298,6 +4325,13 @@ _jdkLibs = dict()
 :type: dict[str, JdkLibrary]
 """
 _dists = dict()
+
+_removed_projects = dict()
+_removed_libs = dict()
+_removed_jreLibs = dict()
+_removed_jdkLibs = dict()
+_removed_dists = dict()
+
 _distTemplates = dict()
 _licenses = dict()
 _repositories = dict()
@@ -4469,7 +4503,9 @@ def _remove_unsatisfied_deps():
             assert isinstance(reason, tuple)
         res[dep.name] = reason
         dep.getSuiteRegistry().remove(dep)
+        dep.getSuiteRemovedRegistry().append(dep)
         dep.getGlobalRegistry().pop(dep.name)
+        dep.getGlobalRemovedRegistry()[dep.name] = dep
     return res
 
 DEP_STANDARD = "standard dependency"
@@ -4965,7 +5001,7 @@ class Distribution(Dependency):
         indirect distribution dependencies and libraries).
         """
         if not hasattr(self, '.archived_deps'):
-            excluded = set(self.excludedLibs)
+            excluded = set()
             def _visitDists(dep, edges):
                 if dep is not self:
                     excluded.add(dep)
@@ -4974,6 +5010,16 @@ class Distribution(Dependency):
                             excluded.add(o)
                     excluded.update(dep.archived_deps())
             self.walk_deps(visit=_visitDists, preVisit=lambda dst, edge: dst.isDistribution())
+
+            def _list_excluded(dst, edge):
+                if not edge:
+                    assert dst == self
+                    return True
+                if edge and edge.kind == DEP_EXCLUDED:
+                    assert edge.src == self
+                    excluded.add(dst)
+                return False
+            self.walk_deps(preVisit=_list_excluded, ignoredEdges=[])  # shallow walk to get excluded elements
             deps = []
             def _visit(dep, edges):
                 if dep is not self:
@@ -8001,7 +8047,7 @@ class ResourceLibrary(BaseLibrary):
     """
     def __init__(self, suite, name, path, optional, urls, sha1, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
-        self.path = path.replace('/', os.sep) if path else None
+        self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.sourcePath = None
         self.urls = urls
         self.sha1 = sha1
@@ -8038,26 +8084,36 @@ class ResourceLibrary(BaseLibrary):
 
 class PackedResourceLibrary(ResourceLibrary):
     """
-    A ResourceLibrary that comes in an archive and should be extraced after downloading.
+    A ResourceLibrary that comes in an archive and should be extracted after downloading.
     """
 
     def __init__(self, *args, **kwargs):
+        pre_extracted_path = kwargs.pop("preExtractedPath", None)
         super(PackedResourceLibrary, self).__init__(*args, **kwargs)
+        # input:
+        # self.path is the user-provided path or a path in the cache
+        # output:
         # self.path points to the archive
         # self.extract_path points to the extracted content of the archive
-        if not self.urls or not self.sha1:
-            if not self.optional:
-                abort("non-optional libraries must have urls and sha1")
-            archive_path = None
+        if pre_extracted_path:
+            self.extract_path = _make_absolute(pre_extracted_path.replace('/', os.sep), self.suite.dir)
+            if self.path:
+                raise self.abort("At most one of the `preExtractedPath` or `path` attributes should be used on a packed resource library")
         else:
-            archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
-        if self.path == archive_path and archive_path is not None:
-            # default path: generate path for extraction
-            self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
-        else:
-            # custom path: use generated path for archive and specified for the result
-            self.extract_path = self.path
-            self.path = archive_path
+            if not self.urls or not self.sha1:
+                if not self.optional:
+                    self.abort("non-optional libraries must have a sha1 and urls or an archivePath")
+                archive_path = None
+            else:
+                archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
+            if self.path == archive_path and archive_path is not None:
+                # default path: generate path for extraction
+                self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
+            else:
+                # custom path: use generated path for archive and specified for the result
+                assert self.optional or self.path is not None
+                self.extract_path = self.path
+                self.path = archive_path
 
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
@@ -8078,13 +8134,16 @@ class PackedResourceLibrary(ResourceLibrary):
 
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
-        download_path = super(PackedResourceLibrary, self).get_path(resolve)
-        if resolve and self._check_extract_needed(extract_path, download_path):
-            with SafeDirectoryUpdater(extract_path, create=True) as sdu:
-                Extractor.create(download_path).extract(sdu.directory)
+        if self.path:
+            download_path = super(PackedResourceLibrary, self).get_path(resolve)
+            if resolve and self._check_extract_needed(extract_path, download_path):
+                with SafeDirectoryUpdater(extract_path, create=True) as sdu:
+                    Extractor.create(download_path).extract(sdu.directory)
         return extract_path
 
     def _check_download_needed(self):
+        if not self.path:
+            return False
         need_download = super(PackedResourceLibrary, self)._check_download_needed()
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = _make_absolute(self.path, self.suite.dir)
@@ -8249,6 +8308,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     def get_declaring_module_name(self):
         return getattr(self, 'module')
 
+
 class Library(BaseLibrary, ClasspathDependency):
     """
     A library that is provided (built) by some third-party and made available via a URL.
@@ -8259,7 +8319,7 @@ class Library(BaseLibrary, ClasspathDependency):
     it is not built by the Suite.
     N.B. Not obvious but a Library can be an annotationProcessor
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **kwArgs):
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ignore=False, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
@@ -8272,7 +8332,8 @@ class Library(BaseLibrary, ClasspathDependency):
             sourceSha1 = sha1
         self.sourceSha1 = sourceSha1
         self.deps = deps
-        if not optional:
+        self.ignore = ignore
+        if not optional and not ignore:
             abspath = _make_absolute(path, self.suite.dir)
             if not exists(abspath) and not len(urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
@@ -10426,7 +10487,22 @@ def maven_local_repository():  # pylint: disable=invalid-name
     return _maven_local_repository
 
 
+def maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
+    if baseURL is None:
+        baseURLs = _mavenRepoBaseURLs
+    else:
+        baseURLs = [baseURL]
+    args = {
+        'groupId': groupId.replace('.', '/'),
+        'artifactId': artifactId,
+        'version': version,
+        'classifier' : '-{0}'.format(classifier) if classifier else ''
+    }
+    return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
+
+
 ### ~~~~~~~~~~~~~ Maven, _private
+
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
@@ -11551,11 +11627,13 @@ def classpath_entries(names=None, includeSelf=True, preferProjects=False, exclud
             return False
         if edge and edge.src.isLayoutJARDistribution():
             return False
-        if dst in roots or dst.isLibrary() or dst.isJdkLibrary() or dst.isLayoutJARDistribution():
+        if dst in roots:
             return True
         if edge and edge.src.isJARDistribution() and edge.kind == DEP_STANDARD:
-            preferDist = isinstance(edge.src.suite, BinarySuite) or not preferProjects
-            return dst.isJARDistribution() if preferDist else dst.isProject()
+            if isinstance(edge.src.suite, BinarySuite) or not preferProjects:
+                return dst.isJARDistribution()
+            else:
+                return dst.isProject()
         return True
     def _visit(dep, edge):
         if preferProjects and dep.isJARDistribution() and not isinstance(dep.suite, BinarySuite):
@@ -11782,6 +11860,12 @@ def sorted_dists():
     for d in _dists.values():
         add_dist(d)
     return dists
+
+def distributions(opt_limit_to_suite=False):
+    sorted_dists = sorted((d for d in _dists.values() if not d.suite.internal))
+    if opt_limit_to_suite:
+        sorted_dists = _dependencies_opt_limit_to_suites(sorted_dists)
+    return sorted_dists
 
 #: The HotSpot options that have an argument following them on the command line
 _VM_OPTS_SPACE_SEPARATED_ARG = ['-mp', '-modulepath', '-limitmods', '-addmods', '-upgrademodulepath', '-m',
@@ -14950,13 +15034,13 @@ def projectgraph(args, suite=None):
         started_dists = set()
 
         used_libraries = set()
-        for p in projects():
+        for p in projects(opt_limit_to_suite=True):
             if should_ignore(p.name):
                 continue
             for dep in p.deps:
                 if dep.isLibrary():
                     used_libraries.add(dep)
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             if should_ignore(d.name):
                 continue
             for dep in d.excludedLibs:
@@ -14997,13 +15081,13 @@ def projectgraph(args, suite=None):
                 print_edge(_d, dep)
 
         in_overlap = set()
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             in_overlap.update(d.overlapped_distributions())
-        for d in sorted_dists():
+        for d in distributions(opt_limit_to_suite=True):
             if d not in started_dists and d not in in_overlap:
                 print_distribution(d)
 
-    for p in projects():
+    for p in projects(opt_limit_to_suite=True):
         if should_ignore(p.name):
             continue
         for dep in p.deps:
@@ -15015,6 +15099,14 @@ def projectgraph(args, suite=None):
                 if should_ignore(apd.name):
                     continue
                 print_edge(p, apd, {"style": "dashed"})
+    if not args.dist:
+        for d in distributions(opt_limit_to_suite=True):
+            if should_ignore(d.name):
+                continue
+            for dep in d.deps:
+                if should_ignore(dep.name):
+                    continue
+                print_edge(d, dep)
     print('}')
 
 
@@ -17011,7 +17103,7 @@ def main():
 
     for s_ in suites(True, includeBinary=False):
         for d in s_.dists:
-            if _has_jmh_dep(d):
+            if d.isJARDistribution() and _has_jmh_dep(d):
                 d.set_archiveparticipant(JMHArchiveParticipant(d))
 
     command = commandAndArgs[0]
@@ -17066,7 +17158,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.274.6")  # GR-26618
+version = VersionSpec("5.275.0")  # EmbEd
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

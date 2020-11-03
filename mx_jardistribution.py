@@ -34,6 +34,7 @@ import os
 import zipfile
 import time
 import re
+import pickle
 
 from os.path import join, exists, basename, dirname
 from argparse import ArgumentTypeError
@@ -74,7 +75,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     """
     def __init__(self, suite, name, subDir, path, sourcesPath, deps, mainClass, excludedLibs, distDependencies, javaCompliance, platformDependent, theLicense,
                  javadocType="implementation", allowsJavadocWarnings=False, maven=True, stripConfigFileNames=None,
-                 stripMappingFileNames=None, manifestEntries=None, **kwArgs):
+                 stripMappingFileNames=None, manifestEntries=None, alwaysStrip=None, **kwArgs):
         assert manifestEntries is None or isinstance(manifestEntries, dict)
         mx.Distribution.__init__(self, suite, name, deps + distDependencies, excludedLibs, platformDependent, theLicense, **kwArgs)
         mx.ClasspathDependency.__init__(self, **kwArgs)
@@ -101,9 +102,16 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         self.allowsJavadocWarnings = allowsJavadocWarnings
         self.maven = maven
         self.manifestEntries = dict([]) if manifestEntries is None else manifestEntries
+        if stripConfigFileNames and alwaysStrip:
+            mx.abort('At most one of the "strip" and "alwaysStrip" properties can be used on a distribution', context=self)
         if stripConfigFileNames:
             self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in stripConfigFileNames]
+            self.strip_mode = 'optional'
+        elif alwaysStrip:
+            self.stripConfig = [join(suite.mxDir, 'proguard', stripConfigFileName + '.proguard') for stripConfigFileName in alwaysStrip]
+            self.strip_mode = 'always'
         else:
+            self.strip_mode = 'none'
             self.stripConfig = None
         if stripMappingFileNames:
             self.stripMapping = [join(suite.mxDir, 'proguard', stripMappingFileName + '.map') for stripMappingFileName in stripMappingFileNames]
@@ -204,7 +212,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         return paths
 
     def is_stripped(self):
-        return mx._opts.strip_jars and self.stripConfig is not None
+        return self.stripConfig is not None and (mx._opts.strip_jars or self.strip_mode == 'always')
 
     def set_archiveparticipant(self, archiveparticipant):
         """
@@ -627,7 +635,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         return self._stripped_path() + JARDistribution._strip_cfg_deps_file_suffix
 
     def strip_jar(self):
-        assert mx.get_opts().strip_jars, "Only works under the flag --strip-jars"
+        assert self.is_stripped()
 
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance > '13':
@@ -858,6 +866,11 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                         last_build_jdk = fp.read()
                     if last_build_jdk != jdk.home:
                         return 'build JDK changed from {} to {}'.format(last_build_jdk, jdk.home)
+                try:
+                    with open(pickle_path, 'rb') as fp:
+                        pickle.load(fp)
+                except ValueError as e:
+                    return 'Bad or incompatible module pickle: {}'.format(e)
         if self.is_stripped():
             previous_strip_configs = []
             dependency_file = self.strip_config_dependency_file()
