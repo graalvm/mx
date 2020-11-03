@@ -2232,23 +2232,10 @@ class Suite(object):
                     maven['classifier'] = maven['suffix']
                     del maven['suffix']
 
-            def _maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
-                if baseURL is None:
-                    baseURLs = _mavenRepoBaseURLs
-                else:
-                    baseURLs = [baseURL]
-                args = {
-                    'groupId': groupId.replace('.', '/'),
-                    'artifactId': artifactId,
-                    'version': version,
-                    'classifier' : '-{0}'.format(classifier) if classifier else ''
-                }
-                return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
-
             optional = attrs.pop('optional', False)
             if not urls and maven is not None:
                 _check_maven(maven)
-                urls = _maven_download_urls(**maven)
+                urls = maven_download_urls(**maven)
 
             if path is None and not optional:
                 if not urls:
@@ -2267,7 +2254,7 @@ class Suite(object):
                         _check_maven(maven)
                         if 'classifier' in maven:
                             abort('Cannot download sources for "maven" library with "classifier" attribute', context)
-                        sourceUrls = _maven_download_urls(classifier='sources', **maven)
+                        sourceUrls = maven_download_urls(classifier='sources', **maven)
                 if sourceUrls:
                     if not sourceSha1:
                         abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
@@ -10485,7 +10472,22 @@ def maven_local_repository():  # pylint: disable=invalid-name
     return _maven_local_repository
 
 
+def maven_download_urls(groupId, artifactId, version, classifier=None, baseURL=None):
+    if baseURL is None:
+        baseURLs = _mavenRepoBaseURLs
+    else:
+        baseURLs = [baseURL]
+    args = {
+        'groupId': groupId.replace('.', '/'),
+        'artifactId': artifactId,
+        'version': version,
+        'classifier' : '-{0}'.format(classifier) if classifier else ''
+    }
+    return ["{base}{groupId}/{artifactId}/{version}/{artifactId}-{version}{classifier}.jar".format(base=base, **args) for base in baseURLs]
+
+
 ### ~~~~~~~~~~~~~ Maven, _private
+
 
 def _mavenGroupId(suite):
     if isinstance(suite, Suite):
