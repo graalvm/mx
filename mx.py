@@ -2237,7 +2237,8 @@ class Suite(object):
                 _check_maven(maven)
                 urls = maven_download_urls(**maven)
 
-            if path is None and not optional:
+            packedResource = attrs.pop('packedResource', False)
+            if path is None and not optional and not (packedResource and "preExtractedPath" in attrs):
                 if not urls:
                     abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
                 if not sha1:
@@ -2261,7 +2262,6 @@ class Suite(object):
                     sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
             resource = attrs.pop('resource', False)
-            packedResource = attrs.pop('packedResource', False)
             if packedResource:
                 l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             elif resource:
@@ -8047,7 +8047,7 @@ class ResourceLibrary(BaseLibrary):
     """
     def __init__(self, suite, name, path, optional, urls, sha1, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
-        self.path = path.replace('/', os.sep) if path else None
+        self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.sourcePath = None
         self.urls = urls
         self.sha1 = sha1
@@ -8084,26 +8084,35 @@ class ResourceLibrary(BaseLibrary):
 
 class PackedResourceLibrary(ResourceLibrary):
     """
-    A ResourceLibrary that comes in an archive and should be extraced after downloading.
+    A ResourceLibrary that comes in an archive and should be extracted after downloading.
     """
 
     def __init__(self, *args, **kwargs):
+        pre_extracted_path = kwargs.pop("preExtractedPath", None)
         super(PackedResourceLibrary, self).__init__(*args, **kwargs)
+        # input:
+        # self.path is the user-provided path or a path in the cache
+        # output:
         # self.path points to the archive
         # self.extract_path points to the extracted content of the archive
-        if not self.urls or not self.sha1:
-            if not self.optional:
-                abort("non-optional libraries must have urls and sha1")
-            archive_path = None
+        if pre_extracted_path:
+            self.extract_path = _make_absolute(pre_extracted_path.replace('/', os.sep), suite.dir)
+            self.path = None
         else:
-            archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
-        if self.path == archive_path and archive_path is not None:
-            # default path: generate path for extraction
-            self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
-        else:
-            # custom path: use generated path for archive and specified for the result
-            self.extract_path = self.path
-            self.path = archive_path
+            if not self.urls or not self.sha1:
+                if not self.optional:
+                    self.abort("non-optional libraries must have a sha1 and urls or an archivePath")
+                archive_path = None
+            else:
+                archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
+            if self.path == archive_path and archive_path is not None:
+                # default path: generate path for extraction
+                self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
+            else:
+                # custom path: use generated path for archive and specified for the result
+                assert self.path is not None
+                self.extract_path = self.path
+                self.path = archive_path
 
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
@@ -8124,13 +8133,16 @@ class PackedResourceLibrary(ResourceLibrary):
 
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
-        download_path = super(PackedResourceLibrary, self).get_path(resolve)
-        if resolve and self._check_extract_needed(extract_path, download_path):
-            with SafeDirectoryUpdater(extract_path, create=True) as sdu:
-                Extractor.create(download_path).extract(sdu.directory)
+        if self.path:
+            download_path = super(PackedResourceLibrary, self).get_path(resolve)
+            if resolve and self._check_extract_needed(extract_path, download_path):
+                with SafeDirectoryUpdater(extract_path, create=True) as sdu:
+                    Extractor.create(download_path).extract(sdu.directory)
         return extract_path
 
     def _check_download_needed(self):
+        if not self.path:
+            return False
         need_download = super(PackedResourceLibrary, self)._check_download_needed()
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         download_path = _make_absolute(self.path, self.suite.dir)
@@ -8295,6 +8307,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
     def get_declaring_module_name(self):
         return getattr(self, 'module')
 
+
 class Library(BaseLibrary, ClasspathDependency):
     """
     A library that is provided (built) by some third-party and made available via a URL.
@@ -8305,7 +8318,7 @@ class Library(BaseLibrary, ClasspathDependency):
     it is not built by the Suite.
     N.B. Not obvious but a Library can be an annotationProcessor
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **kwArgs):
+    def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ignore=False, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
@@ -8318,7 +8331,8 @@ class Library(BaseLibrary, ClasspathDependency):
             sourceSha1 = sha1
         self.sourceSha1 = sourceSha1
         self.deps = deps
-        if not optional:
+        self.ignore = ignore
+        if not optional and not ignore:
             abspath = _make_absolute(path, self.suite.dir)
             if not exists(abspath) and not len(urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
