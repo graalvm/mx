@@ -3761,7 +3761,7 @@ def cpu_count():
         try:
             # takes into account CPU affinity restrictions which is available on some unix platforms
             cpus = len(os.sched_getaffinity(0))
-        except AttributeError as e:
+        except AttributeError:
             cpus = None
     if cpus is None:
         cpus = multiprocessing.cpu_count()
