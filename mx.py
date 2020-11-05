@@ -8968,11 +8968,11 @@ class LinesOutputCapture:
         self.lines.append(data.rstrip())
 
 class TeeOutputCapture:
-    def __init__(self, underlying, tee_output=None):
+    def __init__(self, underlying):
         self.underlying = underlying
-        self.tee_output = tee_output if tee_output else log
+
     def __call__(self, data):
-        self.tee_output(data)
+        log(data.rstrip())
         self.underlying(data)
 
 class HgConfig(VC):
@@ -17158,7 +17158,8 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.275.1")  # GR-25911
+version = VersionSpec("5.275.2")  # GR-27155
+
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
