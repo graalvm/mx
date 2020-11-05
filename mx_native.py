@@ -103,6 +103,9 @@ class Ninja(object):
             assert out.lines == ['ninja: no work to do.']
             return False, out.lines[0]
 
+    def compdb(self, out):
+        self._run('-t', 'compdb', out=out)
+
     def build(self):
         self._run()
 
@@ -392,6 +395,8 @@ class NinjaBuildTask(TargetArchBuildTask):
                         and not filecmp.cmp(self._manifest, sfc.tmpPath, shallow=False):
                     self.ninja.clean()
 
+        with open(os.path.join(self.subject.out_dir, 'compile_commands.json'), 'w') as f:
+            self.ninja.compdb(out = f);
         self.ninja.build()
 
     def clean(self, forBuild=False):
