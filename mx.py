@@ -8140,6 +8140,13 @@ class PackedResourceLibrary(ResourceLibrary):
             return False
         return exists(self.get_path(True))
 
+    def getBuildTask(self, args):
+        if self.path:
+            return LibraryDownloadTask(args, self)
+        else:
+            # pre-extracted
+            return NoOpTask(self, args)
+
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
         if self.path:
