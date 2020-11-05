@@ -663,6 +663,12 @@ def add_jacoco_excluded_annotations(annotations):
 
 _jacoco_whitelisted_packages = []
 
+def add_jacoco_whitelisted_packages(packages):
+    """
+    Adds to the list of JaCoCo whitelisted packages.
+    """
+    _jacoco_whitelisted_packages.extend(packages)
+
 def _jacoco_is_package_whitelisted(package):
     if not _jacoco_whitelisted_packages:
         return True
@@ -714,15 +720,18 @@ def get_jacoco_dest_file():
 def get_jacoco_agent_path(resolve):
     return mx.library('JACOCOAGENT_0.8.4', True).get_path(resolve)
 
-def get_jacoco_agent_args():
+def get_jacoco_agent_args(jacoco=None):
     '''
     Gets the args to be added to a VM command line for injecting the JaCoCo agent
     if use of JaCoCo has been requested otherwise returns None.
     '''
-    if _jacoco in ('on', 'append'):
+    if jacoco is None:
+        jacoco = _jacoco
+
+    if jacoco in ('on', 'append'):
         excludes, includes = _jacoco_excludes_includes()
         agentOptions = {
-                        'append' : 'true' if _jacoco == 'append' else 'false',
+                        'append' : 'true' if jacoco == 'append' else 'false',
                         'inclbootstrapclasses' : 'true',
                         'includes' : ':'.join(includes),
                         'excludes' : ':'.join(excludes),
