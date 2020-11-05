@@ -3756,7 +3756,15 @@ def relpath_or_absolute(path, start, prefix=""):
         return path
 
 def cpu_count():
-    cpus = multiprocessing.cpu_count()
+    cpus = None
+    if sys.version_info[0] >= 3:
+        try:
+            # takes into account CPU affinity restrictions which is available on some unix platforms
+            cpus = len(os.sched_getaffinity(0))
+        except AttributeError:
+            cpus = None
+    if cpus is None:
+        cpus = multiprocessing.cpu_count()
     if _opts.cpu_count:
         return cpus if cpus <= _opts.cpu_count else _opts.cpu_count
     else:
@@ -17158,8 +17166,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.275.3")  # GR-14551
-
+version = VersionSpec("5.275.4")  # GR-27171
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
