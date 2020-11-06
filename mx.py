@@ -4424,7 +4424,6 @@ def _remove_unsatisfied_deps():
     A reason may be the name of another removed dependency.
     """
     removedDeps = OrderedDict()
-    default_jdk = get_jdk(tag=DEFAULT_JDK_TAG)
 
     def visit(dep, edge):
         if dep.isLibrary():
@@ -4489,11 +4488,6 @@ def _remove_unsatisfied_deps():
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
                     dist.removeDependency(distDep)
                     distRemovedDeps.append(distDep)
-                elif distDep.isJavaProject():
-                    if default_jdk.javaCompliance not in distDep.javaCompliance:
-                        logv('[{} was removed from distribution {}]'.format(distDep, dist))
-                        dist.removeDependency(distDep)
-                        distRemovedDeps.append(distDep)
 
             if discard(dist):
                 note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
