@@ -4424,7 +4424,6 @@ def _remove_unsatisfied_deps():
     A reason may be the name of another removed dependency.
     """
     removedDeps = OrderedDict()
-    default_jdk = get_jdk(tag=DEFAULT_JDK_TAG)
 
     def visit(dep, edge):
         if dep.isLibrary():
@@ -4489,11 +4488,6 @@ def _remove_unsatisfied_deps():
                     logv('[{} was removed from distribution {}]'.format(distDep, dist))
                     dist.removeDependency(distDep)
                     distRemovedDeps.append(distDep)
-                elif distDep.isJavaProject():
-                    if default_jdk.javaCompliance not in distDep.javaCompliance:
-                        logv('[{} was removed from distribution {}]'.format(distDep, dist))
-                        dist.removeDependency(distDep)
-                        distRemovedDeps.append(distDep)
 
             if discard(dist):
                 note_removal(dist, 'distribution {} was removed as all its dependencies were removed'.format(dist),
@@ -8139,6 +8133,13 @@ class PackedResourceLibrary(ResourceLibrary):
         if not self.extract_path:
             return False
         return exists(self.get_path(True))
+
+    def getBuildTask(self, args):
+        if self.path:
+            return LibraryDownloadTask(args, self)
+        else:
+            # pre-extracted
+            return NoOpTask(self, args)
 
     def get_path(self, resolve):
         extract_path = _make_absolute(self.extract_path, self.suite.dir)
@@ -17166,7 +17167,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.275.4")  # GR-27171
+version = VersionSpec("5.275.5")  # pre-extract
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
