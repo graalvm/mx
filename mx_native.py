@@ -32,6 +32,7 @@ import subprocess
 import sys
 
 import mx
+import mx_compdb
 import mx_subst
 
 
@@ -395,8 +396,9 @@ class NinjaBuildTask(TargetArchBuildTask):
                         and not filecmp.cmp(self._manifest, sfc.tmpPath, shallow=False):
                     self.ninja.clean()
 
-        with open(os.path.join(self.subject.out_dir, 'compile_commands.json'), 'w') as f:
-            self.ninja.compdb(out = f);
+        with mx_compdb.CompdbCapture(self.subject.suite) as out:
+            if out:
+                self.ninja.compdb(out=out)
         self.ninja.build()
 
     def clean(self, forBuild=False):

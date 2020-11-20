@@ -563,6 +563,10 @@ environment variables:
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
         self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
         self.add_argument('--dump-task-stats', help='Dump CSV formatted start/end timestamps for each build task. If set to \'-\' it will print it to stdout, otherwise the CSV will be written to <path>', metavar='<path>', default=None)
+        self.add_argument('--compdb', action='store', metavar='<file>', help="generate a JSON compilation database for native "
+                                "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
+                                "be stored in the parent directory of the repository containing the primary suite. This option "
+                                "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -3519,6 +3523,7 @@ import mx_downstream
 import mx_subst
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
+import mx_compdb
 
 from mx_javamodules import make_java_module # pylint: disable=unused-import
 from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -7876,7 +7881,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = [gmake_cmd()] if bear_cmd() is None else bear_cmd() + [gmake_cmd()]
+        cmdline = mx_compdb.gmake_with_compdb_cmd()
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -7899,6 +7904,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
     def build(self):
         cmdline, cwd, env = self._build_run_args()
         run(cmdline, cwd=cwd, env=env)
+        mx_compdb.merge_compdb(subject=self.subject)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
@@ -13595,28 +13601,6 @@ def gmake_cmd():
     return _gmake_cmd
 
 
-_bear_cmd = '<uninitialized>'
-_bear_version_regex = re.compile(r"bear ([0-9]+).([0-9]+).([0-9]+)", re.IGNORECASE)
-
-
-def bear_cmd():
-    global _bear_cmd
-    if _bear_cmd == '<uninitialized>':
-        try:
-            output = _check_output_str(['bear', '--version'], stderr=subprocess.STDOUT)
-        except OSError:
-            output = ''
-        m = _bear_version_regex.search(output)
-        if m:
-            if int(m.group(1)) >= 3:
-                _bear_cmd = ['bear', '--append', '--']
-            else:
-                _bear_cmd = ['bear', '-a']
-        else:
-            _bear_cmd = None
-    return _bear_cmd
-
-
 def expandvars_in_property(value):
     result = expandvars(value)
     if '$' in result or '%' in result:
@@ -17139,6 +17123,8 @@ def main():
             abort('mx: unknown command \'{0}\'\n{1}use "mx help" for more options'.format(command, _format_commands()))
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
+
+    mx_compdb.init()
 
     c = _mx_commands.commands()[command]
 
