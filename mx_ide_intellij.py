@@ -453,7 +453,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
             moduleXml.close('module')
             moduleFile = join(p.dir, p.name + '.iml')
-            mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
+            mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n').rstrip())
 
             if not module_files_only:
                 declared_modules.add(p.name)

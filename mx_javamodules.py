@@ -311,7 +311,8 @@ def get_module_deps(dist):
             return roots
         for root in roots:
             if not root.isJARDistribution():
-                mx.abort('moduledeps can (currently) only include JAR distributions: ' + str(root), context=dist)
+                mx.abort('moduledeps can only include JAR distributions: {}\n'
+                         'Try updating to mxversion >= 5.34.4 where `moduledeps` is not needed.'.format(root), context=dist)
 
         moduledeps = []
         def _visit(dep, edges):
@@ -320,7 +321,8 @@ def get_module_deps(dist):
                     if dep not in moduledeps:
                         moduledeps.append(dep)
                 else:
-                    mx.abort('modules can (currently) only include JAR distributions and Java projects: ' + str(dep), context=dist)
+                    mx.abort('modules can only include JAR distributions and Java projects: {}\n'
+                             'Try updating to mxversion >= 5.34.4 where `moduledeps` is not needed.'.format(dep), context=dist)
         def _preVisit(dst, edge):
             return not dst.isJreLibrary() and not dst.isJdkLibrary()
         mx.walk_deps(roots, preVisit=_preVisit, visit=_visit)
@@ -549,6 +551,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
 
         jdk_modules = list(jdk.get_modules())
         java_projects = [d for d in module_deps if d.isJavaProject()]
+        java_libraries = [d for d in module_deps if d.isLibrary()]
 
         # Collect packages in the module first
         with mx.Timer('packages', times):
@@ -693,6 +696,25 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     # all packages are exported.
                     default_exported_java_packages = [] if module_info else project.defined_java_packages()
                     _process_exports(getattr(project, 'exports', default_exported_java_packages), project.defined_java_packages(), project)
+
+        if enhanced_module_usage_info:
+            with mx.Timer('libraries', times):
+                for library in java_libraries:
+                    base_uses.update(getattr(library, 'uses', []))
+                    for m in getattr(library, 'runtimeDeps', []):
+                        requires.setdefault(m, set()).add('static')
+
+                    requires_concealed = getattr(library, 'requiresConcealed', None)
+                    if requires_concealed is not None:
+                        concealed = {}
+                        parse_requiresConcealed_attribute(jdk, requires_concealed, concealed, None, library)
+                        for module, packages in concealed.items():
+                            concealedRequires.setdefault(module, set()).update(packages)
+                    for module in getattr(library, 'requires', []):
+                        requires.setdefault(module, set())
+
+                    if not module_info:
+                        mx.warn("Module {} re-packages library {} but doesn't have a `moduleInfo` attribute. Note that library packages are not auto-exported")
 
         build_directory = mx.ensure_dir_exists(moduleJar + ".build")
         try:
