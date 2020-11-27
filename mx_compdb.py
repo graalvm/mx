@@ -156,8 +156,8 @@ class CompdbCapture:
             if db:
                 db.mergeString(self.data)
 
-def merge_compdb(subject):
-    inFile = os.path.join(subject.suite.dir, subject.getOutput(), 'compile_commands.json')
+def merge_compdb(path):
+    inFile = os.path.join(path, 'compile_commands.json')
     if os.path.exists(inFile):
         with Compdb() as db:
             if db:
