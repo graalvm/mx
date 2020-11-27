@@ -32,6 +32,7 @@ import subprocess
 import sys
 
 import mx
+import mx_compdb
 import mx_subst
 
 
@@ -102,6 +103,9 @@ class Ninja(object):
         else:
             assert out.lines == ['ninja: no work to do.']
             return False, out.lines[0]
+
+    def compdb(self, out):
+        self._run('-t', 'compdb', out=out)
 
     def build(self):
         self._run()
@@ -403,6 +407,9 @@ class NinjaBuildTask(TargetArchBuildTask):
                         and not filecmp.cmp(self._manifest, sfc.tmpPath, shallow=False):
                     self.ninja.clean()
 
+        with mx_compdb.CompdbCapture(self.subject.suite) as out:
+            if out:
+                self.ninja.compdb(out=out)
         self.ninja.build()
 
     def clean(self, forBuild=False):
