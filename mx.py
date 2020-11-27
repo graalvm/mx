@@ -7915,7 +7915,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
     def build(self):
         cmdline, cwd, env = self._build_run_args()
         run(cmdline, cwd=cwd, env=env)
-        mx_compdb.merge_compdb(path=cwd)
+        mx_compdb.merge_compdb(subject=self.subject, path=cwd)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):

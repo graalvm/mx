@@ -91,31 +91,29 @@ def init():
         else:
             _compdb_path = os.path.abspath(o)
 
+def enabled():
+    return _compdb_path is not None
+
 def gmake_with_compdb_cmd():
-    if _compdb_path is None:
-        return [mx.gmake_cmd()]
-    else:
+    if enabled():
         return gmake_with_bear(append=True)
+    else:
+        return [mx.gmake_cmd()]
 
 class Compdb:
     def __init__(self):
-        self.enabled = _compdb_path is not None
         self.content = {}
 
     def __enter__(self):
-        if self.enabled:
-            _compdb_lock.acquire()
-            if os.path.exists(_compdb_path):
-                self.mergeFile(_compdb_path)
-            return self
-        else:
-            return None
+        _compdb_lock.acquire()
+        if os.path.exists(_compdb_path):
+            self.mergeFile(_compdb_path)
+        return self
 
     def __exit__(self, *args):
-        if self.enabled:
-            with open(_compdb_path, 'w') as f:
-                json.dump(list(self.content.values()), f, indent=4)
-            _compdb_lock.release()
+        with open(_compdb_path, 'w') as f:
+            json.dump(list(self.content.values()), f, indent=4)
+        _compdb_lock.release()
 
     def merge(self, data):
         for item in data:
@@ -146,19 +144,21 @@ class CompdbCapture:
         self.data += data
 
     def __enter__(self):
-        if _compdb_path is not None:
+        if enabled():
             return self
         else:
             return None
 
     def __exit__(self, *args):
-        with Compdb() as db:
-            if db:
+        if enabled():
+            with Compdb() as db:
                 db.mergeString(self.data)
 
-def merge_compdb(path):
-    inFile = os.path.join(path, 'compile_commands.json')
-    if os.path.exists(inFile):
+def merge_compdb(subject, path):
+    if enabled():
         with Compdb() as db:
-            if db:
+            inFile = os.path.join(path, 'compile_commands.json')
+            if os.path.exists(inFile):
                 db.mergeFile(inFile)
+            else:
+                mx.warn("JSON compilation database for %s not found (expected at %s)." % (subject, inFile))
