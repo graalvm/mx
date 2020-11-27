@@ -17167,7 +17167,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.277.0")  # library module metadata
+version = VersionSpec("5.278.1")  #  Revert "[GR-27764] Produce JSON compilation database from make and ninja projects."
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
