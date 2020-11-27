@@ -563,10 +563,6 @@ environment variables:
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
         self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
         self.add_argument('--dump-task-stats', help='Dump CSV formatted start/end timestamps for each build task. If set to \'-\' it will print it to stdout, otherwise the CSV will be written to <path>', metavar='<path>', default=None)
-        self.add_argument('--compdb', action='store', metavar='<file>', help="generate a JSON compilation database for native "
-                                "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
-                                "be stored in the parent directory of the repository containing the primary suite. This option "
-                                "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -3523,7 +3519,6 @@ import mx_downstream
 import mx_subst
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
-import mx_compdb
 
 from mx_javamodules import make_java_module # pylint: disable=unused-import
 from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -7881,7 +7876,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = mx_compdb.gmake_with_compdb_cmd()
+        cmdline = [gmake_cmd()] if bear_cmd() is None else bear_cmd() + [gmake_cmd()]
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -7904,7 +7899,6 @@ class NativeBuildTask(AbstractNativeBuildTask):
     def build(self):
         cmdline, cwd, env = self._build_run_args()
         run(cmdline, cwd=cwd, env=env)
-        mx_compdb.merge_compdb(subject=self.subject)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
@@ -13600,6 +13594,19 @@ def gmake_cmd():
             abort('Could not find a GNU make executable on the current path.')
     return _gmake_cmd
 
+_bear_cmd = '<uninitialized>'
+
+
+def bear_cmd():
+    global _bear_cmd
+    if _bear_cmd == '<uninitialized>':
+        try:
+            output = _check_output_str(['bear', '--help'], stderr=subprocess.STDOUT)
+        except OSError:
+            output = ''
+        _bear_cmd = ['bear', '-a'] if 'usage: bear' in output else None
+    return _bear_cmd
+
 
 def expandvars_in_property(value):
     result = expandvars(value)
@@ -17124,8 +17131,6 @@ def main():
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
-    mx_compdb.init()
-
     c = _mx_commands.commands()[command]
 
     if primarySuiteMxDir and should_load_suites:
@@ -17162,7 +17167,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.278.0")  # JSON compilation database
+version = VersionSpec("5.278.1")  #  Revert "[GR-27764] Produce JSON compilation database from make and ninja projects."
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
