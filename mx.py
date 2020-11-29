@@ -5121,6 +5121,10 @@ class Distribution(Dependency):
     def post_init(self):
         pass
 
+    def extra_suite_revisions_data(self):
+        yield None, {}
+
+
 from mx_jardistribution import JARDistribution
 
 class JMHArchiveParticipant:
@@ -10901,6 +10905,11 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
                     "date": datetime.utcfromtimestamp(commit_timestamp).isoformat(),
                     "kind": s_.vc.kind
                 })
+        for d_ in dists:
+            for extra_data_tag, extra_data_attributes in d_.extra_suite_revisions_data():
+                if extra_data_tag:
+                    repo_metadata_xml.element(extra_data_tag, attributes=extra_data_attributes)
+
         repo_metadata_xml.close('suite-revisions')
         repo_metadata_fd, repo_metadata_name = mkstemp(suffix='.xml', text=True)
         repo_metadata = repo_metadata_xml.xml(indent='  ', newl='\n')
