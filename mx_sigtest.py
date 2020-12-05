@@ -58,7 +58,7 @@ def sigtest(args, suite=None, projects=None):
 
 def _sigtest_generate(args, suite=None, projects=None):
     """run sigtest generator for Java projects with API"""
-    sigtestlib = mx.library('SIGTEST').get_path(resolve=True)
+    sigtestlib = mx.primary_suite().getMxCompatibility().get_sigtest_jar()
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 0
@@ -86,7 +86,7 @@ def _sigtest_generate(args, suite=None, projects=None):
 
 def _sigtest_check(checktype, args, suite=None, projects=None):
     """run sigtest against Java projects with API"""
-    sigtestlib = mx.library('SIGTEST').get_path(resolve=True)
+    sigtestlib = mx.primary_suite().getMxCompatibility().get_sigtest_jar()
     nonTestProjects = [p for p in mx.projects() if _should_test_project(p)]
     if not nonTestProjects:
         return 1
