@@ -218,6 +218,12 @@ class MxCompatibility500(object):
         """
         return False
 
+    def get_sigtest_jar(self):
+        """
+        Returns the proper version of the SIGTEST jar used by `mx sigtest`.
+        """
+        return mx.library('SIGTEST_1_2').get_path(resolve=True)
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -487,6 +493,15 @@ class MxCompatibility52710(MxCompatibility52310):
 
     def validate_maven_javadoc(self):
         return True
+
+
+class MxCompatibility52791(MxCompatibility52710):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.279.1")
+
+    def get_sigtest_jar(self):
+        return mx.library('SIGTEST_1_3').get_path(resolve=True)
 
 
 def minVersion():

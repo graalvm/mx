@@ -145,7 +145,16 @@ suite = {
       "sha1" : "8f961e0ddd445cc4e89b18563ac5730766d220f1",
     },
 
-    "SIGTEST" : {
+    "SIGTEST_1_2" : {
+      "maven": {
+        "groupId": "org.netbeans.tools",
+        "artifactId": "sigtest-maven-plugin",
+        "version": "1.2",
+      },
+      "sha1": "d5cc2cd2a20963b86cf95397784bc7e74101c7a9",
+    },
+
+    "SIGTEST_1_3" : {
       "maven": {
         "groupId": "org.netbeans.tools",
         "artifactId": "sigtest-maven-plugin",
