@@ -17180,7 +17180,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.279.1")  # sigtest 1.3
+version = VersionSpec("5.279.2")  # sigtest 1.3
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
