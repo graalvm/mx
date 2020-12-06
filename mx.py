@@ -15254,7 +15254,7 @@ def verifysourceinproject(args):
 
     return retcode
 
-def _find_packages(project, onlyPublic=True, included=None, excluded=None):
+def _find_packages(project, onlyPublic=True, included=None, excluded=None, packageInfos=None):
     """
     Finds the set of packages defined by a project.
 
@@ -15279,11 +15279,15 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None):
     packages = set()
     for sourceDir in sourceDirs:
         for root, _, files in os.walk(sourceDir):
+            package = root[len(sourceDir) + 1:].replace(os.sep, '.')
             if is_visible(root, files):
-                package = root[len(sourceDir) + 1:].replace(os.sep, '.')
                 if not included or package in included:
                     if not excluded or package not in excluded:
                         packages.add(package)
+            if packageInfos != None:
+                for name in files:
+                    if name == 'package-info.java':
+                        packageInfos.add(package)
     return packages
 
 def _get_javadoc_module_args(project, jdk):
@@ -17180,7 +17184,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.279.2")  # sigtest 1.3
+version = VersionSpec("5.279.3")  # GR-22788
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

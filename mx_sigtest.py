@@ -67,15 +67,35 @@ def _sigtest_generate(args, suite=None, projects=None):
         sigtestlib = p.suite.getMxCompatibility().get_sigtest_jar()
         sigtestResults = p.dir + os.sep + 'snapshot.sigtest'
         jdk = mx.get_jdk(javaCompliance)
+        cp = mx.classpath(p, jdk=jdk)
         cmd = ['-cp', mx._cygpathU2W(sigtestlib), 'com.sun.tdk.signaturetest.Setup',
             '-BootCP',
             '-Static', '-FileName', sigtestResults,
-            '-ClassPath', mx.classpath(p, jdk=jdk),
+            '-ClassPath', cp,
         ]
         if args.human:
             cmd.append('-H')
-        for pkg in mx._find_packages(p):
+
+        infos = set()
+        packages = mx._find_packages(p, packageInfos=infos)
+        for pkg in packages:
             cmd = cmd + ['-PackageWithoutSubpackages', pkg]
+
+        javapExe = jdk.javap
+        if not exists(javapExe):
+            mx.abort('The javap executable does not exist: ' + javapExe)
+        class OutputCapture:
+            def __init__(self):
+                self.data = ""
+            def __call__(self, data):
+                self.data += data
+        for pkg in infos:
+            oc = OutputCapture()
+            ignore = OutputCapture()
+            code = mx.run([javapExe, '-private', '-verbose', '-classpath', cp, pkg + '.package-info'], out=oc, err=ignore, nonZeroIsFatal=False)
+            if code == 0:
+                if oc.data.find('\nRuntimeVisibleAnnotations:\n') == -1 and oc.data.find('\nRuntimeInvisibleAnnotations:\n') == -1:
+                    mx.abort('GR-22788: ecj generated an empty {}.package-info: rebuild with javac!'.format(pkg))
         exitcode = mx.run_java(cmd, nonZeroIsFatal=False, jdk=mx.get_jdk(javaCompliance))
         if exitcode != 95:
             mx.abort('Exit code was ' + str(exitcode) + ' while generating ' + sigtestResults)
