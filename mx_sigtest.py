@@ -83,7 +83,7 @@ def _sigtest_generate(args, suite=None, projects=None):
 
         javapExe = jdk.javap
         if not exists(javapExe):
-            abort('The javap executable does not exist: ' + javapExe)
+            mx.abort('The javap executable does not exist: ' + javapExe)
         class OutputCapture:
             def __init__(self):
                 self.data = ""
