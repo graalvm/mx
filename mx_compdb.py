@@ -72,6 +72,9 @@ _compdb_lock = None
 
 def _default_compdb_path():
     suite = mx.primary_suite()
+    if suite is None:
+        # no primary suite, don't try to enable compdb
+        return None
     if suite.vc_dir:
         return os.path.join(os.path.dirname(suite.vc_dir), 'compile_commands.json')
     else:
