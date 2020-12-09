@@ -3826,14 +3826,14 @@ def is_cygwin():
     return sys.platform.startswith('cygwin')
 
 
-def get_os():
-    """
-    Get a canonical form of sys.platform.
-    """
+def _get_os():
     if is_darwin():
         return 'darwin'
     elif is_linux():
-        return 'linux'
+        if 'musl' in _check_output_str(['ldd', sys.executable]):
+            return 'linux-musl'
+        else:
+            return 'linux'
     elif is_openbsd():
         return 'openbsd'
     elif is_sunos():
@@ -3844,6 +3844,20 @@ def get_os():
         return 'cygwin'
     else:
         abort('Unknown operating system ' + sys.platform)
+
+
+_os = None
+
+def get_os():
+    """
+    Get a canonical form of sys.platform.
+    """
+    global _os
+    if not _os:
+        _os = _get_os()
+        if _opts and _opts.verbose:
+            log('OS detected: %s' % _os)
+    return _os
 
 
 def _is_process_alive(p):

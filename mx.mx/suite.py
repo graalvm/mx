@@ -519,6 +519,12 @@ suite = {
             "optional" : True
           }
         },
+        "linux-musl" : {
+          "amd64" : {
+            "urls" : ["https://download.bell-sw.com/graalvm/ninja-1.10.1-x86_64-linux-musl.zip"],
+            "sha1" : "0f3d92566d116edc06e7a983ec1bbc4d4a9e9c2d"
+          }
+        },
         "darwin" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
