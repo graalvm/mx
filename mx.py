@@ -3853,7 +3853,7 @@ def get_os():
     Get a canonical form of sys.platform.
     """
     global _os
-    if not _os:
+    if _os is None:
         _os = _get_os()
         if _opts and _opts.verbose:
             log('OS detected: %s' % _os)
