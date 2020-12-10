@@ -2176,9 +2176,12 @@ class Suite(object):
     def _pop_os_arch(attrs, context):
         os_arch = attrs.pop('os_arch', None)
         if os_arch:
-            os_attrs = os_arch.pop(get_os(), None)
-            if not os_attrs:
-                os_attrs = os_arch.pop('<others>', None)
+            os_key = get_os_variant()
+            if not os_key in os_arch and '-' in os_key:
+                os_key = os_key.split('-')[0]
+            if not os_key in os_arch:
+                os_key = '<others>'
+            os_attrs = os_arch.pop(os_key, None)
             if os_attrs:
                 arch_attrs = os_attrs.pop(get_arch(), None)
                 if not arch_attrs:
@@ -2188,7 +2191,7 @@ class Suite(object):
                 else:
                     warn("No platform-specific definition is available for {} for your architecture ({})".format(context, get_arch()))
             else:
-                warn("No platform-specific definition is available for {} for your OS ({})".format(context, get_os()))
+                warn("No platform-specific definition is available for {} for your OS ({})".format(context, get_os_variant()))
         return None
 
     @staticmethod
@@ -3826,14 +3829,14 @@ def is_cygwin():
     return sys.platform.startswith('cygwin')
 
 
-def _get_os():
+def get_os():
+    """
+    Get a canonical form of sys.platform.
+    """
     if is_darwin():
         return 'darwin'
     elif is_linux():
-        if 'musl' in _check_output_str(['ldd', sys.executable]):
-            return 'linux-musl'
-        else:
-            return 'linux'
+        return 'linux'
     elif is_openbsd():
         return 'openbsd'
     elif is_sunos():
@@ -3846,18 +3849,17 @@ def _get_os():
         abort('Unknown operating system ' + sys.platform)
 
 
-_os = None
+_os_variant = None
 
-def get_os():
-    """
-    Get a canonical form of sys.platform.
-    """
-    global _os
-    if _os is None:
-        _os = _get_os()
+def get_os_variant():
+    global _os_variant
+    if _os_variant is None:
+        _os_variant = get_os()
+        if _os_variant == 'linux' and 'musl' in _check_output_str(['ldd', sys.executable]):
+            _os_variant = 'linux-musl'
         if _opts and _opts.verbose:
-            log('OS detected: %s' % _os)
-    return _os
+            log('OS detected: %s' % _os_variant)
+    return _os_variant
 
 
 def _is_process_alive(p):
