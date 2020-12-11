@@ -14558,11 +14558,14 @@ def unstrip(args, **run_java_kwargs):
                     with open(temp_file, 'w') as fp:
                         fp.write(new_contents)
                     inputfiles.append(temp_file)
+                    temp_files.append(temp_file)
                 else:
                     inputfiles.append(arg)
-        with tempfile.NamedTemporaryFile(mode='w') as catmapfile:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as catmapfile:
             _merge_file_contents(mapfiles, catmapfile)
-            run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
+        catmapfile.close()
+        temp_files.append(catmapfile.name)
+        run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
     finally:
         for temp_file in temp_files:
             os.unlink(temp_file)
@@ -15284,7 +15287,7 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
                 if not included or package in included:
                     if not excluded or package not in excluded:
                         packages.add(package)
-            if packageInfos != None:
+            if packageInfos is not None:
                 for name in files:
                     if name == 'package-info.java':
                         packageInfos.add(package)
@@ -17184,7 +17187,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.280.0")  # GR-27569
+version = VersionSpec("5.280.1")  # GR-28136
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
