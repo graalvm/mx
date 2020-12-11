@@ -1214,6 +1214,17 @@ class GuestVm(Vm): #pylint: disable=R0921
         """
         return self._host_vm
 
+    def rules(self, output, benchmarks, bmSuiteArgs):
+        """Returns a list of rules required to parse the standard output.
+
+        :param string output: Contents of the standard output.
+        :param list benchmarks: List of benchmarks that were run.
+        :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
+        :return: List of StdOutRule parse rules.
+        :rtype: list
+        """
+        return super(GuestVm, self).rules(output, benchmarks, bmSuiteArgs) + self.host_vm().rules(output, benchmarks, bmSuiteArgs)
+
 
 class JavaVm(Vm):
     pass
