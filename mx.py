@@ -7835,11 +7835,13 @@ class NativeProject(AbstractNativeProject):
 
 ### ~~~~~~~~~~~~~ Build Tasks
 class AbstractNativeBuildTask(ProjectBuildTask):
+    default_parallelism = 8
+
     def __init__(self, args, project):
         # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
         # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
         # how much parallelism the build machine supports.
-        jobs = min(int(getattr(project, 'max_jobs', 8)), cpu_count())
+        jobs = min(int(getattr(project, 'max_jobs', self.default_parallelism)), cpu_count())
         super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
 
     def buildForbidden(self):
@@ -7857,7 +7859,7 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         if is_needed:
             return True, reason
 
-        output = self.newestOutput() # pylint: disable=assignment-from-no-return
+        output = self.newestOutput()  # pylint: disable=assignment-from-no-return
         if output is None:
             return True, None
 
