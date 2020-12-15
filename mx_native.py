@@ -355,6 +355,17 @@ class NinjaProject(MultiarchProject):
 
 
 class NinjaBuildTask(TargetArchBuildTask):
+    default_parallelism = 1
+    """
+    By default, we disable parallelism per project for the following reasons:
+        #. It allows mx to build whole projects in parallel, which works well for
+           smallish projects like ours.
+        #. It is a safe default in terms of compatibility. Although projects may
+           explicitly request greater parallelism, that may not work out of the
+           box. In particular, the parallelization of debug builds on Windows may
+           require special consideration.
+    """
+
     def __init__(self, args, project, target_arch=mx.get_arch()):
         super(NinjaBuildTask, self).__init__(args, project, target_arch)
         self._reason = None
@@ -624,8 +635,6 @@ class DefaultNativeProject(NinjaProject):
     @property
     def cflags(self):
         default_cflags = []
-        if mx.is_windows() and mx.get_jdk(tag=mx.DEFAULT_JDK_TAG).javaCompliance >= '11':
-            default_cflags += ['-FS']  # necessary until GR-16572 is resolved
         if self._kind == self._kinds['shared_lib']:
             default_cflags += dict(
                 windows=['-MD'],
@@ -635,6 +644,7 @@ class DefaultNativeProject(NinjaProject):
             # Do not leak host paths via dwarf debuginfo
             def add_debug_prefix(prefix_dir):
                 return '-fdebug-prefix-map={}={}'.format(prefix_dir, mx.basename(prefix_dir))
+
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
             default_cflags += [add_debug_prefix(NinjaProject.get_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
