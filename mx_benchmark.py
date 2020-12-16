@@ -1606,7 +1606,9 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         jvm = self.getJavaVm(bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs)
         args = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
-        _, out, _ = jvm.run(cwd, args + self.jmhBenchmarkFilter(bmSuiteArgs) + ["-l"])
+        exit_code, out, _ = jvm.run(cwd, args + self.jmhBenchmarkFilter(bmSuiteArgs) + ["-l"])
+        if exit_code != 0:
+            raise ValueError("JMH benchmark list extraction failed!")
         benchs = out.splitlines()
         linenumber = -1
         for linenumber in range(len(benchs)):
