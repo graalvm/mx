@@ -2176,9 +2176,11 @@ class Suite(object):
     def _pop_os_arch(attrs, context):
         os_arch = attrs.pop('os_arch', None)
         if os_arch:
-            os_key = get_os_variant()
-            if not os_key in os_arch and '-' in os_key:
-                os_key = os_key.split('-')[0]
+            os_key = None
+            if get_os_variant():
+                os_key = get_os() + '-' + get_os_variant()
+            if os_key is None or not os_key in os_arch:
+                os_key = get_os()
             if not os_key in os_arch:
                 os_key = '<others>'
             os_attrs = os_arch.pop(os_key, None)
@@ -2191,7 +2193,7 @@ class Suite(object):
                 else:
                     warn("No platform-specific definition is available for {} for your architecture ({})".format(context, get_arch()))
             else:
-                warn("No platform-specific definition is available for {} for your OS ({})".format(context, get_os_variant()))
+                warn("No platform-specific definition is available for {} for your OS ({})".format(context, get_os()))
         return None
 
     @staticmethod
@@ -3854,11 +3856,12 @@ _os_variant = None
 def get_os_variant():
     global _os_variant
     if _os_variant is None:
-        _os_variant = get_os()
-        if _os_variant == 'linux' and 'musl' in _check_output_str(['ldd', sys.executable]):
-            _os_variant = 'linux-musl'
+        if get_os() == 'linux' and 'musl' in _check_output_str(['ldd', sys.executable]):
+            _os_variant = 'musl'
+        else:
+            _os_variant = ''
         if _opts and _opts.verbose:
-            log('OS detected: %s' % _os_variant)
+            log('OS variant detected: %s' % (_os_variant if _os_variant else 'none'))
     return _os_variant
 
 
