@@ -2179,9 +2179,9 @@ class Suite(object):
             os_key = None
             if get_os_variant():
                 os_key = get_os() + '-' + get_os_variant()
-            if os_key is None or not os_key in os_arch:
+            if os_key is None or os_key not in os_arch:
                 os_key = get_os()
-            if not os_key in os_arch:
+            if os_key not in os_arch:
                 os_key = '<others>'
             os_attrs = os_arch.pop(os_key, None)
             if os_attrs:
