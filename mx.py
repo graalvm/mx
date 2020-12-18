@@ -3860,8 +3860,7 @@ def get_os_variant():
             _os_variant = 'musl'
         else:
             _os_variant = ''
-        if _opts and _opts.verbose:
-            log('OS variant detected: %s' % (_os_variant if _os_variant else 'none'))
+        logv('OS variant detected: {}'.format(_os_variant if _os_variant else 'none'))
     return _os_variant
 
 
