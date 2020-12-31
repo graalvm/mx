@@ -17184,7 +17184,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.280.7")  # Do not log every IDE file created/modified
+version = VersionSpec("5.280.8")  # [GR-25875] Add top level coverage page that shows the totals for each component.
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
