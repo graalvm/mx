@@ -994,6 +994,170 @@ def coverage_upload(args):
        <button style="float: right;" onclick="copy(window.location);">Share url</button>
     </body>
 </html>""".replace("%js_library_url", js_library_url), remote_basedir + '/navigation.html')
+    jquery_library_url = rewriteurl("http://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js")
+    upload_string(r""" <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+    <style>
+        body,
+        td {
+            font-family: sans-serif;
+            font-size: 10pt;
+        }
+
+        h1 {
+            font-weight: bold;
+            font-size: 18pt;
+        }
+
+        table.coverage {
+            empty-cells: show;
+            border-collapse: collapse;
+        }
+
+        table.coverage thead {
+            background-color: #e0e0e0;
+        }
+
+        table.coverage thead td {
+            white-space: nowrap;
+            padding: 2px 14px 0px 6px;
+            border-bottom: #b0b0b0 1px solid;
+        }
+
+        table.coverage thead td.bar {
+            border-left: #cccccc 1px solid;
+        }
+
+        table.coverage thead td.ctr1 {
+            text-align: right;
+            border-left: #cccccc 1px solid;
+        }
+
+        table.coverage thead td.ctr2 {
+            text-align: right;
+            padding-left: 2px;
+        }
+
+        table.coverage thead td.sortable {
+            cursor: pointer;
+            background-position: right center;
+            background-repeat: no-repeat;
+        }
+
+        table.coverage tbody td {
+            white-space: nowrap;
+            padding: 2px 6px 2px 6px;
+            border-bottom: #d6d3ce 1px solid;
+        }
+
+        table.coverage tbody tr:hover {
+            background: #f0f0d0 !important;
+        }
+
+        table.coverage tbody td.bar {
+            border-left: #e8e8e8 1px solid;
+        }
+
+        table.coverage tbody td.ctr1 {
+            text-align: right;
+            padding-right: 14px;
+            border-left: #e8e8e8 1px solid;
+        }
+
+        table.coverage tbody td.ctr2 {
+            text-align: right;
+            padding-right: 14px;
+            padding-left: 2px;
+        }
+    </style>
+    <title>Total latest graal coverage information</title>
+    <script src="%jquery_library_url" type="text/javascript"></script>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            var groupBy = function (xs, key) {
+                return xs.reduce(function (rv, x) {
+                    (rv[x[key]] = rv[x[key]] || []).push(x);
+                    return rv;
+                }, {});
+            };
+
+            $.get('index.json', function (data) {
+                var data = data.filter(x => x != null);
+                /*
+                    #GR-17399
+                    Filter build that are unique per suite with revision as key and merge builds.
+                */
+                data = data
+                    .filter(x => !x.hasOwnProperty('merge'))
+                    .filter( // filter builds that are unique per suite with revision as key
+                        x => !data
+                            .filter(z => x != z && x.jdk_version == z.jdk_version && x.suite == z.suite) // exclude self build and build for other suites.
+                            .map(z => z.revision) // map from array of build to array of revision
+                            .includes(x.revision) // check if revision of x is index data.
+                    ).concat(data.filter(x => x.hasOwnProperty('merge'))); // concat unique build with merged build.
+
+                data.sort((l, r) => r.timestamp - l.timestamp);
+
+                // Group index data by suite.
+                data = groupBy(data, 'suite');
+
+                // Get latest coverage data for each suite. 
+                for (const [key, value] of Object.entries(data)) {
+                    data[key] = value[0];
+
+                }
+                
+                for (const [suite_name, report] of Object.entries(data)) {
+
+                    // Get Total Data for each suite for latest coverage report
+                    if(suite_name === "consolidated"){
+                        continue;
+                    }
+                    $.get(report.directory+"/coverage/index.html", function (data) {
+                        var html = $(data);
+                        var total_information = $('tfoot > tr', html);
+                        var suite_link = "<a href='" + report.directory+"/coverage/index.html" + "' target='_blank'>" + suite_name + "<a/>";
+                        // Add link element instend of total text.
+                        $('td:first-child', total_information).html(suite_link);
+                        // Add Total for each suite to tbody of this document
+                        $('tbody').append(total_information);
+                    });
+                }
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <h1>Total graal coverage information</h1>
+    <table class="coverage" cellspacing="0" id="coveragetable">
+        <thead>
+            <tr>
+                <td class="sortable" id="a" >Suite</td>
+                <td class="down sortable bar" id="b" >Missed Instructions</td>
+                <td class="sortable ctr2" id="c" >Cov.</td>
+                <td class="sortable bar" id="d" >Missed Branches</td>
+                <td class="sortable ctr2" id="e" >Cov.</td>
+                <td class="sortable ctr1" id="f" >Missed</td>
+                <td class="sortable ctr2" id="g" >Cxty</td>
+                <td class="sortable ctr1" id="h" >Missed</td>
+                <td class="sortable ctr2" id="i" >Lines</td>
+                <td class="sortable ctr1" id="j" >Missed</td>
+                <td class="sortable ctr2" id="k" >Methods</td>
+                <td class="sortable ctr1" id="l" >Missed</td>
+                <td class="sortable ctr2" id="m" >Classes</td>
+            </tr>
+        </thead>
+        <tbody>
+
+        </tbody>
+    </table>
+</body>
+</html>""".replace("%jquery_library_url", jquery_library_url), remote_basedir + "/total.html")
+
 
 def sonarqube_upload(args):
     """run SonarQube scanner and upload JaCoCo results"""
