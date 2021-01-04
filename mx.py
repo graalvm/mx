@@ -4306,14 +4306,14 @@ def update_file(path, content, showDiff=False):
             f.write(content)
 
         if existed:
-            log('modified ' + path)
+            logv('modified ' + path)
             if _opts.backup_modified:
                 log('backup ' + path + '.orig')
             if showDiff:
                 log('diff: ' + path)
                 log(''.join(difflib.unified_diff(old.splitlines(1), content.splitlines(1))))
         else:
-            log('created ' + path)
+            logv('created ' + path)
         return True
     except IOError as e:
         abort('Error while writing to ' + path + ': ' + str(e))
