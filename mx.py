@@ -17184,7 +17184,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.280.6")  # Re-enable compilation database.
+version = VersionSpec("5.280.7")  # Do not log every IDE file created/modified
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
