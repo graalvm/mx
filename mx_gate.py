@@ -967,7 +967,7 @@ def coverage_upload(args):
                         if(!olddir){
                             newpath = "total.html";
                         }
-                        if(olddir.suite === dir.suite && ! contentDocument.location.href.includes('total.html') ) {
+                        else if(olddir.suite === dir.suite && ! contentDocument.location.href.includes('total.html') ) {
                             newpath = contentDocument.location.href.replace(olddir.directory, dir.directory);
                         } else {
                             newpath = dir.hasOwnProperty('hash') ? hash : dir.directory + "/coverage/";
