@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -319,7 +319,7 @@ public class CheckCopyright {
             String yearInCopyrightString = matcher.group(groupCount);
             yearInCopyright = Integer.parseInt(yearInCopyrightString);
             yearInCopyrightIndex = matcher.start(groupCount);
-            if (yearInCopyright != info.lastYear && currentYear != yearInCopyright) {
+            if (yearInCopyright < info.lastYear || currentYear < yearInCopyright) {
                 if (FIX.getValue()) {
                     // Use currentYear as that is what it will be when it's checked in!
                     LazyHeader.emit();
