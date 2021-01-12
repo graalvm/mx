@@ -4217,7 +4217,7 @@ def _attempt_download(url, path, jarEntryName=None):
 
     except (IOError, socket.timeout, _urllib_error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
-        log_error("Error reading from " + url + ": " + str(e))
+        log_error("Error downloading from " + url + " to " + path + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
         if isinstance(e, _urllib_error.HTTPError) and e.code == 500:
