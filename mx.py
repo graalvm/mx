@@ -14867,7 +14867,7 @@ def checkstyle(args):
 
             mustCheck = False
             if not args.force and batch.timestamp.exists():
-                mustCheck = batch.timestamp.isOlderThan(javafilelist)
+                mustCheck = (config and batch.timestamp.isOlderThan(config)) or batch.timestamp.isOlderThan(javafilelist)
             else:
                 mustCheck = True
 
