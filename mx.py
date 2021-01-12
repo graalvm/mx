@@ -4217,7 +4217,7 @@ def _attempt_download(url, path, jarEntryName=None):
 
     except (IOError, socket.timeout, _urllib_error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
-        log_error("Error reading from " + url + ": " + str(e))
+        log_error("Error downloading from " + url + " to " + path + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
         if isinstance(e, _urllib_error.HTTPError) and e.code == 500:
@@ -13528,7 +13528,7 @@ def log_error(msg=None):
     to redirect it.
     """
     if msg is None:
-        print(sys.stderr, file=sys.stderr)
+        print(file=sys.stderr)
     else:
         print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
@@ -13538,7 +13538,7 @@ def log_deprecation(msg=None):
     Write an deprecation warning to the console.
     """
     if msg is None:
-        print(sys.stderr, file=sys.stderr)
+        print(file=sys.stderr)
     else:
         print(colorize(str("[MX DEPRECATED] {}".format(msg)), color='yellow', stream=sys.stderr), file=sys.stderr)
 
@@ -17184,7 +17184,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.280.10")  # [GR-28545] Copyright check should not fail with a new year
+version = VersionSpec("5.280.11")  # [GR-28545] Copyright check should not fail with a new year
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
