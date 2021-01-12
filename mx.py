@@ -17184,7 +17184,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.280.10")  # [GR-28545] Copyright check should not fail with a new year
+version = VersionSpec("5.280.11")  # [GR-28545] Copyright check should not fail with a new year
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
