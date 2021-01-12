@@ -67,7 +67,7 @@ import json
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
@@ -14823,7 +14823,13 @@ def checkstyle(args):
 
     parser.add_argument('-f', action='store_true', dest='force', help='force checking (disables timestamp checking)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parser.add_argument('--filelist', type=FileType("r"), help='only check the files listed in the given file')
     args = parser.parse_args(args)
+
+    filelist = None
+    if args.filelist:
+        filelist = [os.path.abspath(line.strip()) for line in args.filelist.readlines()]
+        args.filelist.close()
 
     totalErrors = 0
 
@@ -14860,7 +14866,9 @@ def checkstyle(args):
         for sourceDir in sourceDirs:
             javafilelist = []
             for root, _, files in os.walk(sourceDir):
-                javafilelist += [join(root, name) for name in files if name.endswith('.java') and name != 'package-info.java']
+                for f in [join(root, name) for name in files if name.endswith('.java') if name != 'package-info.java']:
+                    if filelist is None or f in filelist:
+                        javafilelist.append(f)
             if len(javafilelist) == 0:
                 logv('[no Java sources in {0} - skipping]'.format(sourceDir))
                 continue
