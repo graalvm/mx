@@ -200,7 +200,7 @@ def eclipseformat(args):
         jdk = mx.get_jdk()
 
         with tempfile.NamedTemporaryFile(mode='w') as tmp_eclipseini:
-            with open(join(dirname(args.eclipse_exe), join('..', 'eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
+            with open(join(dirname(args.eclipse_exe), join('..', 'Eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
                 locking_added = False
                 for line in src.readlines():
                     tmp_eclipseini.write(line)
