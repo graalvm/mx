@@ -14875,7 +14875,7 @@ def checkstyle(args):
 
             mustCheck = False
             if not args.force and batch.timestamp.exists():
-                mustCheck = (config and batch.timestamp.isOlderThan(config)) or batch.timestamp.isOlderThan(javafilelist)
+                mustCheck = (config and batch.timestamp.isOlderThan(config)) or batch.timestamp.isOlderThan(javafilelist) # pylint: disable=consider-using-ternary
             else:
                 mustCheck = True
 
