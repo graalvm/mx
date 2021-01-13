@@ -36,7 +36,7 @@ import re
 import difflib
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
-from os.path import join, basename, dirname, exists, isdir
+from os.path import join, basename, dirname, exists, isdir, abspath
 
 import mx
 import mx_ideconfig
@@ -61,6 +61,7 @@ def eclipseformat(args):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
     parser.add_argument('--restore', action='store_true', help='restore original files after the formatting job (does not create a backup).')
+    parser.add_argument('--filelist', type=FileType("r"), help='only format the files listed in the given file')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -79,6 +80,11 @@ def eclipseformat(args):
         mx.abort('File does not exist: ' + args.eclipse_exe)
     if not os.access(args.eclipse_exe, os.X_OK):
         mx.abort('Not an executable file: ' + args.eclipse_exe)
+
+    filelist = None
+    if args.filelist:
+        filelist = [abspath(line.strip()) for line in args.filelist.readlines()]
+        args.filelist.close()
 
     wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
 
@@ -175,7 +181,8 @@ def eclipseformat(args):
         for sourceDir in sourceDirs:
             for root, _, files in os.walk(sourceDir):
                 for f in [join(root, name) for name in files if name.endswith('.java')]:
-                    javafiles.append(FileInfo(f))
+                    if filelist is None or f in filelist:
+                        javafiles.append(FileInfo(f))
         if len(javafiles) == 0:
             mx.logv('[no Java sources in {0} - skipping]'.format(p.name))
             continue
