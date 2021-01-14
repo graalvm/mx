@@ -1206,8 +1206,6 @@ def _workingset_element(wsdoc, p):
 ### ~~~~~~~~~~~~~ _private, eclipse
 
 def _copy_eclipse_settings(p, files=None):
-    processors = p.annotation_processors()
-
     settingsDir = join(p.dir, ".settings")
     mx.ensure_dir_exists(settingsDir)
 
@@ -1223,8 +1221,6 @@ def _copy_eclipse_settings(p, files=None):
             content = out.getvalue().replace('${javaCompliance}', str(jc))
         else:
             content = out.getvalue()
-        if processors:
-            content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled', 'org.eclipse.jdt.core.compiler.processAnnotations=enabled')
         mx.update_file(join(settingsDir, name), content)
         if files:
             files.append(join(settingsDir, name))
