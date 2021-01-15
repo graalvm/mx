@@ -31,6 +31,7 @@ import os.path
 import platform
 import re
 import socket
+import subprocess
 import time
 import traceback
 import uuid
@@ -1460,6 +1461,79 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
             "metric.value": ("<bitnum>", int),
           }),
         ]
+
+
+class JMeterBenchmarkSuite(JavaBenchmarkSuite, AveragingBenchmarkMixin):
+    """Base class for JMeter based benchmark suites."""
+
+    def benchSuiteName(self):
+        return self.name()
+
+    def applicationPath(self):
+        """Returns the application Jar path.
+
+        :return: Path to Jar.
+        :rtype: str
+        """
+        raise NotImplementedError()
+
+    def workloadPath(self, benchmark):
+        """Returns the JMeter workload (.jmx file) path.
+
+        :return: Path to workload file.
+        :rtype: str
+        """
+        raise NotImplementedError()
+
+    def jmeterVersion(self):
+        return '5.3'
+
+    def jmeterPath(self):
+        jmeterCache = mx.library("APACHE_JMETER_" + self.jmeterVersion(), True).get_path(True)
+        return os.path.join(jmeterCache, "apache-jmeter-" + self.jmeterVersion(), "bin/ApacheJMeter.jar")
+
+    def validateReturnCode(self, retcode):
+        return retcode == 0
+
+    def tailDatapointsToSkip(self, results):
+        return int(len(results) * .10)
+
+    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if len(benchmarks) > 1:
+            mx.abort("A single benchmark should be specified for the selected suite.")
+        vmArgs = self.vmArgs(bmSuiteArgs)
+        runArgs = ["-jar", self.jmeterPath(), "-n", "-t", self.workloadPath(benchmarks[0]), "-j", "/dev/stdout"]
+        return vmArgs + runArgs
+
+    def rules(self, out, benchmarks, bmSuiteArgs):
+        # Example of jmeter output:
+        # "summary =     70 in 00:00:01 =   47.6/s Avg:    12 Min:     3 Max:   592 Err:     0 (0.00%)"
+        return [
+            StdOutRule(
+                r"^summary \+\s+(?P<requests>[0-9]+) in (?P<hours>\d+):(?P<minutes>\d\d):(?P<seconds>\d\d) =\s+(?P<throughput>\d*[.,]?\d*)/s Avg:\s+(?P<avg>\d+) Min:\s+(?P<min>\d+) Max:\s+(?P<max>\d+) Err:\s+(?P<errors>\d+) \((?P<errpct>\d*[.,]?\d*)\%\)", # pylint: disable=line-too-long
+                {
+                    "benchmark": benchmarks[0],
+                    "bench-suite": self.benchSuiteName(),
+                    "metric.name": "warmup",
+                    "metric.value": ("<throughput>", float),
+                    "metric.unit": "op/s",
+                    "metric.better": "higher",
+                    "metric.iteration": ("$iteration", int),
+                    "warnings": ("<errors>", str),
+                }
+            )
+        ]
+
+    def run(self, benchmarks, bmSuiteArgs):
+        application = subprocess.Popen([mx.get_jdk().java, "-jar", self.applicationPath()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # pylint: disable=line-too-long
+        results = super(JMeterBenchmarkSuite, self).run(benchmarks, bmSuiteArgs)
+        results = results[:len(results) - self.tailDatapointsToSkip(results)]
+        self.addAverageAcrossLatestResults(results, "throughput")
+        application.terminate()
+        stdout, stderr = application.communicate()
+        print(stdout)
+        print(stderr)
+        return results
 
 
 class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
