@@ -1342,6 +1342,9 @@ class Dependency(SuiteConstituent):
     def isZIPDistribution(self):
         return isinstance(self, AbstractZIPDistribution)
 
+    def isLayoutDistribution(self):
+        return isinstance(self, LayoutDistribution)
+
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
 
@@ -4464,7 +4467,10 @@ def _remove_unsatisfied_deps():
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
         elif dep.isTARDistribution():
-            prune(dep)
+            if dep.isLayoutDistribution():
+                prune(dep, discard=LayoutDistribution.canDiscard)
+            else:
+                prune(dep)
 
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
@@ -5550,6 +5556,14 @@ class LayoutDistribution(AbstractDistribution):
         self._removed_deps.add(d.qualifiedName())
         if d.suite == self.suite:
             self._removed_deps.add(d.name)
+
+    def canDiscard(self):
+        """Returns true if all dependencies have been removed and the layout does not specify any fixed sources (string:, file:)."""
+        return not (self.deps or self.buildDependencies or any(
+            # if there is any other source type (e.g., 'file' or 'string') we cannot remove it
+            source_dict['source_type'] not in ['dependency', 'extracted-dependency', 'skip']
+            for _, source_dict in self._walk_layout()
+        ))
 
     @staticmethod
     def _is_linky(path=None):
