@@ -7895,7 +7895,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = mx_compdb.gmake_with_compdb_cmd()
+        cmdline = mx_compdb.gmake_with_compdb_cmd(context=self.subject)
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -7962,7 +7962,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 env = os.environ.copy()
                 if hasattr(self.subject, "getBuildEnv"):
                     env.update(self.subject.getBuildEnv())
-                run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
+                run([gmake_cmd(context=self.subject), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
 class Extractor(_with_metaclass(ABCMeta, object)):
@@ -13603,7 +13603,7 @@ def flock_cmd():
 _gmake_cmd = '<uninitialized>'
 
 
-def gmake_cmd():
+def gmake_cmd(context=None):
     global _gmake_cmd
     if _gmake_cmd == '<uninitialized>':
         for a in ['make', 'gmake', 'gnumake']:
@@ -13615,7 +13615,7 @@ def gmake_cmd():
             except:
                 pass
         if _gmake_cmd == '<uninitialized>':
-            abort('Could not find a GNU make executable on the current path.')
+            abort('Could not find a GNU make executable on the current path.', context=context)
     return _gmake_cmd
 
 
