@@ -90,6 +90,7 @@ The pattern is rooted at the same level as the inclusion pattern.
 For `extracted-dependency`, the `dereference` property can set to:
 * `"never"` to copy without any de-referencing the source (like `cp -P`)
 * `"root"` (default) to only de-reference the root matches of the recursive copy (like `cp -H`)
+* `"always"` always de-reference the source before copying (like `cp -L`)
 
 ## Archive types
 

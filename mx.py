@@ -5611,7 +5611,7 @@ class LayoutDistribution(AbstractDistribution):
                 if source_type == 'extracted-dependency':
                     if 'dereference' not in source_dict:
                         source_dict["dereference"] = "root"
-                    elif source_dict["dereference"] not in ("root", "never"):
+                    elif source_dict["dereference"] not in ("root", "never", "always"):
                         raise abort("Unsupported dereference mode: '{}' in '{}'".format(source_dict["dereference"], destination), context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
@@ -5861,7 +5861,7 @@ class LayoutDistribution(AbstractDistribution):
                             extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
                             arcname = dest_arcname(new_name)
                             if tarinfo.issym():
-                                if root_match and dereference == "root":
+                                if dereference == "always" or (root_match and dereference == "root"):
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
