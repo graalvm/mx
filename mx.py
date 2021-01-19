@@ -5611,7 +5611,7 @@ class LayoutDistribution(AbstractDistribution):
                 if source_type == 'extracted-dependency':
                     if 'dereference' not in source_dict:
                         source_dict["dereference"] = "root"
-                    elif source_dict["dereference"] not in ("root", "never"):
+                    elif source_dict["dereference"] not in ("root", "never", "always"):
                         raise abort("Unsupported dereference mode: '{}' in '{}'".format(source_dict["dereference"], destination), context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
@@ -5813,6 +5813,9 @@ class LayoutDistribution(AbstractDistribution):
             first_file_box = [True]
             dest_arcname_prefix = os.path.relpath(unarchiver_dest_directory, output).replace(os.sep, '/')
 
+            if dest_arcname_prefix == '.' and self.suite.getMxCompatibility().fix_extracted_dependency_prefix():
+                dest_arcname_prefix = None
+
             def dest_arcname(src_arcname):
                 if not dest_arcname_prefix:
                     return src_arcname
@@ -5861,7 +5864,7 @@ class LayoutDistribution(AbstractDistribution):
                             extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
                             arcname = dest_arcname(new_name)
                             if tarinfo.issym():
-                                if root_match and dereference == "root":
+                                if dereference == "always" or (root_match and dereference == "root"):
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
@@ -17192,7 +17195,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.281.3")  # [GR-28769]
+version = VersionSpec("5.282.0")  # [GR-28834] extracted-dependencies add extra ./ prefix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
