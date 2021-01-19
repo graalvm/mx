@@ -5813,6 +5813,9 @@ class LayoutDistribution(AbstractDistribution):
             first_file_box = [True]
             dest_arcname_prefix = os.path.relpath(unarchiver_dest_directory, output).replace(os.sep, '/')
 
+            if dest_arcname_prefix == '.' and self.suite.getMxCompatibility().fix_extracted_dependency_prefix():
+                dest_arcname_prefix = None
+
             def dest_arcname(src_arcname):
                 if not dest_arcname_prefix:
                     return src_arcname
@@ -17192,7 +17195,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.281.3")  # [GR-28769]
+version = VersionSpec("5.282.0")  # [GR-28834] extracted-dependencies add extra ./ prefix
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

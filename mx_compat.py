@@ -224,6 +224,12 @@ class MxCompatibility500(object):
         """
         return mx.library('SIGTEST_1_2').get_path(resolve=True)
 
+    def fix_extracted_dependency_prefix(self):
+        """
+        Returns True if the `./` prefix should be removed from `extracted-dependency` sources of layout distributions.
+        """
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -502,6 +508,15 @@ class MxCompatibility52791(MxCompatibility52710):
 
     def get_sigtest_jar(self):
         return mx.library('SIGTEST_1_3').get_path(resolve=True)
+
+
+class MxCompatibility52820(MxCompatibility52791):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.282.0")
+
+    def fix_extracted_dependency_prefix(self):
+        return True
 
 
 def minVersion():
