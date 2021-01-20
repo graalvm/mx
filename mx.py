@@ -17209,7 +17209,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.282.0")  # [GR-28834] extracted-dependencies add extra ./ prefix
+version = VersionSpec("5.282.1")  # GR-28861 Do not remove LayoutDistributions with non-dependency sources
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
