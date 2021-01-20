@@ -50,10 +50,10 @@ def _get_bear_version():
     return _bear_version
 
 
-def gmake_with_bear(out=None, append=False):
+def gmake_with_bear(out=None, append=False, context=None):
     v = _get_bear_version()
     if v is None:
-        return [mx.gmake_cmd()]
+        return [mx.gmake_cmd(context=context)]
     else:
         ret = ['bear']
         if append:
@@ -63,7 +63,7 @@ def gmake_with_bear(out=None, append=False):
             ret.append(out)
         if v >= 3:
             ret.append('--')
-        ret.append(mx.gmake_cmd())
+        ret.append(mx.gmake_cmd(context=context))
         return ret
 
 
@@ -97,11 +97,11 @@ def init():
 def enabled():
     return _compdb_path is not None
 
-def gmake_with_compdb_cmd():
+def gmake_with_compdb_cmd(context=None):
     if enabled():
-        return gmake_with_bear(append=True)
+        return gmake_with_bear(append=True, context=context)
     else:
-        return [mx.gmake_cmd()]
+        return [mx.gmake_cmd(context=context)]
 
 class Compdb:
     def __init__(self):

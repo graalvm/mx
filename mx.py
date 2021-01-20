@@ -1342,6 +1342,9 @@ class Dependency(SuiteConstituent):
     def isZIPDistribution(self):
         return isinstance(self, AbstractZIPDistribution)
 
+    def isLayoutDistribution(self):
+        return isinstance(self, LayoutDistribution)
+
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
 
@@ -4464,7 +4467,10 @@ def _remove_unsatisfied_deps():
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
         elif dep.isTARDistribution():
-            prune(dep)
+            if dep.isLayoutDistribution():
+                prune(dep, discard=LayoutDistribution.canDiscard)
+            else:
+                prune(dep)
 
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
@@ -5550,6 +5556,14 @@ class LayoutDistribution(AbstractDistribution):
         self._removed_deps.add(d.qualifiedName())
         if d.suite == self.suite:
             self._removed_deps.add(d.name)
+
+    def canDiscard(self):
+        """Returns true if all dependencies have been removed and the layout does not specify any fixed sources (string:, file:)."""
+        return not (self.deps or self.buildDependencies or any(
+            # if there is any other source type (e.g., 'file' or 'string') we cannot remove it
+            source_dict['source_type'] not in ['dependency', 'extracted-dependency', 'skip']
+            for _, source_dict in self._walk_layout()
+        ))
 
     @staticmethod
     def _is_linky(path=None):
@@ -7895,7 +7909,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = mx_compdb.gmake_with_compdb_cmd()
+        cmdline = mx_compdb.gmake_with_compdb_cmd(context=self.subject)
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -7962,7 +7976,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 env = os.environ.copy()
                 if hasattr(self.subject, "getBuildEnv"):
                     env.update(self.subject.getBuildEnv())
-                run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
+                run([gmake_cmd(context=self.subject), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
 class Extractor(_with_metaclass(ABCMeta, object)):
@@ -13603,7 +13617,7 @@ def flock_cmd():
 _gmake_cmd = '<uninitialized>'
 
 
-def gmake_cmd():
+def gmake_cmd(context=None):
     global _gmake_cmd
     if _gmake_cmd == '<uninitialized>':
         for a in ['make', 'gmake', 'gnumake']:
@@ -13615,7 +13629,7 @@ def gmake_cmd():
             except:
                 pass
         if _gmake_cmd == '<uninitialized>':
-            abort('Could not find a GNU make executable on the current path.')
+            abort('Could not find a GNU make executable on the current path.', context=context)
     return _gmake_cmd
 
 
@@ -17195,7 +17209,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.282.0")  # [GR-28834] extracted-dependencies add extra ./ prefix
+version = VersionSpec("5.282.1")  # GR-28861 Do not remove LayoutDistributions with non-dependency sources
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
