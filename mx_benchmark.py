@@ -269,12 +269,6 @@ class BenchmarkSuite(object):
         :return: List of benchmark string names.
         :rtype: list[str]
         """
-        # TODO: raise NotImplementedError() here
-        mx.log_deprecation("'benchmarks' method is deprecated ! Use 'benchmarkList' instead.")
-        return self.benchmarks()
-
-    def benchmarks(self):
-        # Deprecated, consider using `benchmarkList` instead!
         raise NotImplementedError()
 
     def desiredVersion(self):
