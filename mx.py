@@ -17215,7 +17215,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.283.0")  # mx paths --output
+version = VersionSpec("5.283.1")  # GR-28700
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
