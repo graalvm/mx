@@ -16515,6 +16515,7 @@ optional arguments:
   --download       Downloads the dependency (only for libraries)."""
     parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--download', action='store_true', help='Downloads the dependency (only for libraries).')
+    parser.add_argument('--output', action='store_true', help='Show output location rather than archivable result (only for distributions).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
     spec = args.spec
@@ -16524,10 +16525,15 @@ optional arguments:
         if not d.isResourceLibrary() and not d.isLibrary():
             abort("--download can only be used with libraries")
         d.get_path(resolve=True)
-    include = spec_dict.get('path')
-    for source_file, arcname in d.getArchivableResults(single=include is None):
-        if include is None or glob_match(include, arcname):
-            print(source_file)
+    if args.output:
+        if not isinstance(d, AbstractDistribution):
+            abort("--output can only be used with distributions")
+        print(d.get_output())
+    else:
+        include = spec_dict.get('path')
+        for source_file, arcname in d.getArchivableResults(single=include is None):
+            if include is None or glob_match(include, arcname):
+                print(source_file)
 
 
 show_paths.__doc__ += '\n' + _show_paths_examples
@@ -17209,7 +17215,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.282.1")  # GR-28861 Do not remove LayoutDistributions with non-dependency sources
+version = VersionSpec("5.283.0")  # mx paths --output
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
