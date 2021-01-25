@@ -108,8 +108,7 @@ def eclipseformat(args):
 
         def __hash__(self):
             if not self.cachedHash:
-                with open(self.path) as fp:
-                    self.cachedHash = (fp.read(), self.removeTrailingWhitespace).__hash__()
+                self.cachedHash = (self.read_core_prefs_file(), self.removeTrailingWhitespace).__hash__()
             return self.cachedHash
 
         def __eq__(self, other):
@@ -119,12 +118,14 @@ def eclipseformat(args):
                 return False
             if self.path == other.path:
                 return True
-            with open(self.path) as fp:
-                with open(other.path) as ofp:
-                    if fp.read() != ofp.read():
-                        return False
-            return True
+            return self.read_core_prefs_file() == other.read_core_prefs_file()
 
+        def read_core_prefs_file(self):
+            with open(self.path) as fp:
+                content = fp.read()
+                # processAnnotations does not matter for eclipseformat, ignore its value as otherwise we would create extra batches and slow down eclipseformat
+                content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
+                return content
 
     class FileInfo:
         def __init__(self, path):
