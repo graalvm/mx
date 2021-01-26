@@ -520,9 +520,16 @@ suite = {
           }
         },
         "linux-musl" : {
+          # Steps to build:
+          # (Built in an Alpine docker container, Alpine version 3.13.0)
+          # apk add python2 g++ re2c git
+          # mkdir build && cd build
+          # git clone https://github.com/ninja-build/ninja && cd ninja
+          # git checkout <github release commit of the particular Ninja version>
+          # ./configure.py --bootstrap
           "amd64" : {
-            "urls" : ["https://download.bell-sw.com/graalvm/ninja-1.10.1-x86_64-linux-musl.zip"],
-            "sha1" : "0f3d92566d116edc06e7a983ec1bbc4d4a9e9c2d"
+            "urls" : ["https://lafo.ssw.jku.at/pub/graal-external-deps/ninja-{version}-linux-amd64-musl.zip"],
+            "sha1" : "4ee41c2c6d832c278376ae2dd8ba6049e8a9a985"
           }
         },
         "darwin" : {
