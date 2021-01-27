@@ -4,6 +4,12 @@ suite = {
 
     # ------------- Libraries -------------
 
+    "APACHE_JMETER_5.3": {
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/apache-jmeter-5.3.zip"],
+      "sha1": "17480a0905d9d485bc8ce8e7be9daec2de98c251",
+      "packedResource": True,
+    },
+
     "JACOCOCORE_0.8.4" : {
       "sha1" : "53addc878614171ff0fcbc8f78aed12175c22cdb",
       "sourceSha1" : "9bd1fa334d941005bc9ab3ac92478a590f5b7d73",

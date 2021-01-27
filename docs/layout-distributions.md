@@ -90,6 +90,7 @@ The pattern is rooted at the same level as the inclusion pattern.
 For `extracted-dependency`, the `dereference` property can set to:
 * `"never"` to copy without any de-referencing the source (like `cp -P`)
 * `"root"` (default) to only de-reference the root matches of the recursive copy (like `cp -H`)
+* `"always"` always follow symlinks in the source before copying (like `cp -L`)
 
 ## Archive types
 
@@ -147,3 +148,17 @@ This would result in an archive with the following contents:
 - share
   '- lib -> ../lib
 ```
+
+## LINKY_LAYOUT
+
+If the `LINKY_LAYOUT` environment variable is set, it is used as a _single_
+[glob pattern](https://docs.python.org/3/library/fnmatch.html#module-fnmatch).
+Files matching that pattern will be linked into the output
+directory of layout distributions rather than copied.
+
+When using "compile on save" in Eclipse or a similar workflow, having
+```
+LINKY_LAYOUT=*.jar
+```
+in `~/.mx/env` will allow automated update of the JARs in layout
+distributions.

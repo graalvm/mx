@@ -67,7 +67,7 @@ import json
 from collections import OrderedDict, namedtuple, deque
 from datetime import datetime
 from threading import Thread
-from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter
+from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
@@ -563,6 +563,10 @@ environment variables:
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
         self.add_argument('--multiarch', action='store_true', help='enable all architectures of native multiarch projects (not just the host architecture)')
         self.add_argument('--dump-task-stats', help='Dump CSV formatted start/end timestamps for each build task. If set to \'-\' it will print it to stdout, otherwise the CSV will be written to <path>', metavar='<path>', default=None)
+        self.add_argument('--compdb', action='store', metavar='<file>', help="generate a JSON compilation database for native "
+                                "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
+                                "be stored in the parent directory of the repository containing the primary suite. This option "
+                                "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -1337,6 +1341,9 @@ class Dependency(SuiteConstituent):
 
     def isZIPDistribution(self):
         return isinstance(self, AbstractZIPDistribution)
+
+    def isLayoutDistribution(self):
+        return isinstance(self, LayoutDistribution)
 
     def isProjectOrLibrary(self):
         return self.isProject() or self.isLibrary()
@@ -3524,6 +3531,7 @@ import mx_downstream
 import mx_subst
 import mx_ideconfig # pylint: disable=unused-import
 import mx_ide_eclipse
+import mx_compdb
 
 from mx_javamodules import make_java_module # pylint: disable=unused-import
 from mx_javamodules import JavaModuleDescriptor, get_java_module_info, lookup_package, \
@@ -4230,7 +4238,7 @@ def _attempt_download(url, path, jarEntryName=None):
 
     except (IOError, socket.timeout, _urllib_error.HTTPError) as e:
         # In case of an exception the temp file is removed automatically, so no cleanup is necessary
-        log_error("Error reading from " + url + ": " + str(e))
+        log_error("Error downloading from " + url + " to " + path + ": " + str(e))
         _suggest_http_proxy_error(e)
         _suggest_tlsv1_error(e)
         if isinstance(e, _urllib_error.HTTPError) and e.code == 500:
@@ -4319,14 +4327,14 @@ def update_file(path, content, showDiff=False):
             f.write(content)
 
         if existed:
-            log('modified ' + path)
+            logv('modified ' + path)
             if _opts.backup_modified:
                 log('backup ' + path + '.orig')
             if showDiff:
                 log('diff: ' + path)
                 log(''.join(difflib.unified_diff(old.splitlines(1), content.splitlines(1))))
         else:
-            log('created ' + path)
+            logv('created ' + path)
         return True
     except IOError as e:
         abort('Error while writing to ' + path + ': ' + str(e))
@@ -4477,7 +4485,10 @@ def _remove_unsatisfied_deps():
                                                      and dd not in d.excludedLibs)
                                                  for dd in d.deps))
         elif dep.isTARDistribution():
-            prune(dep)
+            if dep.isLayoutDistribution():
+                prune(dep, discard=LayoutDistribution.canDiscard)
+            else:
+                prune(dep)
 
         if hasattr(dep, 'ignore'):
             reasonAttr = getattr(dep, 'ignore')
@@ -5564,6 +5575,14 @@ class LayoutDistribution(AbstractDistribution):
         if d.suite == self.suite:
             self._removed_deps.add(d.name)
 
+    def canDiscard(self):
+        """Returns true if all dependencies have been removed and the layout does not specify any fixed sources (string:, file:)."""
+        return not (self.deps or self.buildDependencies or any(
+            # if there is any other source type (e.g., 'file' or 'string') we cannot remove it
+            source_dict['source_type'] not in ['dependency', 'extracted-dependency', 'skip']
+            for _, source_dict in self._walk_layout()
+        ))
+
     @staticmethod
     def _is_linky(path=None):
         if LayoutDistribution._linky is AbstractDistribution:
@@ -5624,7 +5643,7 @@ class LayoutDistribution(AbstractDistribution):
                 if source_type == 'extracted-dependency':
                     if 'dereference' not in source_dict:
                         source_dict["dereference"] = "root"
-                    elif source_dict["dereference"] not in ("root", "never"):
+                    elif source_dict["dereference"] not in ("root", "never", "always"):
                         raise abort("Unsupported dereference mode: '{}' in '{}'".format(source_dict["dereference"], destination), context=context)
                 if source_dict['path']:
                     source_dict['_str_'] += '/{}'.format(source_dict['path'])
@@ -5826,6 +5845,9 @@ class LayoutDistribution(AbstractDistribution):
             first_file_box = [True]
             dest_arcname_prefix = os.path.relpath(unarchiver_dest_directory, output).replace(os.sep, '/')
 
+            if dest_arcname_prefix == '.' and self.suite.getMxCompatibility().fix_extracted_dependency_prefix():
+                dest_arcname_prefix = None
+
             def dest_arcname(src_arcname):
                 if not dest_arcname_prefix:
                     return src_arcname
@@ -5874,7 +5896,7 @@ class LayoutDistribution(AbstractDistribution):
                             extracted_file = join(unarchiver_dest_directory, new_name.replace("/", os.sep))
                             arcname = dest_arcname(new_name)
                             if tarinfo.issym():
-                                if root_match and dereference == "root":
+                                if dereference == "always" or (root_match and dereference == "root"):
                                     tf._extract_member(tf._find_link_target(tarinfo), extracted_file)
                                     archiver.add(extracted_file, arcname, provenance)
                                 else:
@@ -7853,11 +7875,13 @@ class NativeProject(AbstractNativeProject):
 
 ### ~~~~~~~~~~~~~ Build Tasks
 class AbstractNativeBuildTask(ProjectBuildTask):
+    default_parallelism = 8
+
     def __init__(self, args, project):
         # Cap jobs to maximum of 8 by default. If a project wants more parallelism, it can explicitly set the
         # "max_jobs" attribute. Setting jobs=cpu_count() would not allow any other tasks in parallel, now matter
         # how much parallelism the build machine supports.
-        jobs = min(int(getattr(project, 'max_jobs', 8)), cpu_count())
+        jobs = min(int(getattr(project, 'max_jobs', self.default_parallelism)), cpu_count())
         super(AbstractNativeBuildTask, self).__init__(args, jobs, project)
 
     def buildForbidden(self):
@@ -7875,7 +7899,7 @@ class AbstractNativeBuildTask(ProjectBuildTask):
         if is_needed:
             return True, reason
 
-        output = self.newestOutput() # pylint: disable=assignment-from-no-return
+        output = self.newestOutput()  # pylint: disable=assignment-from-no-return
         if output is None:
             return True, None
 
@@ -7903,7 +7927,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
         javaDeps = [d for d in all_deps if isinstance(d, JavaProject)]
         if len(javaDeps) > 0:
             env['MX_CLASSPATH'] = classpath(javaDeps)
-        cmdline = [gmake_cmd()] if bear_cmd() is None else bear_cmd() + [gmake_cmd()]
+        cmdline = mx_compdb.gmake_with_compdb_cmd(context=self.subject)
         if _opts.verbose:
             # The Makefiles should have logic to disable the @ sign
             # so that all executed commands are visible.
@@ -7926,6 +7950,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
     def build(self):
         cmdline, cwd, env = self._build_run_args()
         run(cmdline, cwd=cwd, env=env)
+        mx_compdb.merge_compdb(subject=self.subject, path=cwd)
         self._newestOutput = None
 
     def needsBuild(self, newestInput):
@@ -7969,7 +7994,7 @@ class NativeBuildTask(AbstractNativeBuildTask):
                 env = os.environ.copy()
                 if hasattr(self.subject, "getBuildEnv"):
                     env.update(self.subject.getBuildEnv())
-                run([gmake_cmd(), 'clean'], cwd=self.subject.dir, env=env)
+                run([gmake_cmd(context=self.subject), 'clean'], cwd=self.subject.dir, env=env)
             self._newestOutput = None
 
 class Extractor(_with_metaclass(ABCMeta, object)):
@@ -13538,7 +13563,7 @@ def log_error(msg=None):
     to redirect it.
     """
     if msg is None:
-        print(sys.stderr, file=sys.stderr)
+        print(file=sys.stderr)
     else:
         print(colorize(str(msg), stream=sys.stderr), file=sys.stderr)
 
@@ -13548,7 +13573,7 @@ def log_deprecation(msg=None):
     Write an deprecation warning to the console.
     """
     if msg is None:
-        print(sys.stderr, file=sys.stderr)
+        print(file=sys.stderr)
     else:
         print(colorize(str("[MX DEPRECATED] {}".format(msg)), color='yellow', stream=sys.stderr), file=sys.stderr)
 
@@ -13610,7 +13635,7 @@ def flock_cmd():
 _gmake_cmd = '<uninitialized>'
 
 
-def gmake_cmd():
+def gmake_cmd(context=None):
     global _gmake_cmd
     if _gmake_cmd == '<uninitialized>':
         for a in ['make', 'gmake', 'gnumake']:
@@ -13622,21 +13647,8 @@ def gmake_cmd():
             except:
                 pass
         if _gmake_cmd == '<uninitialized>':
-            abort('Could not find a GNU make executable on the current path.')
+            abort('Could not find a GNU make executable on the current path.', context=context)
     return _gmake_cmd
-
-_bear_cmd = '<uninitialized>'
-
-
-def bear_cmd():
-    global _bear_cmd
-    if _bear_cmd == '<uninitialized>':
-        try:
-            output = _check_output_str(['bear', '--help'], stderr=subprocess.STDOUT)
-        except OSError:
-            output = ''
-        _bear_cmd = ['bear', '-a'] if 'usage: bear' in output else None
-    return _bear_cmd
 
 
 def expandvars_in_property(value):
@@ -14576,11 +14588,14 @@ def unstrip(args, **run_java_kwargs):
                     with open(temp_file, 'w') as fp:
                         fp.write(new_contents)
                     inputfiles.append(temp_file)
+                    temp_files.append(temp_file)
                 else:
                     inputfiles.append(arg)
-        with tempfile.NamedTemporaryFile(mode='w') as catmapfile:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as catmapfile:
             _merge_file_contents(mapfiles, catmapfile)
-            run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
+        catmapfile.close()
+        temp_files.append(catmapfile.name)
+        run_java(unstrip_command + [catmapfile.name] + inputfiles, **run_java_kwargs)
     finally:
         for temp_file in temp_files:
             os.unlink(temp_file)
@@ -14843,7 +14858,13 @@ def checkstyle(args):
 
     parser.add_argument('-f', action='store_true', dest='force', help='force checking (disables timestamp checking)')
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
+    parser.add_argument('--filelist', type=FileType("r"), help='only check the files listed in the given file')
     args = parser.parse_args(args)
+
+    filelist = None
+    if args.filelist:
+        filelist = [os.path.abspath(line.strip()) for line in args.filelist.readlines()]
+        args.filelist.close()
 
     totalErrors = 0
 
@@ -14880,14 +14901,16 @@ def checkstyle(args):
         for sourceDir in sourceDirs:
             javafilelist = []
             for root, _, files in os.walk(sourceDir):
-                javafilelist += [join(root, name) for name in files if name.endswith('.java') and name != 'package-info.java']
+                for f in [join(root, name) for name in files if name.endswith('.java') if name != 'package-info.java']:
+                    if filelist is None or f in filelist:
+                        javafilelist.append(f)
             if len(javafilelist) == 0:
                 logv('[no Java sources in {0} - skipping]'.format(sourceDir))
                 continue
 
             mustCheck = False
             if not args.force and batch.timestamp.exists():
-                mustCheck = batch.timestamp.isOlderThan(javafilelist)
+                mustCheck = (config and batch.timestamp.isOlderThan(config)) or batch.timestamp.isOlderThan(javafilelist) # pylint: disable=consider-using-ternary
             else:
                 mustCheck = True
 
@@ -15302,7 +15325,7 @@ def _find_packages(project, onlyPublic=True, included=None, excluded=None, packa
                 if not included or package in included:
                     if not excluded or package not in excluded:
                         packages.add(package)
-            if packageInfos != None:
+            if packageInfos is not None:
                 for name in files:
                     if name == 'package-info.java':
                         packageInfos.add(package)
@@ -16510,6 +16533,7 @@ optional arguments:
   --download       Downloads the dependency (only for libraries)."""
     parser = ArgumentParser(prog='mx paths', description="Shows on-disk path to dependencies such as libraries, distributions, etc.", epilog=_show_paths_examples, formatter_class=RawTextHelpFormatter)
     parser.add_argument('--download', action='store_true', help='Downloads the dependency (only for libraries).')
+    parser.add_argument('--output', action='store_true', help='Show output location rather than archivable result (only for distributions).')
     parser.add_argument('spec', help='Dependency specification in the same format as `dependency:` sources in a layout distribution.', metavar='dependency-spec')
     args = parser.parse_args(args)
     spec = args.spec
@@ -16519,10 +16543,15 @@ optional arguments:
         if not d.isResourceLibrary() and not d.isLibrary():
             abort("--download can only be used with libraries")
         d.get_path(resolve=True)
-    include = spec_dict.get('path')
-    for source_file, arcname in d.getArchivableResults(single=include is None):
-        if include is None or glob_match(include, arcname):
-            print(source_file)
+    if args.output:
+        if not isinstance(d, AbstractDistribution):
+            abort("--output can only be used with distributions")
+        print(d.get_output())
+    else:
+        include = spec_dict.get('path')
+        for source_file, arcname in d.getArchivableResults(single=include is None):
+            if include is None or glob_match(include, arcname):
+                print(source_file)
 
 
 show_paths.__doc__ += '\n' + _show_paths_examples
@@ -17166,6 +17195,8 @@ def main():
         else:
             abort('mx: command \'{0}\' is ambiguous\n    {1}'.format(command, ' '.join(hits)))
 
+    mx_compdb.init()
+
     c = _mx_commands.commands()[command]
 
     if primarySuiteMxDir and should_load_suites:
@@ -17202,7 +17233,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.0")  # linux-musl
+version = VersionSpec("5.283.2")  # GR-28884
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

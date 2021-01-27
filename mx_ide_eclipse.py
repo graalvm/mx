@@ -36,7 +36,7 @@ import re
 import difflib
 from collections import namedtuple
 from argparse import ArgumentParser, FileType
-from os.path import join, basename, dirname, exists, isdir
+from os.path import join, basename, dirname, exists, isdir, abspath
 
 import mx
 import mx_ideconfig
@@ -61,6 +61,7 @@ def eclipseformat(args):
     parser.add_argument('--primary', action='store_true', help='limit checks to primary suite')
     parser.add_argument('--patchfile', type=FileType("w"), help='file to which a patch denoting the applied formatting changes is written')
     parser.add_argument('--restore', action='store_true', help='restore original files after the formatting job (does not create a backup).')
+    parser.add_argument('--filelist', type=FileType("r"), help='only format the files listed in the given file')
 
     args = parser.parse_args(args)
     if args.eclipse_exe is None:
@@ -79,6 +80,11 @@ def eclipseformat(args):
         mx.abort('File does not exist: ' + args.eclipse_exe)
     if not os.access(args.eclipse_exe, os.X_OK):
         mx.abort('Not an executable file: ' + args.eclipse_exe)
+
+    filelist = None
+    if args.filelist:
+        filelist = [abspath(line.strip()) for line in args.filelist.readlines()]
+        args.filelist.close()
 
     wsroot = eclipseinit([], buildProcessorJars=False, doFsckProjects=False)
 
@@ -102,8 +108,7 @@ def eclipseformat(args):
 
         def __hash__(self):
             if not self.cachedHash:
-                with open(self.path) as fp:
-                    self.cachedHash = (fp.read(), self.removeTrailingWhitespace).__hash__()
+                self.cachedHash = (self.read_core_prefs_file(), self.removeTrailingWhitespace).__hash__()
             return self.cachedHash
 
         def __eq__(self, other):
@@ -113,12 +118,14 @@ def eclipseformat(args):
                 return False
             if self.path == other.path:
                 return True
-            with open(self.path) as fp:
-                with open(other.path) as ofp:
-                    if fp.read() != ofp.read():
-                        return False
-            return True
+            return self.read_core_prefs_file() == other.read_core_prefs_file()
 
+        def read_core_prefs_file(self):
+            with open(self.path) as fp:
+                content = fp.read()
+                # processAnnotations does not matter for eclipseformat, ignore its value as otherwise we would create extra batches and slow down eclipseformat
+                content = content.replace('org.eclipse.jdt.core.compiler.processAnnotations=disabled\n', '').replace('org.eclipse.jdt.core.compiler.processAnnotations=enabled\n', '')
+                return content
 
     class FileInfo:
         def __init__(self, path):
@@ -175,7 +182,8 @@ def eclipseformat(args):
         for sourceDir in sourceDirs:
             for root, _, files in os.walk(sourceDir):
                 for f in [join(root, name) for name in files if name.endswith('.java')]:
-                    javafiles.append(FileInfo(f))
+                    if filelist is None or f in filelist:
+                        javafiles.append(FileInfo(f))
         if len(javafiles) == 0:
             mx.logv('[no Java sources in {0} - skipping]'.format(p.name))
             continue
@@ -193,7 +201,7 @@ def eclipseformat(args):
         jdk = mx.get_jdk()
 
         with tempfile.NamedTemporaryFile(mode='w') as tmp_eclipseini:
-            with open(join(dirname(args.eclipse_exe), join('..', 'eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
+            with open(join(dirname(args.eclipse_exe), join('..', 'Eclipse', 'eclipse.ini') if mx.is_darwin() else 'eclipse.ini'), 'r') as src:
                 locking_added = False
                 for line in src.readlines():
                     tmp_eclipseini.write(line)
