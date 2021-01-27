@@ -2183,9 +2183,14 @@ class Suite(object):
     def _pop_os_arch(attrs, context):
         os_arch = attrs.pop('os_arch', None)
         if os_arch:
-            os_attrs = os_arch.pop(get_os(), None)
-            if not os_attrs:
-                os_attrs = os_arch.pop('<others>', None)
+            os_key = None
+            if get_os_variant():
+                os_key = get_os() + '-' + get_os_variant()
+            if os_key is None or os_key not in os_arch:
+                os_key = get_os()
+            if os_key not in os_arch:
+                os_key = '<others>'
+            os_attrs = os_arch.pop(os_key, None)
             if os_attrs:
                 arch_attrs = os_attrs.pop(get_arch(), None)
                 if not arch_attrs:
@@ -3852,6 +3857,19 @@ def get_os():
         return 'cygwin'
     else:
         abort('Unknown operating system ' + sys.platform)
+
+
+_os_variant = None
+
+def get_os_variant():
+    global _os_variant
+    if _os_variant is None:
+        if get_os() == 'linux' and 'musl' in _check_output_str(['ldd', sys.executable]):
+            _os_variant = 'musl'
+        else:
+            _os_variant = ''
+        logv('OS variant detected: {}'.format(_os_variant if _os_variant else 'none'))
+    return _os_variant
 
 
 def _is_process_alive(p):
@@ -17215,7 +17233,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.283.2")  # GR-28884
+version = VersionSpec("5.284.0")  # linux-musl
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
