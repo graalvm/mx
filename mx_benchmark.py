@@ -56,8 +56,11 @@ class JVMProfiler(object):
     def name(self):
         raise NotImplementedError()
 
+    def setup(self, benchmarks, bmSuiteArgs):
+        pass
+
     def additional_jvm_opts(self, dump_path):
-        raise NotImplementedError()
+        raise []
 
 
 def _register_profiler(obj):
@@ -72,26 +75,43 @@ class SimpleJFRProfiler(JVMProfiler):
     """
     A simple JFR profiler with reasonable defaults.
     """
+    def __init__(self):
+        self.nextItemName = None
+
     def name(self):
         return "JFR"
 
+    def setup(self, benchmarks, bmSuiteArgs):
+        mx.log_error(bmSuiteArgs)
+        if benchmarks:
+            self.nextItemName = benchmarks[0]
+
     def additional_jvm_opts(self, dump_path):
+        if self.nextItemName:
+            import datetime
+            filename = os.path.join(dump_path, "{}_{}.jfr".format(self.nextItemName, datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")))
+        else:
+            filename = dump_path
         if mx.get_jdk().javaCompliance >= '9':
-            return [
+            opts = [
                 "-XX:+UnlockDiagnosticVMOptions",
                 "-XX:+DebugNonSafepoints",
                 "-XX:+FlightRecorder",
-                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename=".format(dump_path),
+                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename=".format(filename),
                 "-Xlog:jfr=info"
             ]
         else:
-            return (["-XX:+UnlockCommercialFeatures"] if mx.get_jdk().has_UnlockCommercialFeatures() else []) + [
+            opts = ["-XX:+UnlockCommercialFeatures"] if mx.get_jdk().has_UnlockCommercialFeatures() else []
+            opts += [
                 "-XX:+UnlockDiagnosticVMOptions",
                 "-XX:+DebugNonSafepoints",
                 "-XX:+FlightRecorder",
                 "-XX:StartFlightRecording=defaultrecording=true,settings=profile",
-                "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true,dumponexitpath={}".format(dump_path)
+                "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true,dumponexitpath={}".format(filename)
             ]
+        # reset the next item name since it has just been consumed
+        self.nextItemName = None
+        return opts
 
 
 _register_profiler(SimpleJFRProfiler())
@@ -1079,12 +1099,11 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         for parser_name in self.parserNames():
             parser = get_parser(parser_name)
             _, args = parser.parse_known_args(args)
-        profilers = self.profilerNames(bmSuiteArgs)
-        if profilers is not None:
-            for profiler in profilers.split(','):
+        if self.profilerNames(bmSuiteArgs):
+            for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
                     raise ValueError("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
-                args += _profilers.get(profiler).additional_jvm_opts("../")  # TODO fix this
+                args += _profilers.get(profiler).additional_jvm_opts(os.getcwd())
         return args
 
     def parserNames(self):
@@ -1115,7 +1134,15 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         """
         raise NotImplementedError()
 
+    def setupProfilers(self, benchmarks, bmSuiteArgs):
+        if self.profilerNames(bmSuiteArgs) is not None:
+            for profilerName in self.profilerNames(bmSuiteArgs).split(','):
+                profiler = _profilers.get(profilerName)
+                if profiler:
+                    profiler.setup(benchmarks, bmSuiteArgs)
+
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
+        self.setupProfilers(benchmarks, bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
         command = self.createCommandLineArgs(benchmarks, bmSuiteArgs)
         if command is None:
