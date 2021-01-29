@@ -282,7 +282,14 @@ def _function_code(f):
     return f.__code__
 
 def _check_output_str(*args, **kwargs):
-    return _decode(subprocess.check_output(*args, **kwargs))
+    try:
+        return _decode(subprocess.check_output(*args, **kwargs))
+    except subprocess.CalledProcessError as e:
+        if e.output:
+            e.output = _decode(e.output)
+        if hasattr(e, 'stderr') and e.stderr:
+            e.stderr = _decode(e.stderr)
+        raise e
 
 def _with_metaclass(meta, *bases):
     """Create a base class with a metaclass."""
@@ -3861,12 +3868,19 @@ def get_os():
 
 _os_variant = None
 
+
 def get_os_variant():
     global _os_variant
     if _os_variant is None:
-        if get_os() == 'linux' and 'musl' in _check_output_str(['ldd', sys.executable]):
-            _os_variant = 'musl'
-        else:
+        if get_os() == 'linux':
+            try:
+                proc_output = _check_output_str(['ldd', '--version'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                proc_output = e.output
+
+            if proc_output and 'musl' in proc_output:
+                _os_variant = 'musl'
+        if _os_variant is None:
             _os_variant = ''
         logv('OS variant detected: {}'.format(_os_variant if _os_variant else 'none'))
     return _os_variant
@@ -17233,7 +17247,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.284.0")  # linux-musl
+version = VersionSpec("5.284.1")  # get_os_variant rework
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
