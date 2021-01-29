@@ -13106,6 +13106,14 @@ class JDKConfig(Comparable):
 
         self.debug_args = java_debug_args()
 
+    def has_UnlockCommercialFeatures(self):
+        if not hasattr(self, '.UnlockCommercialFeatures'):
+            try:
+                setattr(self, '.UnlockCommercialFeatures', 'UnlockCommercialFeatures' in _check_output_str([self.java, '-XX:+PrintFlagsFinal', '-version'], stderr=subprocess.PIPE))
+            except subprocess.CalledProcessError as e:
+                log_error("JVM flags extraction using -XX:+PrintFlagsFinal failed!")
+        return hasattr(self, '.UnlockCommercialFeatures')
+
     def exe_path(self, name, sub_dir='bin'):
         """
         Gets the full path to the executable in this JDK whose base name is `name`

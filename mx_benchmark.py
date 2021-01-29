@@ -46,6 +46,57 @@ _bm_suites = {}
 _benchmark_executor = None
 
 
+_profilers = {}
+
+
+class JVMProfiler(object):
+    """
+    Encapsulates the name and how to trigger common VM profilers.
+    """
+    def name(self):
+        raise NotImplementedError()
+
+    def additional_jvm_opts(self, dump_path):
+        raise NotImplementedError()
+
+
+def _register_profiler(obj):
+    if not isinstance(obj, JVMProfiler):
+        raise ValueError("Cannot register profiler. Profilers must be of type {}".format(JVMProfiler.__class__.__name__))
+    if obj.name() in _profilers:
+        raise ValueError("A profiler with name '{}' is already registered!")
+    _profilers[obj.name()] = obj
+
+
+class SimpleJFRProfiler(JVMProfiler):
+    """
+    A simple JFR profiler with reasonable defaults.
+    """
+    def name(self):
+        return "JFR"
+
+    def additional_jvm_opts(self, dump_path):
+        if mx.get_jdk().javaCompliance >= '9':
+            return [
+                "-XX:+UnlockDiagnosticVMOptions",
+                "-XX:+DebugNonSafepoints",
+                "-XX:+FlightRecorder",
+                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename=".format(dump_path),
+                "-Xlog:jfr=info"
+            ]
+        else:
+            return (["-XX:+UnlockCommercialFeatures"] if mx.get_jdk().has_UnlockCommercialFeatures() else []) + [
+                "-XX:+UnlockDiagnosticVMOptions",
+                "-XX:+DebugNonSafepoints",
+                "-XX:+FlightRecorder",
+                "-XX:StartFlightRecording=defaultrecording=true,settings=profile",
+                "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true,dumponexitpath={}".format(dump_path)
+            ]
+
+
+_register_profiler(SimpleJFRProfiler())
+
+
 # Contains an argument parser and its description.
 class ParserEntry(object):
     def __init__(self, parser, description):
@@ -102,6 +153,7 @@ class VmRegistry(object):
             ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
             "\n\n{} selection flags, specified in the benchmark suite arguments:\n".format(self.vm_type_name)
         ))
+        get_parser(self.get_parser_name()).add_argument("--profiler", default=None, help="The profiler to use")
         get_parser(self.get_parser_name()).add_argument("--{}".format(self.short_vm_type_name), default=None, help="{vm} to run the benchmark with.".format(vm=self.vm_type_name))
         get_parser(self.get_parser_name()).add_argument("--{}-config".format(self.short_vm_type_name), default=None, help="{vm} configuration for the selected {vm}.".format(vm=self.vm_type_name))
         # Separator to stack guest and host VM options. Though ignored, must be consumed by the parser.
@@ -1027,6 +1079,12 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         for parser_name in self.parserNames():
             parser = get_parser(parser_name)
             _, args = parser.parse_known_args(args)
+        profilers = self.profilerNames(bmSuiteArgs)
+        if profilers is not None:
+            for profiler in profilers.split(','):
+                if profiler not in _profilers:
+                    raise ValueError("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
+                args += _profilers.get(profiler).additional_jvm_opts("../")  # TODO fix this
         return args
 
     def parserNames(self):
@@ -1044,6 +1102,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
 
     def runArgs(self, bmSuiteArgs):
         return self.vmAndRunArgs(bmSuiteArgs)[1]
+
+    def profilerNames(self, bmSuiteArgs):
+        return None
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
         return self.createVmCommandLineArgs(benchmarks, self.runArgs(bmSuiteArgs))
@@ -1135,7 +1196,7 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     def splitJvmConfigArg(self, bmSuiteArgs):
         parser = get_parser(java_vm_registry.get_parser_name())
         args, remainder = parser.parse_known_args(self.vmAndRunArgs(bmSuiteArgs)[0])
-        return args.jvm, args.jvm_config, remainder
+        return args.jvm, args.jvm_config, args.profiler, remainder
 
     def jvm(self, bmSuiteArgs):
         """Returns the value of the `--jvm` argument or `None` if not present."""
@@ -1144,6 +1205,10 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
     def jvmConfig(self, bmSuiteArgs):
         """Returns the value of the `--jvm-config` argument or `None` if not present."""
         return self.splitJvmConfigArg(bmSuiteArgs)[1]
+
+    def profilerNames(self, bmSuiteArgs):
+        """Returns the value of the `--profiler` argument or `None` if not present."""
+        return self.splitJvmConfigArg(bmSuiteArgs)[2]
 
     def getJavaVm(self, bmSuiteArgs):
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
@@ -1352,7 +1417,7 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                             if m:
                                 edition = m.group(1)
                                 if len(edition) > 2 and "CE" in edition.upper():
-                                    # to accomodate for 'GraalVM LIBGRAAL_CE_BASH 19.3.0'
+                                    # to accommodate for 'GraalVM LIBGRAAL_CE_BASH 19.3.0'
                                     edition = "CE"
                                 elif "EE" in edition.upper():
                                     edition = "EE"
@@ -1756,7 +1821,6 @@ class JMHJarMxBenchmarkSuite(JMHJarBenchmarkSuite):
     def subgroup(self):
         return "mx"
 
-
 def build_number():
     """
     Get the current build number from the BUILD_NUMBER environment variable. If BUILD_NUMBER is not set or not a number,
@@ -2054,6 +2118,8 @@ class BenchmarkExecutor(object):
             help="Path to JSON output file with benchmark results.")
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
+        parser.add_argument(
+            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR')")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
