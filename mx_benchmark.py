@@ -82,33 +82,40 @@ class SimpleJFRProfiler(JVMProfiler):
         return "JFR"
 
     def setup(self, benchmarks, bmSuiteArgs):
-        mx.log_error(bmSuiteArgs)
         if benchmarks:
             self.nextItemName = benchmarks[0]
 
     def additional_jvm_opts(self, dump_path):
         if self.nextItemName:
             import datetime
-            filename = os.path.join(dump_path, "{}_{}.jfr".format(self.nextItemName, datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")))
+            filename = os.path.join(dump_path, "{}_{}.jfr".format(self.nextItemName,
+                                                                  datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")))
         else:
             filename = dump_path
+
+        common_opts = [
+            "-XX:+UnlockDiagnosticVMOptions",
+            "-XX:+DebugNonSafepoints",
+            "-XX:+FlightRecorder"
+        ]
         if mx.get_jdk().javaCompliance >= '9':
-            opts = [
-                "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:+DebugNonSafepoints",
-                "-XX:+FlightRecorder",
+            opts = common_opts + [
                 "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename=".format(filename),
                 "-Xlog:jfr=info"
             ]
-        else:
-            opts = ["-XX:+UnlockCommercialFeatures"] if mx.get_jdk().has_UnlockCommercialFeatures() else []
-            opts += [
-                "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:+DebugNonSafepoints",
-                "-XX:+FlightRecorder",
-                "-XX:StartFlightRecording=defaultrecording=true,settings=profile",
-                "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true,dumponexitpath={}".format(filename)
+        elif mx.get_jdk().is_openjdk_based():
+            # No logging levels on OpenJDK 8.
+            # Alternatively, one can use -XX:+LogJFR for 'trace' level
+            opts = common_opts + [
+                "-XX:+UnlockCommercialFeatures",
+                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={}".format(filename)
             ]
+        else:
+            opts = ["-XX:+UnlockCommercialFeatures"] + common_opts + [
+                "-XX:StartFlightRecording=defaultrecording=true,settings=profile,filename={}".format(filename),
+                "-XX:FlightRecorderOptions=loglevel=info,disk=false,maxsize=200M,dumponexit=true"
+            ]
+
         # reset the next item name since it has just been consumed
         self.nextItemName = None
         return opts
