@@ -574,6 +574,29 @@ suite = {
       },
       "licence": "LGPLv30",
     },
+
+    "ASYNC_PROFILER_1.8.3": {
+      "packedResource": True,
+      "urlbase": "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/async-profiler",
+      "os_arch": {
+        "linux": {
+          "amd64": {
+            "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
+            "urls": ["{urlbase}/async-profiler-1.8.3-darwin-amd64.tar.gz"],
+          },
+          "aarch64": {
+            "sha1": "cc9dc177d8ab9368af332eb4d39ee3be434683c3",
+            "urls": ["{urlbase}/async-profiler-1.8.3-linux-aarch64.tar.gz"],
+          },
+        },
+        "darwin": {
+          "amd64": {
+            "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
+            "urls": ["{urlbase}/async-profiler-1.8.3-darwin-amd64.tar.gz"],
+          },
+        }
+      },
+    },
   },
 
   "licenses" : {

@@ -53,11 +53,15 @@ class JVMProfiler(object):
     """
     Encapsulates the name and how to trigger common VM profilers.
     """
+    def __init__(self):
+        self.nextItemName = None
+
     def name(self):
         raise NotImplementedError()
 
     def setup(self, benchmarks, bmSuiteArgs):
-        pass
+        if benchmarks:
+            self.nextItemName = benchmarks[0]
 
     def additional_jvm_opts(self, dump_path):
         raise []
@@ -75,15 +79,8 @@ class SimpleJFRProfiler(JVMProfiler):
     """
     A simple JFR profiler with reasonable defaults.
     """
-    def __init__(self):
-        self.nextItemName = None
-
     def name(self):
         return "JFR"
-
-    def setup(self, benchmarks, bmSuiteArgs):
-        if benchmarks:
-            self.nextItemName = benchmarks[0]
 
     def additional_jvm_opts(self, dump_path):
         if self.nextItemName:
@@ -121,7 +118,38 @@ class SimpleJFRProfiler(JVMProfiler):
         return opts
 
 
+class AsyncProfiler(JVMProfiler):
+    """
+    Produces svg flame graphs using async-profiler (https://github.com/jvm-profiling-tools/async-profiler)
+    """
+    def name(self):
+        return "async"
+
+    def version(self):
+        return "1.8.3"
+
+    def libraryPath(self):
+        libraryDirectory = mx.library("ASYNC_PROFILER_{}".format(self.version())).get_path(True)
+        innerDir = [f for f in os.listdir(libraryDirectory) if os.path.isdir(os.path.join(libraryDirectory, f))][0]
+        return os.path.join(libraryDirectory, innerDir, "build", "libasyncProfiler.so")
+
+    def additional_jvm_opts(self, dump_path):
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        if self.nextItemName:
+            filename = os.path.join(dump_path, "{}_{}.svg".format(self.nextItemName, timestamp))
+        else:
+            filename = os.path.join(dump_path, "{}.svg".format(timestamp))
+
+        opts = ["-agentpath:{}=start,file={}".format(self.libraryPath(), filename)]
+
+        # reset the next item name since it has just been consumed
+        self.nextItemName = None
+        return opts
+
+
 _register_profiler(SimpleJFRProfiler())
+_register_profiler(AsyncProfiler())
 
 
 # Contains an argument parser and its description.
