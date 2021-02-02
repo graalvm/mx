@@ -13082,6 +13082,8 @@ class JDKConfig(Comparable):
         def _checkOutput(out):
             return 'java version' in out
 
+        self._is_openjdk = 'openjdk' in output.lower()
+
         # hotspot can print a warning, e.g. if there's a .hotspot_compiler file in the cwd
         output = output.split('\n')
         version = None
@@ -13105,6 +13107,9 @@ class JDKConfig(Comparable):
         self.javaCompliance = JavaCompliance(ver)
 
         self.debug_args = java_debug_args()
+
+    def is_openjdk_based(self):
+        return self._is_openjdk
 
     def exe_path(self, name, sub_dir='bin'):
         """
@@ -17247,7 +17252,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.284.1")  # get_os_variant rework
+version = VersionSpec("5.285.0")  # GR-29066-jfr
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
