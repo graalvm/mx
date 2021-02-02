@@ -577,6 +577,7 @@ suite = {
 
     "ASYNC_PROFILER_1.8.3": {
       "packedResource": True,
+      "optional": True,
       "urlbase": "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/async-profiler",
       "os_arch": {
         "linux": {
@@ -594,7 +595,7 @@ suite = {
             "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
             "urls": ["{urlbase}/async-profiler-1.8.3-macos-x64.tar.gz"],
           },
-        }
+        },
       },
     },
   },
