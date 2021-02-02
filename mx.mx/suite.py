@@ -582,7 +582,7 @@ suite = {
         "linux": {
           "amd64": {
             "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
-            "urls": ["{urlbase}/async-profiler-1.8.3-darwin-amd64.tar.gz"],
+            "urls": ["{urlbase}/async-profiler-1.8.3-linux-x86.tar.gz"],
           },
           "aarch64": {
             "sha1": "cc9dc177d8ab9368af332eb4d39ee3be434683c3",
@@ -592,7 +592,7 @@ suite = {
         "darwin": {
           "amd64": {
             "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
-            "urls": ["{urlbase}/async-profiler-1.8.3-darwin-amd64.tar.gz"],
+            "urls": ["{urlbase}/async-profiler-1.8.3-macos-x64.tar.gz"],
           },
         }
       },

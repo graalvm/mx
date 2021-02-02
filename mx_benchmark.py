@@ -64,7 +64,7 @@ class JVMProfiler(object):
             self.nextItemName = benchmarks[0]
 
     def additional_jvm_opts(self, dump_path):
-        raise []
+        return []
 
 
 def _register_profiler(obj):
@@ -97,7 +97,7 @@ class SimpleJFRProfiler(JVMProfiler):
         ]
         if mx.get_jdk().javaCompliance >= '9':
             opts = common_opts + [
-                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename=".format(filename),
+                "-XX:StartFlightRecording=settings=profile,disk=false,maxsize=200M,dumponexit=true,filename={}".format(filename),
                 "-Xlog:jfr=info"
             ]
         elif mx.get_jdk().is_openjdk_based():
