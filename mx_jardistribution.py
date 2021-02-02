@@ -658,6 +658,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             '-adaptresourcefilenames META-INF/services/*',
             '-renamesourcefileattribute stripped',
             '-keepattributes Exceptions,InnerClasses,Signature,Deprecated,SourceFile,LineNumberTable,RuntimeVisible*Annotations,EnclosingMethod,AnnotationDefault',
+            '-keepclassmembernames class ** { static boolean $assertionsDisabled; }',
 
             # options for incremental stripping
             '-dontoptimize -dontshrink -useuniqueclassmembernames']
