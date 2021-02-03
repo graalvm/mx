@@ -17252,7 +17252,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.1")  # don't obfuscate $assertionsDisabled
+version = VersionSpec("5.285.2")  # ff/GR-29066
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

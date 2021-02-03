@@ -8,6 +8,7 @@ suite = {
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/apache-jmeter-5.3.zip"],
       "sha1": "17480a0905d9d485bc8ce8e7be9daec2de98c251",
       "packedResource": True,
+      "license": "Apache-2.0",
     },
 
     "JACOCOCORE_0.8.4" : {
@@ -577,13 +578,12 @@ suite = {
 
     "ASYNC_PROFILER_1.8.3": {
       "packedResource": True,
-      "optional": True,
       "urlbase": "https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/async-profiler",
       "os_arch": {
         "linux": {
           "amd64": {
-            "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
-            "urls": ["{urlbase}/async-profiler-1.8.3-linux-x86.tar.gz"],
+            "sha1": "66f3b460b264f50a11533e317737fe606299efd8",
+            "urls": ["{urlbase}/async-profiler-1.8.3-linux-x64.tar.gz"],
           },
           "aarch64": {
             "sha1": "cc9dc177d8ab9368af332eb4d39ee3be434683c3",
@@ -596,7 +596,13 @@ suite = {
             "urls": ["{urlbase}/async-profiler-1.8.3-macos-x64.tar.gz"],
           },
         },
+        "<others>": {
+          "<others>": {
+            "optional": True,
+          },
+        }
       },
+      "license": "Apache-2.0",
     },
   },
 

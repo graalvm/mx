@@ -129,11 +129,12 @@ class AsyncProfiler(JVMProfiler):
         return "1.8.3"
 
     def libraryPath(self):
-        if mx.get_os() not in {"linux", "darwin"}:
-            # No Windows support: https://github.com/jvm-profiling-tools/async-profiler/issues/188
-            raise ValueError("'async-profiler' isn't available for this platform ({})!".format(mx.get_os()))
+        async_profiler_lib = mx.library("ASYNC_PROFILER_{}".format(self.version()))
+        if not async_profiler_lib.is_available():
+            raise mx.abort("'--profiler {}' is not supported on '{}/{}' because the '{}' library is not available."
+                           .format(self.name(), mx.get_os(), mx.get_arch(), async_profiler_lib.name))
 
-        libraryDirectory = mx.library("ASYNC_PROFILER_{}".format(self.version())).get_path(True)
+        libraryDirectory = async_profiler_lib.get_path(True)
         innerDir = [f for f in os.listdir(libraryDirectory) if os.path.isdir(os.path.join(libraryDirectory, f))][0]
         return os.path.join(libraryDirectory, innerDir, "build", "libasyncProfiler.so")
 
