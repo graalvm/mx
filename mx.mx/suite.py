@@ -8,6 +8,7 @@ suite = {
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/apache-jmeter-5.3.zip"],
       "sha1": "17480a0905d9d485bc8ce8e7be9daec2de98c251",
       "packedResource": True,
+      "license": "Apache-2.0",
     },
 
     "JACOCOCORE_0.8.4" : {
