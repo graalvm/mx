@@ -13885,6 +13885,7 @@ def build(cmd_args, parser=None):
 
         def checkTasks(tasks):
             active = []
+            failed = []
             for t in tasks:
                 if t.proc.is_alive():
                     active.append(t)
@@ -13894,12 +13895,13 @@ def build(cmd_args, parser=None):
                     t._finished = True
                     t._end_time = time.time()
                     if t.proc.exitcode != 0:
-                        return ([], joinTasks(tasks))
-                    _removeSubprocess(t.sub)
-                    # Release the pipe file descriptors ASAP (only available on Python 3.7+)
-                    if hasattr(t.proc, 'close'):
-                        t.proc.close()
-            return (active, [])
+                        failed += joinTasks([t])
+                    else:
+                        _removeSubprocess(t.sub)
+                        # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                        if hasattr(t.proc, 'close'):
+                            t.proc.close()
+            return active, failed
 
         def remainingDepsDepth(task):
             if task._d is None:
@@ -13929,7 +13931,6 @@ def build(cmd_args, parser=None):
             while True:
                 active, failed = checkTasks(active)
                 if len(failed) != 0:
-                    assert not active, active
                     break
                 if _activeCpus(active) >= cpus:
                     # Sleep for 0.2 second
