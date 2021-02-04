@@ -13895,12 +13895,11 @@ def build(cmd_args, parser=None):
                     t._finished = True
                     t._end_time = time.time()
                     if t.proc.exitcode != 0:
-                        failed += joinTasks([t])
-                    else:
-                        _removeSubprocess(t.sub)
-                        # Release the pipe file descriptors ASAP (only available on Python 3.7+)
-                        if hasattr(t.proc, 'close'):
-                            t.proc.close()
+                        failed.append(t)
+                    _removeSubprocess(t.sub)
+                    # Release the pipe file descriptors ASAP (only available on Python 3.7+)
+                    if hasattr(t.proc, 'close'):
+                        t.proc.close()
             return active, failed
 
         def remainingDepsDepth(task):
