@@ -13885,6 +13885,7 @@ def build(cmd_args, parser=None):
 
         def checkTasks(tasks):
             active = []
+            failed = []
             for t in tasks:
                 if t.proc.is_alive():
                     active.append(t)
@@ -13894,12 +13895,12 @@ def build(cmd_args, parser=None):
                     t._finished = True
                     t._end_time = time.time()
                     if t.proc.exitcode != 0:
-                        return ([], joinTasks(tasks))
+                        failed.append(t)
                     _removeSubprocess(t.sub)
                     # Release the pipe file descriptors ASAP (only available on Python 3.7+)
                     if hasattr(t.proc, 'close'):
                         t.proc.close()
-            return (active, [])
+            return active, failed
 
         def remainingDepsDepth(task):
             if task._d is None:
@@ -13929,7 +13930,6 @@ def build(cmd_args, parser=None):
             while True:
                 active, failed = checkTasks(active)
                 if len(failed) != 0:
-                    assert not active, active
                     break
                 if _activeCpus(active) >= cpus:
                     # Sleep for 0.2 second
@@ -17252,7 +17252,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.2")  # ff/GR-29066
+version = VersionSpec("5.285.3")  # closed procs
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
