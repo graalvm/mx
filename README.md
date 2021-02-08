@@ -265,6 +265,26 @@ is part of the `jdk.internal.vm.compiler` module defined by the `GRAAL` distribu
 }
 ```
 
+Modules can be removed from the JDK. For example, [JDK-8255616](https://bugs.openjdk.java.net/browse/JDK-8255616)
+removed the `jdk.aot`, `jdk.internal.vm.compile` and `jdk.internal.vm.compile.management` modules from standard JDK binaries
+as of JDK 16. Any `requiresConcealed` attributes targeting these modules must use a Java compliance qualifier so that
+the relevant sources can still be built on JDK 16:
+```
+"com.oracle.svm.enterprise.jdk11.test": {
+    ...
+    "requiresConcealed": {
+        "jdk.internal.vm.compiler@11..15": [
+            "org.graalvm.compiler.serviceprovider"
+        ],
+        ...
+    }
+}
+```
+
+As shown above, a module name in a `requiresConcealed` attribute can be qualified by appending `@` followed by
+a valid Java compliance specifier. Such a module will be ignored if the JDK version used to compile the sources
+is not matched by the specified Java compliance.
+
 ### Selecting JDKs
 
 Specifying JDKs to mx is done via the `--java-home` and `--extra-java-homes` options or

@@ -31,6 +31,7 @@ import re
 import zipfile
 import pickle
 import shutil
+import mx_javacompliance
 from os.path import join, exists, dirname, basename
 from collections import defaultdict
 
@@ -1029,6 +1030,12 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
     """
     all_modules = (modulepath or []) + list(jdk.get_modules())
     for module, packages in value.items():
+        if '@' in module:
+            module, java_compliance = module.split('@', 1)
+            java_compliance = mx_javacompliance.JavaCompliance(java_compliance, context=context)
+            if java_compliance not in jdk.javaCompliance:
+                continue
+
         matches = [jmd for jmd in all_modules if jmd.name == module]
         if not matches:
             mx.abort('Module {} in "requiresConcealed" attribute does not exist in {}'.format(module, jdk), context=context)
