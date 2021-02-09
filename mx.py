@@ -17265,7 +17265,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.4")  # GR-29231/add-requiresConcealed-javaCompliance-qualifier
+version = VersionSpec("5.285.5")  # ff/GR-29248
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
