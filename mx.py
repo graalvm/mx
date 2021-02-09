@@ -9903,9 +9903,22 @@ class GitConfig(VC):
                 cmd += ['--push']
         cmd += [remote]
         out = OutputCapture()
-        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out)
+        err = OutputCapture()
+        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out, err=err)
         if rc == 0:
             return out.data.rstrip('\r\n')
+        else:
+            # old git versions don't have the 'get-url' command
+            logv("git version doesn't support 'get-url', retrieving value from config instead.")
+            config_name = 'remote.{}.{}url'.format(remote, "push" if push is True else "")
+            cmd = ['git', 'config', config_name]
+            out = OutputCapture()
+            err = OutputCapture()
+            rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out, err=err)
+            if rc == 0:
+                return out.data.rstrip('\r\n')
+            else:
+                log(err)
         assert not abortOnError
         return None
 
@@ -17252,7 +17265,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.4")  # GR-29231/add-requiresConcealed-javaCompliance-qualifier
+version = VersionSpec("5.285.5")  # ff/GR-29248
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
