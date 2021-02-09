@@ -9904,22 +9904,31 @@ class GitConfig(VC):
         cmd += [remote]
         out = OutputCapture()
         err = OutputCapture()
-        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out, err=err)
+        rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=False, out=out, err=err)
         if rc == 0:
             return out.data.rstrip('\r\n')
         else:
-            # old git versions don't have the 'get-url' command
-            logv("git version doesn't support 'get-url', retrieving value from config instead.")
+            log("git version doesn't support 'get-url', retrieving value from config instead.")
             config_name = 'remote.{}.{}url'.format(remote, "push" if push is True else "")
             cmd = ['git', 'config', config_name]
             out = OutputCapture()
             err = OutputCapture()
-            rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=abortOnError, out=out, err=err)
+            rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=False, out=out, err=err)
             if rc == 0:
                 return out.data.rstrip('\r\n')
-            else:
-                log(err)
-        assert not abortOnError
+            elif push is True:
+                non_push_config_name = 'remote.{}.url'.format(remote)
+                log("git config {} isn't defined. Attempting with {}".format(config_name, non_push_config_name))
+                cmd = ['git', 'config', non_push_config_name]
+                out = OutputCapture()
+                err = OutputCapture()
+                rc = self.run(cmd, cwd=vcdir, nonZeroIsFatal=False, out=out, err=err)
+                if rc == 0:
+                    return out.data.rstrip('\r\n')
+                else:
+                    log(err)
+        if abortOnError:
+            abort("Failed to retrieve the remote URL")
         return None
 
     def _path(self, vcdir, name, abortOnError=True):
