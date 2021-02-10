@@ -1286,8 +1286,13 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
 class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
-    def __init__(self):
-        self.bmSuite = None
+    @property
+    def bmSuite(self):
+        return getattr(self, '_bmSuite', None)
+
+    @bmSuite.setter
+    def bmSuite(self, val):
+        self._bmSuite = val
 
     def name(self):
         """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
@@ -1331,7 +1336,6 @@ class Vm(object): #pylint: disable=R0922
 
 class GuestVm(Vm): #pylint: disable=R0921
     def __init__(self, host_vm=None):
-        super(GuestVm, self).__init__()
         self._host_vm = host_vm
 
     def hosting_registry(self):
