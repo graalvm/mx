@@ -17287,7 +17287,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.10")  # GR-18216 Loom
+version = VersionSpec("5.286.0")  # mx gate --summary
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
