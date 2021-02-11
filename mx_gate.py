@@ -451,7 +451,10 @@ def gate(args):
                 mx.abort('Unknown entry supplied to `mx gate --summary-format`: {}\n'
                          'Known entries are: {}'.format(entry, ', '.join(default_summary)))
         for e in res:
-            mx.log(fmt.format(**e, **maxLengths))
+            # Python >= 3.5 could use {**e, **maxLengths} directly
+            values = e.copy()
+            values.update(maxLengths)
+            mx.log(fmt.format(**values))
     else:
         mx.log('Gate task times:')
         for t in tasks:
