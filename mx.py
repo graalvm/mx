@@ -13017,6 +13017,7 @@ class VersionSpec(Comparable):
         while i > 0 and self.parts[i - 1] == 0:
             i -= 1
         self.strippedParts = tuple(list(self.parts)[:i])
+        self._loom = False
 
     def __str__(self):
         return self.versionString
@@ -13110,6 +13111,10 @@ class JDKConfig(Comparable):
 
         self._is_openjdk = 'openjdk' in output.lower()
 
+        # Once Loom is merged into the JDK, the JDK version
+        # number will be used to determine if the JDK includes Loom.
+        self._is_loom = 'loom' in output.lower()
+
         # hotspot can print a warning, e.g. if there's a .hotspot_compiler file in the cwd
         output = output.split('\n')
         version = None
@@ -13131,6 +13136,10 @@ class JDKConfig(Comparable):
         self.version = VersionSpec(version.split()[2].strip('"'))
         ver = self.version.parts[1] if self.version.parts[0] == 1 else self.version.parts[0]
         self.javaCompliance = JavaCompliance(ver)
+
+        if self._is_loom:
+            self.javaCompliance._loom = True
+            self.version._loom = True
 
         self.debug_args = java_debug_args()
 
@@ -17278,7 +17287,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.285.9")  # GR-29338
+version = VersionSpec("5.285.10")  # GR-18216 Loom
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
