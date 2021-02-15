@@ -101,12 +101,13 @@ class Task:
             stamp += '(+{})'.format(duration)
         return stamp + suffix
 
-    def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None):
+    def __init__(self, title, tasks=None, disableJacoco=False, tags=None, legacyTitles=None, description=None):
         self.tasks = tasks
         self.title = title
         self.legacyTitles = legacyTitles or []
         self.skipped = False
         self.tags = tags
+        self.description = description
         if tasks is not None:
             for t in tasks:
                 if t.title == title:
@@ -287,6 +288,7 @@ def gate(args):
     """run the tests used to validate a push
 
     If this command exits with a 0 exit code, then the gate passed."""
+    default_summary = ['duration', 'title', 'description', 'tags']
 
     parser = ArgumentParser(prog='mx gate')
     add_omit_clean_args(parser)
@@ -301,6 +303,9 @@ def gate(args):
     parser.add_argument('--no-warning-as-error', action='store_true', help='compile warnings are not treated as errors')
     parser.add_argument('-B', dest='extra_build_args', action='append', metavar='<build_args>', help='append additional arguments to mx build commands used in the gate')
     parser.add_argument('-p', '--partial', help='run only a subset of the tasks in the gate (index/total). Eg. "--partial 2/5" runs the second fifth of the tasks in the gate. Tasks with tag build are repeated for each run.')
+    summary = parser.add_mutually_exclusive_group()
+    summary.add_argument('--summary', action='store_const', const=default_summary, default=None, help='print a human readable summary of the executed tasks')
+    summary.add_argument('--summary-format', dest='summary', action='store', default=None, help='--summary with a comma separated list of entries. Possible values ' + str(default_summary))
     filtering = parser.add_mutually_exclusive_group()
     filtering.add_argument('-t', '--task-filter', help='comma separated list of substrings to select subset of tasks to be run')
     filtering.add_argument('-s', '--start-at', help='substring to select starting task')
@@ -426,11 +431,36 @@ def gate(args):
 
     total.stop()
 
-    mx.log('Gate task times:')
-    for t in tasks:
-        mx.log('  ' + str(t.duration) + '\t' + t.title + ("" if not (Task.verbose and t.tags) else (' [' + ','.join(t.tags) + ']')))
-    mx.log('  =======')
-    mx.log('  ' + str(total.duration))
+    if args.summary:
+        mx.log('Gate task summary:')
+        res = [{'duration': str(t.duration), 'title': t.title, 'tags': '[{}]'.format(', '.join(t.tags)) if t.tags else '', 'description': t.description or ''} for t in tasks]
+        # collect lengths
+        maxLengths = {}
+        for e in res:
+            for key in e.keys():
+                maxLengths[key + 'Max'] = max(maxLengths.get(key + 'Max', 0), len(e[key]))
+        # build format string
+        fmt = '  '
+        args_summary = args.summary
+        if not isinstance(args_summary, list):
+            args_summary = args_summary.split(',')
+        for entry in args_summary:
+            if entry + 'Max' in maxLengths:
+                fmt += '  {{{0}:<{{{0}Max}}}}'.format(entry)
+            else:
+                mx.abort('Unknown entry supplied to `mx gate --summary-format`: {}\n'
+                         'Known entries are: {}'.format(entry, ', '.join(default_summary)))
+        for e in res:
+            # Python >= 3.5 could use {**e, **maxLengths} directly
+            values = e.copy()
+            values.update(maxLengths)
+            mx.log(fmt.format(**values))
+    else:
+        mx.log('Gate task times:')
+        for t in tasks:
+            mx.log('  ' + str(t.duration) + '\t' + t.title + ("" if not (Task.verbose and t.tags) else (' [' + ','.join(t.tags) + ']')))
+        mx.log('  =======')
+        mx.log('  ' + str(total.duration))
 
     if args.task_filter:
         Task.filters = []
