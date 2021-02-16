@@ -1183,6 +1183,14 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 if profiler:
                     profiler.setup(benchmarks, bmSuiteArgs)
 
+    def _vmRun(self, vm, workdir, command, benchmarks, bmSuiteArgs):
+        """Dummy method that executes a command on the given VM from the given directory.
+        It is extracted as a single method in case some benchmark suites need more complicated setups than a call
+        to the VM with some arguments.
+        :rtype: tuple
+        """
+        return vm.runWithSuite(workdir, command)
+
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         self.setupProfilers(benchmarks, bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
@@ -1190,7 +1198,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
-        t = vm.runWithSuite(self, cwd, command)
+        t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
             vm_dims = {}

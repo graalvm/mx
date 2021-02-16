@@ -12064,6 +12064,54 @@ class DisableJavaDebuggging(DisableJavaDebugging):
 def is_debug_disabled():
     return DisableJavaDebugging._disabled
 
+
+# registry of alternative run functions to allow nesting
+_alternative_run_functions_registry = []
+
+
+class AlternativeRunFunction(object):
+    """ Utility for replacing calls to `mx.run` by a custom function that can freely manipulate the command line.
+
+    Should be used in conjunction with the ``with`` keywords, e.g.
+    ```
+    with AlternativeRunFunction(exec_func):
+        # call to vm.run
+    ```
+    """
+    def __init__(self, run_func):
+        self._run_function = run_func
+
+    def __enter__(self):
+        _alternative_run_functions_registry.append(self)
+
+    def __exit__(self, t, value, traceback):
+        _alternative_run_functions_registry.remove(self)
+        
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self._run_function.__name__)
+
+    @property
+    def run_function(self):
+        return self._run_function
+
+    def get_next_alternative_function(self):
+        if self not in _alternative_run_functions_registry:
+            raise ValueError("Alternative run function is not registered (context not entered) !")
+        my_idx = _alternative_run_functions_registry.index(self)
+        if my_idx > 0:
+            return _alternative_run_functions_registry[my_idx - 1]
+        return None
+
+
+def alternative_mx_run():
+    """
+    :return: the top-level AlternativeRunFunction if any. None otherwise.
+    :rtype: AlternativeRunFunction
+    """
+    if not _alternative_run_functions_registry:
+        return None
+    return _alternative_run_functions_registry[-1]
+
 ### JDK
 
 def addJDKFactory(tag, compliance, factory):
@@ -12719,6 +12767,9 @@ def _list2cmdline(seq):
 
     return ''.join(result)
 
+
+_currently_executing_alternatives = set()
+
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
@@ -12729,6 +12780,17 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     Each line of the standard output and error streams of the subprocess are redirected to
     out and err if they are callable objects.
     """
+    alternative_run = alternative_mx_run()
+    if alternative_run is not None:
+        if alternative_run in _currently_executing_alternatives:
+            alternative_run = alternative_run.get_next_alternative_function()
+        logv("alternative run command used: {}".format(alternative_run))
+    if alternative_run is not None and alternative_run not in _currently_executing_alternatives:
+        # prevents infinite recursion if the alternative function itself calls mx.run
+        _currently_executing_alternatives.add(alternative_run)
+        ret = alternative_run.run_function(args, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env, stdin=stdin, cmdlinefile=cmdlinefile, **kwargs)
+        _currently_executing_alternatives.remove(alternative_run)
+        return ret
     assert stdin is None or isinstance(stdin, str), "'stdin' must be a string: " + str(stdin)
     assert isinstance(args, list), "'args' must be a list: " + str(args)
     idx = 0
