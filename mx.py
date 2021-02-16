@@ -4317,6 +4317,10 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
             warn(verify_msg)
         return True
     else: # Either verification error or no download was successful
+        if not verify_msg:
+            verify_msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
+            for url in urls:
+                verify_msg += '\n  ' + url
         if abortOnError:
             abort(verify_msg)
         else:
