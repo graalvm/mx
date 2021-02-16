@@ -4300,8 +4300,11 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 if i != 0:
                     time.sleep(1)
                     warn('Retry {} to download from {}'.format(i, url))
-                if _attempt_download(url, path, jarEntryName):
-                    return True # Download was successful
+                res = _attempt_download(url, path, jarEntryName)
+                if res == "retry":
+                    continue
+                elif res:
+                    return True  # Download was successful
 
     verify_msg = None
     if verifyOnly and len(verify_errors) > 0: # verify-mode -> print error details
