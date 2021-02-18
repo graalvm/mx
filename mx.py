@@ -17290,7 +17290,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.7")  # fix GR-29338
+version = VersionSpec("5.286.8")  # paw/GR-16855-automatic-module-deps
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
