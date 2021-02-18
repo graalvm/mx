@@ -62,6 +62,7 @@ class JavaModuleDescriptor(mx.Comparable):
     :param set conceals: the packages defined but not exported to anyone by this module
     :param str jarpath: path to module jar file
     :param JARDistribution dist: distribution from which this module was derived
+    :param Library lib: library from which this module was derived
     :param list modulepath: list of `JavaModuleDescriptor` objects for the module dependencies of this module
     :param dict alternatives: name to JavaModuleDescriptor for alternative definitions of the module. If this
                     is an alternative itself, then the dict has a single entry mapping its alternative name to None.
@@ -69,7 +70,7 @@ class JavaModuleDescriptor(mx.Comparable):
     :param JDKConfig jdk: the JDK containing this module
     """
     def __init__(self, name, exports, requires, uses, provides, packages=None, concealedRequires=None,
-                 jarpath=None, dist=None, modulepath=None, alternatives=None, boot=False, jdk=None, opens=None):
+                 jarpath=None, dist=None, lib=None, modulepath=None, alternatives=None, boot=False, jdk=None, opens=None):
         self.name = name
         self.exports = exports
         self.requires = requires
@@ -83,6 +84,7 @@ class JavaModuleDescriptor(mx.Comparable):
         self.conceals = self.packages - exportedPackages
         self.jarpath = jarpath
         self.dist = dist
+        self.lib = lib
         self.modulepath = modulepath
         self.alternatives = alternatives
         self.boot = boot
@@ -150,6 +152,9 @@ class JavaModuleDescriptor(mx.Comparable):
             if name.startswith('dist:'):
                 distName = name[len('dist:'):]
                 resolved.append(as_java_module(mx.distribution(distName), jdk))
+            elif name.startswith('lib:'):
+                libName = name[len('lib:'):]
+                resolved.append(get_library_as_module(mx.dependency(libName), jdk))
             else:
                 resolved.append(jdkmodules[name])
         jmd.modulepath = resolved
@@ -198,7 +203,15 @@ class JavaModuleDescriptor(mx.Comparable):
         modulepath = self.modulepath
         jarpath = self.jarpath
         alternatives = self.alternatives
-        self.modulepath = [m.name if not m.dist else 'dist:' + m.dist.name for m in modulepath]
+        self.modulepath = []
+        for m in modulepath:
+            if m.dist:
+                pickled_name = 'dist:' + m.dist.name
+            elif m.lib:
+                pickled_name = 'lib:' + m.lib.suite.name + ':' + m.lib.name
+            else:
+                pickled_name = m.name
+            self.modulepath.append(pickled_name)
         self.dist = dist.name
         self.jarpath = os.path.relpath(jarpath, dirname(pickled_path))
         if self.alternatives:
@@ -476,7 +489,7 @@ def get_library_as_module(dep, jdk):
             mx.warn('Error writing to ' + cache + ': ' + str(e))
             os.remove(cache)
 
-    return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath, opens=opens)
+    return JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages, jarpath=fullpath, opens=opens, lib=dep)
 
 
 _versioned_prefix = 'META-INF/versions/'
