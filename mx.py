@@ -11680,7 +11680,7 @@ def library(name, fatalIfMissing=True, context=None):
         if _projects.get(name):
             abort(name + ' is a project, not a library', context=context)
         raise abort(_missing_dep_message(name, 'library'), context=context)
-    if not fatalIfMissing and l and l.optional and not l.is_available():
+    if not fatalIfMissing and l.optional and not l.is_available():
         return None
     return l
 
@@ -17289,7 +17289,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.4")  # paw/GR-16855-automatic-module-deps
+version = VersionSpec("5.286.5")  # revert GR-18655
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
