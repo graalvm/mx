@@ -9680,7 +9680,7 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 log("Fetch from " + url + " into cache " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True, include_tags=False)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache',
                     '-c', 'gc.auto=0',
                     '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*',
@@ -9749,11 +9749,13 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False, include_tags=True):
         try:
             cmd = ['git', 'fetch']
             if prune:
                 cmd.append('--prune')
+            if not include_tags:
+                cmd.append('--no-tags')
             if repository:
                 cmd.append(repository)
             if refspec:
@@ -17287,7 +17289,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.2")  # [GR-28769]
+version = VersionSpec("5.286.3")  # [GR-29463]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
