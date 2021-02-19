@@ -1603,6 +1603,11 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
         ]
 
 
+class JMeterBenchmarkSuite(JavaBenchmarkSuite, AveragingBenchmarkMixin):
+    """ This class is deprecated and will be removed soon. The new version is now located in mx_sdk_benchmark.py"""
+    pass
+
+
 class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
     """Base class for JMH based benchmark suites."""
 
