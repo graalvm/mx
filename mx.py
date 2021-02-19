@@ -2144,7 +2144,7 @@ class Suite(object):
                 d = create_layout('tar')
             else:
                 relpath = attrs.pop('relpath', False)
-                output = attrs.pop('output', None)
+                output = attrs.pop('output', None).replace('/', os.sep)
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         elif layout is not None:
             d = create_layout('jar')
@@ -5830,6 +5830,7 @@ class LayoutDistribution(AbstractDistribution):
                     if not first_file:
                         abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
+                _dst = _dst.replace('/', os.sep)
                 merge_recursive(_source_file, _dst, _arcname, excludes, archive=archive)
                 first_file = False
             if first_file and not optional:
@@ -6075,7 +6076,7 @@ class LayoutDistribution(AbstractDistribution):
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
-                for source_file in glob.iglob(join(self.suite.dir, source['path'])):
+                for source_file in glob.iglob(join(self.suite.dir, source['path'].replace('/', os.sep))):
                     up = _needsUpdate(source_file, self.path)
                     if up:
                         return up
@@ -17361,7 +17362,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.7")  # ffarquet
+version = VersionSpec("5.289.0")  # [GR-29221]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
