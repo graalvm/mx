@@ -17289,7 +17289,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.5")  # revert GR-18655
+version = VersionSpec("5.286.6")  # improve truffleruby gate
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
