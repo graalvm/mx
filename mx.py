@@ -7027,10 +7027,11 @@ class JavaProject(Project, ClasspathDependency):
                     if requires_concealed is not None:
                         parse_requiresConcealed_attribute(jdk, requires_concealed, concealed, None, self)
 
-                    # JVMCI is special as it not concealed in JDK 8 but concealed in JDK 9+.
-                    jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
-                    if jvmci_packages:
-                        concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
+                    # JVMCI is special as it not concealed in JDK 8 but is concealed in JDK 9+.
+                    if 'jdk.internal.vm.ci' in (jmd.name for jmd in jdk.get_modules()):
+                        jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
+                        if jvmci_packages:
+                            concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
 
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
@@ -17289,7 +17290,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.6")  # improve truffleruby gate
+version = VersionSpec("5.286.7")  # fix GR-29338
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
