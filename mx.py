@@ -12483,17 +12483,18 @@ def _kill_process(pid, sig):
     Sends the signal `sig` to the process identified by `pid`. If `pid` is a process group
     leader, then signal is sent to the process group id.
     """
-    pgid = os.getpgid(pid)
     try:
         logvv('[{} sending {} to {}]'.format(os.getpid(), sig, pid))
+        pgid = os.getpgid(pid)
         if pgid == pid:
             os.killpg(pgid, sig)
         else:
             os.kill(pid, sig)
         return True
-    except:
-        log('Error killing subprocess ' + str(pid) + ': ' + str(sys.exc_info()[1]))
+    except Exception as e:  # pylint: disable=broad-except
+        log('Error killing subprocess ' + str(pid) + ': ' + str(e))
         return False
+
 
 def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
