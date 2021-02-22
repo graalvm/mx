@@ -37,6 +37,8 @@ import traceback
 import uuid
 import signal
 import threading
+import tempfile
+import shutil
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
@@ -1189,7 +1191,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         to the VM with some arguments.
         :rtype: tuple
         """
-        return vm.runWithSuite(workdir, command)
+        return vm.runWithSuite(self, workdir, command)
 
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         self.setupProfilers(benchmarks, bmSuiteArgs)
@@ -1198,6 +1200,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
+        vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
@@ -1291,6 +1294,44 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
 
+class TemporaryWorkdirMixin(VmBenchmarkSuite):
+    def before(self, bmSuiteArgs):
+        parser = parsers["temporary_workdir_parser"].parser
+        bmArgs, otherArgs = parser.parse_known_args(bmSuiteArgs)
+        self.keepScratchDir = bmArgs.keep_scratch
+        if not bmArgs.no_scratch:
+            self._create_tmp_workdir()
+        else:
+            mx.warn("NO scratch directory created! (--no-scratch)")
+            self.workdir = None
+        super(TemporaryWorkdirMixin, self).before(otherArgs)
+
+    def _create_tmp_workdir(self):
+        self.workdir = tempfile.mkdtemp(prefix=self.name() + '-work.', dir='.')
+
+    def workingDirectory(self, benchmarks, bmSuiteArgs):
+        return self.workdir
+
+    def after(self, bmSuiteArgs):
+        if hasattr(self, "keepScratchDir") and self.keepScratchDir:
+            mx.warn("Scratch directory NOT deleted (--keep-scratch): {0}".format(self.workdir))
+        elif self.workdir:
+            shutil.rmtree(self.workdir)
+        super(TemporaryWorkdirMixin, self).after(bmSuiteArgs)
+
+    def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
+        try:
+            super(TemporaryWorkdirMixin, self).repairDatapointsAndFail(benchmarks, bmSuiteArgs, partialResults, message)
+        finally:
+            if self.workdir:
+                # keep old workdir for investigation, create a new one for further benchmarking
+                mx.warn("Keeping scratch directory after failed benchmark: {0}".format(self.workdir))
+                self._create_tmp_workdir()
+
+    def parserNames(self):
+        return super(TemporaryWorkdirMixin, self).parserNames() + ["temporary_workdir_parser"]
+
+
 class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
@@ -1309,6 +1350,10 @@ class Vm(object): #pylint: disable=R0922
     def config_name(self):
         """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
+
+    def extract_vm_info(self, args=None):
+        """Extract vm information."""
+        pass
 
     def rules(self, output, benchmarks, bmSuiteArgs):
         """Returns a list of rules required to parse the standard output.
@@ -1437,10 +1482,6 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         """
         return {}
 
-    def extract_vm_info(self, args=None):
-        """Extract vm information."""
-        pass
-
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
@@ -1535,9 +1576,16 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             dims.update(vm_info)
         return dims
 
+    def generate_java_command(self, args):
+        raise NotImplementedError()
+
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
+
+    def home(self):
+        """Returns the JAVA_HOME location of that vm"""
+        raise mx.get_jdk().home
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         self.extract_vm_info(args)
@@ -1558,6 +1606,9 @@ class DefaultJavaVm(OutputCapturingJavaVm):
 
     def post_process_command_line_args(self, args):
         return args
+
+    def generate_java_command(self, args):
+        return mx.get_jdk().generate_java_command(self.post_process_command_line_args(args))
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         return mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
