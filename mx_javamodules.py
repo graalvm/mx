@@ -393,6 +393,10 @@ def get_java_module_info(dist, fatalIfNotModule=False):
              the name of the module, the descriptor pickle path, and finally the path to the
              (unstripped) modular jar file
     """
+    if not dist.isJARDistribution():
+        if fatalIfNotModule:
+            mx.abort('Distribution ' + dist.name + ' is not a JARDistribution')
+        return None
     module_name = get_module_name(dist)
     if not module_name:
         if fatalIfNotModule:
@@ -1094,7 +1098,7 @@ def requiredExports(distributions, jdk):
     jdk.internal.module to the modules org.graalvm.nativeimage.pointsto and org.graalvm.nativeimage.builder.
     """
     def _opt_as_java_module(dist):
-        if not mx.get_module_name(dist):
+        if not get_java_module_info(dist, fatalIfNotModule=False):
             return None
         return as_java_module(dist, jdk, fatalIfNotCreated=False)
 
