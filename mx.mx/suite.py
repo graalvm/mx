@@ -729,6 +729,9 @@ suite = {
         "JUNIT",
         "HAMCREST",
       ],
+      "moduleInfo" : {
+        "name" : "com.oracle.mxtool.junit",
+      },
     },
 
     "MX_JACOCO_REPORT" : {
