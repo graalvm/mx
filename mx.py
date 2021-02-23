@@ -565,6 +565,7 @@ environment variables:
         self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
+        self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars (jar containing ProGuard main class must be first) to be used instead of default versions')
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
@@ -7027,10 +7028,11 @@ class JavaProject(Project, ClasspathDependency):
                     if requires_concealed is not None:
                         parse_requiresConcealed_attribute(jdk, requires_concealed, concealed, None, self)
 
-                    # JVMCI is special as it not concealed in JDK 8 but concealed in JDK 9+.
-                    jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
-                    if jvmci_packages:
-                        concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
+                    # JVMCI is special as it not concealed in JDK 8 but is concealed in JDK 9+.
+                    if 'jdk.internal.vm.ci' in (jmd.name for jmd in jdk.get_modules()):
+                        jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
+                        if jvmci_packages:
+                            concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
 
             concealed = {module : list(concealed[module]) for module in concealed}
             setattr(self, cache, concealed)
@@ -9680,7 +9682,7 @@ class GitConfig(VC):
             cache = self._local_cache_repo()
             if not self.exists(cache, rev):
                 log("Fetch from " + url + " into cache " + cache)
-                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True)
+                self._fetch(cache, url, ['+refs/heads/*:refs/remotes/' + hashed_url + '/*'], prune=True, lock=True, include_tags=False)
             cmd += ['--no-checkout', '--shared', '--origin', 'cache',
                     '-c', 'gc.auto=0',
                     '-c', 'remote.cache.fetch=+refs/remotes/' + hashed_url + '/*:refs/remotes/cache/*',
@@ -9749,11 +9751,13 @@ class GitConfig(VC):
                 shutil.rmtree(os.path.abspath(dest))
         return success
 
-    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False):
+    def _fetch(self, vcdir, repository=None, refspec=None, abortOnError=True, prune=False, lock=False, include_tags=True):
         try:
             cmd = ['git', 'fetch']
             if prune:
                 cmd.append('--prune')
+            if not include_tags:
+                cmd.append('--no-tags')
             if repository:
                 cmd.append(repository)
             if refspec:
@@ -11678,7 +11682,7 @@ def library(name, fatalIfMissing=True, context=None):
         if _projects.get(name):
             abort(name + ' is a project, not a library', context=context)
         raise abort(_missing_dep_message(name, 'library'), context=context)
-    if not fatalIfMissing and l.optional and not l.is_available():
+    if not fatalIfMissing and l and l.optional and not l.is_available():
         return None
     return l
 
@@ -14626,7 +14630,7 @@ def _unstrip(args):
     return 0
 
 def unstrip(args, **run_java_kwargs):
-    proguard_cp = library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True)
+    proguard_cp = _opts.proguard_cp or (library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True))
     # A slightly more general pattern for matching stack traces than the default.
     # This version does not require the "at " prefix.
     regex = r'(?:.*?\s+%c\.%m\s*\(%s(?::%l)?\)\s*(?:~\[.*\])?)|(?:(?:.*?[:"]\s+)?%c(?::.*)?)'

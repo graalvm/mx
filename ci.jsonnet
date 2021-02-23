@@ -81,32 +81,24 @@ jmh_test = setup_mx + java + {
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
   ]
 },
-downstream_truffleruby = common.sulong.deps.linux + {
+build_truffleruby = common.sulong.deps.linux + {
   targets: ['gate'],
   downloads+: {
-    JAVA_HOME: oraclejdk_jvmci,
+    JAVA_HOME: common.jdks["labsjdk-ce-11"],
   },
   packages+: {
-    ruby: ">=2.0.0",
+    ruby: ">=2.7.2",
   },
   environment+: {
-    PATH: "$BUILD_DIR/main:$LLVM/bin:$PATH",
+    PATH: "$BUILD_DIR/main:$PATH", # add ./mx on PATH
   },
   run: [
-    ["./mx", 'testdownstream', '--repo', "https://github.com/graalvm/truffleruby.git", '--mx-command', "ruby_testdownstream_hello"],
+    ['mx', 'sclone', '--kind', 'git', '--source', 'https://github.com/graalvm/truffleruby.git', '--dest', '../truffleruby'],
+    ['cd', '../truffleruby'],
+    ['bin/jt', 'build', '--env', 'native', '--native-images=truffleruby'],
+    ['bin/jt', '-u', 'native', 'ruby', '-v', '-e', 'puts "Hello Ruby!"'],
   ],
-  timelimit: "10:00",
-},
-nocache = {
-  environment+: {
-    MX_CACHE_DIR: "/tmp/.gate_fresh_mx_cache",
-  },
-  setup: [
-    ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
-  ],
-  teardown: [
-    ['rm', '-rf', "/tmp/.gate_fresh_mx_cache"],
-  ],
+  timelimit: "20:00",
 },
 build_graalvm_ce_linux = setup_mx + common.sulong.deps.linux + {
   packages+: {
@@ -168,7 +160,7 @@ mx_bisect_test = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: jdks['labsjdk-ee-11'],
-  overlay: 'a1e100eaee29f49b095d7dc1838744dfadd38850',
+  overlay: '20b7af15bb6be537606f089276911b4fdb6efdf0',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
@@ -179,10 +171,9 @@ mx_bisect_test = {
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
-    downstream_truffleruby +           {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle"},
-    downstream_truffleruby + nocache + {capabilities: ['linux', 'amd64'], name: "downstream-truffleruby-binary-truffle-nocache"},
-    build_graalvm_ce_linux +           {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
-    build_graalvm_ce_linux +           {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,
+    build_truffleruby + {capabilities: ['linux', 'amd64'], name: "gate-build-truffleruby-native-linux-amd64"},
+    build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
+    build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,
 
     {
       capabilities: ['linux', 'amd64'], targets: ['gate'], name: "gate-version-update-check",

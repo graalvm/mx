@@ -31,7 +31,6 @@ import os.path
 import platform
 import re
 import socket
-import subprocess
 import time
 import traceback
 import uuid
@@ -1696,122 +1695,8 @@ class TestBenchmarkSuite(JavaBenchmarkSuite):
 
 
 class JMeterBenchmarkSuite(JavaBenchmarkSuite, AveragingBenchmarkMixin):
-    """Base class for JMeter based benchmark suites."""
-
-    def __init__(self):
-        super(JMeterBenchmarkSuite, self).__init__()
-        self.jmeterOutput = None
-
-    def benchSuiteName(self):
-        return self.name()
-
-    def applicationPath(self):
-        """Returns the application Jar path.
-
-        :return: Path to Jar.
-        :rtype: str
-        """
-        raise NotImplementedError()
-
-    def applicationPort(self):
-        """Returns the application port.
-
-        :return: Port that the application is using to receive requests.
-        :rtype: int
-        """
-        return 8080
-
-    def workloadPath(self, benchmark):
-        """Returns the JMeter workload (.jmx file) path.
-
-        :return: Path to workload file.
-        :rtype: str
-        """
-        raise NotImplementedError()
-
-    def jmeterVersion(self):
-        return '5.3'
-
-    def jmeterPath(self):
-        jmeterDirectory = mx.library("APACHE_JMETER_" + self.jmeterVersion(), True).get_path(True)
-        return os.path.join(jmeterDirectory, "apache-jmeter-" + self.jmeterVersion(), "bin/ApacheJMeter.jar")
-
-    def tailDatapointsToSkip(self, results):
-        return int(len(results) * .10)
-
-    def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
-        return self.vmArgs(bmSuiteArgs) + ["-jar", self.applicationPath()]
-
-    def rules(self, out, benchmarks, bmSuiteArgs):
-        # Example of jmeter output:
-        # "summary =     70 in 00:00:01 =   47.6/s Avg:    12 Min:     3 Max:   592 Err:     0 (0.00%)"
-        return [
-            StdOutRule(
-                r"^summary \+\s+(?P<requests>[0-9]+) in (?P<hours>\d+):(?P<minutes>\d\d):(?P<seconds>\d\d) =\s+(?P<throughput>\d*[.,]?\d*)/s Avg:\s+(?P<avg>\d+) Min:\s+(?P<min>\d+) Max:\s+(?P<max>\d+) Err:\s+(?P<errors>\d+) \((?P<errpct>\d*[.,]?\d*)\%\)", # pylint: disable=line-too-long
-                {
-                    "benchmark": benchmarks[0],
-                    "bench-suite": self.benchSuiteName(),
-                    "metric.name": "warmup",
-                    "metric.value": ("<throughput>", float),
-                    "metric.unit": "op/s",
-                    "metric.better": "higher",
-                    "metric.iteration": ("$iteration", int),
-                    "warnings": ("<errors>", str),
-                }
-            )
-        ]
-
-    @staticmethod
-    def findApplication(port, timeout=10):
-        try:
-            import psutil
-        except ImportError:
-            mx.abort("Failed to import JMeterBenchmarkSuite dependency module: psutil")
-        for _ in range(timeout + 1):
-            for proc in psutil.process_iter():
-                try:
-                    for conns in proc.connections(kind='inet'):
-                        if conns.laddr.port == port:
-                            return proc
-                except:
-                    pass
-            time.sleep(1)
-        return None
-
-    @staticmethod
-    def terminateApplication(port):
-        proc = JMeterBenchmarkSuite.findApplication(port, 0)
-        if proc:
-            proc.send_signal(signal.SIGTERM)
-            return True
-        else:
-            return False
-
-    @staticmethod
-    def runJMeterInBackground(jmeterBenchmarkSuite, benchmarkName):
-        if not JMeterBenchmarkSuite.findApplication(jmeterBenchmarkSuite.applicationPort()):
-            mx.abort("Failed to find server application in JMeterBenchmarkSuite")
-        jmeterCmd = [mx.get_jdk().java, "-jar", jmeterBenchmarkSuite.jmeterPath(), "-n", "-t", jmeterBenchmarkSuite.workloadPath(benchmarkName), "-j", "/dev/stdout"] # pylint: disable=line-too-long
-        mx.log("Running JMeter: {0}".format(jmeterCmd))
-        jmeterBenchmarkSuite.jmeterOutput = mx.TeeOutputCapture(mx.OutputCapture())
-        mx.run(jmeterCmd, out=jmeterBenchmarkSuite.jmeterOutput, err=subprocess.PIPE)
-        if not jmeterBenchmarkSuite.terminateApplication(jmeterBenchmarkSuite.applicationPort()):
-            mx.abort("Failed to terminate server application in JMeterBenchmarkSuite")
-
-    def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
-        ret_code, _, dims = super(JMeterBenchmarkSuite, self).runAndReturnStdOut(benchmarks, bmSuiteArgs)
-        return ret_code, self.jmeterOutput.underlying.data, dims
-
-    def run(self, benchmarks, bmSuiteArgs):
-        if len(benchmarks) > 1:
-            mx.abort("A single benchmark should be specified for the selected suite.")
-        threading.Thread(target=JMeterBenchmarkSuite.runJMeterInBackground, args=[self, benchmarks[0]]).start()
-        return self.postRun(super(JMeterBenchmarkSuite, self).run(benchmarks, bmSuiteArgs))
-
-    def postRun(self, results):
-        results = results[:len(results) - self.tailDatapointsToSkip(results)]
-        self.addAverageAcrossLatestResults(results, "throughput")
-        return results
+    """ This class is deprecated and will be removed soon. The new version is now located in mx_sdk_benchmark.py"""
+    pass
 
 
 class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):

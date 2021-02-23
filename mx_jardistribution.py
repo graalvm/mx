@@ -117,7 +117,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             self.stripMapping = [join(suite.mxDir, 'proguard', stripMappingFileName + '.map') for stripMappingFileName in stripMappingFileNames]
         else:
             self.stripMapping = []
-        if self.is_stripped():
+        if self.is_stripped() and mx.get_opts().proguard_cp is None:
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
@@ -637,8 +637,9 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     def strip_jar(self):
         assert self.is_stripped()
 
+        proguard_cp = mx.get_opts().proguard_cp
         jdk = mx.get_jdk(tag='default')
-        if jdk.javaCompliance > '13':
+        if jdk.javaCompliance > '13' and proguard_cp is None:
             mx.abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
 
         mx.logv('Stripping {}...'.format(self.name))
@@ -649,7 +650,12 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         # add mapping files
         assert all((os.path.isabs(f) for f in self.stripMapping))
 
-        proguard = ['-jar', mx.library('PROGUARD_6_1_1').get_path(resolve=True)]
+        if mx.get_opts().proguard_cp:
+            sep = proguard_cp.find(os.pathsep)
+            proguard_jar = proguard_cp if sep == -1 else proguard_cp[0:sep]
+        else:
+            proguard_jar = mx.library('PROGUARD_6_1_1').get_path(resolve=True)
+        proguard = ['-jar', proguard_jar]
 
         prefix = [
             '-dontusemixedcaseclassnames', # https://sourceforge.net/p/proguard/bugs/762/
