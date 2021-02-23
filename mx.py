@@ -13057,6 +13057,17 @@ def java_debug_args():
     return debug_args
 
 
+def apply_cmd_mapper_hooks(cmd, hooks):
+    new_cmd = cmd
+    if hooks:
+        for tup in hooks:
+            hook_name, hook_func, suite = tup[:3]
+            log("Applying command mapper hook '{}'".format(hook_name))
+            new_cmd = hook_func(new_cmd, suite)
+            log("New command: {}".format(new_cmd))
+    return new_cmd
+
+
 class JDKConfig(Comparable):
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
@@ -13226,8 +13237,10 @@ class JDKConfig(Comparable):
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
         return args
 
-    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
-        return run(self.generate_java_command(args, addDefaultArgs=addDefaultArgs), nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
+    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, cmd_mapper_hooks=None):
+        cmd = self.generate_java_command(args, addDefaultArgs=addDefaultArgs)
+        cmd = apply_cmd_mapper_hooks(cmd, cmd_mapper_hooks)
+        return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def generate_java_command(self, args, addDefaultArgs=True):
         return [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)

@@ -349,6 +349,8 @@ class BenchmarkSuite(object):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
         self._suite_dimensions = {}
+        self._cmd_mapper_hooks = []
+        self._currently_running_benchmark = None
 
     def name(self):
         """Returns the name of the suite.
@@ -386,6 +388,21 @@ class BenchmarkSuite(object):
         :rtype: list[str]
         """
         raise NotImplementedError()
+
+    def currently_running_benchmark(self):
+        """
+        :return: Returns the name of the benchmark being currently executed or None otherwise.
+        """
+        return self._currently_running_benchmark
+
+    def register_cmd_mapper_hook(self, name, func):
+        """ Registers a function that takes as input the benchmark suite object and the command to execute and returns
+        a modified command line.
+
+        :param function func:
+        :return: None
+        """
+        self._cmd_mapper_hooks.append((name, func, self))
 
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
@@ -1200,6 +1217,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
+        vm.cmd_mapper_hooks = self._cmd_mapper_hooks
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
@@ -1342,6 +1360,18 @@ class Vm(object): #pylint: disable=R0922
     @bmSuite.setter
     def bmSuite(self, val):
         self._bmSuite = val
+
+    @property
+    def cmd_mapper_hooks(self):
+        return getattr(self, '_cmd_mapper_hooks', None)
+
+    @cmd_mapper_hooks.setter
+    def cmd_mapper_hooks(self, val):
+        """
+        Registers a list of hooks (given as a tuple name, func) to manipulate the command line before its execution.
+        :param list[tuple] hooks: the list of hooks given as tuples of names and functions
+        """
+        self._cmd_mapper_hooks = val
 
     def name(self):
         """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
@@ -2060,6 +2090,31 @@ def build_url():
     return ""
 
 
+def psrecord_hook(cmd, bmSuite):
+    """
+    Delegates the command execution to 'psrecord' that will also capture memory and CPU consumption of the process.
+
+    :param list[str] cmd: the input command to modify
+    :param Vm vm: the Vm on which the command is supposed to be executed
+    :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
+    :return:
+    """
+    if "-version" in cmd:
+        return cmd
+
+    if mx.run(["psrecord", "-h"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
+        mx.abort("Memory tracking requires the 'psrecord' dependency. Install it with: 'pip install psrecord'")
+
+    import datetime
+    bench_name = bmSuite.currently_running_benchmark() if bmSuite else "benchmark"
+    if bmSuite:
+        bench_name = "{}-{}".format(bmSuite.name(), bench_name)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    text_output = os.path.join(os.getcwd(), "ps_{}_{}.txt".format(bench_name, ts))
+    plot_output = os.path.join(os.getcwd(), "ps_{}_{}.png".format(bench_name, ts))
+    return ["psrecord", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -2285,8 +2340,10 @@ class BenchmarkExecutor(object):
                 processed.append(point)
             return processed
 
+        suite._currently_running_benchmark = ''.join(benchnames)
         results = suite.run(benchnames, bmSuiteArgs)
         processedResults = postProcess(results)
+        suite._currently_running_benchmark = None
         return processedResults
 
     def benchmark(self, mxBenchmarkArgs, bmSuiteArgs):
@@ -2308,7 +2365,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
-            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR')")
+            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR' or 'async')")
+        parser.add_argument(
+            "--track-memory", default=None, action="store_true", help="Enable memory tracking using 'psrecord'")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -2341,6 +2400,9 @@ class BenchmarkExecutor(object):
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
+        if mxBenchmarkArgs.track_memory:
+            mx.log("Registering process memory tracking hook")
+            suite.register_cmd_mapper_hook("psrecord", psrecord_hook)
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))
