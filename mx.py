@@ -4300,8 +4300,11 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 if i != 0:
                     time.sleep(1)
                     warn('Retry {} to download from {}'.format(i, url))
-                if _attempt_download(url, path, jarEntryName):
-                    return True # Download was successful
+                res = _attempt_download(url, path, jarEntryName)
+                if res == "retry":
+                    continue
+                elif res:
+                    return True  # Download was successful
 
     verify_msg = None
     if verifyOnly and len(verify_errors) > 0: # verify-mode -> print error details
@@ -4314,6 +4317,10 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
             warn(verify_msg)
         return True
     else: # Either verification error or no download was successful
+        if not verify_msg:
+            verify_msg = 'Could not download to ' + path + ' from any of the following URLs: ' + ', '.join(urls)
+            for url in urls:
+                verify_msg += '\n  ' + url
         if abortOnError:
             abort(verify_msg)
         else:
@@ -12476,17 +12483,18 @@ def _kill_process(pid, sig):
     Sends the signal `sig` to the process identified by `pid`. If `pid` is a process group
     leader, then signal is sent to the process group id.
     """
-    pgid = os.getpgid(pid)
     try:
         logvv('[{} sending {} to {}]'.format(os.getpid(), sig, pid))
+        pgid = os.getpgid(pid)
         if pgid == pid:
             os.killpg(pgid, sig)
         else:
             os.kill(pid, sig)
         return True
-    except:
-        log('Error killing subprocess ' + str(pid) + ': ' + str(sys.exc_info()[1]))
+    except Exception as e:  # pylint: disable=broad-except
+        log('Error killing subprocess ' + str(pid) + ': ' + str(e))
         return False
+
 
 def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
@@ -17291,7 +17299,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.9")  # fix GR-29527
+version = VersionSpec("5.286.10")  # download errors
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
