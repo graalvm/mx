@@ -1997,7 +1997,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
         #        Maximum resident set size (kbytes): 511336
         rule = [
             StdOutRule(
-                r"    Maximum resident set size (kbytes): (?P<rss>[0-9]+)",
+                r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
                 {
                     "benchmark": suite.currently_running_benchmark(),
                     "bench-suite": suite.name(),
@@ -2017,7 +2017,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
         #  523608064  maximum resident set size
         rule = [
             StdOutRule(
-                r"(?P<rss>[0-9]+)  maximum resident set size",
+                r"(?P<rss>[0-9]+)\s+maximum resident set size",
                 {
                     "benchmark": suite.currently_running_benchmark(),
                     "bench-suite": suite.name(),
