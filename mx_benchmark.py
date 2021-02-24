@@ -2000,9 +2000,9 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"    Maximum resident set size (kbytes): (?P<rss>[0-9]+)",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.benchSuiteName(),
+                    "bench-suite": suite.name(),
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
-                    "metric.name": "rss",
+                    "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
                     "metric.unit": "MB",
                     "metric.type": "numeric",
@@ -2020,9 +2020,9 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"(?P<rss>[0-9]+)  maximum resident set size",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.benchSuiteName(),
+                    "bench-suite": suite.name(),
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
-                    "metric.name": "rss",
+                    "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
                     "metric.unit": "MB",
                     "metric.type": "numeric",
@@ -2316,7 +2316,7 @@ class BenchmarkExecutor(object):
                 processed.append(point)
             return processed
 
-        suite._currently_running_benchmark = ''.join(benchnames)
+        suite._currently_running_benchmark = ''.join(benchnames) if benchnames else ""
         results = suite.run(benchnames, bmSuiteArgs)
         processedResults = postProcess(results)
         suite._currently_running_benchmark = None
