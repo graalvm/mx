@@ -12817,12 +12817,12 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         joiners = []
         if callable(out):
             t = Thread(target=redirect, args=(p.stdout, out))
-            # Don't make the reader thread a daemon otherwise output can be droppped
+            # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if callable(err):
             t = Thread(target=redirect, args=(p.stderr, err))
-            # Don't make the reader thread a daemon otherwise output can be droppped
+            # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if isinstance(stdin, str):
@@ -13064,11 +13064,12 @@ def java_debug_args():
 def apply_command_mapper_hooks(cmd, hooks):
     new_cmd = cmd
     if hooks:
+        hooks.reverse()
         for hook in hooks:
             hook_name, hook_func, suite = hook[:3]
-            log("Applying command mapper hook '{}'".format(hook_name))
+            logv("Applying command mapper hook '{}'".format(hook_name))
             new_cmd = hook_func(new_cmd, suite)
-            log("New command: {}".format(new_cmd))
+            logv("New command: {}".format(new_cmd))
     return new_cmd
 
 

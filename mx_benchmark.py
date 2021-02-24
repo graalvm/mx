@@ -972,7 +972,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             return []
 
         datapoints = []
-        rules = self.rules(out, benchmarks, bmSuiteArgs) + extraRules
+        rules = self.rules(out, benchmarks, bmSuiteArgs) + _get_trackers_rules(self, bmSuiteArgs) + extraRules
 
         for rule in rules:
             # pass working directory to rule without changing the signature of parse
@@ -1989,12 +1989,77 @@ def build_url():
     return ""
 
 
+def get_rss_parse_rule(suite, bmSuiteArgs):
+    if mx.get_os() == "linux":
+        # Output of 'time -v' on linux contains:
+        #        Maximum resident set size (kbytes): 511336
+        rule = [
+            StdOutRule(
+                r"    Maximum resident set size (kbytes): (?P<rss>[0-9]+)",
+                {
+                    "benchmark": suite.currently_running_benchmark(),
+                    "bench-suite": suite.benchSuiteName(),
+                    "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
+                    "metric.name": "rss",
+                    "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
+                    "metric.unit": "MB",
+                    "metric.type": "numeric",
+                    "metric.score-function": "id",
+                    "metric.better": "lower",
+                    "metric.iteration": 0
+                }
+            )
+        ]
+    elif mx.get_os() == "darwin":
+        # Output of 'time -l' on linux contains (size in bytes):
+        #  523608064  maximum resident set size
+        rule = [
+            StdOutRule(
+                r"(?P<rss>[0-9]+)  maximum resident set size",
+                {
+                    "benchmark": suite.currently_running_benchmark(),
+                    "bench-suite": suite.benchSuiteName(),
+                    "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
+                    "metric.name": "rss",
+                    "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
+                    "metric.unit": "MB",
+                    "metric.type": "numeric",
+                    "metric.score-function": "id",
+                    "metric.better": "lower",
+                    "metric.iteration": 0
+                }
+            )
+        ]
+    else:
+        rule = []
+    return rule
+
+
+def rss_hook(cmd, bmSuite):
+    """
+    Tracks the max resident memory size used by the process using the 'time' command.
+
+    :param list[str] cmd: the input command to modify
+    :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
+    :return:
+    """
+    if "-version" in cmd:
+        return cmd
+    if mx.get_os() == "linux":
+        prefix = ["time", "-v"]
+    elif mx.get_os() == "darwin":
+        prefix = ["time", "-l"]
+    else:
+        mx.log("Ignoring the 'rss' tracker since it is not supported on {}".format(mx.get_os()))
+        prefix = []
+    return prefix + cmd
+
+
 def psrecord_hook(cmd, bmSuite):
     """
     Delegates the command execution to 'psrecord' that will also capture memory and CPU consumption of the process.
 
     :param list[str] cmd: the input command to modify
-    :param Vm vm: the Vm on which the command is supposed to be executed
     :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
     :return:
     """
@@ -2012,6 +2077,16 @@ def psrecord_hook(cmd, bmSuite):
     text_output = os.path.join(os.getcwd(), "ps_{}_{}.txt".format(bench_name, ts))
     plot_output = os.path.join(os.getcwd(), "ps_{}_{}.png".format(bench_name, ts))
     return ["psrecord", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+
+
+_available_trackers = {
+    "rss": rss_hook,
+    "psrecord": psrecord_hook
+}
+
+
+def _get_trackers_rules(suite, bmSuiteArgs):
+    return get_rss_parse_rule(suite, bmSuiteArgs)
 
 
 class BenchmarkExecutor(object):
@@ -2266,7 +2341,7 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--profiler", default=None, help="Profiler to activate (e.g. 'JFR' or 'async')")
         parser.add_argument(
-            "--track-memory", default=None, action="store_true", help="Enable memory tracking using 'psrecord'")
+            "--tracker", default="rss", help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -2299,9 +2374,12 @@ class BenchmarkExecutor(object):
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
-        if mxBenchmarkArgs.track_memory:
-            mx.log("Registering process memory tracking hook")
-            suite.register_command_mapper_hook("psrecord", psrecord_hook)
+        if mxBenchmarkArgs.tracker:
+            for tracker in mxBenchmarkArgs.tracker.split(","):
+                if tracker not in _available_trackers:
+                    raise ValueError("Unknown tracker '{}'. Use one of: {}".format(tracker, ', '.join(_available_trackers.keys())))
+                mx.log("Registering tracker: {}".format(tracker))
+                suite.register_command_mapper_hook(tracker, _available_trackers[tracker])
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))
