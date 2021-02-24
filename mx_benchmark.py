@@ -34,8 +34,6 @@ import socket
 import time
 import traceback
 import uuid
-import signal
-import threading
 import tempfile
 import shutil
 from argparse import ArgumentParser
@@ -348,7 +346,7 @@ class BenchmarkSuite(object):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
         self._suite_dimensions = {}
-        self._cmd_mapper_hooks = []
+        self._command_mapper_hooks = []
         self._currently_running_benchmark = None
 
     def name(self):
@@ -390,18 +388,18 @@ class BenchmarkSuite(object):
 
     def currently_running_benchmark(self):
         """
-        :return: Returns the name of the benchmark being currently executed or None otherwise.
+        :return: The name of the benchmark being currently executed or None otherwise.
         """
         return self._currently_running_benchmark
 
-    def register_cmd_mapper_hook(self, name, func):
-        """ Registers a function that takes as input the benchmark suite object and the command to execute and returns
+    def register_command_mapper_hook(self, name, func):
+        """Registers a function that takes as input the benchmark suite object and the command to execute and returns
         a modified command line.
 
         :param function func:
         :return: None
         """
-        self._cmd_mapper_hooks.append((name, func, self))
+        self._command_mapper_hooks.append((name, func, self))
 
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
@@ -1202,9 +1200,12 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     profiler.setup(benchmarks, bmSuiteArgs)
 
     def _vmRun(self, vm, workdir, command, benchmarks, bmSuiteArgs):
-        """Dummy method that executes a command on the given VM from the given directory.
-        It is extracted as a single method in case some benchmark suites need more complicated setups than a call
-        to the VM with some arguments.
+        """Executes `command` on `vm` in `workdir`. A benchmark suite can override this method if its execution
+        involves more complicated setups than a call to the VM.
+        :param Vm vm: the Vm to use to execute the command
+        :param str workdir: the working directory for command execution
+        :param list[str] benchmarks: the benchmarks to execute
+        :param list[str] bmSuiteArgs: the command line options passed to mx benchmark
         :rtype: tuple
         """
         return vm.runWithSuite(self, workdir, command)
@@ -1216,7 +1217,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
-        vm.cmd_mapper_hooks = self._cmd_mapper_hooks
+        vm.command_mapper_hooks = self._command_mapper_hooks
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
@@ -1312,6 +1313,13 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
 
 
 class TemporaryWorkdirMixin(VmBenchmarkSuite):
+    """This mixin provides a simple way for benchmark suite to use a new temporary directory for the duration of the
+    benchmark execution. The directory is automatically deleted at the end of the execution unless the benchmark failed
+    or the --keep-scratch parameter was passed.
+
+    To use this mechanism, a benchmark suite implementer must use `self.workingDirectory()` as the working
+    directory for its command executions.
+    """
     def before(self, bmSuiteArgs):
         parser = parsers["temporary_workdir_parser"].parser
         bmArgs, otherArgs = parser.parse_known_args(bmSuiteArgs)
@@ -1361,16 +1369,16 @@ class Vm(object): #pylint: disable=R0922
         self._bmSuite = val
 
     @property
-    def cmd_mapper_hooks(self):
-        return getattr(self, '_cmd_mapper_hooks', None)
+    def command_mapper_hooks(self):
+        return getattr(self, '_command_mapper_hooks', None)
 
-    @cmd_mapper_hooks.setter
-    def cmd_mapper_hooks(self, val):
+    @command_mapper_hooks.setter
+    def command_mapper_hooks(self, val):
         """
         Registers a list of hooks (given as a tuple name, func) to manipulate the command line before its execution.
         :param list[tuple] hooks: the list of hooks given as tuples of names and functions
         """
-        self._cmd_mapper_hooks = val
+        self._command_mapper_hooks = val
 
     def name(self):
         """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
@@ -1606,6 +1614,12 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
         return dims
 
     def generate_java_command(self, args):
+        """Provides a way to get the final command line that `run_java` would execute but without actually running it.
+
+        :param args: command line arguments
+        :return: the final command as it would be executed by `run_java`
+        :rtype: list[str]
+        """
         raise NotImplementedError()
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
@@ -2287,7 +2301,7 @@ class BenchmarkExecutor(object):
 
         if mxBenchmarkArgs.track_memory:
             mx.log("Registering process memory tracking hook")
-            suite.register_cmd_mapper_hook("psrecord", psrecord_hook)
+            suite.register_command_mapper_hook("psrecord", psrecord_hook)
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))

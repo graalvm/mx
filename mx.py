@@ -13061,11 +13061,11 @@ def java_debug_args():
     return debug_args
 
 
-def apply_cmd_mapper_hooks(cmd, hooks):
+def apply_command_mapper_hooks(cmd, hooks):
     new_cmd = cmd
     if hooks:
-        for tup in hooks:
-            hook_name, hook_func, suite = tup[:3]
+        for hook in hooks:
+            hook_name, hook_func, suite = hook[:3]
             log("Applying command mapper hook '{}'".format(hook_name))
             new_cmd = hook_func(new_cmd, suite)
             log("New command: {}".format(new_cmd))
@@ -13241,9 +13241,9 @@ class JDKConfig(Comparable):
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
         return args
 
-    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, cmd_mapper_hooks=None):
+    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, command_mapper_hooks=None):
         cmd = self.generate_java_command(args, addDefaultArgs=addDefaultArgs)
-        cmd = apply_cmd_mapper_hooks(cmd, cmd_mapper_hooks)
+        cmd = apply_command_mapper_hooks(cmd, command_mapper_hooks)
         return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def generate_java_command(self, args, addDefaultArgs=True):
