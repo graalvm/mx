@@ -13061,8 +13061,14 @@ def java_debug_args():
     return debug_args
 
 
-def apply_command_mapper_hooks(cmd, hooks):
-    new_cmd = cmd
+def apply_command_mapper_hooks(command, hooks):
+    """Takes `command` and passes it through each hook function to modify it
+    :param command: the command to modify
+    :param list[tuple] hooks: the list of hooks to apply
+    :return: the modified command
+    :rtype: list[str]
+    """
+    new_cmd = command
     if hooks:
         hooks.reverse()
         for hook in hooks:
@@ -13248,6 +13254,10 @@ class JDKConfig(Comparable):
         return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
 
     def generate_java_command(self, args, addDefaultArgs=True):
+        """
+        Similar to `OutputCapturingJavaVm.generate_java_command` such that generated commands can be
+        retrieved without being executed.
+        """
         return [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
 
     def bootclasspath(self, filtered=True):

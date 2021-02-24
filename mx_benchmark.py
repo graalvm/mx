@@ -1200,8 +1200,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     profiler.setup(benchmarks, bmSuiteArgs)
 
     def _vmRun(self, vm, workdir, command, benchmarks, bmSuiteArgs):
-        """Executes `command` on `vm` in `workdir`. A benchmark suite can override this method if its execution
-        involves more complicated setups than a call to the VM.
+        """Executes `command` on `vm` in `workdir`. A benchmark suite can override this method if its execution is
+        more complicated than a VM command line.
+
         :param Vm vm: the Vm to use to execute the command
         :param str workdir: the working directory for command execution
         :param list[str] benchmarks: the benchmarks to execute
@@ -1313,7 +1314,7 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
 
 
 class TemporaryWorkdirMixin(VmBenchmarkSuite):
-    """This mixin provides a simple way for benchmark suite to use a new temporary directory for the duration of the
+    """This mixin provides a simple way for a benchmark suite to use a new temporary directory for the duration of the
     benchmark execution. The directory is automatically deleted at the end of the execution unless the benchmark failed
     or the --keep-scratch parameter was passed.
 
@@ -1373,12 +1374,13 @@ class Vm(object): #pylint: disable=R0922
         return getattr(self, '_command_mapper_hooks', None)
 
     @command_mapper_hooks.setter
-    def command_mapper_hooks(self, val):
+    def command_mapper_hooks(self, hooks):
         """
-        Registers a list of hooks (given as a tuple name, func) to manipulate the command line before its execution.
+        Registers a list of `hooks` (given as a tuple 'name', 'func', 'suite') to manipulate the command line before its
+        execution.
         :param list[tuple] hooks: the list of hooks given as tuples of names and functions
         """
-        self._command_mapper_hooks = val
+        self._command_mapper_hooks = hooks
 
     def name(self):
         """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
