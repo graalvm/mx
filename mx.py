@@ -4031,11 +4031,19 @@ def lstat(name):
     return os.lstat(_safe_path(name))
 
 
-def open(name, mode='r'):  # pylint: disable=redefined-builtin
+def open(name, mode='r', encoding='utf-8'):  # pylint: disable=redefined-builtin
     """
     Wrapper for builtin open function that handles long path names on Windows.
+    Also, it handles supplying a default value of 'utf-8' for the encoding
+    parameter.
     """
-    return builtins.open(_safe_path(name), mode=mode)
+    if 'b' in mode or sys.version_info[0] < 3:
+        # When opening files in binary mode, no encoding can be specified.
+        # Also, on Python 2, `open` doesn't take any encoding parameter since
+        # the strings are not decoded at read time.
+        return builtins.open(_safe_path(name), mode=mode)
+    else:
+        return builtins.open(_safe_path(name), mode=mode, encoding=encoding)
 
 
 def copytree(src, dst, symlinks=False, ignore=None):
@@ -17327,7 +17335,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.287.0")  # ff/GR-29385
+version = VersionSpec("5.287.1")  # GR-29661
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
