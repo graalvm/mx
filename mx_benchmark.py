@@ -1448,6 +1448,8 @@ class GuestVm(Vm): #pylint: disable=R0921
 
         :rtype: Vm
         """
+        if self._host_vm is not None and self.command_mapper_hooks is not None and self._host_vm.command_mapper_hooks is None:
+            self._host_vm.command_mapper_hooks = self.command_mapper_hooks
         return self._host_vm
 
     def rules(self, output, benchmarks, bmSuiteArgs):
