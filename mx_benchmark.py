@@ -34,6 +34,8 @@ import socket
 import time
 import traceback
 import uuid
+import tempfile
+import shutil
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
@@ -344,6 +346,8 @@ class BenchmarkSuite(object):
         super(BenchmarkSuite, self).__init__(*args, **kwargs)
         self._desired_version = None
         self._suite_dimensions = {}
+        self._command_mapper_hooks = []
+        self._currently_running_benchmark = None
 
     def name(self):
         """Returns the name of the suite.
@@ -381,6 +385,21 @@ class BenchmarkSuite(object):
         :rtype: list[str]
         """
         raise NotImplementedError()
+
+    def currently_running_benchmark(self):
+        """
+        :return: The name of the benchmark being currently executed or None otherwise.
+        """
+        return self._currently_running_benchmark
+
+    def register_command_mapper_hook(self, name, func):
+        """Registers a function that takes as input the benchmark suite object and the command to execute and returns
+        a modified command line.
+
+        :param function func:
+        :return: None
+        """
+        self._command_mapper_hooks.append((name, func, self))
 
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
@@ -953,7 +972,7 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             return []
 
         datapoints = []
-        rules = self.rules(out, benchmarks, bmSuiteArgs) + extraRules
+        rules = self.rules(out, benchmarks, bmSuiteArgs) + _get_trackers_rules(self, bmSuiteArgs) + extraRules
 
         for rule in rules:
             # pass working directory to rule without changing the signature of parse
@@ -1180,6 +1199,18 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                 if profiler:
                     profiler.setup(benchmarks, bmSuiteArgs)
 
+    def _vmRun(self, vm, workdir, command, benchmarks, bmSuiteArgs):
+        """Executes `command` on `vm` in `workdir`. A benchmark suite can override this method if its execution is
+        more complicated than a VM command line.
+
+        :param Vm vm: the Vm to use to execute the command
+        :param str workdir: the working directory for command execution
+        :param list[str] benchmarks: the benchmarks to execute
+        :param list[str] bmSuiteArgs: the command line options passed to mx benchmark
+        :rtype: tuple
+        """
+        return vm.runWithSuite(self, workdir, command)
+
     def runAndReturnStdOut(self, benchmarks, bmSuiteArgs):
         self.setupProfilers(benchmarks, bmSuiteArgs)
         cwd = self.workingDirectory(benchmarks, bmSuiteArgs) or '.'
@@ -1187,7 +1218,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
-        t = vm.runWithSuite(self, cwd, command)
+        vm.command_mapper_hooks = self._command_mapper_hooks
+        vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
+        t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
             vm_dims = {}
@@ -1280,6 +1313,51 @@ class JavaBenchmarkSuite(VmBenchmarkSuite): #pylint: disable=R0922
         return java_vm_registry.get_vm_from_suite_args(bmSuiteArgs)
 
 
+class TemporaryWorkdirMixin(VmBenchmarkSuite):
+    """This mixin provides a simple way for a benchmark suite to use a new temporary directory for the duration of the
+    benchmark execution. The directory is automatically deleted at the end of the execution unless the benchmark failed
+    or the --keep-scratch parameter was passed.
+
+    To use this mechanism, a benchmark suite implementer must use `self.workingDirectory()` as the working
+    directory for its command executions.
+    """
+    def before(self, bmSuiteArgs):
+        parser = parsers["temporary_workdir_parser"].parser
+        bmArgs, otherArgs = parser.parse_known_args(bmSuiteArgs)
+        self.keepScratchDir = bmArgs.keep_scratch
+        if not bmArgs.no_scratch:
+            self._create_tmp_workdir()
+        else:
+            mx.warn("NO scratch directory created! (--no-scratch)")
+            self.workdir = None
+        super(TemporaryWorkdirMixin, self).before(otherArgs)
+
+    def _create_tmp_workdir(self):
+        self.workdir = tempfile.mkdtemp(prefix=self.name() + '-work.', dir='.')
+
+    def workingDirectory(self, benchmarks, bmSuiteArgs):
+        return self.workdir
+
+    def after(self, bmSuiteArgs):
+        if hasattr(self, "keepScratchDir") and self.keepScratchDir:
+            mx.warn("Scratch directory NOT deleted (--keep-scratch): {0}".format(self.workdir))
+        elif self.workdir:
+            shutil.rmtree(self.workdir)
+        super(TemporaryWorkdirMixin, self).after(bmSuiteArgs)
+
+    def repairDatapointsAndFail(self, benchmarks, bmSuiteArgs, partialResults, message):
+        try:
+            super(TemporaryWorkdirMixin, self).repairDatapointsAndFail(benchmarks, bmSuiteArgs, partialResults, message)
+        finally:
+            if self.workdir:
+                # keep old workdir for investigation, create a new one for further benchmarking
+                mx.warn("Keeping scratch directory after failed benchmark: {0}".format(self.workdir))
+                self._create_tmp_workdir()
+
+    def parserNames(self):
+        return super(TemporaryWorkdirMixin, self).parserNames() + ["temporary_workdir_parser"]
+
+
 class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
@@ -1291,6 +1369,19 @@ class Vm(object): #pylint: disable=R0922
     def bmSuite(self, val):
         self._bmSuite = val
 
+    @property
+    def command_mapper_hooks(self):
+        return getattr(self, '_command_mapper_hooks', None)
+
+    @command_mapper_hooks.setter
+    def command_mapper_hooks(self, hooks):
+        """
+        Registers a list of `hooks` (given as a tuple 'name', 'func', 'suite') to manipulate the command line before its
+        execution.
+        :param list[tuple] hooks: the list of hooks given as tuples of names and functions
+        """
+        self._command_mapper_hooks = hooks
+
     def name(self):
         """Returns the unique name of the Java VM (e.g. server, client, or jvmci)."""
         raise NotImplementedError()
@@ -1298,6 +1389,10 @@ class Vm(object): #pylint: disable=R0922
     def config_name(self):
         """Returns the config name for a VM (e.g. graal-core or graal-enterprise)."""
         raise NotImplementedError()
+
+    def extract_vm_info(self, args=None):
+        """Extract vm information."""
+        pass
 
     def rules(self, output, benchmarks, bmSuiteArgs):
         """Returns a list of rules required to parse the standard output.
@@ -1353,6 +1448,8 @@ class GuestVm(Vm): #pylint: disable=R0921
 
         :rtype: Vm
         """
+        if self._host_vm is not None and self.command_mapper_hooks is not None and self._host_vm.command_mapper_hooks is None:
+            self._host_vm.command_mapper_hooks = self.command_mapper_hooks
         return self._host_vm
 
     def rules(self, output, benchmarks, bmSuiteArgs):
@@ -1425,10 +1522,6 @@ class OutputCapturingVm(Vm): #pylint: disable=R0921
         :rtype: dict
         """
         return {}
-
-    def extract_vm_info(self, args=None):
-        """Extract vm information."""
-        pass
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
@@ -1524,9 +1617,22 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             dims.update(vm_info)
         return dims
 
+    def generate_java_command(self, args):
+        """Provides a way to get the final command line that `run_java` would execute but without actually running it.
+
+        :param args: command line arguments
+        :return: the final command as it would be executed by `run_java`
+        :rtype: list[str]
+        """
+        raise NotImplementedError()
+
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         """Runs JVM with the specified arguments stdout and stderr, and working dir."""
         raise NotImplementedError()
+
+    def home(self):
+        """Returns the JAVA_HOME location of that vm"""
+        raise mx.get_jdk().home
 
     def run_vm(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         self.extract_vm_info(args)
@@ -1547,6 +1653,9 @@ class DefaultJavaVm(OutputCapturingJavaVm):
 
     def post_process_command_line_args(self, args):
         return args
+
+    def generate_java_command(self, args):
+        return mx.get_jdk().generate_java_command(self.post_process_command_line_args(args))
 
     def run_java(self, args, out=None, err=None, cwd=None, nonZeroIsFatal=False):
         return mx.get_jdk().run_java(args, out=out, err=out, cwd=cwd, nonZeroIsFatal=False)
@@ -1884,6 +1993,106 @@ def build_url():
     return ""
 
 
+def get_rss_parse_rule(suite, bmSuiteArgs):
+    if mx.get_os() == "linux":
+        # Output of 'time -v' on linux contains:
+        #        Maximum resident set size (kbytes): 511336
+        rule = [
+            StdOutRule(
+                r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
+                {
+                    "benchmark": suite.currently_running_benchmark(),
+                    "bench-suite": suite.name(),
+                    "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
+                    "metric.name": "max-rss",
+                    "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
+                    "metric.unit": "MB",
+                    "metric.type": "numeric",
+                    "metric.score-function": "id",
+                    "metric.better": "lower",
+                    "metric.iteration": 0
+                }
+            )
+        ]
+    elif mx.get_os() == "darwin":
+        # Output of 'time -l' on linux contains (size in bytes):
+        #  523608064  maximum resident set size
+        rule = [
+            StdOutRule(
+                r"(?P<rss>[0-9]+)\s+maximum resident set size",
+                {
+                    "benchmark": suite.currently_running_benchmark(),
+                    "bench-suite": suite.name(),
+                    "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
+                    "metric.name": "max-rss",
+                    "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
+                    "metric.unit": "MB",
+                    "metric.type": "numeric",
+                    "metric.score-function": "id",
+                    "metric.better": "lower",
+                    "metric.iteration": 0
+                }
+            )
+        ]
+    else:
+        rule = []
+    return rule
+
+
+def rss_hook(cmd, bmSuite):
+    """
+    Tracks the max resident memory size used by the process using the 'time' command.
+
+    :param list[str] cmd: the input command to modify
+    :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
+    :return:
+    """
+    if "-version" in cmd:
+        return cmd
+    if mx.get_os() == "linux":
+        prefix = ["time", "-v"]
+    elif mx.get_os() == "darwin":
+        prefix = ["time", "-l"]
+    else:
+        mx.log("Ignoring the 'rss' tracker since it is not supported on {}".format(mx.get_os()))
+        prefix = []
+    return prefix + cmd
+
+
+def psrecord_hook(cmd, bmSuite):
+    """
+    Delegates the command execution to 'psrecord' that will also capture memory and CPU consumption of the process.
+
+    :param list[str] cmd: the input command to modify
+    :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
+    :return:
+    """
+    if "-version" in cmd:
+        return cmd
+
+    if mx.run(["psrecord", "-h"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
+        mx.abort("Memory tracking requires the 'psrecord' dependency. Install it with: 'pip install psrecord'")
+
+    import datetime
+    bench_name = bmSuite.currently_running_benchmark() if bmSuite else "benchmark"
+    if bmSuite:
+        bench_name = "{}-{}".format(bmSuite.name(), bench_name)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    text_output = os.path.join(os.getcwd(), "ps_{}_{}.txt".format(bench_name, ts))
+    plot_output = os.path.join(os.getcwd(), "ps_{}_{}.png".format(bench_name, ts))
+    return ["psrecord", "--log", text_output, "--plot", plot_output, "--include-children", " ".join(cmd)]
+
+
+_available_trackers = {
+    "rss": rss_hook,
+    "psrecord": psrecord_hook
+}
+
+
+def _get_trackers_rules(suite, bmSuiteArgs):
+    return get_rss_parse_rule(suite, bmSuiteArgs)
+
+
 class BenchmarkExecutor(object):
     def uid(self):
         return str(uuid.uuid1())
@@ -2109,8 +2318,10 @@ class BenchmarkExecutor(object):
                 processed.append(point)
             return processed
 
+        suite._currently_running_benchmark = ''.join(benchnames) if benchnames else ""
         results = suite.run(benchnames, bmSuiteArgs)
         processedResults = postProcess(results)
+        suite._currently_running_benchmark = None
         return processedResults
 
     def benchmark(self, mxBenchmarkArgs, bmSuiteArgs):
@@ -2132,7 +2343,9 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
-            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR')")
+            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR' or 'async')")
+        parser.add_argument(
+            "--tracker", default="rss", help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -2165,6 +2378,12 @@ class BenchmarkExecutor(object):
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
+        if mxBenchmarkArgs.tracker:
+            for tracker in mxBenchmarkArgs.tracker.split(","):
+                if tracker not in _available_trackers:
+                    raise ValueError("Unknown tracker '{}'. Use one of: {}".format(tracker, ', '.join(_available_trackers.keys())))
+                mx.log("Registering tracker: {}".format(tracker))
+                suite.register_command_mapper_hook(tracker, _available_trackers[tracker])
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))

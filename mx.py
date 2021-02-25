@@ -12075,6 +12075,7 @@ class DisableJavaDebuggging(DisableJavaDebugging):
 def is_debug_disabled():
     return DisableJavaDebugging._disabled
 
+
 ### JDK
 
 def addJDKFactory(tag, compliance, factory):
@@ -12731,6 +12732,7 @@ def _list2cmdline(seq):
 
     return ''.join(result)
 
+
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
     Run a command in a subprocess, wait for it to complete and return the exit status of the process.
@@ -12823,12 +12825,12 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         joiners = []
         if callable(out):
             t = Thread(target=redirect, args=(p.stdout, out))
-            # Don't make the reader thread a daemon otherwise output can be droppped
+            # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if callable(err):
             t = Thread(target=redirect, args=(p.stderr, err))
-            # Don't make the reader thread a daemon otherwise output can be droppped
+            # Don't make the reader thread a daemon otherwise output can be dropped
             t.start()
             joiners.append(t)
         if isinstance(stdin, str):
@@ -13067,6 +13069,24 @@ def java_debug_args():
     return debug_args
 
 
+def apply_command_mapper_hooks(command, hooks):
+    """Takes `command` and passes it through each hook function to modify it
+    :param command: the command to modify
+    :param list[tuple] hooks: the list of hooks to apply
+    :return: the modified command
+    :rtype: list[str]
+    """
+    new_cmd = command
+    if hooks:
+        hooks.reverse()
+        for hook in hooks:
+            hook_name, hook_func, suite = hook[:3]
+            logv("Applying command mapper hook '{}'".format(hook_name))
+            new_cmd = hook_func(new_cmd, suite)
+            logv("New command: {}".format(new_cmd))
+    return new_cmd
+
+
 class JDKConfig(Comparable):
     """
     A JDKConfig object encapsulates info about an installed or deployed JDK.
@@ -13236,9 +13256,17 @@ class JDKConfig(Comparable):
             return self.java_args_pfx + self.java_args + add_debug_args() + add_coverage_args(args) + self.java_args_sfx + args
         return args
 
-    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True):
-        cmd = [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
+    def run_java(self, args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, addDefaultArgs=True, command_mapper_hooks=None):
+        cmd = self.generate_java_command(args, addDefaultArgs=addDefaultArgs)
+        cmd = apply_command_mapper_hooks(cmd, command_mapper_hooks)
         return run(cmd, nonZeroIsFatal=nonZeroIsFatal, out=out, err=err, cwd=cwd, timeout=timeout, env=env)
+
+    def generate_java_command(self, args, addDefaultArgs=True):
+        """
+        Similar to `OutputCapturingJavaVm.generate_java_command` such that generated commands can be
+        retrieved without being executed.
+        """
+        return [self.java] + self.processArgs(args, addDefaultArgs=addDefaultArgs)
 
     def bootclasspath(self, filtered=True):
         """
@@ -17299,7 +17327,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.286.11")  # paw/GR-29632
+version = VersionSpec("5.287.0")  # ff/GR-29385
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
