@@ -26,6 +26,7 @@ package com.oracle.mxtool.junit;
 
 import java.io.*;
 
+import org.junit.Ignore;
 import org.junit.internal.*;
 import org.junit.runner.*;
 import org.junit.runner.notification.*;
@@ -85,6 +86,10 @@ class VerboseTextListener extends TextRunListener {
     public void testIgnored(Description description) {
         if (beVerbose()) {
             getWriter().print("Ignored");
+            Ignore a = description.getAnnotation(Ignore.class);
+            if (a != null && !a.value().isEmpty()) {
+                getWriter().printf(" (%s)", a.value());
+            }
         } else {
             super.testIgnored(description);
         }
