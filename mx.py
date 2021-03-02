@@ -12789,13 +12789,18 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
 
     if _opts.verbose or cmdlinefile or _opts.exec_log:
         s = ''
-        if cwd is not None and cwd != _original_directory:
-            s += '# Directory: ' + os.path.abspath(cwd) + os.linesep
-        if env is not None:
+        if _opts.very_verbose or cwd is not None and cwd != _original_directory:
+            working_directory = cwd
+            if working_directory is None:
+                working_directory = _original_directory
+            s += '# Directory: ' + os.path.abspath(working_directory) + os.linesep
+        if _opts.very_verbose:
+            s += 'env -i ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env]) + ' \\' + os.linesep
+        else:
             env_diff = [(k, env[k]) for k in env if k not in _original_environ]
-            if len(env_diff):
+            if env_diff:
                 s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
-        s = s + cmd_line
+        s += cmd_line
         if _opts.verbose:
             log(s)
         if cmdlinefile:
