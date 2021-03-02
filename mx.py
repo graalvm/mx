@@ -17335,7 +17335,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.0")  # print @Ignore reason
+version = VersionSpec("5.288.1")  # custom distribution class
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
