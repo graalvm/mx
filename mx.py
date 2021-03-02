@@ -12505,7 +12505,7 @@ def _kill_process(pid, sig):
         return False
 
 
-def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
+def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
         while True:
             try:
@@ -12532,7 +12532,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
             return _returncode(status)
         remaining = end - time.time()
         if remaining <= 0:
-            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args))
+            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, cmd_line)
             if nonZeroIsFatal:
                 abort(msg)
             else:
@@ -12854,7 +12854,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if is_windows():
                 abort('Use of timeout not (yet) supported on Windows')
-            retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
+            retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal)
         while any([t.is_alive() for t in joiners]):
             # Need to use timeout otherwise all signals (including CTRL-C) are blocked
             # see: http://bugs.python.org/issue1167930
