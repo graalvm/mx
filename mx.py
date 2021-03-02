@@ -2138,7 +2138,7 @@ class Suite(object):
         if className:
             if not self.extensions or not hasattr(self.extensions, className):
                 raise abort('Distribution {} requires a custom class ({}) which was not found in {}'.format(name, className, join(self.mxDir, self._extensions_name() + '.py')))
-            d = getattr(self.extensions, className)(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, **attrs)
+            d = getattr(self.extensions, className)(self, name, deps, exclLibs, platformDependent, theLicense, testDistribution=testDistribution, layout=layout, path=path, **attrs)
         elif native:
             if layout is not None:
                 d = create_layout('tar')
@@ -17335,7 +17335,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.0")  # print @Ignore reason
+version = VersionSpec("5.288.1")  # custom distribution class
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
