@@ -12785,29 +12785,25 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
+    cmd_line = list_to_cmd_line(args)
+
     if _opts.verbose or cmdlinefile or _opts.exec_log:
-        if _opts.very_verbose:
-            log('Environment variables:')
-            for key in sorted(env.keys()):
-                log('    ' + key + '=' + env[key])
-            log(' \\\n '.join(map(pipes.quote, args)))
-        else:
-            s = ''
-            if cwd is not None and cwd != _original_directory:
-                s += '# Directory: ' + os.path.abspath(cwd) + os.linesep
-            if env is not None:
-                env_diff = [(k, env[k]) for k in env if k not in _original_environ]
-                if len(env_diff):
-                    s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
-            s = s + list_to_cmd_line(args)
-            if _opts.verbose:
-                log(s)
-            if cmdlinefile:
-                with open(cmdlinefile, 'w') as fp:
-                    fp.write(s + os.linesep)
-            if _opts.exec_log:
-                with open(_opts.exec_log, 'a') as fp:
-                    fp.write(s + os.linesep)
+        s = ''
+        if cwd is not None and cwd != _original_directory:
+            s += '# Directory: ' + os.path.abspath(cwd) + os.linesep
+        if env is not None:
+            env_diff = [(k, env[k]) for k in env if k not in _original_environ]
+            if len(env_diff):
+                s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+        s = s + cmd_line
+        if _opts.verbose:
+            log(s)
+        if cmdlinefile:
+            with open(cmdlinefile, 'w') as fp:
+                fp.write(s + os.linesep)
+        if _opts.exec_log:
+            with open(_opts.exec_log, 'a') as fp:
+                fp.write(s + os.linesep)
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -12827,8 +12823,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
-        args = _list2cmdline(args) if is_windows() else args
-        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
+        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
@@ -12868,7 +12863,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     except OSError as e:
         if not nonZeroIsFatal:
             raise e
-        abort('Error executing: {}{}{}'.format(list_to_cmd_line(args), os.linesep, e))
+        abort('Error executing: {}{}{}'.format(cmd_line, os.linesep, e))
     except KeyboardInterrupt:
         abort(1, killsig=signal.SIGINT)
     finally:
@@ -12878,7 +12873,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
             if _opts.very_verbose:
-                raise subprocess.CalledProcessError(retcode, ' '.join(args))
+                raise subprocess.CalledProcessError(retcode, cmd_line)
             log('[exit code: ' + str(retcode) + ']')
         abort(retcode)
 
