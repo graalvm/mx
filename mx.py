@@ -12505,7 +12505,7 @@ def _kill_process(pid, sig):
         return False
 
 
-def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
+def _waitWithTimeout(process, cmd_line, timeout, nonZeroIsFatal=True):
     def _waitpid(pid):
         while True:
             try:
@@ -12532,7 +12532,7 @@ def _waitWithTimeout(process, args, timeout, nonZeroIsFatal=True):
             return _returncode(status)
         remaining = end - time.time()
         if remaining <= 0:
-            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, ' '.join(args))
+            msg = 'Process timed out after {0} seconds: {1}'.format(timeout, cmd_line)
             if nonZeroIsFatal:
                 abort(msg)
             else:
@@ -12785,29 +12785,30 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
             print(arg, file=fp)
     env['MX_SUBPROCESS_COMMAND_FILE'] = subprocessCommandFile
 
+    cmd_line = list_to_cmd_line(args)
+
     if _opts.verbose or cmdlinefile or _opts.exec_log:
+        s = ''
+        if _opts.very_verbose or cwd is not None and cwd != _original_directory:
+            working_directory = cwd
+            if working_directory is None:
+                working_directory = _original_directory
+            s += '# Directory: ' + os.path.abspath(working_directory) + os.linesep
         if _opts.very_verbose:
-            log('Environment variables:')
-            for key in sorted(env.keys()):
-                log('    ' + key + '=' + env[key])
-            log(' \\\n '.join(map(pipes.quote, args)))
+            s += 'env -i ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env]) + ' \\' + os.linesep
         else:
-            s = ''
-            if cwd is not None and cwd != _original_directory:
-                s += '# Directory: ' + os.path.abspath(cwd) + os.linesep
-            if env is not None:
-                env_diff = [(k, env[k]) for k in env if k not in _original_environ]
-                if len(env_diff):
-                    s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
-            s = s + list_to_cmd_line(args)
-            if _opts.verbose:
-                log(s)
-            if cmdlinefile:
-                with open(cmdlinefile, 'w') as fp:
-                    fp.write(s + os.linesep)
-            if _opts.exec_log:
-                with open(_opts.exec_log, 'a') as fp:
-                    fp.write(s + os.linesep)
+            env_diff = [(k, env[k]) for k in env if k not in _original_environ]
+            if env_diff:
+                s += 'env ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env_diff]) + ' \\' + os.linesep
+        s += cmd_line
+        if _opts.verbose:
+            log(s)
+        if cmdlinefile:
+            with open(cmdlinefile, 'w') as fp:
+                fp.write(s + os.linesep)
+        if _opts.exec_log:
+            with open(_opts.exec_log, 'a') as fp:
+                fp.write(s + os.linesep)
 
     if timeout is None and _opts.ptimeout != 0:
         timeout = _opts.ptimeout
@@ -12827,8 +12828,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
-        args = _list2cmdline(args) if is_windows() else args
-        p = subprocess.Popen(args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
+        p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
         if callable(out):
@@ -12859,7 +12859,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         else:
             if is_windows():
                 abort('Use of timeout not (yet) supported on Windows')
-            retcode = _waitWithTimeout(p, args, timeout, nonZeroIsFatal)
+            retcode = _waitWithTimeout(p, cmd_line, timeout, nonZeroIsFatal)
         while any([t.is_alive() for t in joiners]):
             # Need to use timeout otherwise all signals (including CTRL-C) are blocked
             # see: http://bugs.python.org/issue1167930
@@ -12868,7 +12868,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     except OSError as e:
         if not nonZeroIsFatal:
             raise e
-        abort('Error executing: {}{}{}'.format(list_to_cmd_line(args), os.linesep, e))
+        abort('Error executing: {}{}{}'.format(cmd_line, os.linesep, e))
     except KeyboardInterrupt:
         abort(1, killsig=signal.SIGINT)
     finally:
@@ -12878,7 +12878,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
     if retcode and nonZeroIsFatal:
         if _opts.verbose:
             if _opts.very_verbose:
-                raise subprocess.CalledProcessError(retcode, ' '.join(args))
+                raise subprocess.CalledProcessError(retcode, cmd_line)
             log('[exit code: ' + str(retcode) + ']')
         abort(retcode)
 
@@ -17335,7 +17335,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.1")  # custom distribution class
+version = VersionSpec("5.288.2")  # run error logging
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
