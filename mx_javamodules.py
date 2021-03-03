@@ -573,9 +573,10 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
 
         # Collect packages in the module first
         with mx.Timer('packages', times):
-            module_packages = set()
+            module_packages = dict()
             for project in java_projects:
-                module_packages.update(project.defined_java_packages())
+                for package in project.defined_java_packages():
+                    module_packages[package] = project.javaCompliance
 
                 # Collect the required modules denoted by the dependencies of each project
                 entries = mx.classpath_entries(project, includeSelf=False)
@@ -594,24 +595,24 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
             """
             if not packages_spec:
                 mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
-            res = set()
+            res = dict()
             for spec in packages_spec.split(','):
                 if spec.endswith('*'):
                     prefix = spec[0:-1]
-                    selection = set((p for p in available_packages if p.startswith(prefix)))
+                    selection = {p: javaCompliance for p, javaCompliance in available_packages.items() if p.startswith(prefix)}
                     if not selection:
-                        mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages), context=dist)
+                        mx.abort('The export package specifier "{}" does not match any of {}'.format(spec, available_packages.keys()), context=dist)
                     res.update(selection)
                 elif spec == '<package-info>':
                     if not project_scope:
                         mx.abort('The export package specifier "<package-info>" can only be used in a project, not a distribution', context=dist)
-                    res.update(mx._find_packages(project_scope, onlyPublic=True))
+                    res.update({p: project_scope.javaCompliance for p in mx._find_packages(project_scope, onlyPublic=True)})
                 else:
                     if spec not in module_packages:
                         mx.abort('Cannot export package {0} from {1} as it is not defined by any project in the module {1}'.format(spec, moduleName), context=dist)
-                    if project_scope and spec not in available_packages and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
+                    if project_scope and spec not in available_packages.keys() and project_scope.suite.requiredMxVersion >= mx.VersionSpec("5.226.1"):
                         mx.abort('Package {} in "exports" attribute not defined by project {}'.format(spec, project_scope), context=project_scope)
-                    res.add(spec)
+                    res[spec] = available_packages[spec]
             return res
 
         def _process_exports(export_specs, available_packages, project_scope=None):
@@ -623,13 +624,13 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     targets = [n.strip() for n in splitpackage[1].split(',')]
                     if not targets:
                         mx.abort('exports attribute must have at least one target for qualified export', context=dist)
-                    for p in _parse_packages_spec(packages_spec, available_packages, project_scope):
+                    for p in _parse_packages_spec(packages_spec, available_packages, project_scope).items():
                         exports.setdefault(p, set()).update(targets)
                 else:
                     unqualified_exports.append(export)
 
             for unqualified_export in unqualified_exports:
-                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope):
+                for p in _parse_packages_spec(unqualified_export, available_packages, project_scope).items():
                     exports[p] = set()
 
         module_info = getattr(dist, 'moduleInfo', None)
@@ -696,7 +697,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         # Only consider packages not defined by the module we're creating. This handles the
                         # case where we're creating a module that will upgrade an existing upgradeable
                         # module in the JDK such as jdk.internal.vm.compiler.
-                        if pkg not in module_packages:
+                        if pkg not in module_packages.keys():
                             module, visibility = lookup_package(allmodules, pkg, moduleName)
                             if module and module.name != moduleName:
                                 requires.setdefault(module.name, set())
@@ -713,7 +714,8 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     # If neither an "exports" nor distribution-level "moduleInfo" attribute is present,
                     # all packages are exported.
                     default_exported_java_packages = [] if module_info else project.defined_java_packages()
-                    _process_exports(getattr(project, 'exports', default_exported_java_packages), project.defined_java_packages(), project)
+                    available_packages = {package: project.javaCompliance for package in project.defined_java_packages()}
+                    _process_exports(getattr(project, 'exports', default_exported_java_packages), available_packages, project)
 
         if enhanced_module_usage_info:
             with mx.Timer('libraries', times):
@@ -855,7 +857,15 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                                         if exists(join(dest_dir, serviceClassfile)):
                                             uses.add(service)
 
-                    jmd = JavaModuleDescriptor(moduleName, exports, requires, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
+                    version_java_compliance = None if version == 'common' else mx.JavaCompliance(version + '+')
+
+                    def allow_export(java_compliance):
+                        if version_java_compliance is None:
+                            return True
+                        return java_compliance <= version_java_compliance
+
+                    exports_clean = {package_java_compliance[0]: targets for package_java_compliance, targets in exports.items() if allow_export(package_java_compliance[1])}
+                    jmd = JavaModuleDescriptor(moduleName, exports_clean, requires, uses, provides, packages=module_packages.keys(), concealedRequires=concealedRequires,
                                                jarpath=moduleJar, dist=dist, modulepath=modulepath, alternatives=alternatives, opens=opens)
 
                     # Compile module-info.class
