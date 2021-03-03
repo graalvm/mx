@@ -2382,8 +2382,9 @@ class BenchmarkExecutor(object):
             for tracker in mxBenchmarkArgs.tracker.split(","):
                 if tracker not in _available_trackers:
                     raise ValueError("Unknown tracker '{}'. Use one of: {}".format(tracker, ', '.join(_available_trackers.keys())))
-                mx.log("Registering tracker: {}".format(tracker))
-                suite.register_command_mapper_hook(tracker, _available_trackers[tracker])
+                if suite:
+                    mx.log("Registering tracker: {}".format(tracker))
+                    suite.register_command_mapper_hook(tracker, _available_trackers[tracker])
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))
