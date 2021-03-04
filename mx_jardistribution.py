@@ -43,6 +43,10 @@ from stat import S_IMODE
 import mx
 import mx_subst
 
+# ProGuard version used for stripping/unstripping
+_proguard_version = '7_1_0_beta1'
+_proguard_supported_jdk_version = 16
+
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     """
     Represents a jar file built from the class files and resources defined by a set of
@@ -121,7 +125,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
-            self.buildDependencies.append("mx:PROGUARD_6_1_1")
+            self.buildDependencies.append("mx:PROGUARD_" + _proguard_version)
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
@@ -639,7 +643,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         proguard_cp = mx.get_opts().proguard_cp
         jdk = mx.get_jdk(tag='default')
-        if jdk.javaCompliance > '13' and proguard_cp is None:
+        if jdk.javaCompliance.value > _proguard_supported_jdk_version and proguard_cp is None:
             mx.abort('Cannot strip {} - ProGuard does not yet support JDK {}'.format(self, jdk.javaCompliance))
 
         mx.logv('Stripping {}...'.format(self.name))
@@ -654,7 +658,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             sep = proguard_cp.find(os.pathsep)
             proguard_jar = proguard_cp if sep == -1 else proguard_cp[0:sep]
         else:
-            proguard_jar = mx.library('PROGUARD_6_1_1').get_path(resolve=True)
+            proguard_jar = mx.library('PROGUARD_' + _proguard_version).get_path(resolve=True)
         proguard = ['-jar', proguard_jar]
 
         prefix = [

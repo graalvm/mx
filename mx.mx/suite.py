@@ -509,6 +509,16 @@ suite = {
       }
     },
 
+    "PROGUARD_7_1_0_beta1" : {
+      "sha1" : "05a934dc927ec2b905f8da50e6db81c2684da336",
+      "urls" : ["jar:https://github.com/Guardsquare/proguard/releases/download/v7.1.0-beta1/proguard-7.1.0-beta1.zip!/proguard-7.1.0-beta1/lib/proguard.jar"],
+    },
+
+    "PROGUARD_RETRACE_7_1_0_beta1" : {
+      "sha1" : "52aa564fbbb72586b38eb070ad3de7ade88c1a39",
+      "urls" : ["jar:https://github.com/Guardsquare/proguard/releases/download/v7.1.0-beta1/proguard-7.1.0-beta1.zip!/proguard-7.1.0-beta1/lib/retrace.jar"],
+    },
+
     "NINJA" : {
       "packedResource" : True,
       "version" : "1.8.2",
