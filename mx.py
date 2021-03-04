@@ -5215,7 +5215,7 @@ class Distribution(Dependency):
         yield  # pylint: disable=unreachable
 
 
-from mx_jardistribution import JARDistribution
+from mx_jardistribution import JARDistribution, _proguard_version
 
 class JMHArchiveParticipant:
     """ Archive participant for building JMH benchmarking jars. """
@@ -14683,7 +14683,7 @@ def _unstrip(args):
     return 0
 
 def unstrip(args, **run_java_kwargs):
-    proguard_cp = _opts.proguard_cp or (library('PROGUARD_RETRACE_6_1_1').get_path(resolve=True) + os.pathsep + library('PROGUARD_6_1_1').get_path(resolve=True))
+    proguard_cp = _opts.proguard_cp or (library('PROGUARD_RETRACE_' + _proguard_version).get_path(resolve=True) + os.pathsep + library('PROGUARD_' + _proguard_version).get_path(resolve=True))
     # A slightly more general pattern for matching stack traces than the default.
     # This version does not require the "at " prefix.
     regex = r'(?:.*?\s+%c\.%m\s*\(%s(?::%l)?\)\s*(?:~\[.*\])?)|(?:(?:.*?[:"]\s+)?%c(?::.*)?)'
@@ -17361,7 +17361,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.4")  # a2p/GR-29774
+version = VersionSpec("5.288.5")  # GR-29275 ProGuard 7.1.0-beta1
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
