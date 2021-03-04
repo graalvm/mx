@@ -120,10 +120,18 @@ def rewriteurl(url):
              if no rules match
     :rtype: str
     """
+    original_url = url
+    jar_url = mx._JarURL.parse(url)
+    if jar_url:
+        url = jar_url.base_url
+
     for urlrewrite in _urlrewrites:
         res = urlrewrite._rewrite(url)
         if res:
-            mx.logvv("Rewrote '{}' to '{}'".format(url, res))
+            if jar_url is not None:
+                jar_url.base_url = res
+                res = str(jar_url)
+            mx.logvv("Rewrote '{}' to '{}'".format(original_url, res))
             return res
     return url
 

@@ -4271,6 +4271,34 @@ def _attempt_download(url, path, jarEntryName=None):
             conn.close()
     return False
 
+class _JarURL(object):
+    """
+    A URL denoting an entry in a JAR file. The syntax of a JAR URL is:
+        jar:<base_url>!/{entry}
+    for example:
+        jar:http://www.foo.com/bar/baz.jar!/COM/foo/Quux.class
+
+    More info at https://docs.oracle.com/en/java/javase/15/docs/api/java.base/java/net/JarURLConnection.html
+    """
+
+    _pattern = re.compile('jar:(.*)!/(.*)')
+
+    @staticmethod
+    def parse(url):
+        if not url.startswith('jar:'):
+            return None
+        m = _JarURL._pattern.match(url)
+        if m:
+            return _JarURL(m.group(1), m.group(2))
+        return None
+
+    def __init__(self, base_url, entry):
+        self.base_url = base_url
+        self.entry = entry
+
+    def __repr__(self):
+        return 'jar:{}!/{}'.format(self.base_url, self.entry)
+
 def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
     """
     Attempts to downloads content for each URL in a list, stopping after the first successful download.
@@ -4281,17 +4309,15 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
         ensure_dirname_exists(path)
         assert not path.endswith(os.sep)
 
-    # https://docs.oracle.com/javase/7/docs/api/java/net/JarURLConnection.html
-    jarURLPattern = re.compile('jar:(.*)!/(.*)')
     verify_errors = {}
     for url in urls:
         if not verifyOnly and verbose:
             log('Downloading ' + url + ' to ' + path)
-        m = jarURLPattern.match(url)
+        jar_url = _JarURL.parse(url)
         jarEntryName = None
-        if m:
-            url = m.group(1)
-            jarEntryName = m.group(2)
+        if jar_url:
+            url = jar_url.base_url
+            jarEntryName = jar_url.entry
 
         if not _opts.trust_http and (url.lower().startswith('http://') or url.lower().startswith('ftp://')):
             warn('Downloading from non-https URL {}. Use --trust-http mx option to suppress this warning.'.format(url))
