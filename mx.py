@@ -12821,7 +12821,7 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
                 working_directory = _original_directory
             s += '# Directory: ' + os.path.abspath(working_directory) + os.linesep
         if _opts.very_verbose:
-            s += 'env -i ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env]) + ' \\' + os.linesep
+            s += 'env -i ' + ' '.join([n + '=' + pipes.quote(v) for n, v in env.items()]) + ' \\' + os.linesep
         else:
             env_diff = [(k, env[k]) for k in env if k not in _original_environ]
             if env_diff:
@@ -17361,7 +17361,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.5")  # GR-29275 ProGuard 7.1.0-beta1
+version = VersionSpec("5.288.6")  # GR-29803
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
