@@ -1358,6 +1358,20 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
         return super(TemporaryWorkdirMixin, self).parserNames() + ["temporary_workdir_parser"]
 
 
+def _create_temporary_workdir_parser():
+    parser = ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ...")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--keep-scratch", action="store_true", help="Do not delete scratch directory after benchmark execution.")
+    group.add_argument("--no-scratch", action="store_true", help="Do not execute benchmark in scratch directory.")
+    return parser
+
+
+parsers["temporary_workdir_parser"] = ParserEntry(
+    _create_temporary_workdir_parser(),
+    "\n\nFlags for benchmark suites with temporary working directories:\n"
+)
+
+
 class Vm(object): #pylint: disable=R0922
     """Base class for objects that can run Java VMs."""
 
