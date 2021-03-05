@@ -17361,7 +17361,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.6")  # GR-29803
+version = VersionSpec("5.288.7")  # ffarquet
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
