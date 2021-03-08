@@ -2145,6 +2145,7 @@ class Suite(object):
             else:
                 relpath = attrs.pop('relpath', False)
                 output = attrs.pop('output', None)
+                output = output if output is None else output.replace('/', os.sep)
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         elif layout is not None:
             d = create_layout('jar')
@@ -5785,7 +5786,7 @@ class LayoutDistribution(AbstractDistribution):
             """
             if glob_match_any(excludes, src_arcname):
                 return
-            absolute_destination = _safe_path(join(output, dst))
+            absolute_destination = _safe_path(join(output, dst.replace('/', os.sep)))
             if islink(src):
                 link_target = os.readlink(src)
                 if archive and isabs(link_target):
@@ -5794,7 +5795,8 @@ class LayoutDistribution(AbstractDistribution):
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
-                    merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes, archive=archive)
+                    new_dst = (dst if len(dst) == 0 or dst[-1] == '/' else dst + '/') + name
+                    merge_recursive(join(src, name), new_dst, join(src_arcname, name), excludes, archive=archive)
             else:
                 ensure_dir_exists(dirname(absolute_destination))
                 if archive:
@@ -6075,7 +6077,7 @@ class LayoutDistribution(AbstractDistribution):
         for destination, source in self._walk_layout():
             source_type = source['source_type']
             if source_type == 'file':
-                for source_file in glob.iglob(join(self.suite.dir, source['path'])):
+                for source_file in glob.iglob(join(self.suite.dir, source['path'].replace('/', os.sep))):
                     up = _needsUpdate(source_file, self.path)
                     if up:
                         return up
@@ -17361,7 +17363,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.288.7")  # ffarquet
+version = VersionSpec("5.289.0")  # [GR-29221]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
