@@ -5785,7 +5785,7 @@ class LayoutDistribution(AbstractDistribution):
             """
             if glob_match_any(excludes, src_arcname):
                 return
-            absolute_destination = _safe_path(join(output, dst))
+            absolute_destination = _safe_path(join(output, dst.replace('/', os.sep)))
             if islink(src):
                 link_target = os.readlink(src)
                 if archive and isabs(link_target):
@@ -5794,7 +5794,7 @@ class LayoutDistribution(AbstractDistribution):
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
-                    merge_recursive(join(src, name), join(dst, name), join(src_arcname, name), excludes, archive=archive)
+                    merge_recursive(join(src, name), dst + '/' + name, join(src_arcname, name), excludes, archive=archive)
             else:
                 ensure_dir_exists(dirname(absolute_destination))
                 if archive:
@@ -5830,7 +5830,6 @@ class LayoutDistribution(AbstractDistribution):
                     if not first_file:
                         abort("Unexpected source for '{dest}' expected one file but got multiple.\n"
                               "Either use a directory destination ('{dest}/') or change the source".format(dest=destination), context=self)
-                _dst = _dst.replace('/', os.sep)
                 merge_recursive(_source_file, _dst, _arcname, excludes, archive=archive)
                 first_file = False
             if first_file and not optional:
