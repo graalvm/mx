@@ -5794,7 +5794,8 @@ class LayoutDistribution(AbstractDistribution):
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
-                    merge_recursive(join(src, name), dst + '/' + name, join(src_arcname, name), excludes, archive=archive)
+                    new_dst = (dst if len(dst) == 0 or dst[-1] == '/' else dst + '/') + name
+                    merge_recursive(join(src, name), new_dst, join(src_arcname, name), excludes, archive=archive)
             else:
                 ensure_dir_exists(dirname(absolute_destination))
                 if archive:
