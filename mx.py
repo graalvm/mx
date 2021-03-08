@@ -2144,7 +2144,8 @@ class Suite(object):
                 d = create_layout('tar')
             else:
                 relpath = attrs.pop('relpath', False)
-                output = attrs.pop('output', None).replace('/', os.sep)
+                output = attrs.pop('output', None)
+                output = output if output is None else output.replace('/', os.sep)
                 d = NativeTARDistribution(self, name, deps, path, exclLibs, platformDependent, theLicense, relpath, output, testDistribution=testDistribution, **attrs)
         elif layout is not None:
             d = create_layout('jar')
