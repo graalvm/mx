@@ -271,7 +271,19 @@ def set_vm_launcher(name, launcher, jdk=None):
 def add_config_participant(p):
     _config_participants.append(p)
 
-def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None):
+
+_extra_unittest_arguments = []
+
+
+def add_unittest_argument(*args, **kwargs):
+    """
+    Adds an argument declaration to the ArgumentParser used by the unittest method.
+    The argument can be processed via a custom `action=MyAction`.
+    """
+    _extra_unittest_arguments.append((args, kwargs))
+
+
+def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitelist=None, regex=None, suite=None, **extra_args):
     testfile = os.environ.get('MX_TESTFILE', None)
     if testfile is None:
         (_, testfile) = tempfile.mkstemp(".testclasses", "mxtool")
@@ -439,6 +451,9 @@ def unittest(args):
     eagerStacktrace = parser.add_mutually_exclusive_group()
     eagerStacktrace.add_argument('--eager-stacktrace', action='store_const', const=True, dest='eager_stacktrace', help='print test errors as they occur (default)')
     eagerStacktrace.add_argument('--no-eager-stacktrace', action='store_const', const=False, dest='eager_stacktrace', help='print test errors after all tests have run')
+
+    for a, k in _extra_unittest_arguments:
+        parser.add_argument(*a, **k)
 
     # Augment usage text to mention test filters and options passed to the VM
     usage = parser.format_usage().strip()
