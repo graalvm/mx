@@ -799,7 +799,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             if self_jmd:
                 # Make stripped jmod
                 stripped_jmod = self_jmd.get_jmod_path(respect_stripping=True)
-                dep_jmods = [jmd.get_jmod_path(respect_stripping=True) for jmd in dep_jmds]
+                dep_jmods = [jmd.get_jmod_path(respect_stripping=False) for jmd in dep_jmds]
                 dep_lib_modules = [module_lib.lib.get_path(resolve=True) for module_lib in self_jmd.modulepath if module_lib.lib]
 
                 include_file = _create_derived_file(stripped_jmod, '.proguard', prefix + [
