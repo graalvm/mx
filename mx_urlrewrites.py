@@ -133,7 +133,7 @@ def rewriteurl(url):
                 res = str(jar_url)
             mx.logvv("Rewrote '{}' to '{}'".format(original_url, res))
             return res
-    return url
+    return original_url
 
 def urlrewrite_cli(args):
     """rewrites the given URL using MX_URLREWRITES"""
