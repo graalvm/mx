@@ -65,7 +65,7 @@ import glob
 import filecmp
 import json
 from collections import OrderedDict, namedtuple, deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
 from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
@@ -4927,20 +4927,36 @@ class BuildTask(Buildable, Task):
         if buildNeeded:
             if not self.args.clean and not self.cleanForbidden():
                 self.clean(forBuild=True)
+            start_time = time.time()
             self.logBuild(reason)
             _built = self.build()
             self._persist_deps()
             # The build task is `built` if the `build()` function returns True or None (legacy)
             self.built = _built or _built is None
+            self.logBuildDone(time.time() - start_time)
             logv('Finished {}'.format(self))
         else:
             self.logSkip(reason)
 
+    def _timestamp(self):
+        if self.args.print_timing:
+            return time.strftime('[%H:%M:%S] ')
+        return ''
+
     def logBuild(self, reason=None):
         if reason:
-            log('{}... [{}]'.format(self, reason))
+            log(self._timestamp() + '{}... [{}]'.format(self, reason))
         else:
-            log('{}...'.format(self))
+            log(self._timestamp() + '{}...'.format(self))
+
+    def logBuildDone(self, duration):
+        timestamp = self._timestamp()
+        if timestamp:
+            duration = str(timedelta(seconds=duration))
+            # Strip hours if 0
+            if duration.startswith('0:'):
+                duration = duration[2:]
+            log(timestamp + '{} [duration: {}]'.format(self, duration))
 
     def logClean(self):
         log('Cleaning {}...'.format(self.name))
@@ -13847,6 +13863,7 @@ def build(cmd_args, parser=None):
     parser.add_argument('-A', dest='extra_javac_args', action='append', help='pass <flag> directly to Java source compiler', metavar='<flag>', default=[])
     parser.add_argument('--no-daemon', action='store_true', dest='no_daemon', help='disable use of daemon Java compiler (if available)')
     parser.add_argument('--all', action='store_true', help='build all dependencies (not just default targets)')
+    parser.add_argument('--print-timing', action='store_true', help='print start/end times and duration for each build task', default=is_continuous_integration())
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
@@ -17363,7 +17380,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.290.2")  # GR-29275 (fix)
+version = VersionSpec("5.290.3")  # GR-30008
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
