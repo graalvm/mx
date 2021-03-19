@@ -81,7 +81,7 @@ class JdkDistribution(object):
         for dist in JdkDistribution._jdk_distributions:
             if dist.get_name() == name:
                 return dist
-        mx.abort("Unknown JDK distribution")
+        mx.abort("Unknown JDK distribution: {}".format(name))
 
     def __init__(self, version):
         self._version = version
@@ -168,3 +168,16 @@ class LabsJDK11CEDebug(JdkDistribution):
 
     def get_name(self):
         return self._name + "-debug"
+
+class LabsJDK16CE(JdkDistribution):
+    _name = "labsjdk-ce-16"
+    def __init__(self, version):
+        JdkDistribution.__init__(self, version)
+        machine = mx.get_os() + '-' + mx.get_arch()
+        self._filename = "labsjdk-{}-{}".format(version, machine)
+        self._short_version = re.sub(r".*(jvmci.*)", "\\1", version)
+        self._archive = "{}.tar.gz".format(self._filename)
+        self._url = ("{GITHUB_URL}/graalvm/labs-openjdk-16/"
+                     "{GITHUB_RELEASES}/{short_version}/{archive}"
+                     ).format(GITHUB_URL=GITHUB_URL, GITHUB_RELEASES=GITHUB_RELEASES,
+                              short_version=self._short_version, archive=self._archive)
