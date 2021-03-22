@@ -13875,6 +13875,12 @@ def build(cmd_args, parser=None):
         parser.add_argument('remainder', nargs=REMAINDER, metavar='...')
 
     args = parser.parse_args(cmd_args[:])
+
+    env_gc_after_build_varname = 'MX_GC_AFTER_BUILD'
+    env_gc_after_build = get_env(env_gc_after_build_varname) if 'com.oracle.mxtool.compilerserver' not in cmd_args else None
+    if env_gc_after_build:
+        warn('Will run `mx gc-dists {}` after building ({} is set)'.format(env_gc_after_build, env_gc_after_build_varname))
+
     deps_w_deprecation_errors = []
     deprecation_as_error_args = args
     if args.force_deprecation_as_warning_for_dependencies:
@@ -14142,6 +14148,10 @@ def build(cmd_args, parser=None):
 
     for daemon in daemons.values():
         daemon.shutdown()
+
+    if env_gc_after_build:
+        warn('Running `mx gc-dists {}` after building ({} is set)'.format(env_gc_after_build, env_gc_after_build_varname))
+        mx_gc.gc_dists(env_gc_after_build.split())
 
     # TODO check for distributions overlap (while loading suites?)
 
@@ -17092,6 +17102,7 @@ update_commands("mx", {
 
 import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
+import mx_gc # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
