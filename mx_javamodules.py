@@ -764,7 +764,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                                     mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
             default_jmd = None
 
-            all_versions = list(versions.keys())
+            all_versions = list(sorted(versions.keys(), key=int))
             if '9' not in all_versions:
                 # 9 is the first version that supports modules and can be versioned in the JAR:
                 # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
