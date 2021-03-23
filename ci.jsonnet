@@ -103,9 +103,9 @@ build_truffleruby = common.sulong.deps.linux + {
 build_graalvm_ce_linux = setup_mx + common.sulong.deps.linux + {
   packages+: {
     git: '>=1.8.3',
-    gcc: '==4.9.2',
+    devtoolset: '==7',
     make: '>=3.83',
-    binutils: '==2.23.2',
+    binutils: '==2.34',
   },
   downloads+: {
     JAVA_HOME: jdks.openjdk8,
