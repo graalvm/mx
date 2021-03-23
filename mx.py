@@ -17380,7 +17380,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.291.0")  # GR-28940 Add labsjdk-ce-16 for mx fetch-jdk.
+version = VersionSpec("5.291.1")  # paw/GR-29632-part2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
