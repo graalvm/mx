@@ -17391,7 +17391,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.291.1")  # paw/GR-29632-part2
+version = VersionSpec("5.292.0")  # mx gc-dists
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
