@@ -11,42 +11,73 @@ suite = {
       "license": "Apache-2.0",
     },
 
-    "JACOCOCORE_0.8.4" : {
-      "sha1" : "53addc878614171ff0fcbc8f78aed12175c22cdb",
-      "sourceSha1" : "9bd1fa334d941005bc9ab3ac92478a590f5b7d73",
-      "maven" : {
-        "groupId" : "org.jacoco",
-        "artifactId" : "org.jacoco.core",
-        "version" : "0.8.4",
-      },
-      "dependencies" : ["ASM_7.1", "ASM_COMMONS_7.1", "ASM_TREE_7.1"],
+    "JACOCOCORE_0.8.7_CUSTOM" : {
+      "sha1" : "fa4b9df4599fc97445620b8b7af8fa98c9ea4f24",
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacococore.jar"],
+      "dependencies" : ["ASM_9.1", "ASM_COMMONS_9.1", "ASM_TREE_9.1"],
       "licence": "EPL-1.0",
     },
 
-    "JACOCOAGENT_0.8.4" : {
-      "sha1" : "869021a6d90cfb008b12e83fccbe42eca29e5355",
+    "JACOCOAGENT_0.8.7_CUSTOM" : {
+      "sha1" : "2be9464a8d3556d0fc35b9096eed59702d19c40e",
       # Cannot download sources for "maven" library with "classifier" attribute
-      "maven" : {
-        "groupId" : "org.jacoco",
-        "artifactId" : "org.jacoco.agent",
-        "version" : "0.8.4",
-        "classifier" : "runtime",
-      },
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacocoagent.jar"],
       "licence": "EPL-1.0",
     },
 
-    "JACOCOREPORT_0.8.4" : {
-      "sha1" : "e5ca9511493b7e3bc2cabdb8ded92e855f3aac32",
-      "sourceSha1" : "eb61e479b35b467954f28a565c094c563b790e19",
-      "maven" : {
-        "groupId" : "org.jacoco",
-        "artifactId" : "org.jacoco.report",
-        "version" : "0.8.4",
-      },
-      "dependencies" : ["JACOCOCORE_0.8.4"],
+    "JACOCOREPORT_0.8.7_CUSTOM" : {
+      "sha1" : "641b221d2384164b3ddc3a1eb378aae027e162ca",
+      "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacocoreport.jar"],
+      "dependencies" : ["JACOCOCORE_0.8.7_CUSTOM"],
       "licence": "EPL-1.0",
     },
 
+    "ASM_9.1": {
+      "sha1": "a99500cf6eea30535eeac6be73899d048f8d12a8",
+      "sourceSha1" : "3fb15dd478bf8dcb039aa0d035f9fff9e4229c61",
+      "maven": {
+        "groupId": "org.ow2.asm",
+        "artifactId": "asm",
+        "version": "9.1",
+      },
+      "license": "BSD-new",
+    },
+
+    "ASM_ANALYSIS_9.1": {
+      "sha1": "4f61b83b81d8b659958f4bcc48907e93ecea55a0",
+      "sourceSha1" : "296a49fa21d815fc92eec1007ea2708983e8df2c",
+      "maven": {
+        "groupId": "org.ow2.asm",
+        "artifactId": "asm-analysis",
+        "version": "9.1",
+      },
+      "dependencies" : ["ASM_TREE_9.1"],
+      "license": "BSD-new",
+    },
+
+    "ASM_COMMONS_9.1": {
+      "sha1": "8b971b182eb5cf100b9e8d4119152d83e00e0fdd",
+      "sourceSha1" : "87a45a18693ec2d1eed3beb40ac47f82feb7fb27",
+      "maven": {
+        "groupId": "org.ow2.asm",
+        "artifactId": "asm-commons",
+        "version": "9.1",
+      },
+      "dependencies" : ["ASM_9.1", "ASM_TREE_9.1", "ASM_ANALYSIS_9.1"],
+      "license": "BSD-new",
+    },
+
+    "ASM_TREE_9.1": {
+      "sha1": "c333f2a855069cb8eb17a40a3eb8b1b67755d0eb",
+      "sourceSha1" : "ef07227f641685b6473fd0fbb4931afd6539df1a",
+      "maven": {
+        "groupId": "org.ow2.asm",
+        "artifactId": "asm-tree",
+        "version": "9.1",
+      },
+      "dependencies" : ["ASM_9.1"],
+      "license": "BSD-new",
+    },
     "ASM_7.1": {
       "sha1": "fa29aa438674ff19d5e1386d2c3527a0267f291e",
       "sourceSha1" : "9d170062d595240da35301362b079e5579c86f49",
@@ -729,7 +760,7 @@ suite = {
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
       "dependencies" : [
-        "JACOCOREPORT_0.8.4",
+        "JACOCOREPORT_0.8.7_CUSTOM",
         "JOPTSIMPLE_4_6",
       ],
     },
