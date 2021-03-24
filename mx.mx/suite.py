@@ -11,22 +11,22 @@ suite = {
       "license": "Apache-2.0",
     },
 
-    "JACOCOCORE_0.8.7_CUSTOM" : {
-      "sha1" : "fa4b9df4599fc97445620b8b7af8fa98c9ea4f24",
+    "JACOCOCORE_0.8.7_CUSTOM" : { # use costom jacoco GR-13849 , upstream pr link https://github.com/jacoco/jacoco/pull/1167
+      "sha1" : "b862fe5ffb08634c77c3d4e29260dc544d239320",
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacococore.jar"],
       "dependencies" : ["ASM_9.1", "ASM_COMMONS_9.1", "ASM_TREE_9.1"],
       "licence": "EPL-1.0",
     },
 
     "JACOCOAGENT_0.8.7_CUSTOM" : {
-      "sha1" : "2be9464a8d3556d0fc35b9096eed59702d19c40e",
+      "sha1" : "17259b896255ddeabfa2c0c3d8c9766f2948cdec",
       # Cannot download sources for "maven" library with "classifier" attribute
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacocoagent.jar"],
       "licence": "EPL-1.0",
     },
 
     "JACOCOREPORT_0.8.7_CUSTOM" : {
-      "sha1" : "641b221d2384164b3ddc3a1eb378aae027e162ca",
+      "sha1" : "3f43ae0c7a153e44e23b445e30594b5a4b9876a7",
       "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/jacoco/0.8.7-custom/jacocoreport.jar"],
       "dependencies" : ["JACOCOCORE_0.8.7_CUSTOM"],
       "licence": "EPL-1.0",
