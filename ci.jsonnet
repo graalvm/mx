@@ -168,7 +168,7 @@ mx_bisect_test = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: jdks['labsjdk-ee-11'],
-  overlay: '44403c66cf7fdace76f4db16fd6a9e4467687235',
+  overlay: '9d1815c409fdf4574a62d9ea7509f1206d2df73a',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
