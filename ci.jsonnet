@@ -119,7 +119,7 @@ build_graalvm_ce_linux = setup_mx + common.sulong.deps.linux + {
     JAVA_HOME: jdks.openjdk8,
   },
   run: [
-    ['./mx', 'sclone', '--kind', 'git', '--source', 'https://github.com/oracle/graal.git', '--dest', '../graal'],
+    ['git', 'clone', '--depth=1', '-b', 'cpu/graal-vm/20.3', 'https://github.com/oracle/graal.git', '../graal'],
     ['./mx', '-p', '../graal/vm', '--env', 'ce', 'build'],
   ],
   targets: ['gate'],
