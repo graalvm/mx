@@ -40,7 +40,6 @@ if diff does not contain an mx version update.
 """)
 parser.add_argument('--check-only', action='store_true', help='do not apply tag')
 parser.add_argument('descendant', action='store', help='descendant commit for diff', metavar='<descendant>')
-parser.add_argument('ancestor', action='store', nargs='?', default=None, help='ancestor commit for diff', metavar='<ancestor>')
 args = parser.parse_args()
 
 mx_home = realpath(dirname(__file__))
@@ -61,28 +60,22 @@ def with_hash(commit):
 
 
 parents = get_parents(args.descendant)
-if args.ancestor:
-    # https://stackoverflow.com/a/18345268/6691595
-    if subprocess.call(['git', 'merge-base', '--is-ancestor', args.ancestor, args.descendant], cwd=mx_home) != 0:
-        raise SystemExit('{} is not an ancestor of {}'.format(with_hash(args.ancestor), with_hash(args.descendant)))
-    if len(parents) > 1:
-        raise SystemExit('{} cannot be a merge commit'.format(with_hash(args.descendant)))
-else:
-    # Find sole merge parent that is a merge itself
-    for candidate in parents:
-        if len(get_parents(candidate)) > 1:
-            if args.ancestor:
-                raise SystemExit('Both parents of {} are merges ({} and {}). '.format(with_hash(args.descendant), candidate, with_hash(args.ancestor)) +
-                                 'This makes it impossible to determine which parent is the from the master branch. ' +
-                                 'Please ensure the tip of your pull request is not a merge commit. ' +
-                                 'The simplest solution is to edit history such that the commit with the version bump is the tip commit.')
-            args.ancestor = candidate
-    if not args.ancestor:
-        raise SystemExit('{} is not a merge or has no parent that is a merge'.format(with_hash(args.descendant)))
+new_version = None
+old_version = None
+for candidate in parents:
+    diff = _check_output_str(['git', 'diff', candidate, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
+    new_version_m = new_version_re.match(diff)
+    old_version_m = old_version_re.match(diff)
 
-diff = _check_output_str(['git', 'diff', args.ancestor, args.descendant, '--', 'mx.py'], cwd=mx_home).strip()
-new_version = new_version_re.match(diff)
-old_version = old_version_re.match(diff)
+    if new_version_m:
+        if new_version:
+            raise SystemExit('Found new version on multiple parents')
+        new_version = new_version_m
+
+    if old_version_m:
+        if old_version:
+            raise SystemExit('Found old version on multiple parents')
+        old_version = old_version_m
 
 
 def version_to_ints(spec):
@@ -104,4 +97,4 @@ if new_version and old_version:
         subprocess.check_call(['git', 'tag', tag, args.descendant])
         subprocess.check_call(['git', 'push', 'origin', tag])
 else:
-    raise SystemExit('Could not find mx version update in the diff between {} and {}:\n{}\n\nPlease bump the value of the `version` field near the bottom of mx.py.'.format(with_hash(args.ancestor), with_hash(args.descendant), diff))
+    raise SystemExit('Could not find mx version update in the diff between {} and any of its parents.\n\nPlease bump the value of the `version` field near the bottom of mx.py.'.format(with_hash(args.descendant)))
