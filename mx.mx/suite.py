@@ -364,6 +364,19 @@ suite = {
       }
     },
 
+    "CHECKSTYLE_8.36.1" : {
+      "urls" : [
+        "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-8.36.1/checkstyle-8.36.1-all.jar"
+      ],
+      "sha1" : "461851c7a35926559ecabe183e00f310932bd265",
+      "licence" : "LGPLv21",
+      "maven" : {
+        "groupId" : "com.puppycrawl.tools",
+        "artifactId" : "checkstyle",
+        "version" : "8.36.1",
+      }
+    },
+
     "HAMCREST" : {
       "sha1" : "42a25dc3219429f0e5d060061f71acb49bf010a0",
       "sourceSha1" : "1dc37250fbc78e23a65a67fbbaf71d2e9cbc3c0b",
@@ -676,7 +689,7 @@ suite = {
         "JUNIT",
       ],
       "javaCompliance" : "1.8+",
-      "checkstyleVersion" : "8.8",
+      "checkstyleVersion" : "8.36.1",
     },
 
     "com.oracle.mxtool.junit.jdk9" : {
