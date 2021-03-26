@@ -436,8 +436,23 @@ def eclipseinit_cli(args):
     parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
+    mx.log('----------------------------------------------')
+    workspace_dir = os.path.dirname(os.path.abspath(mx.primary_suite().vc_dir))
+    
+    mx.log('Eclipse project generation successfully completed for:')
+    mx.log('  ' + (os.linesep + "  ").join(sorted([suite.dir for suite in mx.suites(True)])))
+    mx.log('')
+    mx.log('The recommended next steps are:')
+    mx.log(' 1) Open Eclipse with workspace path: {0}'.format(workspace_dir))
+    mx.log(' 2) Open project import wizard using: File -> Import -> Existing Projects into Workspace -> Next.')
+    mx.log(' 3) For select root directory enter path {0}.'.format(workspace_dir))
+    mx.log(' 4) Make sure "Search for nested projects" is checked checked and press "Finish".')
+    mx.log('')
+    mx.log(' hint) If you select "Close newly imported projects upon completion" then the import is more efficient. ')
+    mx.log('       Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.')
+    mx.log('----------------------------------------------')
+    
     if _EclipseJRESystemLibraries:
-        mx.log('----------------------------------------------')
         executionEnvironments = [n for n in _EclipseJRESystemLibraries if n.startswith('JavaSE-')]
         installedJREs = [n for n in _EclipseJRESystemLibraries if not n.startswith('JavaSE-')]
         if executionEnvironments:
