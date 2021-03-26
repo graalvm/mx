@@ -14336,8 +14336,9 @@ def pylint(args):
 
     parser = ArgumentParser(prog='mx pylint')
     _add_command_primary_option(parser)
-    parser.add_argument('--walk', action='store_true', help='use tree walk find .py files')
+    parser.add_argument('--walk', action='store_true', help='use tree walk to find .py files')
     parser.add_argument('--all', action='store_true', help='check all files, not just files in the mx.* directory.')
+    parser.add_argument('-f', '--force', action='store_true', help='force processing of files that have not changed since last successful pylint')
     args = parser.parse_args(args)
     ver = (-1, -1)
 
@@ -14374,12 +14375,25 @@ def pylint(args):
     additional_options = pylint_ver_map[ver]['additional_options']
     pyfiles = _find_pyfiles(args.all, args.primary, args.walk)
     env = _get_env_with_pythonpath()
+    suite = primary_suite()
+    timestamps_dir = None
+    if suite:
+        timestamps_dir = join(suite.get_mx_output_dir(), 'pylint-timestamps')
+        if args.force:
+            rmtree(timestamps_dir)
+        ensure_dir_exists(timestamps_dir)
+
     for pyfile in pyfiles:
+        if timestamps_dir:
+            ts = TimeStampFile(join(timestamps_dir, pyfile.replace(os.sep, '_') + '.timestamp'))
+            if ts.exists() and ts.isNewerThan(pyfile):
+                log('Skip pylinting ' + pyfile + ' as it has not changed')
+                continue
         log('Running pylint on ' + pyfile + '...')
         run([pylint_exe, '--reports=n', '--rcfile=' + rcfile, pyfile] + additional_options, env=env)
-
+        if timestamps_dir:
+            ts.touch()
     return 0
-
 
 def _find_pyfiles(find_all, primary, walk):
     """
