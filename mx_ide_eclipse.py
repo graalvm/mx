@@ -438,7 +438,7 @@ def eclipseinit_cli(args):
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
     mx.log('----------------------------------------------')
     workspace_dir = os.path.dirname(os.path.abspath(mx.primary_suite().vc_dir))
-    
+
     mx.log('Eclipse project generation successfully completed for:')
     mx.log('  ' + (os.linesep + "  ").join(sorted([suite.dir for suite in mx.suites(True)])))
     mx.log('')
@@ -451,7 +451,7 @@ def eclipseinit_cli(args):
     mx.log(' hint) If you select "Close newly imported projects upon completion" then the import is more efficient. ')
     mx.log('       Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.')
     mx.log('----------------------------------------------')
-    
+
     if _EclipseJRESystemLibraries:
         executionEnvironments = [n for n in _EclipseJRESystemLibraries if n.startswith('JavaSE-')]
         installedJREs = [n for n in _EclipseJRESystemLibraries if not n.startswith('JavaSE-')]
@@ -889,7 +889,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         for p in s.projects:
             if p.isJavaProject():
                 if dist in p.annotation_processors():
-                    usedAsAnnotationProcessor = True;
+                    usedAsAnnotationProcessor = True
                     break
 
         out = mx.XMLDoc()
