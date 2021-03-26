@@ -879,6 +879,19 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
                 relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
 
+        # make sure there is at least one entry otherwise all resources will be implicitly relevant
+        if not relevantResources:
+            relevantResources.append(RelevantResource(get_eclipse_project_rel_locationURI(dist.path, projectDir), IRESOURCE_FOLDER))
+
+        # if a distribution is used as annotation processor we need to refresh the project
+        # in order to make eclipse reload the annotation processor jar on changes.
+        usedAsAnnotationProcessor = False
+        for p in s.projects:
+            if p.isJavaProject():
+                if dist in p.annotation_processors():
+                    usedAsAnnotationProcessor = True;
+                    break
+
         out = mx.XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -891,7 +904,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         dist.dir = projectDir
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
                                       relevantResources=relevantResources,
-                                      logToFile=True, refresh=True, isAsync=False,
+                                      logToFile=True, refresh=usedAsAnnotationProcessor, isAsync=True,
                                       logToConsole=logToConsole, appendToLogFile=False,
                                       refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
         files = files + builders
@@ -1033,7 +1046,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
 
     dotProjectDoc.open('buildCommand')
     dotProjectDoc.element('name', data='org.eclipse.ui.externaltools.ExternalToolBuilder')
-    dotProjectDoc.element('triggers', data='auto,full,incremental,')
+    dotProjectDoc.element('triggers', data='auto,')
     dotProjectDoc.open('arguments')
     dotProjectDoc.open('dictionary')
     dotProjectDoc.element('key', data='LaunchConfigHandle')
