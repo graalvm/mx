@@ -1068,22 +1068,34 @@ def generate_eclipse_workingsets():
     # gather working set info from project data
     workingSets = dict()
     for p in mx.projects():
+        if not p.isJavaProject():
+            continue
+        _add_to_working_set('Suite ' + p.suite.name, p.name)
         if p.workingSets is None:
             continue
         for w in p.workingSets.split(","):
             _add_to_working_set(w, p.name)
 
+    for dist in mx.distributions():
+        if not dist.isJARDistribution():
+            continue
+        projectDir = dist.get_ide_project_dir()
+        if not projectDir:
+            continue
+        _add_to_working_set('Suite ' + dist.suite.name, dist.name)
+
     # the mx metdata directories are included in the appropriate working sets
     _add_to_working_set('MX', 'mxtool')
     for suite in mx.suites(True):
         _add_to_working_set('MX', basename(suite.mxDir))
+        _add_to_working_set('Suite ' + suite.name, basename(suite.mxDir))
 
     if exists(wspath):
         wsdoc = _copy_workingset_xml(wspath, workingSets)
     else:
         wsdoc = _make_workingset_xml(workingSets)
-
-    mx.update_file(wspath, wsdoc.xml(newl='\n'))
+    if mx.update_file(wspath, wsdoc.xml(newl='\n')):
+        mx.log('Please restart Eclipse instances for this workspace to see some of the effects.')
     return wsroot
 
 def _find_eclipse_wsroot(wsdir):
