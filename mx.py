@@ -1187,8 +1187,11 @@ class SuiteImport:
             abort('unexpected type in SuiteImport.get_source_urls')
 
 
+_suites = dict()
 _primary_suite_path = None
 _primary_suite = None
+_mx_suite = None
+
 # List of functions to run when the primary suite is initialized
 _primary_suite_deferrables = []
 
@@ -3009,7 +3012,6 @@ class MXTestsSuite(InternalSuite):
     def __init__(self):
         InternalSuite.__init__(self, join(_mx_home, "tests"))
 
-
 def suites(opt_limit_to_suite=False, includeBinary=True, include_mx=False):
     """
     Get the list of all loaded suites.
@@ -3207,7 +3209,6 @@ def _find_suite_import(importing_suite, suite_import, fatalIfMissing=True, load=
     else:
         assert _found_mode[0] == 'source'
         return SourceSuite(import_mx_dir, importing_suite=importing_suite, load=load, dynamicallyImported=suite_import.dynamicImport), _clone_status[0]
-
 
 def _discover_suites(primary_suite_dir, load=True, register=True, update_existing=False):
 
@@ -4455,7 +4456,6 @@ _mavenRepoBaseURLs = [
     "https://search.maven.org/remotecontent?filepath="
 ]
 
-_suites = dict()
 """
 Map of the environment variables loaded by parsing the suites.
 """
@@ -4464,7 +4464,6 @@ _loadedEnv = dict()
 _jdkFactories = {}
 
 _annotationProcessors = None
-_mx_suite = None
 _mx_tests_suite = None
 _suitemodel = None
 _opts = Namespace()
