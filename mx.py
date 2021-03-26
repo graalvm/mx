@@ -3896,21 +3896,39 @@ def _is_process_alive(p):
 
 
 def _send_sigquit():
+    if is_windows():
+        warn("mx: implement me! want to send SIGQUIT to my child process")
+        return
+    try:
+        from psutil import Process, NoSuchProcess
+
+        def _get_args(pid):
+            try:
+                proc = Process(pid)
+                return proc.cmdline()
+            except NoSuchProcess:
+                return None
+    except ImportError:
+        warn("pustil is not available, java process detection is less acurate")
+        def _get_args(pid):
+            return None
+
     for p, args in _currentSubprocesses:
+        if p is None or not _is_process_alive(p):
+            continue
 
-        def _isJava():
-            if args:
-                name = args[0].split(os.sep)[-1]
-                return name == "java"
-            return False
-
-        if p is not None and _is_process_alive(p) and _isJava():
-            if is_windows():
-                log("mx: implement me! want to send SIGQUIT to my child process")
-            else:
-                # only send SIGQUIT to the child not the process group
-                logv('sending SIGQUIT to ' + str(p.pid))
-                os.kill(p.pid, signal.SIGQUIT)
+        real_args = _get_args(p.pid)
+        if real_args:
+            args = real_args
+        if not args:
+            continue
+        exe_name = args[0].split(os.sep)[-1]
+        # Send SIGQUIT to "java" processes or things that started as "native-image"
+        # if we can't see the current exectuable name
+        if exe_name == "java" or exe_name == "native-image" and not real_args:
+            # only send SIGQUIT to the child not the process group
+            logv('sending SIGQUIT to ' + str(p.pid))
+            os.kill(p.pid, signal.SIGQUIT)
             time.sleep(0.1)
 
 
@@ -3927,7 +3945,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
     its return value is printed. Otherwise str(context) is printed.
     """
 
-    if _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
+    if is_continuous_integration() or _opts and hasattr(_opts, 'killwithsigquit') and _opts.killwithsigquit:
         logv('sending SIGQUIT to subprocesses on abort')
         _send_sigquit()
 
