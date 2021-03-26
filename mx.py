@@ -17409,7 +17409,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.0")  # mx gc-dists
+version = VersionSpec("5.292.1")  # SIGQUIT
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
