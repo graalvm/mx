@@ -66,6 +66,8 @@ def _format_bytes(num):
 
 
 def _get_size_in_bytes(path):
+    if not os.path.exists(path) or os.path.islink(path):
+        return 0
     if os.path.isdir(path):
         return sum(_get_size_in_bytes(os.path.join(path, f)) for f in os.listdir(path))
     return os.path.getsize(path)
@@ -73,7 +75,7 @@ def _get_size_in_bytes(path):
 
 def _listdir(path):
     if os.path.isdir(path):
-        return os.listdir(path)
+        return [p for p in os.listdir(path) if not os.path.islink(p)]
     return []
 
 
