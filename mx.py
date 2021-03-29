@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.2")  # mx gc-dists symlinks
+version = VersionSpec("5.292.3")  # MX_GLOBAL_ENV
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
