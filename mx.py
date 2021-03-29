@@ -139,6 +139,9 @@ def _make_absolute(path, prefix):
 def _cache_dir():
     return _cygpathW2U(get_env('MX_CACHE_DIR', join(dot_mx_dir(), 'cache')))
 
+def _global_env_file():
+    return _cygpathW2U(get_env('MX_GLOBAL_ENV', join(dot_mx_dir(), 'env')))
+
 
 def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
     """
@@ -497,6 +500,9 @@ environment variables:
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
   MX_EXEC_LOG           Specifies default value for --exec-log option.
+  MX_CACHE_DIR          Override the default location of the mx download cache. Defaults to `~/.mx/cache`.
+  MX_GLOBAL_ENV         Override the default location of the global env file that is always loaded at startup.
+                        Defaults to `~/.mx/env`. Can be disabled by setting it to an empty string.
   MX_GIT_CACHE          Use a cache for git objects during clones.
                          * Setting it to `reference` will clone repositories using the cache and let them
                            reference the cache (if the cache gets deleted these repositories will be
@@ -17277,7 +17283,7 @@ def main():
             else:
                 _binary_suites = []
 
-    SourceSuite._load_env_file(join(dot_mx_dir(), 'env'))
+    SourceSuite._load_env_file(_global_env_file())
     primarySuiteMxDir = None
     if is_suite_context_free:
         _setup_binary_suites()
@@ -17409,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.2")  # mx gc-dists symlinks
+version = VersionSpec("5.292.3")  # MX_GLOBAL_ENV
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
