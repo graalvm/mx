@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.3")  # MX_GLOBAL_ENV
+version = VersionSpec("5.292.4")  # ninja targets
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

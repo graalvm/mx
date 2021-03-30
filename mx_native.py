@@ -89,15 +89,16 @@ class Ninja(object):
     binary = 'ninja'
     default_manifest = 'build.ninja'
 
-    def __init__(self, build_dir, parallelism):
+    def __init__(self, build_dir, parallelism, targets=None):
         self.build_dir = build_dir
         self.parallelism = str(parallelism)
+        self.targets = targets or []
 
     def needs_build(self):
         out = mx.LinesOutputCapture()
         details = mx.LinesOutputCapture()
 
-        self._run('-n', '-d', 'explain', out=out, err=details)
+        self._run('-n', '-d', 'explain', *self.targets, out=out, err=details)
         if details.lines:
             return True, [l for l in details.lines if l.startswith('ninja explain:')][0]
         else:
@@ -105,13 +106,13 @@ class Ninja(object):
             return False, out.lines[0]
 
     def compdb(self, out):
-        self._run('-t', 'compdb', out=out)
+        self._run('-t', 'compdb', *self.targets, out=out)
 
     def build(self):
-        self._run()
+        self._run(*self.targets)
 
     def clean(self):
-        self._run('-t', 'clean')
+        self._run('-t', 'clean', *self.targets)
 
     def _run(self, *args, **kwargs):
         cmd = [self.binary, '-j', self.parallelism]
@@ -370,11 +371,11 @@ class NinjaBuildTask(TargetArchBuildTask):
            require special consideration.
     """
 
-    def __init__(self, args, project, target_arch=mx.get_arch()):
+    def __init__(self, args, project, target_arch=mx.get_arch(), ninja_targets=None):
         super(NinjaBuildTask, self).__init__(args, project, target_arch)
         self._reason = None
         self._manifest = mx.join(self.out_dir, Ninja.default_manifest)
-        self.ninja = Ninja(self.out_dir, self.parallelism)
+        self.ninja = Ninja(self.out_dir, self.parallelism, targets=ninja_targets)
 
     def __str__(self):
         return 'Building {} with Ninja'.format(self.name)
