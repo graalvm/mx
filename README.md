@@ -345,6 +345,24 @@ Graal compiler.
 Running code with the JaCoCo agent enabled outputs a `jacoco.exec` which can be
 converted into an HTML or CSV report with the `mx jacocoreport` command.
 
+The packages or classes to be included in the JaCoCo report can be customized 
+by importing `mx_gate` and using the helper functions:
+
+- `add_jacoco_includes` (adds one or more package patterns to the list of packages to include in the report)
+- `add_jacoco_excludes` (adds one or more package patterns to the list of packages to exclude from the report)
+- `add_jacoco_excluded_annotations` (adds one or more annotations to the list of annotations that will cause a class to be excluded from the report)
+
+The include patterns can include an explicit trailing `.*` wildcard match. The exclude patterns have an implicit trailing wildcard match. Annotation names added to the annotation exclusion list must start with an `@` character.
+
+As an example from `mx_compiler.py`:
+```
+mx_gate.add_jacoco_includes(['org.graalvm.*'])
+mx_gate.add_jacoco_excludes(['com.oracle.truffle.*'])
+mx_gate.add_jacoco_excluded_annotations(['@Snippet', '@ClassSubstitution'])
+```
+This adds classes from packages starting with org.graalvm to the report, excludes classes in packages startng with com.oracle.truffle and also excludes classes annotated with `@Snippet` and `@ClassSubstitution`.
+
+To omit excluded classes from the JaCoCo data and report use the gate option `--jacoco-omit-excluded`.
 
 ### Versioning sources for different JDK releases
 
