@@ -741,8 +741,6 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     out.close('buildSpec')
     out.open('natures')
     out.element('nature', data='org.eclipse.jdt.core.javanature')
-    if csConfig:
-        out.element('nature', data='net.sf.eclipsecs.core.CheckstyleNature')
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('nature', data='org.eclipse.pde.PluginNature')
     out.close('natures')
