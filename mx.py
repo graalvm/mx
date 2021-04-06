@@ -7112,7 +7112,7 @@ class JavaProject(Project, ClasspathDependency):
                         parse_requiresConcealed_attribute(jdk, requires_concealed, concealed, None, self)
 
                     # JVMCI is special as it not concealed in JDK 8 but is concealed in JDK 9+.
-                    if 'jdk.internal.vm.ci' in (jmd.name for jmd in jdk.get_modules()):
+                    if 'jdk.internal.vm.ci' in (jmd.name for jmd in jdk.get_modules()) and self.get_declaring_module_name() != 'jdk.internal.vm.ci':
                         jvmci_packages = [p for p in self.imported_java_packages(projectDepsOnly=False) if p.startswith('jdk.vm.ci')]
                         if jvmci_packages:
                             concealed.setdefault('jdk.internal.vm.ci', set()).update(jvmci_packages)
