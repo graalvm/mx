@@ -3973,7 +3973,7 @@ def abort(codeOrMessage, context=None, killsig=signal.SIGTERM):
                     log_error('error while killing subprocess {0} "{1}": {2}'.format(p.pid, ' '.join(args), e))
 
     sys.stdout.flush()
-    if _opts and hasattr(_opts, 'verbose') and _opts.verbose:
+    if is_continuous_integration() or (_opts and hasattr(_opts, 'verbose') and _opts.verbose):
         import traceback
         traceback.print_stack()
     if context is not None:
