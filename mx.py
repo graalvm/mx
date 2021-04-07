@@ -3915,7 +3915,7 @@ def _send_sigquit():
             except NoSuchProcess:
                 return None
     except ImportError:
-        warn("pustil is not available, java process detection is less acurate")
+        warn("psutil is not available, java process detection is less acurate")
         def _get_args(pid):
             return None
 
