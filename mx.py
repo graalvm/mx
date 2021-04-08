@@ -17405,9 +17405,10 @@ def main():
             _removedDeps = _remove_unsatisfied_deps()
 
     # Finally post_init remaining distributions
-    for s_ in suites(includeBinary=False, include_mx=True):
-        for d in s_.dists:
-            d.post_init()
+    if should_load_suites:
+        for s_ in suites(includeBinary=False, include_mx=True):
+            for d in s_.dists:
+                d.post_init()
 
     def term_handler(signum, frame):
         abort(1, killsig=signal.SIGTERM)
