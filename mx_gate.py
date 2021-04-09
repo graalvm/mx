@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -676,12 +676,33 @@ JACOCO_EXEC = None
 _jacoco = 'off'
 
 _jacoco_includes = []
+_jacoco_excludes = []
 
 def add_jacoco_includes(patterns):
     """
     Adds to the list of JaCoCo includes.
     """
+    global _jacoco_includes
+    global _jacoco_excludes
     _jacoco_includes.extend(patterns)
+    # .* is explicit on include patterns so handle appropriately
+    for pattern in patterns:
+        if pattern.endswith('.*'):
+            _jacoco_excludes = [exclude for exclude in _jacoco_excludes if not exclude.startswith(pattern[:-2])]
+        else:
+            _jacoco_excludes = [exclude for exclude in _jacoco_excludes if exclude != pattern]
+
+def add_jacoco_excludes(patterns):
+    """
+    Adds to the list of JaCoCo excludes.
+    """
+    global _jacoco_includes
+    global _jacoco_excludes
+    _jacoco_excludes.extend(patterns)
+    # .* is implicit on exclude patterns, but not include patterns
+    for pattern in patterns:
+        _jacoco_includes = [include for include in _jacoco_includes if not include.startswith(pattern)]
+
 
 _jacoco_excluded_annotations = ['@Test']
 
@@ -704,14 +725,6 @@ def _jacoco_is_package_whitelisted(package):
     if not _jacoco_whitelisted_packages:
         return True
     return any(package.startswith(w) for w in _jacoco_whitelisted_packages)
-
-_jacoco_excludes = []
-
-def add_jacoco_excludes(patterns):
-    """
-    Adds to the list of JaCoCo includes.
-    """
-    _jacoco_excludes.extend(patterns)
 
 
 def _jacoco_excludes_includes():

@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.6")  # GR-13849 Fix sulong coverage argument list to long.
+version = VersionSpec("5.292.7")  # GR-29961 Improve compiler code coverage
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
