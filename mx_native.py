@@ -116,13 +116,15 @@ class Ninja(object):
 
     def _run(self, *args, **kwargs):
         cmd = [self.binary, '-j', self.parallelism]
-        if mx.get_opts().very_verbose:
+        mx_verbose_env = mx.get_env('MX_VERBOSE', None)
+        if mx.get_opts().very_verbose or mx_verbose_env:
             cmd += ['-v']
         cmd += args
 
         out = kwargs.get('out', mx.OutputCapture())
         err = kwargs.get('err', subprocess.STDOUT)
-        if mx.get_opts().verbose:
+        verbose = mx.get_opts().verbose or mx_verbose_env
+        if verbose:
             if callable(out) and '-n' not in args:
                 out = mx.TeeOutputCapture(out)
             if callable(err):
@@ -137,7 +139,7 @@ class Ninja(object):
             os.chmod(self.binary, 0o755)
             self._run(*args, **kwargs)  # retry
         else:
-            not rc or mx.abort(rc if mx.get_opts().verbose else out.data)  # pylint: disable=expression-not-assigned
+            not rc or mx.abort(rc if verbose else out.data)  # pylint: disable=expression-not-assigned
 
 
 class NativeDependency(mx.Dependency):

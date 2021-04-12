@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.292.7")  # GR-29961 Improve compiler code coverage
+version = VersionSpec("5.293.0")  # checkcopyrights cmake
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

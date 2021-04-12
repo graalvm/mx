@@ -117,7 +117,7 @@ public class CheckCopyright {
         }
 
         private static Map<String, CopyrightHandler> copyrightMap;
-        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.cpp|.*\\.h|.*\\.hpp|.*\\.py|.*\\.g|.*\\.r";
+        private static String copyrightFiles = ".*/makefile|.*/Makefile|.*/CMakeLists\\.txt|.*\\.cmake|.*\\.sh|.*\\.bash|.*\\.mk|.*\\.java|.*\\.c|.*\\.cpp|.*\\.h|.*\\.hpp|.*\\.py|.*\\.g|.*\\.r";
         private static Pattern copyrightFilePattern;
 
         protected final String suffix;
@@ -197,6 +197,8 @@ public class CheckCopyright {
             }
             if (fileName.equals("makefile")) {
                 ext = "mk";
+            } else if (fileName.equals("CMakeLists.txt")) {
+                ext = "cmake";
             }
             CopyrightHandler ck = copyrightMap.get(ext);
             assert ck != null : fileName;
@@ -235,6 +237,7 @@ public class CheckCopyright {
                 updateMap("sh");
                 updateMap("mk");
                 updateMap("bash");
+                updateMap("cmake");
                 updateMap("");
             }
             readCopyrights();
