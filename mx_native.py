@@ -35,6 +35,12 @@ import mx
 import mx_compdb
 import mx_subst
 
+_target_jdk = mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
+"""JDK for which native projects should be built."""
+
+# Support for conditional compilation based on the JDK version.
+mx_subst.results_substitutions.register_no_arg('jdk_ver', lambda: str(_target_jdk.javaCompliance.value))
+
 
 class lazy_default(object):  # pylint: disable=invalid-name
     def __init__(self, init):
@@ -299,10 +305,6 @@ class NinjaProject(MultiarchProject):
         if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
             self.buildDependencies += [self._jdk_dep]
 
-    @staticmethod
-    def get_jdk():
-        return mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
-
     @lazy_class_default
     def _jdk_dep(cls):  # pylint: disable=no-self-argument
         class JavaHome(NativeDependency):
@@ -316,7 +318,7 @@ class NinjaProject(MultiarchProject):
             def _walk_deps_visit_edges(self, *args, **kwargs):
                 pass
 
-        return JavaHome(NinjaProject.get_jdk())
+        return JavaHome(_target_jdk)
 
     def _build_task(self, target_arch, args):
         return NinjaBuildTask(args, self, target_arch)
@@ -656,7 +658,7 @@ class DefaultNativeProject(NinjaProject):
                 return '-fdebug-prefix-map={}={}'.format(prefix_dir, mx.basename(prefix_dir))
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
-            default_cflags += [add_debug_prefix(NinjaProject.get_jdk().home)]
+            default_cflags += [add_debug_prefix(_target_jdk.home)]
             default_cflags += ['-gno-record-gcc-switches']
 
         return default_cflags + super(DefaultNativeProject, self).cflags
