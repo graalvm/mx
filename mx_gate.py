@@ -445,6 +445,8 @@ def gate(args):
         args_summary = args.summary
         if not isinstance(args_summary, list):
             args_summary = args_summary.split(',')
+        if args.dry_run:
+            args_summary.remove('duration')
         for entry in args_summary:
             if entry + 'Max' in maxLengths:
                 fmt += '  {{{0}:<{{{0}Max}}}}'.format(entry)
