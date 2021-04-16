@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.293.1")  # gate summary dry-run
+version = VersionSpec("5.294.0")  # GR-30502
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
