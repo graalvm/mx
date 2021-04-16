@@ -460,7 +460,8 @@ class NinjaManifestGenerator(object):
 
     def include(self, dirs):
         def quote(path):
-            return '"{}"'.format(path) if mx.is_windows() and (' ' in path or ('$project' in path and ' ' in self.project.dir)) else path
+            has_spaces = ' ' in path or ('$project' in path and ' ' in self.project.dir)
+            return '"{}"'.format(path) if mx.is_windows() and has_spaces else path
 
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
