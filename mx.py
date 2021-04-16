@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.293.0")  # checkcopyrights cmake
+version = VersionSpec("5.293.1")  # gate summary dry-run
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
