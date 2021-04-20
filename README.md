@@ -283,7 +283,15 @@ the relevant sources can still be built on JDK 16:
 
 As shown above, a module name in a `requiresConcealed` attribute can be qualified by appending `@` followed by
 a valid Java compliance specifier. Such a module will be ignored if the JDK version used to compile the sources
-is not matched by the specified Java compliance.
+is not matched by the specified Java compliance. This also works for the regular `requires` attribute. E.g.
+```
+    "requires": [
+        ...
+        "jdk.scripting.nashorn@11..14",
+    ],
+    ...
+```
+is needed to ensure that a given module requires module `jdk.scripting.nashorn` only when the specified compliance matches.
 
 ### Selecting JDKs
 
