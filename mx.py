@@ -17415,7 +17415,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.296.0")  # GR-30421 Improve eclipse project generation.
+version = VersionSpec("5.296.1")  # ninja v1.10.2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
