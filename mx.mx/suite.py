@@ -565,16 +565,16 @@ suite = {
 
     "NINJA" : {
       "packedResource" : True,
-      "version" : "1.8.2",
+      "version" : "1.10.2",
       "os_arch" : {
         "linux" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip"],
-            "sha1" : "987234c4ce45505c21302e097c24efef4873325c"
+            "sha1" : "9ab399b7515d85947e7bdea8691fb51e0beef58a"
           },
           "aarch64" : {
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
-            "sha1" : "0939b204638c8aae5e2fc2bf9c7576c805d65331"
+            "sha1" : "ffaa7656e18b7c9cc3f1fa447902cf5e324bd35b"
           },
           "<others>" : {
             "optional" : True
@@ -590,19 +590,19 @@ suite = {
           # ./configure.py --bootstrap
           "amd64" : {
             "urls" : ["https://lafo.ssw.jku.at/pub/graal-external-deps/ninja-{version}-linux-amd64-musl.zip"],
-            "sha1" : "4ee41c2c6d832c278376ae2dd8ba6049e8a9a985"
+            "sha1" : "0cc6d5cff72e63444b7abb3fc0562f6e70089147"
           }
         },
         "darwin" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
-            "sha1" : "8142c497f7dfbdb052a1e31960fdfe2c6f9a5ca2"
+            "sha1" : "95d0ca5e7c67ab7181c87e6a6ec59d11b1ff2d30"
           }
         },
         "windows" : {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip"],
-            "sha1" : "637cc6e144f5cc7c6388a30f3c32ad81b2e0442e"
+            "sha1" : "ccacdf88912e061e0b527f2e3c69ee10544d6f8a"
           }
         },
         "solaris" : {
