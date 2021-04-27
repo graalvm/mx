@@ -728,8 +728,6 @@ suite = {
     "com.oracle.mxtool.junit.jdk9" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "dependencies" : [
-      ],
       "requiresConcealed" : {
         "java.base" : [
           "jdk.internal.module",
@@ -745,7 +743,7 @@ suite = {
     "com.oracle.mxtool.compilerserver" : {
       "subDir" : "java",
       "sourceDirs" : ["src"],
-      "javaCompliance" : "1.7+", # jdk7 or later
+      "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
     },
 

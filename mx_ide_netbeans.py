@@ -47,20 +47,29 @@ else:
 def netbeansinit(args, refreshOnly=False, buildProcessorJars=True, doFsckProjects=True):
     """(re)generate NetBeans project configurations"""
 
+    jdks = set()
     for suite in mx.suites(True) + [mx._mx_suite]:
-        _netbeansinit_suite(args, suite, refreshOnly, buildProcessorJars)
+        _netbeansinit_suite(args, jdks, suite, refreshOnly, buildProcessorJars)
 
     if doFsckProjects and not refreshOnly:
         mx_ideconfig.fsckprojects([])
+    mx.log('If using NetBeans:')
+    # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
+    mx.log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
+    mx.log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
+    for jdk in jdks:
+        mx.log('        JDK_' + str(jdk.version))
+    mx.log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
 
 def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     dists = [] if dists is None else dists
-    mx.ensure_dir_exists(join(p.dir, 'nbproject'))
+    nb_dir = mx.ensure_dir_exists(join(p.dir))
+    nbproject_dir = mx.ensure_dir_exists(join(nb_dir, 'nbproject'))
 
     jdk = mx.get_jdk(p.javaCompliance)
     assert jdk
 
-    if jdks:
+    if jdks is not None:
         jdks.add(jdk)
 
     execDir = mx.primary_suite().dir
@@ -234,9 +243,9 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     out.element('nbbrowse', {'file' : 'javadoc/index.html'})
     out.close('target')
     out.close('project')
-    mx.update_file(join(p.dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
+    mx.update_file(join(nb_dir, 'build.xml'), out.xml(indent='\t', newl='\n'))
     if files is not None:
-        files.append(join(p.dir, 'build.xml'))
+        files.append(join(nb_dir, 'build.xml'))
 
     out = mx.XMLDoc()
     out.open('project', {'xmlns' : 'http://www.netbeans.org/ns/project/1'})
@@ -281,9 +290,9 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
 
     out.close('configuration')
     out.close('project')
-    mx.update_file(join(p.dir, 'nbproject', 'project.xml'), out.xml(indent='    ', newl='\n'))
+    mx.update_file(join(nbproject_dir, 'project.xml'), out.xml(indent='    ', newl='\n'))
     if files is not None:
-        files.append(join(p.dir, 'nbproject', 'project.xml'))
+        files.append(join(nbproject_dir, 'project.xml'))
 
     out = StringIO()
     jdkPlatform = 'JDK_' + str(jdk.version)
@@ -294,13 +303,13 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
     if len(p.annotation_processors()) > 0:
         annotationProcessorEnabled = "true"
         mx.ensure_dir_exists(p.source_gen_dir())
-        annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), p.dir)
+        annotationProcessorSrcFolder = os.path.relpath(p.source_gen_dir(), nb_dir)
         annotationProcessorSrcFolder = annotationProcessorSrcFolder.replace('\\', '\\\\')
         annotationProcessorSrcFolderRef = "src.ap-source-output.dir=" + annotationProcessorSrcFolder
 
     canSymlink = not (mx.is_windows() or mx.is_cygwin()) and 'symlink' in dir(os)
     if canSymlink:
-        nbBuildDir = join(p.dir, 'nbproject', 'build')
+        nbBuildDir = join(nbproject_dir, 'build')
         apSourceOutRef = "annotation.processing.source.output=" + annotationProcessorSrcFolder
         if os.path.lexists(nbBuildDir):
             os.unlink(nbBuildDir)
@@ -310,7 +319,7 @@ def _netbeansinit_project(p, jdks=None, files=None, libFiles=None, dists=None):
         apSourceOutRef = ""
     mx.ensure_dir_exists(p.output_dir())
 
-    mx_ide_eclipse._copy_eclipse_settings(p)
+    mx_ide_eclipse._copy_eclipse_settings(nb_dir, p)
 
     content = """
 annotation.processing.enabled=""" + annotationProcessorEnabled + """
@@ -418,10 +427,9 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
 
     mainSrc = True
     for src in p.srcDirs:
-        srcDir = join(p.dir, src)
-        mx.ensure_dir_exists(srcDir)
+        srcDir = mx.ensure_dir_exists(join(p.dir, src))
         ref = 'file.reference.' + p.name + '-' + src
-        print(ref + '=' + src, file=out)
+        print(ref + '=' + os.path.relpath(srcDir, nb_dir), file=out)
         if mainSrc:
             print('src.dir=${' + ref + '}', file=out)
             mainSrc = False
@@ -478,7 +486,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
                 print(ref + '=' + path, file=out)
         elif dep.isProject():
             n = dep.name.replace('.', '_')
-            relDepPath = os.path.relpath(dep.dir, p.dir).replace(os.sep, '/')
+            relDepPath = os.path.relpath(dep.dir, nb_dir).replace(os.sep, '/')
             if canSymlink:
                 depBuildPath = join('nbproject', 'build')
             else:
@@ -516,24 +524,24 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
     print('javac.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.classpath}'] + annotationProcessorReferences), file=out)
     print('javac.test.processorpath=' + (os.pathsep + '\\\n    ').join(['${javac.test.classpath}'] + annotationProcessorReferences), file=out)
 
-    mx.update_file(join(p.dir, 'nbproject', 'project.properties'), out.getvalue())
+    mx.update_file(join(nbproject_dir, 'project.properties'), out.getvalue())
     out.close()
 
     if files is not None:
-        files.append(join(p.dir, 'nbproject', 'project.properties'))
+        files.append(join(nbproject_dir, 'project.properties'))
 
     for source in p.suite.netbeans_settings_sources().get('cfg_hints.xml'):
         with open(source) as fp:
             content = fp.read()
-    mx.update_file(join(p.dir, 'nbproject', 'cfg_hints.xml'), content)
+    mx.update_file(join(nbproject_dir, 'cfg_hints.xml'), content)
 
     if files is not None:
         files.append(join(p.dir, 'nbproject', 'cfg_hints.xml'))
 
-def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True):
-    mxOutputDir = mx.ensure_dir_exists(suite.get_mx_output_dir())
-    configZip = mx.TimeStampFile(join(mxOutputDir, 'netbeans-config.zip'))
-    configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
+def _netbeansinit_suite(args, jdks, suite, refreshOnly=False, buildProcessorJars=True):
+    netbeans_dir = mx.ensure_dir_exists(suite.get_mx_output_dir())
+    configZip = mx.TimeStampFile(join(netbeans_dir, 'netbeans-config.zip'))
+    configLibsZip = join(netbeans_dir, 'netbeans-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
@@ -543,7 +551,6 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 
     files = []
     libFiles = []
-    jdks = set()
     for p in suite.projects:
         if not p.isJavaProject():
             continue
@@ -553,13 +560,6 @@ def _netbeansinit_suite(args, suite, refreshOnly=False, buildProcessorJars=True)
 
         includedInDists = [d for d in suite.dists if p in d.archived_deps()]
         _netbeansinit_project(p, jdks, files, libFiles, includedInDists)
-    mx.log('If using NetBeans:')
-    # http://stackoverflow.com/questions/24720665/cant-resolve-jdk-internal-package
-    mx.log('  1. Edit etc/netbeans.conf in your NetBeans installation and modify netbeans_default_options variable to include "-J-DCachingArchiveProvider.disableCtSym=true"')
-    mx.log('  2. Ensure that the following platform(s) are defined (Tools -> Java Platforms):')
-    for jdk in jdks:
-        mx.log('        JDK_' + str(jdk.version))
-    mx.log('  3. Open/create a Project Group for the directory containing the projects (File -> Project Group -> New Group... -> Folder of Projects)')
 
     mx_ideconfig._zip_files(files, suite.dir, configZip.path)
     mx_ideconfig._zip_files(libFiles, suite.dir, configLibsZip)

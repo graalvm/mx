@@ -300,6 +300,9 @@ class NinjaProject(MultiarchProject):
 
         return deps
 
+    def isJDKDependent(self):
+        return self.use_jdk_headers
+
     def resolveDeps(self):
         super(NinjaProject, self).resolveDeps()
         if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):

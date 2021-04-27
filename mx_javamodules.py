@@ -1066,8 +1066,13 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
 
     :param str importer: the name of the module importing the packages ("<unnamed>" or None denotes the unnamed module)
     :param context: context value to use when reporting errors
+    :return: `result`
     """
+    if value is None:
+        return result
     all_modules = (modulepath or []) + list(jdk.get_modules())
+    if not isinstance(value, dict):
+        mx.abort('"requiresConcealed" attribute must be a dict', context=context)
     for module, packages in value.items():
         if '@' in module:
             module, java_compliance = module.split('@', 1)
@@ -1106,6 +1111,7 @@ def parse_requiresConcealed_attribute(jdk, value, result, importer, context, mod
                 m, _ = lookup_package(all_modules, package, importer)
                 suffix = '' if not m else ' but in module {}'.format(m.name)
                 mx.abort('Package {} is not defined in module {}{}'.format(package, module, suffix), context=context)
+    return result
 
 def requiredExports(distributions, jdk):
     """
