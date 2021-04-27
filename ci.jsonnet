@@ -86,6 +86,20 @@ jmh_test = setup_mx + java + {
     ["./mx", "benchmark", "--ignore-suite-commit-info=mx", "jmh-dist:*"],
   ]
 },
+proftool_test = setup_mx + python3 {
+  packages+: {
+    "pip:capstone": ">=4.0.2",
+    "python": ">=3.4.1",
+  },
+  targets: ['gate'],
+  setup:  [
+    ["./mx", "build"],
+  ],
+  run: [
+    ["./mx", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
+    ["./mx", "profhot", "-E", "gate-xcomp"]
+  ]
+},
 build_truffleruby = common.sulong.deps.linux + {
   targets: ['gate'],
   downloads+: {
@@ -176,6 +190,7 @@ mx_bisect_test = {
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
+    proftool_test + java      {capabilities: ['linux', 'amd64'],   name: "gate-test-proftool-linux-amd64"},
     build_truffleruby + {capabilities: ['linux', 'amd64'], name: "gate-build-truffleruby-native-linux-amd64"},
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,

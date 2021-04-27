@@ -63,12 +63,21 @@ class JVMProfiler(object):
     def setup(self, benchmarks, bmSuiteArgs):
         if benchmarks:
             self.nextItemName = benchmarks[0]
+        else:
+            self.nextItemName = None
 
-    def additional_jvm_opts(self, dump_path):
-        return []
+    def sets_vm_prefix(self):
+        return False
+
+    def additional_options(self, dump_path):
+        """
+        Returns a tuple of a list extra JVM options to be added to the command line, plus an optional
+        set of arguments that will be inserted as a command prefix.
+        """
+        return [], None
 
 
-def _register_profiler(obj):
+def register_profiler(obj):
     if not isinstance(obj, JVMProfiler):
         raise ValueError("Cannot register profiler. Profilers must be of type {}".format(JVMProfiler.__class__.__name__))
     if obj.name() in _profilers:
@@ -83,7 +92,7 @@ class SimpleJFRProfiler(JVMProfiler):
     def name(self):
         return "JFR"
 
-    def additional_jvm_opts(self, dump_path):
+    def additional_options(self, dump_path):
         if self.nextItemName:
             import datetime
             filename = os.path.join(dump_path, "{}_{}.jfr".format(self.nextItemName,
@@ -116,7 +125,7 @@ class SimpleJFRProfiler(JVMProfiler):
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
-        return opts
+        return opts, None
 
 
 class AsyncProfiler(JVMProfiler):
@@ -139,7 +148,7 @@ class AsyncProfiler(JVMProfiler):
         innerDir = [f for f in os.listdir(libraryDirectory) if os.path.isdir(os.path.join(libraryDirectory, f))][0]
         return os.path.join(libraryDirectory, innerDir, "build", "libasyncProfiler.so")
 
-    def additional_jvm_opts(self, dump_path):
+    def additional_options(self, dump_path):
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         if self.nextItemName:
@@ -151,11 +160,11 @@ class AsyncProfiler(JVMProfiler):
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
-        return opts
+        return opts, None
 
 
-_register_profiler(SimpleJFRProfiler())
-_register_profiler(AsyncProfiler())
+register_profiler(SimpleJFRProfiler())
+register_profiler(AsyncProfiler())
 
 
 # Contains an argument parser and its description.
@@ -1181,7 +1190,19 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
                     raise ValueError("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
-                args += _profilers.get(profiler).additional_jvm_opts(os.getcwd())
+                vmargs, prefix_command = _profilers.get(profiler).additional_options(os.getcwd())
+                args += vmargs
+                if prefix_command:
+                    # build a command mapper hook that inserts the prefix_command
+                    assert _profilers.get(profiler).sets_vm_prefix()
+
+                    def func(cmd, bmSuite, prefix_command=prefix_command):
+                        return prefix_command + cmd
+                    if self._command_mapper_hooks and profiler not in self._command_mapper_hooks[0]:
+                        raise ValueError(
+                            "Profiler {} conflicts with trackers {}".format(profiler,
+                                                                            ', '.join([n for n, _, _ in self._command_mapper_hooks])))
+                    self._command_mapper_hooks = [(profiler, func, self)]
         return args
 
     def parserNames(self):
@@ -1238,8 +1259,8 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if command is None:
             return 0, "", {}
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs)
-        vm.command_mapper_hooks = self._command_mapper_hooks
         vm.extract_vm_info(self.vmArgs(bmSuiteArgs))
+        vm.command_mapper_hooks = self._command_mapper_hooks
         t = self._vmRun(vm, cwd, command, benchmarks, bmSuiteArgs)
         if len(t) == 2:
             ret_code, out = t
@@ -1592,6 +1613,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
             self.currently_extracting_vm_info = True
             try:
                 vm_info = {}
+                hooks = self.command_mapper_hooks
+                self.command_mapper_hooks = None
                 with mx.DisableJavaDebugging():
                     java_version_out = mx.TeeOutputCapture(mx.OutputCapture())
                     vm_opts = _get_vm_options_for_config_extraction(args)
@@ -1642,6 +1665,8 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                         mx.log_error("VM info extraction failed ! (code={})".format(code))
             finally:
                 self.currently_extracting_vm_info = False
+                self.command_mapper_hooks = hooks
+
             self._vm_info[args_str] = vm_info
 
     def dimensions(self, cwd, args, code, out):
@@ -2379,7 +2404,7 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--profiler", default=None, help="Profiler to activate (e.g. 'JFR' or 'async')")
         parser.add_argument(
-            "--tracker", default="rss", help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
+            "--tracker", default=None, help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -2412,13 +2437,29 @@ class BenchmarkExecutor(object):
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
+        if mxBenchmarkArgs.profiler:
+            if mxBenchmarkArgs.profiler not in _profilers:
+                raise ValueError(
+                    "Unknown profiler '{}'. Use one of: ({})".format(mxBenchmarkArgs.profiler, ', '.join(_profilers.keys())))
+            profiler = _profilers[mxBenchmarkArgs.profiler]
+            if profiler.sets_vm_prefix():
+                if mxBenchmarkArgs.tracker:
+                    raise ValueError(
+                        "Profiler {} and tracker {} both want to set the VM prefix".format(mxBenchmarkArgs.profiler,
+                                                                                           mxBenchmarkArgs.profiler))
+            elif not mxBenchmarkArgs.tracker:
+                # the profiler doesn't want to set the VM prefix so default to using rss as the tracker
+                mxBenchmarkArgs.tracker = 'rss'
+
         if mxBenchmarkArgs.tracker:
-            for tracker in mxBenchmarkArgs.tracker.split(","):
-                if tracker not in _available_trackers:
-                    raise ValueError("Unknown tracker '{}'. Use one of: {}".format(tracker, ', '.join(_available_trackers.keys())))
-                if suite:
-                    mx.log("Registering tracker: {}".format(tracker))
-                    suite.register_command_mapper_hook(tracker, _available_trackers[tracker])
+            if mxBenchmarkArgs.tracker not in _available_trackers:
+                raise ValueError("Unknown tracker '{}'. Use one of: {}".format(mxBenchmarkArgs.tracker,
+                                                                               ', '.join(_available_trackers.keys())))
+            if suite:
+                mx.log("Registering tracker: {}".format(mxBenchmarkArgs.tracker))
+                suite.register_command_mapper_hook(mxBenchmarkArgs.tracker,
+                                                   _available_trackers[mxBenchmarkArgs.tracker])
+
         if mxBenchmarkArgs.list:
             if mxBenchmarkArgs.benchmark and suite:
                 print("The following benchmarks are available in suite {}:\n".format(suite.name()))

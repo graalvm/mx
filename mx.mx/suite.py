@@ -771,6 +771,37 @@ suite = {
       "javaCompliance" : "1.8+",
       "checkstyle" : "com.oracle.mxtool.junit",
     },
+
+    # Native library for HotSpot assembly capture
+    "com.oracle.jvmtiasmagent": {
+      "subDir": "java",
+      "native": "shared_lib",
+      "use_jdk_headers": True,
+      "os_arch": {
+        "linux": {
+          "amd64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=amd64"],
+            "ldflags" : ["-lrt"],
+          },
+          "aarch64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=aarch64"],
+          },
+        },
+        "darwin": {
+          "amd64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=amd64"],
+          },
+          "aarch64": {
+            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=aarch64"],
+          },
+        },
+        "windows": {
+            "<others>": {
+                "ignore": "windows is not supported",
+            },
+        },
+      },
+    },
    },
 
   "distributions" : {
