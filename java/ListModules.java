@@ -41,8 +41,8 @@ import jdk.internal.module.ModuleBootstrap;
 public class ListModules {
 
     /**
-     * @returns {@code true} if {@code substrings} is empty or if {@code name}
-     * contains any of the entries in {@code substrings}.
+     * @returns {@code true} if {@code substrings} is empty or if {@code name} contains any of the
+     *          entries in {@code substrings}.
      */
     private static boolean matches(String name, String[] substrings) {
         if (substrings.length == 0) {
@@ -56,53 +56,11 @@ public class ListModules {
         return false;
     }
 
-    private static Set<ModuleDescriptor> bootModules() throws Throwable {
-        Set<ModuleDescriptor> bootModules = new HashSet<>();
-        Object bootLayer;
-        // Use reflection to support backward incompatible module API change
-        // http://hg.openjdk.java.net/jdk9/dev/jdk/rev/fa3c4a60a616#l7.152
-        try {
-            bootLayer = Class.forName("java.lang.ModuleLayer").getMethod("boot").invoke(null);
-        } catch (ClassNotFoundException e) {
-            bootLayer = Class.forName("java.lang.reflect.Layer").getMethod("boot").invoke(null);
-        }
-        
-        Set<Object> modules = (Set<Object>) bootLayer.getClass().getMethod("modules").invoke(bootLayer);
-        Method getDescriptor = modules.iterator().next().getClass().getMethod("getDescriptor");
-        for (Object module : modules) {
-        	ModuleDescriptor md = (ModuleDescriptor) getDescriptor.invoke(module);
-        	bootModules.add(md);
-        }
-        return bootModules;
-    }
-    
-    private static ModuleFinder bootstrapFinder() {
-        try {
-            return (ModuleFinder) ModuleBootstrap.class.getMethod("finder").invoke(null);
-        } catch (Exception e) {
-            try {
-	            // Use reflection to support backward incompatible module API change
-	            // http://hg.openjdk.java.net/jdk9/dev/jdk/rev/73113c19a5df#l16.26
-	            return (ModuleFinder) ModuleBootstrap.class.getMethod("unlimitedFinder").invoke(null);
-            } catch (Exception e2) {
-               throw new RuntimeException(e);
-            }
-        }
-    }
-
     public static void main(String[] args) throws Throwable {
         PrintStream out = System.out;
-        Set<ModuleDescriptor> bootModules = bootModules();
+        Set<ModuleDescriptor> bootModules = ModuleLayer.boot().modules().stream().map(m -> m.getDescriptor()).collect(Collectors.toSet());
 
-        // Use reflection to support backward incompatible module API change
-        // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l20.679
-        Method providesMethod = ModuleDescriptor.class.getMethod("provides");
-        boolean providesIsSet = providesMethod.getReturnType() == Set.class;
-
-        // http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l18.37
-        out.println(providesIsSet ? "transitive" : "public");
-
-        for (ModuleReference moduleRef : bootstrapFinder().findAll()) {
+        for (ModuleReference moduleRef : ModuleBootstrap.unlimitedFinder().findAll()) {
             ModuleDescriptor md = moduleRef.descriptor();
             if (!matches(md.name(), args)) {
                 continue;
@@ -110,8 +68,7 @@ public class ListModules {
             out.println(md.name());
             out.println("  boot " + bootModules.contains(md));
             for (ModuleDescriptor.Requires dependency : md.requires()) {
-                String modifiers = dependency.modifiers().isEmpty() ? "" :
-                                   dependency.modifiers().stream().map(e -> e.toString().toLowerCase()).collect(Collectors.joining(" ")) + " ";
+                String modifiers = dependency.modifiers().isEmpty() ? "" : dependency.modifiers().stream().map(e -> e.toString().toLowerCase()).collect(Collectors.joining(" ")) + " ";
                 out.println("  requires " + modifiers + dependency.name());
             }
             for (String use : md.uses()) {
@@ -125,17 +82,7 @@ public class ListModules {
                 out.println("  package " + pkg);
             }
 
-            Object providesResult = providesMethod.invoke(md);
-
-            Iterable<ModuleDescriptor.Provides> providesIterable;
-            if (providesIsSet) {
-                providesIterable = (Set<ModuleDescriptor.Provides>) providesResult;
-            } else {
-                Map<String, ModuleDescriptor.Provides> providesMap = (Map<String, ModuleDescriptor.Provides>) providesResult;
-                providesIterable = providesMap.values();
-            }
-
-            for (ModuleDescriptor.Provides provides : providesIterable) {
+            for (ModuleDescriptor.Provides provides : md.provides()) {
                 for (String provider : provides.providers()) {
                     out.println("  provides " + provides.service() + " with " + provider);
                 }

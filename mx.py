@@ -4363,8 +4363,7 @@ def download(path, urls, verbose=False, abortOnError=True, verifyOnly=False):
                 res = _attempt_download(url, path, jarEntryName)
                 if res == "retry":
                     continue
-                elif res:
-                    return True  # Download was successful
+                return True  # Download was successful
 
     verify_msg = None
     if verifyOnly and len(verify_errors) > 0: # verify-mode -> print error details
@@ -13516,11 +13515,7 @@ class JDKConfig(Comparable):
             packages = set()
             boot = None
 
-            keyword = lines[0]
-            setattr(self, '.transitiveRequiresKeyword', keyword)
-            assert keyword in ('transitive', 'public')
-
-            for line in lines[1:]:
+            for line in lines:
                 parts = line.strip().split()
                 assert len(parts) > 0, '>>>'+line+'<<<'
                 if len(parts) == 1:
@@ -13607,9 +13602,7 @@ class JDKConfig(Comparable):
         """
         if self.javaCompliance < '9':
             abort('Cannot call get_transitive_requires_keyword() for pre-9 JDK ' + str(self))
-        self.get_modules()
-        # see http://hg.openjdk.java.net/jdk9/hs/jdk/rev/89ef4b822745#l18.37
-        return getattr(self, '.transitiveRequiresKeyword')
+        return 'transitive'
 
     def get_automatic_module_name(self, modulejar):
         """
