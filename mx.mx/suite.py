@@ -569,8 +569,10 @@ suite = {
       "os_arch" : {
         "linux" : {
           "amd64" : {
-            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip"],
-            "sha1" : "9ab399b7515d85947e7bdea8691fb51e0beef58a"
+            # Built from the same source as https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip,
+            # but on a system with older glibc for maximum compatibility with older Linux distributions.
+            "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-amd64.zip"],
+            "sha1" : "47213091e83ddf41f3e859af0b280fa7c8159854"
           },
           "aarch64" : {
             "urls" : ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/ninja-{version}-linux-aarch64.zip"],
