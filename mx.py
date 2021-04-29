@@ -12808,6 +12808,7 @@ def _list2cmdline(seq):
 
     return ''.join(result)
 
+_subprocess_start_time = None
 
 def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, env=None, stdin=None, cmdlinefile=None, **kwargs):
     """
@@ -12896,6 +12897,8 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         stdout = out if not callable(out) else subprocess.PIPE
         stderr = err if not callable(err) else subprocess.PIPE
         stdin_pipe = None if stdin is None else subprocess.PIPE
+        global _subprocess_start_time
+        _subprocess_start_time = datetime.now()
         p = subprocess.Popen(cmd_line if is_windows() else args, cwd=cwd, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, creationflags=creationflags, env=env, stdin=stdin_pipe, **kwargs) #pylint: disable=subprocess-popen-preexec-fn
         sub = _addSubprocess(p, args)
         joiners = []
@@ -12951,6 +12954,9 @@ def run(args, nonZeroIsFatal=True, out=None, err=None, cwd=None, timeout=None, e
         abort(retcode)
 
     return retcode
+
+def get_last_subprocess_start_time():
+    return _subprocess_start_time
 
 @suite_context_free
 def quiet_run(args):
@@ -13144,6 +13150,7 @@ def java_debug_args():
         debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
     return debug_args
 
+_use_command_mapper_hooks = True
 
 def apply_command_mapper_hooks(command, hooks):
     """Takes `command` and passes it through each hook function to modify it
@@ -13153,15 +13160,26 @@ def apply_command_mapper_hooks(command, hooks):
     :rtype: list[str]
     """
     new_cmd = command
-    if hooks:
-        hooks.reverse()
-        for hook in hooks:
-            hook_name, hook_func, suite = hook[:3]
-            logv("Applying command mapper hook '{}'".format(hook_name))
-            new_cmd = hook_func(new_cmd, suite)
-            logv("New command: {}".format(new_cmd))
+    if _use_command_mapper_hooks:
+        if hooks:
+            hooks.reverse()
+            for hook in hooks:
+                hook_name, hook_func, suite = hook[:3]
+                logv("Applying command mapper hook '{}'".format(hook_name))
+                new_cmd = hook_func(new_cmd, suite)
+                logv("New command: {}".format(new_cmd))
+    else:
+        log("Skipping command mapper hooks as they were disabled explicitly.")
+
     return new_cmd
 
+def disable_command_mapper_hooks():
+    global _use_command_mapper_hooks
+    _use_command_mapper_hooks = False
+
+def enable_command_mapper_hooks():
+    global _use_command_mapper_hooks
+    _use_command_mapper_hooks = True
 
 class JDKConfig(Comparable):
     """
