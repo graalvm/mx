@@ -767,6 +767,24 @@ class CSVStdOutFileRule(CSVBaseRule):
     def getCSVFiles(self, text):
         return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
 
+class JsonStdOutFileRule(BaseRule):
+
+    def __init__(self, pattern, match_name, replacement, keys):
+        super(JsonStdOutFileRule, self).__init__(replacement)
+        self.pattern = pattern
+        self.match_name = match_name
+        self.keys = keys
+
+    def parseResults(self, text):
+        l = []
+        for f in self.getFiles(text):
+            with open(f) as fp:
+                l = l + [{k:str(v)} for k, v in json.load(fp).items() if k in self.keys]
+        return l
+
+    def getFiles(self, text):
+        return (m.groupdict()[self.match_name] for m in re.finditer(self.pattern, text, re.MULTILINE))
+
 
 class JMHJsonRule(Rule):
     """Parses a JSON file produced by JMH and creates a measurement result."""
@@ -1259,7 +1277,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             extraRules = []
 
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs, quiet=True)
-        extraRules += vm.rules(out, benchmarks, bmSuiteArgs)
+        extraRules += mx.primary_suite().getMxCompatibility().vm_extra_rules(vm, out, benchmarks, bmSuiteArgs, self)
 
         return super(VmBenchmarkSuite, self).validateStdoutWithDimensions(out=out, benchmarks=benchmarks, bmSuiteArgs=bmSuiteArgs, retcode=retcode, dims=dims, extraRules=extraRules)
 
@@ -1408,10 +1426,11 @@ class Vm(object): #pylint: disable=R0922
         """Extract vm information."""
         pass
 
-    def rules(self, output, benchmarks, bmSuiteArgs):
+    def rules(self, output, benchmarks, bmSuiteArgs, suite=None):
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
+        :param BenchmarkSuite suite: Benchmark suite
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
@@ -1470,6 +1489,7 @@ class GuestVm(Vm): #pylint: disable=R0921
         """Returns a list of rules required to parse the standard output.
 
         :param string output: Contents of the standard output.
+        :param BenchmarkSuite suite: Benchmark suite
         :param list benchmarks: List of benchmarks that were run.
         :param list bmSuiteArgs: Arguments to the benchmark suite (after first `--`).
         :return: List of StdOutRule parse rules.
