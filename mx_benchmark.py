@@ -326,6 +326,9 @@ class VmRegistry(object):
     def get_vms(self):
         return list(self._vms.values())
 
+    def get_vm_suite(self, vm):
+        return self._vms_suite[(vm.name(), vm.config_name())]
+
 # JMH suite parsers.
 add_parser("jmh_jar_benchmark_suite_vm", ParserEntry(
     ArgumentParser(add_help=False, usage=_mx_benchmark_usage_example + " -- <options> -- ..."),
@@ -1277,7 +1280,8 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
             extraRules = []
 
         vm = self.get_vm_registry().get_vm_from_suite_args(bmSuiteArgs, quiet=True)
-        extraRules += mx.primary_suite().getMxCompatibility().vm_extra_rules(vm, out, benchmarks, bmSuiteArgs, self)
+        vm_suite = self.get_vm_registry().get_vm_suite(vm) or mx.primary_suite()
+        extraRules += vm_suite.getMxCompatibility().vm_extra_rules(vm, out, benchmarks, bmSuiteArgs, self)
 
         return super(VmBenchmarkSuite, self).validateStdoutWithDimensions(out=out, benchmarks=benchmarks, bmSuiteArgs=bmSuiteArgs, retcode=retcode, dims=dims, extraRules=extraRules)
 
