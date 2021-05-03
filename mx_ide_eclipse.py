@@ -883,15 +883,10 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         if not relevantResources:
             relevantResources.append(RelevantResource(get_eclipse_project_rel_locationURI(dist.path, projectDir), IRESOURCE_FOLDER))
 
+        use_async_distributions = mx.env_var_to_bool('MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS')
+        
         # if a distribution is used as annotation processor we need to refresh the project
         # in order to make eclipse reload the annotation processor jar on changes.
-        usedAsAnnotationProcessor = False
-        for p in s.projects:
-            if p.isJavaProject():
-                if dist in p.annotation_processors():
-                    usedAsAnnotationProcessor = True
-                    break
-
         out = mx.XMLDoc()
         out.open('projectDescription')
         out.element('name', data=dist.name)
@@ -904,7 +899,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         dist.dir = projectDir
         builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
                                       relevantResources=relevantResources,
-                                      logToFile=True, refresh=usedAsAnnotationProcessor, isAsync=True,
+                                      logToFile=True, refresh=True, isAsync=use_async_distributions,
                                       logToConsole=logToConsole, appendToLogFile=False,
                                       refreshFile='/{0}/{1}'.format(dist.name, basename(dist.path)))
         files = files + builders
@@ -1046,7 +1041,7 @@ def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshF
 
     dotProjectDoc.open('buildCommand')
     dotProjectDoc.element('name', data='org.eclipse.ui.externaltools.ExternalToolBuilder')
-    dotProjectDoc.element('triggers', data='auto,')
+    dotProjectDoc.element('triggers', data='auto,full,incremental,')
     dotProjectDoc.open('arguments')
     dotProjectDoc.open('dictionary')
     dotProjectDoc.element('key', data='LaunchConfigHandle')
