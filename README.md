@@ -412,6 +412,12 @@ Rewrite rules can also be specified by the `MX_URLREWRITES` environment variable
 The value of this variable must either be a JSON object describing a single rewrite rule, a JSON array describing a list of rewrite rules or a file containing one of these JSON values.
 Rewrites rules specified by `MX_URLREWRITES` are applied after rules specified by the primary suite.
 
+### IDE configuration generation
+
+Mx supports generating IDE configurations using the `mx ideinit` command.
+There are also specific commands that generate configurations for Eclipse (`mx eclipseinit`), Netbeans (`mx netbeansinit`) or IntelliJ (`mx intellijinit`) individually.
+Please see [here](https://github.com/graalvm/mx/docs/IDE.md) for details.
+
 ### Environment variable processing
 
 Suites might require various environment variables to be defined for
