@@ -884,7 +884,7 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
             relevantResources.append(RelevantResource(get_eclipse_project_rel_locationURI(dist.path, projectDir), IRESOURCE_FOLDER))
 
         use_async_distributions = mx.env_var_to_bool('MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS')
-        
+
         # if a distribution is used as annotation processor we need to refresh the project
         # in order to make eclipse reload the annotation processor jar on changes.
         out = mx.XMLDoc()
