@@ -414,8 +414,8 @@ Rewrites rules specified by `MX_URLREWRITES` are applied after rules specified b
 
 ### IDE configuration generation
 
-MX supports to generate IDE configuration from the suite configuration using the `mx ideinit` command.
-There are also specific commands that only generate configuration for Eclipse (`mx eclipseinit`), Netbeans (`mx netbeansinit`) or IntelliJ (`mx intellijinit`).
+Mx supports generating IDE configurations using the `mx ideinit` command.
+There are also specific commands that generate configurations for Eclipse (`mx eclipseinit`), Netbeans (`mx netbeansinit`) or IntelliJ (`mx intellijinit`) individually.
 Please see [here](https://github.com/graalvm/mx/docs/IDE.md) for details.
 
 ### Environment variable processing

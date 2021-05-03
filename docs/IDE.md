@@ -41,7 +41,7 @@ To make IntelliJ work the same way as Eclipse with respect to Problems View and 
 ### Eclipse
 This section describes how to set up Eclipse for development. For convenience, `$GRAAL` denotes your local repository.
 
-Eclipse can be downloaded [here](http://download.eclipse.org/eclipse/downloads/). The currently recommended version for development is 4.7.3a ("Oxygen").
+Eclipse can be downloaded [here](http://download.eclipse.org/eclipse/downloads/). Use the latest released version.
 
 Once you have installed Eclipse, if you have multiple Java versions on your computer, you should edit [eclipse.ini](http://wiki.eclipse.org/Eclipse.ini) to [specify the JVM](http://wiki.eclipse.org/Eclipse.ini#Specifying_the_JVM) that Eclipse will be run with. It must be run with a JDK 9 or later VM. For example:
 ```
@@ -49,29 +49,35 @@ Once you have installed Eclipse, if you have multiple Java versions on your comp
 /usr/lib/jvm/jdk-9.0.4/bin/java
 ```
 
-When first launching Eclipse, you should create a new workspace for development. Select the parent of  `$GRAAL` as the workspace as you will also be importing projects from the suites that the compiler depends on.
+Run `mx eclipseinit` to create the Eclipse project configurations.
+This will print the following instructions on how to import projects:
 
-The configurations created by the `mx eclipseinit` command binds projects to Execution Environments or JREs corresponding to the Java compliance level of the projects. You need to configure these Execution Environments and JREs as follows:
+```
+Please restart Eclipse instances for this workspace to see some of the effects.
+----------------------------------------------
+Eclipse project generation successfully completed for:
+  ./graal/sdk
+  ./graal/truffle
 
-1. From the main menu bar, select **Window > Preferences**.
-2. On the left, select **Java > Installed JREs**
-3. Ensure there is an installed JRE with the name `jdk-11`.
-4. Select **Execution Environments** and configure the **JavaSE-1.8** environment.
-4. Click **OK**
+The recommended next steps are:
+ 1) Open Eclipse with workspace path: ./graal/workspace
+ 2) Open project import wizard using: File -> Import -> Existing Projects into Workspace -> Next.
+ 3) For "select root directory" enter path ./graal/workspace
+ 4) Make sure "Search for nested projects" is checked and press "Finish".
 
-Run `mx eclipseinit` to create the Eclipse project configurations for all the Java projects then use the **Import Wizard** to import the created/updated projects:
+ hint) If you select "Close newly imported projects upon completion" then the import is more efficient.
+       Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.
+----------------------------------------------
+Ensure that these Execution Environments have a Compatible JRE in Eclipse (Preferences -> Java -> Installed JREs -> Execution Environments):
+  JavaSE-1.8
+----------------------------------------------
 
-1. From the main menu bar, select **File > Import...** to open the Import Wizard.
-2. Select **General > Existing Projects into Workspace** and click **Next**.
-3. Enter the parent of the `$GRAAL` directory in the **Select root directory** field.
-4. Under **Projects** select all the projects.
-5. Click **Finish** to complete the import.
-
+```
 Any time Eclipse updates a class file used by the compiler, the updated classes are automatically deployed to the right place so that the next execution of the VM will see the changes.
 
 > After updating your sources and re-running `mx eclipseint`, new Eclipse projects made be created and old ones removed. This usually results in an Eclipse error message indicating that a project is missing another required Java project. To handle this, you simply need repeat the steps above for importing projects.
 
-In order to debug with Eclipse, you should launch using the `-d` global option as described in [Debugging](Debugging.md).
+In order to debug with Eclipse, you should launch using the `-d` global option.
 
 By default Eclipse generates a working set for each mx suite e.g. named `Suite truffle`.
 
