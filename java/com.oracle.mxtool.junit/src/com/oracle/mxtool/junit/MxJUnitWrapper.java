@@ -220,7 +220,7 @@ public class MxJUnitWrapper {
         }
 
         Result result = runRequest(junitCore, system, config, request);
-        System.exit(result.wasSuccessful() ? 0 : 1);
+        System.exit(result.wasSuccessful() ? 0 : -result.getFailureCount());
     }
 
     public static int parseIntArg(JUnitSystem system, String[] args, String name, int index) {
@@ -297,7 +297,7 @@ public class MxJUnitWrapper {
             mxListener = resultLoggerDecorator;
         }
 
-        junitCore.addListener(TextRunListener.createRunListener(mxListener));
+        junitCore.addListener(TextRunListener.createRunListener(mxListener, mxRequest.missingClasses));
 
         Request request = mxRequest.getRequest();
         if (mxRequest.methodName == null) {
@@ -354,12 +354,7 @@ public class MxJUnitWrapper {
             }
         }));
 
-        Result result = junitCore.run(request);
-        for (Failure each : mxRequest.missingClasses) {
-            result.getFailures().add(each);
-        }
-
-        return result;
+        return junitCore.run(request);
     }
 
     private static PrintStream getResultStream(JUnitSystem system, String file) {
