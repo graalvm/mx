@@ -230,12 +230,6 @@ class MxCompatibility500(object):
         """
         return False
 
-    def vm_extra_rules(self, vm, out, benchmarks, bmSuiteArgs, suite):
-        """
-        Returns the VM-specific rules applicable to the output of benchmarks
-        """
-        return vm.rules(out, benchmarks, bmSuiteArgs)
-
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -523,14 +517,6 @@ class MxCompatibility52820(MxCompatibility52791):
 
     def fix_extracted_dependency_prefix(self):
         return True
-
-class MxCompatibility52950(MxCompatibility52820):
-    @staticmethod
-    def version():
-        return mx.VersionSpec("5.295.0")
-
-    def vm_extra_rules(self, vm, out, benchmarks, bmSuiteArgs, suite):
-        return vm.rules(out, benchmarks, bmSuiteArgs, suite=suite)
 
 
 def minVersion():
