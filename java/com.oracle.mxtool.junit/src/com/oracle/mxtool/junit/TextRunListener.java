@@ -25,6 +25,7 @@
 package com.oracle.mxtool.junit;
 
 import java.io.PrintStream;
+import java.util.List;
 
 import org.junit.internal.JUnitSystem;
 import org.junit.internal.TextListener;
@@ -75,7 +76,7 @@ class TextRunListener implements MxRunListener {
         getWriter().print('I');
     }
 
-    public static RunListener createRunListener(MxRunListener l) {
+    public static RunListener createRunListener(MxRunListener l, List<Failure> missingClasses) {
         PrintStream theWriter = l.getWriter();
         return new TextListener(theWriter) {
             private Class<?> lastClass;
@@ -135,6 +136,7 @@ class TextRunListener implements MxRunListener {
 
             @Override
             public void testRunFinished(Result result) {
+                result.getFailures().addAll(missingClasses);
                 if (lastClass != null) {
                     l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
                 }
