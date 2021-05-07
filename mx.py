@@ -6206,8 +6206,10 @@ class LayoutDistribution(AbstractDistribution):
 
     def find_single_source_location(self, source, fatal_if_missing=True, abort_on_multiple=False):
         locations = self.find_source_location(source, fatal_if_missing=fatal_if_missing)
-        if len(locations) > 1:
-            abort_or_warn("Found multiple locations for '{}' in '{}': {}".format(source, self.name, locations), abort_on_multiple)
+        unique_locations = set(locations)
+        if len(unique_locations) > 1:
+            nl = os.linesep
+            abort_or_warn("Found multiple locations for '{}' in '{}':{}  {}".format(source, self.name, nl, (nl + '  ').join(unique_locations)), abort_on_multiple)
         if len(locations) > 0:
             return locations[0]
         return None
@@ -14683,12 +14685,11 @@ class Archiver(SafeFileCreation):
         if self._provenance_map is None:
             return
         if archive_name in self._provenance_map: # pylint: disable=unsupported-membership-test
-            msg = "Duplicate archive entry: '{}'".format(archive_name)
             old_provenance = self._provenance_map[archive_name]
-            if old_provenance:
-                msg += " previously added by " + old_provenance
-            if provenance:
-                msg += " added again by " + provenance
+            nl = os.linesep
+            msg = "Duplicate archive entry: '{}'".format(archive_name) + nl
+            msg += '  old provenance: ' + ('<unknown>' if not old_provenance else old_provenance) + nl
+            msg += '  new provenance: ' + ('<unknown>' if not provenance else provenance)
             abort_or_warn(msg, self.duplicates_action == 'abort', context=self.context)
         self._provenance_map[archive_name] = provenance # pylint: disable=unsupported-assignment-operation
 
