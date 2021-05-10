@@ -142,7 +142,6 @@ def _cache_dir():
 def _global_env_file():
     return _cygpathW2U(get_env('MX_GLOBAL_ENV', join(dot_mx_dir(), 'env')))
 
-
 def _get_path_in_cache(name, sha1, urls, ext=None, sources=False, oldPath=False):
     """
     Gets the path an artifact has (or would have) in the download cache.
@@ -1581,17 +1580,6 @@ class Dependency(SuiteConstituent):
             return os.sep.join([self.get_output_base(), '{}-parent-{}'.format(self.suite, parents)] + names[parents:] + [self.name])
         return join(self.get_output_base(), self.subDir, self.name)
 
-def _output_root_includes_config():
-    """
-    Returns whether mx output is in a directory whose path always includes
-    the configuration (i.e. os, arch and jdk).
-    """
-    res = os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') == 'true'
-    if res and os.getenv('MX_ALT_OUTPUT_ROOT') is not None:
-        warn('Ignoring MX_OUTPUT_ROOT_INCLUDES_CONFIG=true since MX_ALT_OUTPUT_ROOT is set')
-        return False
-    return res
-
 class Suite(object):
     """
     Command state and methods for all suite subclasses.
@@ -1684,7 +1672,7 @@ class Suite(object):
 
     # Cache of config names keyed by a 2-tuple of booleans representing
     # the `platformDependent` and `jdkDependent` parameters to `_make_config` respectively.
-    _output_root_config = {} if _output_root_includes_config() else None
+    _output_root_config = {}
 
     @staticmethod
     def _make_config(platformDependent=False, jdkDependent=None):
@@ -1712,7 +1700,14 @@ class Suite(object):
         Returns whether mx output for this suite is in a directory whose path includes
         the configuration (i.e. os, arch and jdk).
         """
-        return Suite._output_root_config is not None
+        res = getattr(self, '.output_root_includes_config', None)
+        if res is None:
+            res = os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') == 'true'
+            if res and os.getenv('MX_ALT_OUTPUT_ROOT') is not None:
+                warn('Ignoring MX_OUTPUT_ROOT_INCLUDES_CONFIG=true since MX_ALT_OUTPUT_ROOT is set')
+                res = False
+            setattr(self, '.output_root_includes_config', res)
+        return res
 
     def get_output_root(self, platformDependent=False, jdkDependent=None):
         """
@@ -1733,9 +1728,11 @@ class Suite(object):
         if self._output_root_includes_config():
             config = Suite._make_config(platformDependent, jdkDependent)
             attr_name = '.output_root_{}'.format(config)
-            if not hasattr(self, attr_name):
-                setattr(self, attr_name, join(self.dir, 'mxbuild', config))
-            return getattr(self, attr_name)
+            res = getattr(self, attr_name, None)
+            if res is None:
+                res = join(self.dir, 'mxbuild', config)
+                setattr(self, attr_name, res)
+            return res
 
         if not self._outputRoot:
             outputRoot = self._get_early_suite_dict_property('outputRoot')
@@ -17520,7 +17517,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.298.0")  # GR-22460
+version = VersionSpec("5.298.1")  # GR-31274
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
