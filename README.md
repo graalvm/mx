@@ -1,6 +1,9 @@
 # README #
 
-`mx` is a command line based tool for managing the development of (primarily) Java code. It includes a mechanism for specifying the dependencies as well as making it simple to build, test, run, update, etc the code and built artifacts. `mx` contains support for developing code spread across multiple source repositories. `mx` is written in Python (version 2.7) and is extensible.
+`mx` is a command line based tool for managing the development of (primarily) Java code.
+It includes a mechanism for specifying the dependencies as well as making it simple to build,
+test, run, update, etc the code and built artifacts. `mx` contains support for developing code
+spread across multiple source repositories. `mx` is written in Python and is extensible.
 
 The organizing principle of `mx` is a _suite_. A _suite_ is both a directory and the container for the components of the suite.
 A suite component is either a _project_, _library_ or _distribution_. There are various flavors of each of these.
@@ -10,7 +13,8 @@ The set of suites reachable from the primary suite by transitive closure of the 
 
 ### Running mx
 
-`mx` can be run directly (i.e., `python2.7 mx/mx.py ...`), but is more commonly invoked via the `mx/mx` bash script (which includes a Python version check). Adding the `mx/` directory to your PATH simplifies executing `mx`. The `mx/mx.cmd` script should be used on Windows.
+`mx` can be run directly (i.e., `python mx/mx.py ...`), but is more commonly invoked via the `mx/mx` bash script.
+Adding the `mx/` directory to your PATH simplifies executing `mx`. The `mx/mx.cmd` script should be used on Windows.
 
 The general form of the `mx` command line is:
 
@@ -18,11 +22,17 @@ The general form of the `mx` command line is:
 mx [global options] [command] [command-specific options]
 ```
 
-If no options or command is specified, `mx` prints information on the available options and commands, which will include any suite-specfic options and commands. Help for a specific command is obtained via `mx help <command>`. Global options are expected to have wide applicability to many commands and as such precede the command to be executed.
+If no options or command is specified, `mx` prints information on the available options and commands,
+which will include any suite-specific options and commands. Help for a specific command is obtained
+via `mx help <command>`. Global options are expected to have wide applicability to many commands and as
+such precede the command to be executed.
 
-For an example of `mx` usage, see the [README][1] for the Graal project.
+For an example of `mx` usage, see [README.md](https://github.com/oracle/graal/blob/master/compiler/README.md).
 
-Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory. Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file `/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance. This should be OK since the `/tmp` directory is usually cleaned on every system startup.  
+Note: There is a Bash completion script for global options and commands, located in `bash_completion` directory.
+Install it for example by `source`ing this script in your `~/.bashrc` file. If used, a temporary file
+`/tmp/mx-bash-completion-<project-path-hash>` is created and used for better performance.
+
 [mx-honey](https://github.com/mukel/mx-honey) provides richer completions for `zsh` users.
 
 ### Suites
@@ -31,7 +41,7 @@ The definition of a suite and its components is in a file named `suite.py` in th
 primary suite. This is the directory named `mx.<suite name>` in the suite's top level directory. For example,
 for the `compiler` suite, it is `mx.compiler`. The format of `suite.py` is JSON with the following extensions:
 * Python multi-line and single-quoted strings are supported
-* Python hash comments are supported
+* Python hash-prefixed comments are supported
 
 ### Java projects
 
@@ -60,7 +70,7 @@ Java source code is contained in a `project`. Here's an example of two [Graal co
 
 The `javaCompliance` attribute can be a single number (e.g. `8`), the lower bound of a range (e.g. `8+`) or a fixed range (e.g. `9..11`).
 This attribute specifies the following information:
-* The maximum Java language level used by the project. This is the lower bound in a range. It is also used at the value for the `-source`
+* The maximum Java language level used by the project. This is the lower bound in a range. It is also used as the value for the `-source`
 and `-target` javac options when compiling the project.
 * The JDKs providing any internal JDK API used by the project. A project that does not use any internal JDK API should specify an
 open range (e.g. `8+`). Otherwise, a JDK matching the exact version or range is required to compile the project.
@@ -84,7 +94,8 @@ A distribution that has a `moduleInfo` attribute will result in a [Java module](
 built from the distribution. The `moduleInfo` attribute must specify the name of the module and can include
 other parts of a [module descriptor](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/lang/module/ModuleDescriptor.html).
 
-This is best shown with examples from [Truffle](https://github.com/oracle/graal/blob/master/truffle/mx.truffle/suite.py) and [Graal](https://github.com/oracle/graal/blob/master/compiler/mx.compiler/suite.py):
+This is best shown with examples from [Truffle](https://github.com/oracle/graal/blob/master/truffle/mx.truffle/suite.py)
+and [Graal](https://github.com/oracle/graal/blob/master/compiler/mx.compiler/suite.py):
 
 Here is an extract from the definition of the `TRUFFLE_API` distribution which produces the
 `org.graavm.truffle` module:
@@ -195,10 +206,8 @@ constituent projects.
 
 #### Specifying required modules
 
-If a project uses a package from a module other than `java.base` or a module
-implied by a dependency (e.g., the [`JVMCI_API` library](https://github.com/oracle/graal/blob/1655543b5670948e56333827f3a8f65e1ba8f3c6/compiler/mx.compiler/suite.py#L46-L55)
-defined by Graal), it must specify these additional modules with the `requires` attribute.
-For example:
+If a project with a Java compliance >= 9 uses a package from a module other than `java.base`, it must specify these
+additional modules with the `requires` attribute. For example:
 ```
 "org.graalvm.compiler.hotspot.management.jdk11" : {
     ...
@@ -300,6 +309,92 @@ via the `JAVA_HOME` and `EXTRA_JAVA_HOMES` environment variables.
 An option has precedence over the corresponding environment variable.
 Mx comes with a [`select_jdk.py`](select_jdk.py) helper that simplifies
 switching between different values for `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
+
+### Generated artifacts
+
+The build artifacts of mx are in directories separate from the source file directories.
+Output for platform dependent suite constituents is under a directory whose name
+reflects the current platform. For example:
+
+```
+<suite>/mxbuild/<project>               # Platform independent project
+<suite>/mxbuild/darwin-amd64/<project>  # Platform dependent project
+```
+
+Partitioning build output to take the platform into account has the following advantages:
+* A file system shared between different platforms (e.g. via NFS or virtualization host/guest
+ file system sharing) keeps its platform dependent output separated.
+
+If `MX_OUTPUT_ROOT_INCLUDES_CONFIG=true` then:
+* The output for JDK dependent suite constituents is under a directory reflecting the
+ JDK(s) specified by `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
+* The output for platform and JDK dependent suite constituents is under a directory
+ reflecting both the platform and JDKs.
+
+For example:
+
+```
+<suite>/mxbuild/jdk16+8/<project>               # JDK dependent project
+<suite>/mxbuild/darwin-amd64/<project>          # Platform dependent project
+<suite>/mxbuild/darwin-amd64-jdk16+8/<project>  # Platform and JDK dependent project
+```
+
+Partitioning build output to take JDK configuration into account has the following advantages:
+* Avoids re-compilation after changing the value of `JAVA_HOME` or `EXTRA_JAVA_HOMES` in the
+ case where no sources have changed since `mx build` was last executed with the new values.
+* Avoid issues related to API changes between JDK versions. If only public JDK API was
+ used by Java projects, this could be solved with the `--release` option introduced by
+ [JEP 247](https://openjdk.java.net/jeps/247). However, a significant number of mx managed
+ projects use JDK internal API in which case `--release` does not help.
+
+Note that IDE configurations ignore ``MX_OUTPUT_ROOT_INCLUDES_CONFIG` and so must be regenerated after
+changing the value of `JAVA_HOME` or `EXTRA_JAVA_HOMES` if you want output generated by an IDE to be
+visible to subsequent mx commands.
+
+The layout of build artifacts with `MX_OUTPUT_ROOT_INCLUDES_CONFIG=true` is best shown by an example.
+Consider the following directory tree containing `graal` and `truffleruby`
+repositories where `graal` defines the suites `compiler`, `truffle` and `sdk`
+and `truffleruby` defines a single `truffleruby` suite:
+```
+ws
+├── graal
+│   ├── compiler
+│   ├── sdk
+│   └── truffle
+└── truffleruby
+```
+
+With this layout when working on macOS with `$JAVA_HOME` set to a JDK 8
+and `$EXTRA_JAVA_HOMES` set to a JDK 16, after running `mx build`, the layout will be:
+
+```
+ws
+├── graal
+│   ├── compiler
+│   │   └── mxbuild
+│   │       ├── darwin-amd64
+│   │       │   └── <project>
+│   │       └── jdk8+16
+│   │           └── <project>
+│   ├── sdk
+│   │   └── mxbuild
+│   │       ├── darwin-amd64
+│   │       │   └── <project>
+│   │       └── jdk8+16
+│   │           └── <project>
+│   └── truffle
+│       └── mxbuild
+│           ├── darwin-amd64
+│           │   └── <project>
+│           └── jdk8+16
+│               └── <project>
+└── truffleruby
+    └── mxbuild
+        ├── darwin-amd64
+        │   └── <project>
+        └── jdk8+16
+            └── <project>
+```
 
 ### Unit testing with Junit <a name="junit"></a>
 
@@ -453,68 +548,3 @@ In particular, this helps ensure that all these suites are synchronized and test
 Note that a suite in a "big repo" should not have a dependency to a suite in a different repository that in turn has a transitive dependency to the same "big repo".
 In other words, there should be no back-and-forth to the same repo.
 
-### mx versioning ###
-
-`mx` uses a `major`.`minor`.`patch` versioning scheme.  To figure out if the
-version is sufficient for a given `mx` suite, first compare the major version
-number of your `mx` version against the major number of the required version
-specified in the suite.  If these versions are not equal, you cannot expect
-`mx` to be compatible with this suite.  The minor number has to be greater or
-equal to the specified minor version number.  Compatibility is ensured
-regardless of the patch level.  However, if your patch level is lower than the
-required patch level you might trigger bugs in `mx`.
-
-From an `mx` developer point of view this versioning scheme enforces the following
-update policy:
-- If you make a change that prevents the new version of `mx` from loading
-older files, increase the major number and reset both the minor and the patch
-level to 0.
-- If you add new functionality without breaking backward compatibility, leave
-the major as it is, increase the minor number and reset the patch level.
-- If you only fixed a bug without changing the public API (i.e., all files for
-the current version can still be loaded with the new version and vice versa),
-leave the major and minor versions as they are but increase the patch level.
-
-The version update strategy is designed to help users to detect if their `mx`
-version is compatible with a suite.  Thus, changes to the code that do not
-affect users do not require a change in the version number.  See the following
-examples.  In these examples, by *user* we mean command line clients or `mx`
-extensions (for example `mx_graal-core.py`).
-
-- "I found a for-loop in the code that could be expressed using a map
-function. I changed it accordingly."  This change has no influence on users.
-Thus, no version change is required!
-
-- "I added a new `mx` command."  Since this function was not available to
-users before, old scripts will continue to work with the new version.  New
-scripts, however, might not work with old versions.  This is a minor update
-and requires a new minor number and a reset of the patch level.
-
-- "I fixed a bug that caused a wrong result of a publicly available function."
-This is a bugfix that is user visible.  The patch level should be increased
-since users of old versions can expect at least the bug that was just fixed.
-
-- "I fixed some documentation."  This fix has no impact on the usage of `mx`
-and should thus not change the version of `mx`.
-
-- "I fixed a function.  The result now differs from the results before.  A
-user cannot call this function."  Since this function is invisible to the
-user, no version update is required.
-
-- "I fixed a function.  The result now differs from the results before.  A
-user could call this function."  Since the semantics of the function changed
-and the function is part of the API, old scripts might not work properly
-anymore.  Since this change is not backward compatible, this is a major update.
-
-- "I added some internal functions."  Since the functions are internal, they
-have no impact on users.  No version changed is required.
-
-- "I added some new commands."  Since the commands did not change the old
-commands, old scripts will continue to work as expected.  New scripts that
-depend on the new commands will not work with older versions of `mx`.  Thus,
-we need a new minor release.
-
-- "I removed some commands from `mx`.  There are alternative commands now."
-This change essentially changed the API.  Thus, we require a new major release.
-
-[1]: https://github.com/graalvm/graal/blob/master/compiler/README.md

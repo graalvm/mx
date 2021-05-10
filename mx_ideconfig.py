@@ -147,7 +147,6 @@ def ideclean(args):
         if d.get_ide_project_dir():
             shutil.rmtree(d.get_ide_project_dir(), ignore_errors=True)
 
-
 @mx.command('mx', 'ideinit')
 def ideinit(args, refreshOnly=False, buildProcessorJars=True):
     """(re)generate IDE project configurations"""
@@ -192,9 +191,6 @@ def fsckprojects(args):
             elif dirpath in distIdeDirs:
                 # don't traverse subdirs of an existing distribution in this suite
                 dirnames[:] = []
-            elif not suite.vc:
-                # skip suites not in a vcs repository
-                dirnames[:] = []
             else:
                 maybe_project = basename(dirpath)
                 if not mx._removedDeps.get(maybe_project):
@@ -208,9 +204,10 @@ def fsckprojects(args):
                             if mx.ask_yes_no(dirpath + ' looks like a removed project -- delete it', 'n'):
                                 shutil.rmtree(dirpath)
                                 mx.log('Deleted ' + dirpath)
+
         ideaProjectDirectory = join(suite.dir, '.idea')
         librariesDirectory = join(ideaProjectDirectory, 'libraries')
-        if exists(librariesDirectory):
+        if librariesDirectory and exists(librariesDirectory):
             neededLibraries = set()
             unique_library_file_names = set()
             for p in suite.projects_recursive() + mx._mx_suite.projects_recursive():

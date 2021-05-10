@@ -349,8 +349,7 @@ def make_eclipse_attach(suite, hostname, port, name=None, deps=None, jdk=None):
         else:
             suitePrefix = suite.name + '-'
         name = suitePrefix + 'attach-' + hostname + '-' + port
-    eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    mx.ensure_dir_exists(eclipseLaunches)
+    eclipseLaunches = mx.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
     mx.update_file(sourcesFile, '\n'.join(sources))
@@ -418,8 +417,7 @@ def make_eclipse_launch(suite, javaArgs, jre, name=None, deps=None):
     launch.close('launchConfiguration')
     launch = launch.xml(newl='\n', standalone='no') % slm.xml(escape=True, standalone='no')
 
-    eclipseLaunches = join(suite.mxDir, 'eclipse-launches')
-    mx.ensure_dir_exists(eclipseLaunches)
+    eclipseLaunches = mx.ensure_dir_exists(join(suite.mxDir, 'eclipse-launches'))
     launchFile = join(eclipseLaunches, name + '.launch')
     sourcesFile = join(eclipseLaunches, name + '.sources')
     mx.update_file(sourcesFile, '\n'.join(sources))
@@ -435,7 +433,9 @@ def eclipseinit_cli(args):
     parser.add_argument('-f', '--force', action='store_true', dest='force', default=False, help='Ignore timestamps when updating files.')
     parser.add_argument('-A', '--absolute-paths', action='store_true', dest='absolutePaths', default=False, help='Use absolute paths in project files.')
     args = parser.parse_args(args)
+
     eclipseinit(None, args.buildProcessorJars, logToConsole=args.logToConsole, force=args.force, absolutePaths=args.absolutePaths, pythonProjects=args.pythonProjects)
+
     mx.log('----------------------------------------------')
     workspace_dir = os.path.dirname(os.path.abspath(mx.primary_suite().vc_dir))
 
@@ -483,8 +483,8 @@ def eclipseinit(args, buildProcessorJars=True, refreshOnly=False, logToConsole=F
 
 
 EclipseLinkedResource = namedtuple('LinkedResource', ['name', 'type', 'location'])
-def _eclipse_linked_resource(name, tp, location):
-    return EclipseLinkedResource(name, tp, location)
+def _eclipse_linked_resource(name, res_type, location):
+    return EclipseLinkedResource(name, str(res_type), location)
 
 def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
     """
@@ -503,23 +503,24 @@ def get_eclipse_project_rel_locationURI(path, eclipseProjectDir):
         projectLoc = 'PROJECT_LOC'
     return sep.join([projectLoc] + [n for n in names if n != '..'])
 
-def _get_eclipse_output_path(p, linkedResources=None):
+def _get_eclipse_output_path(project_loc, p, linkedResources=None):
     """
-    Gets the Eclipse path attribute value for the output of project `p`.
+    Gets the Eclipse path attribute value for the output of project `p` whose
+    Eclipse configuration is in the directory `project_loc`.
     """
-    outputDirRel = p.output_dir(relative=True)
+    outputDirRel = os.path.relpath(p.output_dir(), project_loc)
     if outputDirRel.startswith('..'):
-        outputDirName = basename(outputDirRel)
+        name = basename(outputDirRel)
         if linkedResources is not None:
-            linkedResources.append(_eclipse_linked_resource(outputDirName, '2', p.output_dir()))
-        return outputDirName
+            linkedResources.append(_eclipse_linked_resource(name, IRESOURCE_FOLDER, p.output_dir()))
+        return name
     else:
         return outputDirRel
 
 #: Highest Execution Environment defined by most recent Eclipse release.
 #: https://wiki.eclipse.org/Execution_Environments
 #: https://git.eclipse.org/c/jdt/eclipse.jdt.debug.git/plain/org.eclipse.jdt.launching/plugin.properties
-_max_Eclipse_JavaExecutionEnvironment = 13 # pylint: disable=invalid-name
+_max_Eclipse_JavaExecutionEnvironment = 15 # pylint: disable=invalid-name
 
 _EclipseJRESystemLibraries = set()
 
@@ -538,38 +539,71 @@ def _to_EclipseJRESystemLibrary(compliance):
     _EclipseJRESystemLibraries.add(res)
     return res
 
+RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
+
+# http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
+IRESOURCE_FILE = 1
+IRESOURCE_FOLDER = 2
+
+def _add_eclipse_linked_resources(xml_doc, project_loc, linked_resources, absolutePaths=False):
+    """
+    Adds a ``linkedResources`` element to `xml_doc` for the resources described by `linked_resources`.
+
+    :param project_loc: directory containing ``.project`` file containing the content of `xml_doc`
+    """
+    if linked_resources:
+        xml_doc.open('linkedResources')
+        for lr in linked_resources:
+            xml_doc.open('link')
+            xml_doc.element('name', data=lr.name)
+            xml_doc.element('type', data=lr.type)
+            xml_doc.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, project_loc) if not absolutePaths else lr.location)
+            xml_doc.close('link')
+        xml_doc.close('linkedResources')
+
+def _eclipse_project_rel(project_loc, path, linked_resources, res_type=IRESOURCE_FOLDER):
+    """
+    Converts `path` to be relative to `project_loc`, adding a linked
+    resource to `linked_resources` if `path` is not under `project_loc`.
+
+    :param str res_type: IRESOURCE_FOLDER if path denotes a directory, IRESOURCE_FILE for a regular file
+    """
+    if not path.startswith(project_loc):
+        name = basename(path)
+        linked_resources.append(_eclipse_linked_resource(name, res_type, path))
+        return name
+    else:
+        return os.path.relpath(path, project_loc)
 def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
-    mx.ensure_dir_exists(p.dir)
+    # PROJECT_LOC Eclipse variable
+    project_loc = mx.ensure_dir_exists(p.dir)
 
     linkedResources = []
 
     out = mx.XMLDoc()
     out.open('classpath')
 
+    def _add_src_classpathentry(path, attributes=None):
+        out.open('classpathentry', {'kind' : 'src', 'path' : _eclipse_project_rel(project_loc, path, linkedResources)})
+        if attributes:
+            out.open('attributes')
+            for name, value in attributes.items():
+                out.element('attribute', {'name' : name, 'value' : value})
+            out.close('attributes')
+        out.close('classpathentry')
+
     for src in p.srcDirs:
-        srcDir = join(p.dir, src)
-        mx.ensure_dir_exists(srcDir)
-        out.element('classpathentry', {'kind' : 'src', 'path' : src})
+        _add_src_classpathentry(mx.ensure_dir_exists(join(p.dir, src)))
 
     processors = p.annotation_processors()
     if processors:
-        genDir = p.source_gen_dir()
-        mx.ensure_dir_exists(genDir)
-        if not genDir.startswith(p.dir):
-            genDirName = basename(genDir)
-            out.open('classpathentry', {'kind' : 'src', 'path' : genDirName})
-            linkedResources.append(_eclipse_linked_resource(genDirName, '2', genDir))
-        else:
-            out.open('classpathentry', {'kind' : 'src', 'path' : p.source_gen_dir(relative=True)})
-
-        if [ap for ap in p.declaredAnnotationProcessors if ap.isLibrary()]:
-            # ignore warnings produced by third-party annotation processors
-            out.open('attributes')
-            out.element('attribute', {'name' : 'ignore_optional_problems', 'value' : 'true'})
-            out.close('attributes')
-        out.close('classpathentry')
+        gen_dir = mx.ensure_dir_exists(p.source_gen_dir())
+        # ignore warnings produced by third-party annotation processors
+        has_external_processors = any((ap for ap in p.declaredAnnotationProcessors if ap.isLibrary()))
+        attributes = {'ignore_optional_problems': 'true'} if has_external_processors else None
+        _add_src_classpathentry(gen_dir, attributes)
         if files:
-            files.append(genDir)
+            files.append(gen_dir)
 
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('classpathentry', {'kind' : 'con', 'path' : 'org.eclipse.pde.core.requiredPlugins'})
@@ -622,7 +656,14 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             return
         if dep.isLibrary() or dep.isMavenProject():
             processLibraryDep(dep)
-        elif dep.isJavaProject() or dep.isNativeProject():
+        elif dep.isJavaProject():
+            high_bound = dep.javaCompliance._high_bound()
+            if not high_bound or high_bound >= p.javaCompliance.value:
+                projectDeps.append(dep)
+            else:
+                # Ignore a dep whose highest Java level is less than p's level
+                pass
+        elif dep.isNativeProject():
             projectDeps.append(dep)
         elif dep.isJdkLibrary():
             processJdkLibraryDep(dep)
@@ -683,22 +724,22 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             if not dep.isNativeProject():
                 out.element('classpathentry', {'combineaccessrules' : 'false', 'exported' : 'true', 'kind' : 'src', 'path' : '/' + dep.name})
 
-    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(p, linkedResources)})
+    out.element('classpathentry', {'kind' : 'output', 'path' : _get_eclipse_output_path(project_loc, p, linkedResources)})
 
     out.close('classpath')
-    classpathFile = join(p.dir, '.classpath')
+    classpathFile = join(project_loc, '.classpath')
     mx.update_file(classpathFile, out.xml(indent='\t', newl='\n'))
     if files:
         files.append(classpathFile)
 
-    csConfig, _, checkstyleProj = p.get_checkstyle_config()
+    csConfig, _, cs_project = p.get_checkstyle_config()
     if csConfig:
         out = mx.XMLDoc()
 
-        dotCheckstyle = join(p.dir, ".checkstyle")
-        checkstyleConfigPath = '/' + checkstyleProj.name + '/.checkstyle_checks.xml'
+        dotCheckstyle = join(project_loc, ".checkstyle")
+        cs_path = _eclipse_project_rel(project_loc, csConfig, linkedResources, IRESOURCE_FILE)
         out.open('fileset-config', {'file-format-version' : '1.2.0', 'simple-config' : 'false'})
-        out.open('local-check-config', {'name' : 'Checks', 'location' : checkstyleConfigPath, 'type' : 'project', 'description' : ''})
+        out.open('local-check-config', {'name' : 'Checks', 'location' : '/' + cs_project.name + '/' + cs_path, 'type' : 'project', 'description' : ''})
         out.element('additional-data', {'name' : 'protect-config-file', 'value' : 'false'})
         out.close('local-check-config')
         out.open('fileset', {'name' : 'all', 'enabled' : 'true', 'check-config-name' : 'Checks', 'local' : 'true'})
@@ -723,7 +764,7 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
             files.append(dotCheckstyle)
     else:
         # clean up existing .checkstyle file
-        dotCheckstyle = join(p.dir, ".checkstyle")
+        dotCheckstyle = join(project_loc, ".checkstyle")
         if exists(dotCheckstyle):
             os.unlink(dotCheckstyle)
 
@@ -759,23 +800,15 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
     if exists(join(p.dir, 'plugin.xml')):  # eclipse plugin project
         out.element('nature', data='org.eclipse.pde.PluginNature')
     out.close('natures')
-    if linkedResources:
-        out.open('linkedResources')
-        for lr in linkedResources:
-            out.open('link')
-            out.element('name', data=lr.name)
-            out.element('type', data=lr.type)
-            out.element('locationURI', data=get_eclipse_project_rel_locationURI(lr.location, p.dir) if not absolutePaths else lr.location)
-            out.close('link')
-        out.close('linkedResources')
+    _add_eclipse_linked_resources(out, project_loc, linkedResources, absolutePaths)
     out.close('projectDescription')
-    projectFile = join(p.dir, '.project')
+    projectFile = join(project_loc, '.project')
     mx.update_file(projectFile, out.xml(indent='\t', newl='\n'))
     if files:
         files.append(projectFile)
 
     # copy a possibly modified file to the project's .settings directory
-    _copy_eclipse_settings(p, files)
+    _copy_eclipse_settings(project_loc, p, files)
 
     if processors:
         out = mx.XMLDoc()
@@ -810,9 +843,9 @@ def _eclipseinit_project(p, files=None, libFiles=None, absolutePaths=False):
                      '\n'.join(exports))
 
         out.close('factorypath')
-        mx.update_file(join(p.dir, '.factorypath'), out.xml(indent='\t', newl='\n'))
+        mx.update_file(join(project_loc, '.factorypath'), out.xml(indent='\t', newl='\n'))
         if files:
-            files.append(join(p.dir, '.factorypath'))
+            files.append(join(project_loc, '.factorypath'))
 
 def _capture_eclipse_settings(logToConsole, absolutePaths):
     # Capture interesting settings which drive the output of the projects.
@@ -829,13 +862,14 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
     if isinstance(s, mx.BinarySuite):
         return
 
-    mxOutputDir = mx.ensure_dir_exists(s.get_mx_output_dir())
-    configZip = mx.TimeStampFile(join(mxOutputDir, 'eclipse-config.zip'))
-    configLibsZip = join(mxOutputDir, 'eclipse-config-libs.zip')
+    suite_config_dir = mx.ensure_dir_exists(s.get_mx_output_dir())
+
+    configZip = mx.TimeStampFile(join(suite_config_dir, 'eclipse-config.zip'))
+    configLibsZip = join(suite_config_dir, 'eclipse-config-libs.zip')
     if refreshOnly and not configZip.exists():
         return
 
-    settingsFile = join(mxOutputDir, 'eclipse-project-settings')
+    settingsFile = join(suite_config_dir, 'eclipse-project-settings')
     mx.update_file(settingsFile, _capture_eclipse_settings(logToConsole, absolutePaths))
     if not force and mx_ideconfig._check_ide_timestamp(s, configZip, 'eclipse', settingsFile):
         mx.logv('[Eclipse configurations for {} are up to date - skipping]'.format(s.name))
@@ -865,10 +899,10 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
     for dist in s.dists:
         if not dist.isJARDistribution():
             continue
-        projectDir = dist.get_ide_project_dir()
-        if not projectDir:
+        project_loc = dist.get_ide_project_dir()
+        if not project_loc:
             continue
-        mx.ensure_dir_exists(projectDir)
+        mx.ensure_dir_exists(project_loc)
         relevantResources = []
         relevantResourceDeps = set(dist.archived_deps())
         for d in sorted(relevantResourceDeps):
@@ -877,11 +911,11 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
             if d.isJavaProject():
                 for srcDir in d.srcDirs:
                     relevantResources.append(RelevantResource('/' + d.name + '/' + srcDir, IRESOURCE_FOLDER))
-                relevantResources.append(RelevantResource('/' +d.name + '/' + _get_eclipse_output_path(d), IRESOURCE_FOLDER))
+                relevantResources.append(RelevantResource('/' + d.name + '/' + _get_eclipse_output_path(project_loc, d), IRESOURCE_FOLDER))
 
         # make sure there is at least one entry otherwise all resources will be implicitly relevant
         if not relevantResources:
-            relevantResources.append(RelevantResource(get_eclipse_project_rel_locationURI(dist.path, projectDir), IRESOURCE_FOLDER))
+            relevantResources.append(RelevantResource(get_eclipse_project_rel_locationURI(dist.path, project_loc), IRESOURCE_FOLDER))
 
         use_async_distributions = mx.env_var_to_bool('MX_IDE_ECLIPSE_ASYNC_DISTRIBUTIONS')
 
@@ -896,8 +930,8 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
             out.element('project', data=d.name)
         out.close('projects')
         out.open('buildSpec')
-        dist.dir = projectDir
-        builders = _genEclipseBuilder(out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
+        dist.dir = project_loc
+        builders = _genEclipseBuilder(project_loc, out, dist, 'Create' + dist.name + 'Dist', '-v archive @' + dist.name,
                                       relevantResources=relevantResources,
                                       logToFile=True, refresh=True, isAsync=use_async_distributions,
                                       logToConsole=logToConsole, appendToLogFile=False,
@@ -908,19 +942,19 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
         out.close('natures')
-        out.open('linkedResources')
-        out.open('link')
-        out.element('name', data=basename(dist.path))
-        out.element('type', data=str(IRESOURCE_FILE))
-        out.element('location', data=get_eclipse_project_rel_locationURI(dist.path, projectDir) if not absolutePaths else dist.path)
-        out.close('link')
-        out.close('linkedResources')
+        linked_resources = [_eclipse_linked_resource(basename(dist.path), str(IRESOURCE_FILE), dist.path)]
+        _add_eclipse_linked_resources(out, project_loc, linked_resources, absolutePaths=absolutePaths)
         out.close('projectDescription')
-        projectFile = join(projectDir, '.project')
+        projectFile = join(project_loc, '.project')
         mx.update_file(projectFile, out.xml(indent='\t', newl='\n'))
         files.append(projectFile)
 
     if pythonProjects:
+        project_loc = s.dir if s is mx._mx_suite else s.mxDir
+
+        linked_resources = []
+        source_path = _eclipse_project_rel(project_loc, s.name if s is mx._mx_suite else s.mxDir, linked_resources)
+
         projectXml = mx.XMLDoc()
         projectXml.open('projectDescription')
         projectXml.element('name', data=s.name if s is mx._mx_suite else 'mx.' + s.name)
@@ -947,8 +981,35 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         projectXml.open('natures')
         projectXml.element('nature', data='org.python.pydev.pythonNature')
         projectXml.close('natures')
+        _add_eclipse_linked_resources(projectXml, project_loc, linked_resources, absolutePaths=absolutePaths)
+
+        projectXml.open('filteredResources')
+
+        # Ignore all *.pyc files
+        projectXml.open('filter')
+        projectXml.element('id', data='1')
+        projectXml.element('name')
+        projectXml.element('type', data='22')
+        projectXml.open('matcher')
+        projectXml.element('id', data='org.eclipse.ui.ide.multiFilter')
+        projectXml.element('arguments', data='1.0-name-matches-false-false-*.pyc')
+        projectXml.close('matcher')
+        projectXml.close('filter')
+
+        # Ignore all __pycache__directories
+        projectXml.open('filter')
+        projectXml.element('id', data='1')
+        projectXml.element('name')
+        projectXml.element('type', data='26')
+        projectXml.open('matcher')
+        projectXml.element('id', data='org.eclipse.ui.ide.multiFilter')
+        projectXml.element('arguments', data='1.0-name-matches-false-false-__pycache__')
+        projectXml.close('matcher')
+        projectXml.close('filter')
+
+        projectXml.close('filteredResources')
         projectXml.close('projectDescription')
-        projectFile = join(s.dir if s is mx._mx_suite else s.mxDir, '.project')
+        projectFile = join(project_loc, '.project')
         mx.update_file(projectFile, projectXml.xml(indent='  ', newl='\n'))
         files.append(projectFile)
 
@@ -956,28 +1017,21 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
 <?eclipse-pydev version="1.0"?>
 <pydev_project>
 <pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
-<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.7</pydev_property>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 3.7</pydev_property>
 <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
 <path>/{}</path>
 </pydev_pathproperty>
 </pydev_project>
-""".format(s.name if s is mx._mx_suite else 'mx.' + s.name)
-        pydevProjectFile = join(s.dir if s is mx._mx_suite else s.mxDir, '.pydevproject')
+""".format(source_path)
+        pydevProjectFile = join(project_loc, '.pydevproject')
         mx.update_file(pydevProjectFile, pydevProjectXml)
         files.append(pydevProjectFile)
 
     mx_ideconfig._zip_files(files + [settingsFile], s.dir, configZip.path)
     mx_ideconfig._zip_files(libFiles, s.dir, configLibsZip)
 
-
-RelevantResource = namedtuple('RelevantResource', ['path', 'type'])
-
-# http://grepcode.com/file/repository.grepcode.com/java/eclipse.org/4.4.2/org.eclipse.core/resources/3.9.1/org/eclipse/core/resources/IResource.java#76
-IRESOURCE_FILE = 1
-IRESOURCE_FOLDER = 2
-
-def _genEclipseBuilder(dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, isAsync=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
-    externalToolDir = join(p.dir, '.externalToolBuilders')
+def _genEclipseBuilder(eclipseConfigRoot, dotProjectDoc, p, name, mxCommand, refresh=True, refreshFile=None, relevantResources=None, isAsync=False, logToConsole=False, logToFile=False, appendToLogFile=True, xmlIndent='\t', xmlStandalone=None):
+    externalToolDir = join(eclipseConfigRoot, '.externalToolBuilders')
     launchOut = mx.XMLDoc()
     consoleOn = 'true' if logToConsole else 'false'
     launchOut.open('launchConfiguration', {'type' : 'org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType'})
@@ -1239,11 +1293,10 @@ def _workingset_element(wsdoc, p):
 
 ### ~~~~~~~~~~~~~ _private, eclipse
 
-def _copy_eclipse_settings(p, files=None):
+def _copy_eclipse_settings(project_loc, p, files=None):
     processors = p.annotation_processors()
 
-    settingsDir = join(p.dir, ".settings")
-    mx.ensure_dir_exists(settingsDir)
+    settingsDir = mx.ensure_dir_exists(join(project_loc, ".settings"))
 
     for name, sources in p.eclipse_settings_sources().items():
         out = StringIO()

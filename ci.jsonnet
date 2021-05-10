@@ -50,7 +50,12 @@ gate_unix = common.sulong.deps.linux + gate + {
 gate_darwin = common.sulong.deps.darwin + gate + {
   environment+: {
     ECLIPSE_EXE: "$ECLIPSE/Contents/MacOS/eclipse",
-  }
+  },
+  setup+: [
+      # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
+      # it will fail to start on later macOS versions. 
+      ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
+  ]
 },
 gate_windows = gate + {
   path(unixpath):: std.strReplace(unixpath, "/", "\\"),
@@ -160,14 +165,14 @@ mx_bisect_test = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: jdks['labsjdk-ee-11'],
-  overlay: '20b7af15bb6be537606f089276911b4fdb6efdf0',
+  overlay: 'd136a8a8b0820954ada5a53cf6f1413c825128fb',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-fetch-jdk-test"} + python3 + mx_fetchjdk_test,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-bisect-test"} + python3 + mx_bisect_test,
-    gate_darwin +  {capabilities: ['darwin_sierra', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
+    gate_darwin +  {capabilities: ['darwin', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},

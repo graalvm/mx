@@ -217,7 +217,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
     libraries = set()
     jdk_libraries = set()
 
-    ideaProjectDirectory = join(s.dir, '.idea')
+    project_dir = s.dir
+    ideaProjectDirectory = join(project_dir, '.idea')
 
     modulesXml = mx.XMLDoc()
     if not module_files_only and not s.isBinarySuite():
@@ -341,7 +342,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             jdk = mx.get_jdk(p.javaCompliance)
             assert jdk
 
-            mx.ensure_dir_exists(p.dir)
+            # Value of the $MODULE_DIR$ IntelliJ variable and parent directory of the .iml file.
+            module_dir = mx.ensure_dir_exists(p.dir)
 
             processors = p.annotation_processors()
             if processors:
@@ -353,13 +355,12 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             moduleXml.open('module', attributes={'type': 'JAVA_MODULE', 'version': '4'})
 
             moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'LANGUAGE_LEVEL': intellijLanguageLevel, 'inherit-compiler-output': 'false'})
-            moduleXml.element('output', attributes={'url': 'file://$MODULE_DIR$/' + p.output_dir(relative=True)})
+            moduleXml.element('output', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(p.output_dir(), module_dir)})
 
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
             for src in p.srcDirs:
-                srcDir = join(p.dir, src)
-                mx.ensure_dir_exists(srcDir)
-                moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + src, 'isTestSource': str(p.is_test_project())})
+                srcDir = mx.ensure_dir_exists(join(p.dir, src))
+                moduleXml.element('sourceFolder', attributes={'url':'file://$MODULE_DIR$/' + os.path.relpath(srcDir, module_dir), 'isTestSource': str(p.is_test_project())})
             for name in ['.externalToolBuilders', '.settings', 'nbproject']:
                 _intellij_exclude_if_exists(moduleXml, p, name)
             moduleXml.close('content')
@@ -452,61 +453,69 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 moduleXml.close('component')
 
             moduleXml.close('module')
-            moduleFile = join(p.dir, p.name + '.iml')
+            moduleFile = join(module_dir, p.name + '.iml')
             mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n').rstrip())
 
             if not module_files_only:
                 declared_modules.add(p.name)
-                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
+                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, project_dir)
                 modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
         if additionalOptionsOverrides:
             compilerXml.close('option')
             compilerXml.close('component')
 
     if mx_python_modules:
+
+        def _python_module(suite):
+            """
+            Gets a tuple describing the IntelliJ module for the python sources of `suite`. The tuple
+            consists of the module name, module directory and the name of the .iml in the module directory.
+            """
+            name = basename(suite.mxDir)
+            module_dir = suite.mxDir
+            return name, mx.ensure_dir_exists(module_dir), name + '.iml'
+
+        def _add_declared_module(suite):
+            if not module_files_only:
+                name, module_dir, iml_file = _python_module(suite)
+                declared_modules.add(name)
+                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(join(module_dir, iml_file), project_dir)
+                modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+
         # mx.<suite> python module:
+        _, module_dir, iml_file = _python_module(s)
         moduleXml = mx.XMLDoc()
         moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
         moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
-        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
+        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
         for d in os.listdir(s.mxDir):
             directory = join(s.mxDir, d)
             if isdir(directory) and mx.dir_contains_files_recursively(directory, r".*\.java"):
-                moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + d})
+                moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(directory, module_dir)})
         moduleXml.close('content')
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
-        processes_suites = {s.name}
+        processed_suites = {s.name}
 
         def _mx_projects_suite(visited_suite, suite_import):
-            if suite_import.name in processes_suites:
+            if suite_import.name in processed_suites:
                 return
-            processes_suites.add(suite_import.name)
+            processed_suites.add(suite_import.name)
             dep_suite = mx.suite(suite_import.name)
-            moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': basename(dep_suite.mxDir)})
-            moduleFile = join(dep_suite.mxDir, basename(dep_suite.mxDir) + '.iml')
-            if not module_files_only:
-                declared_modules.add(basename(dep_suite.mxDir))
-                moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
-                modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
+            dep_module_name, _, _ = _python_module(dep_suite)
+            moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': dep_module_name})
+            _add_declared_module(dep_suite)
             dep_suite.visit_imports(_mx_projects_suite)
         s.visit_imports(_mx_projects_suite)
         moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx'})
         moduleXml.close('component')
         moduleXml.close('module')
-        moduleFile = join(s.mxDir, basename(s.mxDir) + '.iml')
+        moduleFile = join(module_dir, iml_file)
         mx.update_file(moduleFile, moduleXml.xml(indent='  ', newl='\n'))
-        if not module_files_only:
-            declared_modules.add(basename(s.mxDir))
-            moduleFilePath = "$PROJECT_DIR$/" + os.path.relpath(moduleFile, s.dir)
-            modulesXml.element('module', attributes={'fileurl': 'file://' + moduleFilePath, 'filepath': moduleFilePath})
-
-            declared_modules.add(basename(mx._mx_suite.dir))
-            mxModuleFile = join(mx._mx_suite.dir, basename(mx._mx_suite.dir) + '.iml')
-            mxModuleFilePath = "$PROJECT_DIR$/" + os.path.relpath(mxModuleFile, s.dir)
-            modulesXml.element('module', attributes={'fileurl': 'file://' + mxModuleFilePath, 'filepath': mxModuleFilePath})
+        _add_declared_module(s)
+        _add_declared_module(mx._mx_suite)
 
     if generate_native_projects:
         _intellij_native_projects(s, module_files_only, declared_modules, modulesXml)
@@ -523,7 +532,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     if java_modules and not module_files_only:
         unique_library_file_names = set()
-        librariesDirectory = join(ideaProjectDirectory, 'libraries')
+        librariesDirectory = mx.ensure_dir_exists(join(ideaProjectDirectory, 'libraries'))
 
         mx.ensure_dir_exists(librariesDirectory)
 
