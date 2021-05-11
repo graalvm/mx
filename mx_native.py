@@ -272,7 +272,12 @@ class NinjaProject(MultiarchProject):
         self._ldlibs = mx.Suite._pop_list(kwargs, 'ldlibs', context)
         self.use_jdk_headers = kwargs.pop('use_jdk_headers', False)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
+
+    def resolveDeps(self):
+        super(NinjaProject, self).resolveDeps()
         self.buildDependencies += self._ninja_deps
+        if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
+            self.buildDependencies += [self._jdk_dep]
 
     @lazy_class_default
     def _ninja_deps(cls):  # pylint: disable=no-self-argument
@@ -283,7 +288,7 @@ class NinjaProject(MultiarchProject):
         except OSError:
             dep = mx.library('NINJA', False)
             if dep:
-                deps.append(dep.qualifiedName())
+                deps.append(dep)
                 Ninja.binary = mx.join(dep.get_path(False), 'ninja')
             else:
                 # necessary until GR-13214 is resolved
@@ -293,7 +298,7 @@ class NinjaProject(MultiarchProject):
             import ninja_syntax  # pylint: disable=unused-variable, unused-import
         except ImportError:
             dep = mx.library('NINJA_SYNTAX')
-            deps.append(dep.qualifiedName())
+            deps.append(dep)
             module_path = mx.join(dep.get_path(False), 'ninja_syntax-{}'.format(dep.version))
             mx.ensure_dir_exists(module_path)  # otherwise, import machinery will ignore it
             sys.path.append(module_path)
@@ -302,11 +307,6 @@ class NinjaProject(MultiarchProject):
 
     def isJDKDependent(self):
         return self.use_jdk_headers
-
-    def resolveDeps(self):
-        super(NinjaProject, self).resolveDeps()
-        if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
-            self.buildDependencies += [self._jdk_dep]
 
     @lazy_class_default
     def _jdk_dep(cls):  # pylint: disable=no-self-argument
