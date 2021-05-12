@@ -1749,10 +1749,7 @@ class Suite(object):
         """
         res = getattr(self, '.output_root_includes_config', None)
         if res is None:
-            res = os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') == 'true'
-            if res and os.getenv('MX_ALT_OUTPUT_ROOT') is not None:
-                warn('Ignoring MX_OUTPUT_ROOT_INCLUDES_CONFIG=true since MX_ALT_OUTPUT_ROOT is set')
-                res = False
+            res = os.getenv('MX_ALT_OUTPUT_ROOT') is None and os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') != 'false'
             setattr(self, '.output_root_includes_config', res)
         return res
 
