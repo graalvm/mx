@@ -273,6 +273,15 @@ class NinjaProject(MultiarchProject):
         self.use_jdk_headers = kwargs.pop('use_jdk_headers', False)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
 
+    def isJDKDependent(self):
+        """Returns whether this NinjaProject is JDK dependent.
+
+        A NinjaProject is considered to be JDK dependent if it uses JDK headers
+        or `<jdk_ver>` substitution in its `cflags` (presumably for conditional
+        compilation).
+        """
+        return self.use_jdk_headers or any('<jdk_ver>' in f for f in self._cflags)
+
     def resolveDeps(self):
         super(NinjaProject, self).resolveDeps()
         self.buildDependencies += self._ninja_deps
@@ -304,9 +313,6 @@ class NinjaProject(MultiarchProject):
             sys.path.append(module_path)
 
         return deps
-
-    def isJDKDependent(self):
-        return self.use_jdk_headers
 
     @lazy_class_default
     def _jdk_dep(cls):  # pylint: disable=no-self-argument
