@@ -13122,7 +13122,7 @@ mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('staticlibsuffix', add_static_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('cmd', cmd_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
-mx_subst.results_substitutions.register_no_arg('jdk_release', lambda: str(get_jdk(tag='default').javaCompliance.value))
+
 
 def get_mxbuild_dir(dependency, **kwargs):
     return dependency.get_output_base()
