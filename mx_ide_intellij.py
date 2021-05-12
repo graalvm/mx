@@ -488,13 +488,21 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
         moduleXml.open('module', attributes={'type': 'PYTHON_MODULE', 'version': '4'})
         moduleXml.open('component', attributes={'name': 'NewModuleRootManager', 'inherit-compiler-output': 'true'})
         moduleXml.element('exclude-output')
-        moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
-        moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
+
+        if s.name == 'mx':
+            # MX itself is special. Python sources are also in the parent folder.
+            moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$/..'})
+            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/..', 'isTestSource': 'false'})
+            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
+        else:
+            moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
+            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
         for d in os.listdir(s.mxDir):
             directory = join(s.mxDir, d)
             if isdir(directory) and mx.dir_contains_files_recursively(directory, r".*\.java"):
                 moduleXml.element('excludeFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(directory, module_dir)})
         moduleXml.close('content')
+
         moduleXml.element('orderEntry', attributes={'type': 'jdk', 'jdkType': intellij_python_sdk_type, 'jdkName': intellij_get_python_sdk_name(sdks)})
         moduleXml.element('orderEntry', attributes={'type': 'sourceFolder', 'forTests': 'false'})
         processed_suites = {s.name}
@@ -509,7 +517,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             _add_declared_module(dep_suite)
             dep_suite.visit_imports(_mx_projects_suite)
         s.visit_imports(_mx_projects_suite)
-        moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx'})
+        if s.name != 'mx':
+            moduleXml.element('orderEntry', attributes={'type': 'module', 'module-name': 'mx.mx'})
         moduleXml.close('component')
         moduleXml.close('module')
         moduleFile = join(module_dir, iml_file)
