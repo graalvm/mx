@@ -5000,6 +5000,8 @@ class BuildTask(Buildable, Task):
             return
         buildNeeded = False
         if self.args.clean and not self.cleanForbidden():
+            self.logClean()
+            self.clean()
             buildNeeded = True
             reason = 'clean'
         if not buildNeeded:
@@ -5038,7 +5040,7 @@ class BuildTask(Buildable, Task):
                 newestInput = newestInput.timestamp if newestInput else float(0)
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
-            if not self.cleanForbidden():
+            if not self.args.clean and not self.cleanForbidden():
                 self.clean(forBuild=True)
             start_time = time.time()
             self.logBuild(reason)
