@@ -998,6 +998,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
             parsedpoints = rule.parse(out)
             for datapoint in parsedpoints:
                 datapoint.update(dims)
+                if "bench-suite" not in datapoint:
+                    datapoint["bench-suite"] = self.name()
             datapoints.extend(parsedpoints)
 
         flaky = False
