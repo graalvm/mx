@@ -260,9 +260,6 @@ class NinjaProject(MultiarchProject):
         use_jdk_headers : bool, optional
             Whether to add directories with JDK headers to the list of directories
             searched for header files. Default is False.
-
-            The use of JDK headers is implied if any build dependency is a Java
-            project with JNI headers.
     """
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
@@ -285,7 +282,7 @@ class NinjaProject(MultiarchProject):
     def resolveDeps(self):
         super(NinjaProject, self).resolveDeps()
         self.buildDependencies += self._ninja_deps
-        if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
+        if self.use_jdk_headers or self.suite.getMxCompatibility().is_using_jdk_headers_implicitly(self):
             self.buildDependencies += [self._jdk_dep]
 
     @lazy_class_default

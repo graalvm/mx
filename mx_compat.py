@@ -230,6 +230,19 @@ class MxCompatibility500(object):
         """
         return False
 
+    def is_using_jdk_headers_implicitly(self, project):
+        """Returns whether a native project is using JDK headers implicitly.
+
+        The use of JDK headers is implied if any build dependency is a Java project with JNI headers.
+        """
+        assert project.isNativeProject()
+        is_using_jdk_headers = any(d.isJavaProject() and d.include_dirs for d in project.buildDependencies)
+        if is_using_jdk_headers and project.suite._output_root_includes_config():
+            project.abort('This project is using JDK headers implicitly. For MX_OUTPUT_ROOT_INCLUDES_CONFIG=true to '
+                          'work, it must set the "use_jdk_headers" attribute explicitly.')
+        return is_using_jdk_headers
+
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -517,6 +530,19 @@ class MxCompatibility52820(MxCompatibility52791):
 
     def fix_extracted_dependency_prefix(self):
         return True
+
+
+class MxCompatibility53000(MxCompatibility52820):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.300.0")
+
+    def is_using_jdk_headers_implicitly(self, project):
+        assert project.isNativeProject()
+        if any(d.isJavaProject() and d.include_dirs for d in project.buildDependencies):
+            project.abort('This project is using JDK headers implicitly. Instead, it must set the "use_jdk_headers" '
+                          'attribute explicitly.')
+        return False
 
 
 def minVersion():
