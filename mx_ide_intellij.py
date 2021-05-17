@@ -493,7 +493,6 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             # MX itself is special. Python sources are also in the parent folder.
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$/..'})
             moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/..', 'isTestSource': 'false'})
-            moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$', 'isTestSource': 'false'})
         else:
             moduleXml.open('content', attributes={'url': 'file://$MODULE_DIR$'})
             moduleXml.element('sourceFolder', attributes={'url': 'file://$MODULE_DIR$/' + os.path.relpath(s.mxDir, module_dir), 'isTestSource': 'false'})
