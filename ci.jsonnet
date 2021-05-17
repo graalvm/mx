@@ -172,7 +172,7 @@ mx_bisect_test = {
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3"} + python3,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-fetch-jdk-test"} + python3 + mx_fetchjdk_test,
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python3-bisect-test"} + python3 + mx_bisect_test,
-    gate_darwin +  {capabilities: ['darwin', 'amd64'],  name: "gate-darwin-amd64-python3"} + python3,
+    gate_darwin +  {capabilities: ['darwin', 'amd64'],  name: "gate-darwin-amd64-python3", timelimit: "12:00"} + python3,
     gate_windows + {capabilities: ['windows', 'amd64'], name: "gate-windows-amd64"},
     bench_test +   {capabilities: ['linux', 'amd64'],   name: "bench-linux-amd64"},
     jmh_test +     {capabilities: ['linux', 'amd64'],   name: "test-jmh-linux-amd64"},
