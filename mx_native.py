@@ -260,9 +260,6 @@ class NinjaProject(MultiarchProject):
         use_jdk_headers : bool, optional
             Whether to add directories with JDK headers to the list of directories
             searched for header files. Default is False.
-
-            The use of JDK headers is implied if any build dependency is a Java
-            project with JNI headers.
     """
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs):
@@ -273,10 +270,19 @@ class NinjaProject(MultiarchProject):
         self.use_jdk_headers = kwargs.pop('use_jdk_headers', False)
         super(NinjaProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
 
+    def isJDKDependent(self):
+        """Returns whether this NinjaProject is JDK dependent.
+
+        A NinjaProject is considered to be JDK dependent if it uses JDK headers
+        or `<jdk_ver>` substitution in its `cflags` (presumably for conditional
+        compilation).
+        """
+        return self.use_jdk_headers or any('<jdk_ver>' in f for f in self._cflags)
+
     def resolveDeps(self):
         super(NinjaProject, self).resolveDeps()
         self.buildDependencies += self._ninja_deps
-        if self.use_jdk_headers or any(d.isJavaProject() and d.include_dirs for d in self.buildDependencies):
+        if self.use_jdk_headers or self.suite.getMxCompatibility().is_using_jdk_headers_implicitly(self):
             self.buildDependencies += [self._jdk_dep]
 
     @lazy_class_default
@@ -304,9 +310,6 @@ class NinjaProject(MultiarchProject):
             sys.path.append(module_path)
 
         return deps
-
-    def isJDKDependent(self):
-        return self.use_jdk_headers
 
     @lazy_class_default
     def _jdk_dep(cls):  # pylint: disable=no-self-argument

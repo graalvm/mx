@@ -5000,6 +5000,8 @@ class BuildTask(Buildable, Task):
             return
         buildNeeded = False
         if self.args.clean and not self.cleanForbidden():
+            self.logClean()
+            self.clean()
             buildNeeded = True
             reason = 'clean'
         if not buildNeeded:
@@ -5038,7 +5040,7 @@ class BuildTask(Buildable, Task):
                 newestInput = newestInput.timestamp if newestInput else float(0)
             buildNeeded, reason = self.needsBuild(newestInput)
         if buildNeeded:
-            if not self.cleanForbidden():
+            if not self.args.clean and not self.cleanForbidden():
                 self.clean(forBuild=True)
             start_time = time.time()
             self.logBuild(reason)
@@ -13122,7 +13124,7 @@ mx_subst.results_substitutions.register_with_arg('libsuffix', add_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('staticlibsuffix', add_static_lib_suffix)
 mx_subst.results_substitutions.register_with_arg('cmd', cmd_suffix)
 mx_subst.results_substitutions.register_with_arg('exe', exe_suffix)
-mx_subst.results_substitutions.register_no_arg('jdk_release', lambda: str(get_jdk(tag='default').javaCompliance.value))
+
 
 def get_mxbuild_dir(dependency, **kwargs):
     return dependency.get_output_base()
@@ -17517,7 +17519,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.299.1")  # GR-31361
+version = VersionSpec("5.300.0")  # GR-31354
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
