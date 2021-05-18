@@ -488,13 +488,13 @@ suite = {
     },
 
     "JACKPOT" : {
-      "sha1" : "9e945acafbdfd585d9079769098f1d78bc8e9921",
-      "sourceSha1": "62949e61e68bd014bad5267007fae2b2c3cf6c9a",
+      "sha1" : "3a4e4eccf553036bb0ddba675486d574b62a01d8",
+      "sourceSha1": "176441084c7329b95840a43d31cfb626698ceb9c",
       "licence": "Apache-2.0",
       "maven" : {
         "groupId" : "org.apache.netbeans.modules.jackpot30",
         "artifactId" : "tool",
-        "version" : "11.1",
+        "version" : "12.3",
       }
     },
 
