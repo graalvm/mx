@@ -2777,7 +2777,9 @@ class SourceSuite(Suite):
                     p.__dict__.update(attrs)
                 else:
                     for k, v in attrs.items():
-                        if not hasattr(p, k):
+                        # We first try with `dir` to avoid computing attribute values
+                        # due to `hasattr` if possible (e.g., for properties).
+                        if k not in dir(p) and not hasattr(p, k):
                             setattr(p, k, v)
                 self.projects.append(p)
             except:
@@ -12312,11 +12314,6 @@ _jdks_cache = {}
 _canceled_jdk_requests = set()
 
 
-# Setting of JAVA_HOME can occur at several points.  This variable is set to
-# True once JAVA_HOME is definitely configured.  It might be correctly
-# configured before it's True but it is definitely safe once it's True.
-before_java_home_initialization = True
-
 def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=None, tag=None, **kwargs):
     """
     Get a JDKConfig object matching the provided criteria.
@@ -17440,10 +17437,6 @@ def main():
     if _opts.java_home:
         logv('Setting environment variable %s=%s from --java-home' % ('JAVA_HOME', _opts.java_home))
         os.environ['JAVA_HOME'] = _opts.java_home
-
-    # JAVA_HOME is definitely correctly configured at this point
-    global before_java_home_initialization
-    before_java_home_initialization = False
 
     if _opts.mx_tests:
         MXTestsSuite()

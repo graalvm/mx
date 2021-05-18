@@ -680,10 +680,7 @@ class DefaultNativeProject(NinjaProject):
                 return '-fdebug-prefix-map={}={}'.format(quote(prefix_dir), quote(mx.basename(prefix_dir)))
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
-            # This can be called very early in startup so just drop this element if JAVA_HOME
-            # hasn't been configured yet.
-            if not mx.before_java_home_initialization:
-                default_cflags += [add_debug_prefix(_get_target_jdk().home)]
+            default_cflags += [add_debug_prefix(_get_target_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
 
         return default_cflags + super(DefaultNativeProject, self).cflags
