@@ -2777,7 +2777,9 @@ class SourceSuite(Suite):
                     p.__dict__.update(attrs)
                 else:
                     for k, v in attrs.items():
-                        if not hasattr(p, k):
+                        # We first try with `dir` to avoid computing attribute values
+                        # due to `hasattr` if possible (e.g., for properties).
+                        if k not in dir(p) and not hasattr(p, k):
                             setattr(p, k, v)
                 self.projects.append(p)
             except:
@@ -3623,6 +3625,7 @@ import mx_compat
 import mx_urlrewrites
 import mx_benchmark
 import mx_benchplot
+import mx_proftool
 import mx_downstream
 import mx_subst
 import mx_ideconfig # pylint: disable=unused-import
@@ -17196,6 +17199,10 @@ update_commands("mx", {
     'maven-install' : [maven_install, ''],
     'maven-url': [maven_url, '<repository id> <distribution name>'],
     'minheap' : [run_java_min_heap, ''],
+    'profasm': [mx_proftool.profasm_command, '[options]'],
+    'profhot': [mx_proftool.profhot_command, '[options]'],
+    'profrecord': [mx_proftool.profrecord_command, '[options]'],
+    'profpackage': [mx_proftool.profpackage_command, '[options]'],
     'projectgraph': [projectgraph, ''],
     'projects': [show_projects, ''],
     'jar-distributions': [show_jar_distributions, ''],
@@ -17519,7 +17526,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.300.0")  # GR-31354
+version = VersionSpec("5.300.1")  # GR-31354
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

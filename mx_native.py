@@ -35,11 +35,18 @@ import mx
 import mx_compdb
 import mx_subst
 
-_target_jdk = mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
+_target_jdk = None
 """JDK for which native projects should be built."""
 
+def _get_target_jdk():
+    global _target_jdk
+    if not _target_jdk:
+        _target_jdk = mx.get_jdk(tag=mx.DEFAULT_JDK_TAG)
+    return _target_jdk
+
+
 # Support for conditional compilation based on the JDK version.
-mx_subst.results_substitutions.register_no_arg('jdk_ver', lambda: str(_target_jdk.javaCompliance.value))
+mx_subst.results_substitutions.register_no_arg('jdk_ver', lambda: str(_get_target_jdk().javaCompliance.value))
 
 
 class lazy_default(object):  # pylint: disable=invalid-name
@@ -314,17 +321,22 @@ class NinjaProject(MultiarchProject):
     @lazy_class_default
     def _jdk_dep(cls):  # pylint: disable=no-self-argument
         class JavaHome(NativeDependency):
-            def __init__(self, jdk):
-                super(JavaHome, self).__init__(mx.suite('mx'), 'JAVA_HOME=' + jdk.home, None)
-                self.include_dirs = jdk.include_dirs
+            def __init__(self):
+                super(JavaHome, self).__init__(mx.suite('mx'), 'JAVA_HOME', None)
+                self.include_dirs = None
 
             def getBuildTask(self, args):
+                # Ensure that the name is set correctly now that JAVA_HOME is definitely configured
+                if not self.include_dirs:
+                    jdk = _get_target_jdk()
+                    self.name = 'JAVA_HOME=' + jdk.home
+                    self.include_dirs = jdk.include_dirs
                 return mx.NoOpTask(self, args)
 
             def _walk_deps_visit_edges(self, *args, **kwargs):
                 pass
 
-        return JavaHome(_target_jdk)
+        return JavaHome()
 
     def _build_task(self, target_arch, args):
         return NinjaBuildTask(args, self, target_arch)
@@ -467,7 +479,7 @@ class NinjaManifestGenerator(object):
     def include(self, dirs):
         def quote(path):
             has_spaces = ' ' in path or ('$project' in path and ' ' in self.project.dir)
-            return '"{}"'.format(path) if mx.is_windows() and has_spaces else path
+            return '"{}"'.format(path) if has_spaces else path
 
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
@@ -662,10 +674,13 @@ class DefaultNativeProject(NinjaProject):
         if mx.is_linux() or mx.is_darwin():
             # Do not leak host paths via dwarf debuginfo
             def add_debug_prefix(prefix_dir):
-                return '-fdebug-prefix-map={}={}'.format(prefix_dir, mx.basename(prefix_dir))
+                def quote(path):
+                    return '"{}"'.format(path) if ' ' in path else path
+
+                return '-fdebug-prefix-map={}={}'.format(quote(prefix_dir), quote(mx.basename(prefix_dir)))
 
             default_cflags += [add_debug_prefix(self.suite.vc_dir)]
-            default_cflags += [add_debug_prefix(_target_jdk.home)]
+            default_cflags += [add_debug_prefix(_get_target_jdk().home)]
             default_cflags += ['-gno-record-gcc-switches']
 
         return default_cflags + super(DefaultNativeProject, self).cflags
