@@ -13219,6 +13219,7 @@ class JDKConfigException(Exception):
         Exception.__init__(self, value)
 
 
+# For example: -agentlib:jdwp=transport=dt_socket,server=y,address=8000,suspend=y
 def java_debug_args():
     debug_args = []
     attach = None
@@ -13228,7 +13229,7 @@ def java_debug_args():
         if _opts.java_dbg_port is not None:
             attach = 'server=y,address=' + str(_opts.java_dbg_port)
     if attach is not None:
-        debug_args += ['-Xdebug', '-Xrunjdwp:transport=dt_socket,' + attach + ',suspend=y']
+        debug_args += ['-agentlib:jdwp=transport=dt_socket,' + attach + ',suspend=y']
     return debug_args
 
 _use_command_mapper_hooks = True
@@ -17526,7 +17527,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.300.1")  # GR-31354
+version = VersionSpec("5.300.2")  # GR-31518
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
