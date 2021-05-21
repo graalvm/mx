@@ -27,6 +27,7 @@ gate = setup_mx + java + {
   targets: ['gate'],
   packages+: {
     "pip:pylint": "==1.9.3",
+    "gcc": "==4.9.2",
   },
   downloads+: {
     JDT: {name: 'ecj', version: "4.14.0", platformspecific: false},
