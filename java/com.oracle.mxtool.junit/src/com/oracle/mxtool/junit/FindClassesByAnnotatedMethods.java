@@ -27,16 +27,24 @@ package com.oracle.mxtool.junit;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Finds classes in given jar files that contain methods annotated by a given set of annotations.
+ * Finds classes in given jar files (or extracted jar directories) that contain methods annotated by
+ * a given set of annotations.
  */
 public class FindClassesByAnnotatedMethods {
 
@@ -49,7 +57,7 @@ public class FindClassesByAnnotatedMethods {
      * jar file is separated from the entries also by {@link File#pathSeparator}.
      *
      * Example of output:
-     * 
+     *
      * <pre>
      * /Users/graal/ws/sdk/mxbuild/dists/jdk11/graal-sdk.jar
      * /Users/graal/ws/graal/sdk/mxbuild/dists/jdk1.8/sdk-test.jar:!org.hamcrest.BaseDescription:org.graalvm.collections.test.EconomicMapImplTest
@@ -84,17 +92,14 @@ public class FindClassesByAnnotatedMethods {
             if (isSnippetArg(jarFilePath) || isAnnotationArg(jarFilePath)) {
                 continue;
             }
-            JarFile jarFile = new JarFile(jarFilePath);
-            Enumeration<JarEntry> e = jarFile.entries();
+
+            List<ClassFile> classfiles = findClassfiles(jarFilePath);
+
             int unsupportedClasses = 0;
             System.out.print(jarFilePath);
-            while (e.hasMoreElements()) {
-                JarEntry je = e.nextElement();
-                if (je.isDirectory() || !je.getName().endsWith(".class") || je.getName().equals("module-info.class")) {
-                    continue;
-                }
+            for (ClassFile cf : classfiles) {
                 Set<String> methodAnnotationTypes = new HashSet<>();
-                DataInputStream stream = new DataInputStream(new BufferedInputStream(jarFile.getInputStream(je), (int) je.getSize()));
+                DataInputStream stream = new DataInputStream(new BufferedInputStream(cf.getInputStream(), cf.getSize()));
                 boolean isSupported = true;
                 try {
                     readClassfile(stream, methodAnnotationTypes);
@@ -102,9 +107,9 @@ public class FindClassesByAnnotatedMethods {
                     isSupported = false;
                     unsupportedClasses++;
                 } catch (Throwable t) {
-                    throw new InternalError("Error while parsing class from " + je + " in " + jarFilePath, t);
+                    throw new InternalError("Error while parsing class from " + cf + " in " + jarFilePath, t);
                 }
-                String className = je.getName().substring(0, je.getName().length() - ".class".length()).replaceAll("/", ".");
+                String className = cf.getName().substring(0, cf.getName().length() - ".class".length()).replaceAll("/", ".");
                 if (!isSupported) {
                     System.out.print(File.pathSeparator + "!" + className);
                 }
@@ -134,6 +139,92 @@ public class FindClassesByAnnotatedMethods {
                                 FindClassesByAnnotatedMethods.class.getSimpleName());
             }
             System.out.println();
+        }
+    }
+
+    private static List<ClassFile> findClassfiles(String jarFilePath) throws IOException {
+        List<ClassFile> classfiles = new ArrayList<>();
+        if (!new File(jarFilePath).isDirectory()) {
+            JarFile jarFile = new JarFile(jarFilePath);
+            Enumeration<JarEntry> e = jarFile.entries();
+            while (e.hasMoreElements()) {
+                JarEntry je = e.nextElement();
+                if (je.isDirectory() || !je.getName().endsWith(".class") ||
+                                je.getName().equals("module-info.class")) {
+                    continue;
+                }
+                classfiles.add(new JarClassFile(jarFile, je));
+            }
+        } else {
+            Path root = Paths.get(jarFilePath);
+            Files.walk(root).forEach(p -> {
+                String name = p.toString();
+                if (name.endsWith(".class") && !name.equals("module-info.class")) {
+                    classfiles.add(new DirClassFile(jarFilePath, root.relativize(p).toString()));
+                }
+            });
+        }
+        return classfiles;
+    }
+
+    interface ClassFile {
+
+        InputStream getInputStream() throws IOException;
+
+        String getName();
+
+        int getSize();
+    }
+
+    static class JarClassFile implements ClassFile {
+
+        private final JarFile jarFile;
+        private final JarEntry je;
+
+        JarClassFile(JarFile jarFile, JarEntry je) {
+            this.jarFile = jarFile;
+            this.je = je;
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return jarFile.getInputStream(je);
+        }
+
+        @Override
+        public String getName() {
+            return je.getName();
+        }
+
+        @Override
+        public int getSize() {
+            return (int) je.getSize();
+        }
+    }
+
+    static class DirClassFile implements ClassFile {
+
+        private final String name;
+        private final File file;
+
+        DirClassFile(String directory, String name) {
+            this.name = name;
+            this.file = new File(directory, name);
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return new FileInputStream(file);
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public int getSize() {
+            return (int) this.file.length();
         }
     }
 

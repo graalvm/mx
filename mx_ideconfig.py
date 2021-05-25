@@ -68,6 +68,7 @@ def _check_ide_timestamp(suite, configZip, ide, settingsFile=None):
 
 _ide_envvars = {
     'MX_ALT_OUTPUT_ROOT' : None,
+    'MX_BUILD_EXPLODED' : None,
     # On the mac, applications are launched with a different path than command
     # line tools, so capture the current PATH.  In general this ensures that
     # the eclipse builders see the same path as a working command line build.

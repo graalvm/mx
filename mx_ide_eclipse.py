@@ -450,6 +450,8 @@ def eclipseinit_cli(args):
     mx.log('')
     mx.log(' hint) If you select "Close newly imported projects upon completion" then the import is more efficient. ')
     mx.log('       Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.')
+    mx.log('')
+    mx.log('Note that setting MX_BUILD_EXPLODED=true can improve Eclipse build times. See "Exploded builds" in the mx README.md.')
     mx.log('----------------------------------------------')
 
     if _EclipseJRESystemLibraries:
@@ -942,8 +944,9 @@ def _eclipseinit_suite(s, buildProcessorJars=True, refreshOnly=False, logToConso
         out.open('natures')
         out.element('nature', data='org.eclipse.jdt.core.javanature')
         out.close('natures')
-        linked_resources = [_eclipse_linked_resource(basename(dist.path), str(IRESOURCE_FILE), dist.path)]
-        _add_eclipse_linked_resources(out, project_loc, linked_resources, absolutePaths=absolutePaths)
+        if dist.definedAnnotationProcessors:
+            linked_resources = [_eclipse_linked_resource(basename(dist.path), str(IRESOURCE_FILE), dist.path)]
+            _add_eclipse_linked_resources(out, project_loc, linked_resources, absolutePaths=absolutePaths)
         out.close('projectDescription')
         projectFile = join(project_loc, '.project')
         mx.update_file(projectFile, out.xml(indent='\t', newl='\n'))
