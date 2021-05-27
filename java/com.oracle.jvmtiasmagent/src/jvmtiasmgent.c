@@ -274,12 +274,23 @@ static void write_string_or_null(const char* str) {
 }
 
 
-// Timestamps in the file use the CLOCK_MONOTONIC which is a non adjustable clock.  These timestamps
-// are used to match events between multiple data sources, like Linux perf which can also be
-// configured to use the same clock.
+// Timestamps are used to match events between multiple data sources so it's important to choose a
+// clock that can match with whatever clock the system profiler uses.
+
+#if defined(__linux__)
+// On linux, timestamps in the file use the CLOCK_MONOTONIC which is a non adjustable clock.
+clockid_t timestamp_clock = CLOCK_MONOTONIC;
+#elif defined(__APPLE__) && defined(__MACH__) // Apple OSX and iOS (Darwin)
+// The mac isn't currently supported for profiling but Instruments seems to report times based on
+// gettimeofday which is the same as CLOCK_REALTIME so use that for now.
+clockid_t timestamp_clock = CLOCK_REALTIME;
+#else
+#error "Unsupported platform"
+#endif
+
 static struct timespec get_timestamp() {
   struct timespec ts;
-  int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+  int ret = clock_gettime(timestamp_clock, &ts);
   if (ret) {
     report_error("Error while writing timestamp: clock_gettime %s", strerror(errno));
   }
