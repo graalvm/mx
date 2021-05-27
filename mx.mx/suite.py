@@ -788,12 +788,9 @@ suite = {
           },
         },
         "darwin": {
-          "amd64": {
-            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=amd64", "-std=gnu99"],
-          },
-          "aarch64": {
-            "cflags" : ["-fPIC", "-Wall", "-Werror", "-O", "-g", "-DJVMTI_ASM_ARCH=aarch64", "-std=gnu99"],
-          },
+            "<others>": {
+                "ignore": "mac is currently not supported",
+            },
         },
         "windows": {
             "<others>": {
