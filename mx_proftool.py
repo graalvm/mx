@@ -58,45 +58,6 @@ def check_capstone_import(name):
                 e, name))
 
 
-class ProftoolProfiler(mx_benchmark.JVMProfiler):
-    """
-    Use perf on linux and a JVMTI agent to capture Java profiles.
-    """
-
-    def name(self):
-        return "proftool"
-
-    def version(self):
-        return "1.0"
-
-    def libraryPath(self):
-        return find_jvmti_asm_agent()
-
-    def sets_vm_prefix(self):
-        return True
-
-    def additional_options(self, dump_path):
-        if not self.nextItemName:
-            return [], []
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        if self.nextItemName:
-            directory = os.path.join(dump_path, "proftool_{}_{}".format(self.nextItemName, timestamp))
-        else:
-            directory = os.path.join(dump_path, "proftool_{}".format(timestamp))
-        files = FlatExperimentFiles.create(directory, overwrite=True)
-        perf_cmd, vm_args = build_capture_args(files)
-
-        # reset the next item name since it has just been consumed
-        self.nextItemName = None
-        return vm_args, perf_cmd
-
-
-try:
-    mx_benchmark.register_profiler(ProftoolProfiler())
-except AttributeError:
-    mx.warn('proftool unable to register profiler')
-
 # File header format
 filetag = b"JVMTIASM"
 MajorVersion = 1
@@ -1119,3 +1080,44 @@ def profasm_command(args):
     files = ExperimentFiles.open(options)
     assembly = GeneratedAssembly(files)
     assembly.print_all()
+
+
+class ProftoolProfiler(mx_benchmark.JVMProfiler):
+    """
+    Use perf on linux and a JVMTI agent to capture Java profiles.
+    """
+
+    def name(self):
+        return "proftool"
+
+    def version(self):
+        return "1.0"
+
+    def libraryPath(self):
+        return find_jvmti_asm_agent()
+
+    def sets_vm_prefix(self):
+        return True
+
+    def additional_options(self, dump_path):
+        if not self.nextItemName:
+            return [], []
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        if self.nextItemName:
+            directory = os.path.join(dump_path, "proftool_{}_{}".format(self.nextItemName, timestamp))
+        else:
+            directory = os.path.join(dump_path, "proftool_{}".format(timestamp))
+        files = FlatExperimentFiles.create(directory, overwrite=True)
+        perf_cmd, vm_args = build_capture_args(files)
+
+        # reset the next item name since it has just been consumed
+        self.nextItemName = None
+        return vm_args, perf_cmd
+
+
+if PerfOutput.is_supported():
+    try:
+        mx_benchmark.register_profiler(ProftoolProfiler())
+    except AttributeError:
+        mx.warn('proftool unable to register profiler')
