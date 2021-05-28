@@ -2441,15 +2441,13 @@ class BenchmarkExecutor(object):
             if mxBenchmarkArgs.profiler not in _profilers:
                 raise ValueError(
                     "Unknown profiler '{}'. Use one of: ({})".format(mxBenchmarkArgs.profiler, ', '.join(_profilers.keys())))
-            profiler = _profilers[mxBenchmarkArgs.profiler]
-            if profiler.sets_vm_prefix():
-                if mxBenchmarkArgs.tracker:
-                    raise ValueError(
-                        "Profiler {} and tracker {} both want to set the VM prefix".format(mxBenchmarkArgs.profiler,
-                                                                                           mxBenchmarkArgs.profiler))
-            elif not mxBenchmarkArgs.tracker:
-                # the profiler doesn't want to set the VM prefix so default to using rss as the tracker
-                mxBenchmarkArgs.tracker = 'rss'
+            if _profilers[mxBenchmarkArgs.profiler].sets_vm_prefix() and mxBenchmarkArgs.tracker:
+                raise ValueError(
+                    "Profiler '{}' and tracker '{}' both want to set the VM prefix".format(mxBenchmarkArgs.profiler,
+                                                                                           mxBenchmarkArgs.tracker))
+        if not mxBenchmarkArgs.tracker:
+            # Use the rss tracker by default
+            mxBenchmarkArgs.tracker = 'rss'
 
         if mxBenchmarkArgs.tracker:
             if mxBenchmarkArgs.tracker not in _available_trackers:
