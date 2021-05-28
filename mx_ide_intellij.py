@@ -719,7 +719,7 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 if custom_eclipse_exe:
                     custom_eclipse = dirname(custom_eclipse_exe)
                     if mx.is_darwin():
-                        custom_eclipse = join(dirname(custom_eclipse), 'Eclipse', 'plugins')
+                        custom_eclipse = join(dirname(custom_eclipse), 'Eclipse')
                     if not exists(custom_eclipse_exe):
                         mx.abort('Custom eclipse "{}" does not exist'.format(custom_eclipse_exe))
                     miscXml.element('option', attributes={'name' : 'eclipseVersion', 'value' : 'CUSTOM'})
