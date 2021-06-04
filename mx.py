@@ -3679,7 +3679,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     in which case it copies the cache entry.
     """
     sha1Check = sha1 and sha1 != 'NOCHECK'
-    canSymlink = canSymlink and not (is_windows() or is_cygwin())
+    canSymlink = canSymlink and can_symlink()
 
     if len(urls) == 0 and not sha1Check:
         return path
@@ -3695,7 +3695,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
         def _copy_or_symlink(source, link_name):
             ensure_dirname_exists(link_name)
-            if canSymlink and 'symlink' in dir(os):
+            if canSymlink:
                 logvv('Symlinking {} to {}'.format(link_name, source))
                 if os.path.lexists(link_name):
                     os.unlink(link_name)
@@ -4125,6 +4125,26 @@ def _suggest_tlsv1_error(e):
             sys.executable) +
              'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
 
+def _init_can_symlink():
+    if 'symlink' not in dir(os):
+        return False
+    try:
+        dst = '.symlink_dst.{}'.format(os.getpid())
+        while exists(dst):
+            dst = '{}.{}'.format(dst, time.time())
+        os.symlink(__file__, dst)
+        os.remove(dst)
+        return True
+    except (OSError, NotImplementedError):
+        return False
+
+_can_symlink = _init_can_symlink()
+
+def can_symlink():
+    """
+    Determines if ``os.symlink`` is supported on the current platform.
+    """
+    return _can_symlink
 
 def getmtime(name):
     """
