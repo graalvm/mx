@@ -5074,7 +5074,13 @@ class BuildTask(Buildable, Task):
                 self.clean(forBuild=True)
             start_time = time.time()
             self.logBuild(reason)
-            _built = self.build()
+            try:
+                _built = self.build()
+            except:
+                if self.args.parallelize:
+                    # In concurrent builds, this helps identify on the console which build failed
+                    log(self._timestamp() + "{}: Failed due to error: {}".format(self, sys.exc_info()[1]))
+                raise                
             self._persist_deps()
             # The build task is `built` if the `build()` function returns True or None (legacy)
             self.built = _built or _built is None
