@@ -1218,9 +1218,9 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
                     def func(cmd, bmSuite, prefix_command=prefix_command):
                         return prefix_command + cmd
                     if self._command_mapper_hooks and profiler not in self._command_mapper_hooks[0]:
-                        raise ValueError(
-                            "Profiler {} conflicts with trackers {}".format(profiler,
-                                                                            ', '.join([n for n, _, _ in self._command_mapper_hooks])))
+                        mx.abort("Profiler '{}' conflicts with trackers '{}'\n"
+                                "Use --tracker none to disable all trackers".format(profiler,
+                                                                                    ', '.join([n for n, _, _ in self._command_mapper_hooks])))
                     self._command_mapper_hooks = [(profiler, func, self)]
         return args
 
@@ -2436,9 +2436,7 @@ class BenchmarkExecutor(object):
         parser.add_argument(
             "--bench-suite-version", default=None, help="Desired version of the benchmark suite to execute.")
         parser.add_argument(
-            "--profiler", default=None, help="Profiler to activate (e.g. 'JFR' or 'async')")
-        parser.add_argument(
-            "--tracker", default=None, help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
+            "--tracker", default='rss', help="Enable extra trackers like 'rss' or 'psrecord'. If not set, 'rss' is used.")
         parser.add_argument(
             "--machine-name", default=None, help="Abstract name of the target machine.")
         parser.add_argument(
@@ -2473,21 +2471,12 @@ class BenchmarkExecutor(object):
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
 
-        if mxBenchmarkArgs.profiler:
-            if mxBenchmarkArgs.profiler not in _profilers:
-                raise ValueError(
-                    "Unknown profiler '{}'. Use one of: ({})".format(mxBenchmarkArgs.profiler, ', '.join(_profilers.keys())))
-            if _profilers[mxBenchmarkArgs.profiler].sets_vm_prefix() and mxBenchmarkArgs.tracker:
-                raise ValueError(
-                    "Profiler '{}' and tracker '{}' both want to set the VM prefix".format(mxBenchmarkArgs.profiler,
-                                                                                           mxBenchmarkArgs.tracker))
 
         if mxBenchmarkArgs.hwloc_bind:
             suite.register_command_mapper_hook("hwloc-bind", make_hwloc_bind(mxBenchmarkArgs.hwloc_bind))
 
-        if not mxBenchmarkArgs.tracker:
-            # Use the rss tracker by default
-            mxBenchmarkArgs.tracker = 'rss'
+        if mxBenchmarkArgs.tracker == 'none':
+            mxBenchmarkArgs.tracker = None
 
         if mxBenchmarkArgs.tracker:
             if mxBenchmarkArgs.tracker not in _available_trackers:

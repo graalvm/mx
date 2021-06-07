@@ -23,11 +23,10 @@ to collect the data.
 $ mx profrecord -E fop /home/graal/oraclejdk1.8.0_291-jvmci-21.1-b03/bin/java -jar dacapo.jar fop -n 56
 ```
 
-The second and simplest way is to use the `proftool` profiler with the `mx benchmark` command.  For
-example, running:
+The second and simplest way is to use the `proftool` profiler with the `mx benchmark` command.  The `proftool` profiler conflicts with the `rss` tracker which is enabled by default, so it must be explicitly turned off.  For example, running:
 
 ```
-$ mx benchmark dacapo:fop -- --profiler proftool
+$ mx benchmark dacapo:fop --tracker none -- --profiler proftool
 ```
 
 produces a uniquely named directory like `proftool_fop_2021-04-26_233847` which contains a profile of the full
