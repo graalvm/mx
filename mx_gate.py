@@ -1042,7 +1042,7 @@ def coverage_upload(args):
     <body ng-app="myApp" ng-controller="IndexCtrl">
        <button ng-click="step(1)" ng-disabled="data.indexOf(directory) >= data.length-1">&lt;&lt;</button>
        <button ng-click="step(-1)" ng-disabled="data.indexOf(directory) <= 0">&gt;&gt;</button>
-       <select ng-model="directory" ng-options="(i.primary_info['author-ts']*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.revision.substr(0,8) group by i.suite for i in data"></select>
+       <select ng-model="directory" ng-options="(i.timestamp*1000|date:'yy-MM-dd hh:mm') + ' ' + i.build_name + ' ' + i.revision.substr(0,8) group by i.suite for i in data"></select>
        <a href="{{directory.build_url}}" ng-if="directory.build_url" target="_blank">Build</a> Commit: {{directory.revision.substr(0,5)}}: {{directory.primary_info.description}}
        <input type="text" style="opacity: 0;width: 20;" id="copy" />
        <button style="float: right;" onclick="copy(window.location);">Share url</button>
