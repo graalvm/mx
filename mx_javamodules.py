@@ -732,7 +732,11 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                             concealedRequires.setdefault(module, set()).update(packages)
                     for module in getattr(library, 'requires', []):
                         requires.setdefault(module, set())
-
+                    if hasattr(library, 'exports'):
+                        java9 = mx_javacompliance.JavaCompliance('9+')
+                        for package in getattr(library, 'exports'):
+                            exports.setdefault((package, java9), set())
+                            module_packages.setdefault(package, java9)
                     if not module_info:
                         mx.warn("Module {} re-packages library {} but doesn't have a `moduleInfo` attribute. Note that library packages are not auto-exported")
 
