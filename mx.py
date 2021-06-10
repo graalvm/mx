@@ -13977,6 +13977,40 @@ def _before_fork():
     except ImportError:
         pass
 
+def _resolve_ecj_jar(spec):
+    """
+    Resolves `spec` to the path of a local jar file containing the Eclipse batch compiler.
+    """
+    ecj = spec
+    if spec.startswith('builtin'):
+        available = {VersionSpec(lib.maven['version']): lib for lib in _libs.values() if lib.suite is _mx_suite and lib.name.startswith('ECJ_')}
+        assert available, 'no ECJ libraries defined by mx suite'
+        if spec == 'builtin':
+            ecj_lib = sorted(available.items(), reverse=True)[0][1]
+        else:
+            if not spec.startswith('builtin:'):
+                abort('Invalid value for JDT: "{}"'.format(spec))
+            available_desc = 'Available ECJ version(s): ' + ', '.join((str(v) for v in sorted(available.keys())))
+            if spec == 'builtin:list':
+                log(available_desc)
+                abort(0)
+            version = VersionSpec(spec.split(':', 1)[1])
+            ecj_lib = available.get(version)
+            if ecj_lib is None:
+                abort('Specified ECJ version is not available: {}\n{}'.format(version, available_desc))
+        ecj = ecj_lib.get_path(resolve=True)
+
+    if not ecj.endswith('.jar'):
+        abort('Path for Eclipse batch compiler does not look like a jar file: ' + ecj)
+    if not exists(ecj):
+        abort('Eclipse batch compiler jar does not exist: ' + ecj)
+    else:
+        with zipfile.ZipFile(ecj, 'r') as zf:
+            if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
+                abort('Specified Eclipse compiler does not include annotation processing support. ' +
+                      'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
+                      'from within the plugins/ directory of an Eclipse IDE installation.')
+    return ecj
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
@@ -14018,7 +14052,9 @@ def build(cmd_args, parser=None):
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
-    compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
+    compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). '
+                                'Use the value "builtin:<version>" (e.g. "builtin:3.25") to use the ECJ_<version> library defined in the mx suite. '
+                                'Specifying "builtin" will use the latest version, and "builtin:list" will list the available built-in versions. '
                                 'This can also be specified with the JDT environment variable.', default=_defaultEcjPath(), metavar='<path>')
     compilerSelect.add_argument('--force-javac', action='store_true', dest='force_javac', help='use javac even if an Eclipse batch compiler jar is specified')
 
@@ -14053,16 +14089,8 @@ def build(cmd_args, parser=None):
             args.parallelize = True
 
     if not args.force_javac and args.jdt is not None:
-        if not args.jdt.endswith('.jar'):
-            abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
-        if not exists(args.jdt):
-            abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
-        else:
-            with zipfile.ZipFile(args.jdt, 'r') as zf:
-                if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
-                    abort('Specified Eclipse compiler does not include annotation processing support. ' +
-                          'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
-                          'from within the plugins/ directory of an Eclipse IDE installation.')
+        args.jdt = _resolve_ecj_jar(args.jdt)
+
     onlyDeps = None
     removed = []
     if args.only is not None:

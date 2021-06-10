@@ -660,6 +660,16 @@ suite = {
       },
       "license": "Apache-2.0",
     },
+
+    "ECJ_3.25": {
+      "sha1": "4307fe9c04f832a113f254c49b7033166628c334",
+      "maven": {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.25.0",
+      },
+      "licence": "EPL-2.0",
+    },
   },
 
   "licenses" : {
