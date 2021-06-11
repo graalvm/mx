@@ -1836,6 +1836,8 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     def benchSuiteName(self, bmSuiteArgs=None):
         if self.dist:
             return "jmh-" + self.dist
+        if bmSuiteArgs is None:
+            bmSuiteArgs = []
         return super(JMHDistBenchmarkSuite, self).benchSuiteName(bmSuiteArgs)
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
@@ -2074,7 +2076,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.benchSuiteName(),
+                    "bench-suite": suite.benchSuiteName(bmSuiteArgs),
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
                     "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
