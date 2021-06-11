@@ -359,12 +359,25 @@ class BenchmarkSuite(object):
         self._currently_running_benchmark = None
 
     def name(self):
-        """Returns the name of the suite.
+        """Returns the name of the suite to execute.
 
         :return: Name of the suite.
         :rtype: str
         """
         raise NotImplementedError()
+
+    def benchSuiteName(self, bmSuiteArgs=None):
+        """Returns the name of the actual suite that is being executed, independent of the fact it's a suite variant
+        which is configured or compiled differently.
+
+        Example:
+            - `benchSuiteName`: 'dacapo'
+            - `name`: 'dacapo-timing' or 'dacapo-native-image'
+
+        :return: Name of the suite.
+        :rtype: str
+        """
+        return self.name()
 
     def group(self):
         """The group that this benchmark suite belongs to, for example, `Graal`.
@@ -1802,7 +1815,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
                 re.MULTILINE)
         ]
 
-    def benchSuiteName(self, bmSuiteArgs):
+    def benchSuiteName(self, bmSuiteArgs=None):
         return self.name()
 
     def failurePatterns(self):
@@ -1820,7 +1833,7 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     JMH benchmark suite that executes microbenchmark mx distribution.
     """
 
-    def benchSuiteName(self, bmSuiteArgs):
+    def benchSuiteName(self, bmSuiteArgs=None):
         if self.dist:
             return "jmh-" + self.dist
         return super(JMHDistBenchmarkSuite, self).benchSuiteName(bmSuiteArgs)
@@ -1931,7 +1944,7 @@ class JMHJarBenchmarkSuite(JMHBenchmarkSuiteBase):
         assert linenumber >= 0, "No benchmarks output list found"
         return benchs[linenumber + 1:]
 
-    def benchSuiteName(self, bmSuiteArgs):
+    def benchSuiteName(self, bmSuiteArgs=None):
         return "jmh-" + self.jmhName(bmSuiteArgs)
 
     def parserNames(self):
@@ -2061,7 +2074,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.name(),
+                    "bench-suite": suite.benchSuiteName(),
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
                     "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
@@ -2081,7 +2094,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"(?P<rss>[0-9]+)\s+maximum resident set size",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.name(),
+                    "bench-suite": suite.benchSuiteName(),
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
                     "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
