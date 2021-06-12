@@ -242,6 +242,12 @@ class MxCompatibility500(object):
                           'work, it must set the "use_jdk_headers" attribute explicitly.')
         return is_using_jdk_headers
 
+    def bench_suite_needs_suite_args(self):
+        """
+        Returns whether extracting the benchmark suite name depends on the `bmSuiteArgs` or not.
+        """
+        return False
+
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -543,6 +549,14 @@ class MxCompatibility53000(MxCompatibility52820):
             project.abort('This project is using JDK headers implicitly. Instead, it must set the "use_jdk_headers" '
                           'attribute explicitly.')
         return False
+
+class MxCompatibility53010(MxCompatibility53000):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.301.0")
+
+    def bench_suite_needs_suite_args(self):
+        return True
 
 
 def minVersion():

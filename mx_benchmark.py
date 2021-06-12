@@ -47,6 +47,14 @@ _bm_suites = {}
 _benchmark_executor = None
 
 
+def mx_benchmark_compatibility():
+    """Get the required compatibility version from the mx primary suite.
+
+    :rtype: MxCompatibility500
+    """
+    return mx.primary_suite().getMxCompatibility()
+
+
 _profilers = {}
 
 
@@ -839,9 +847,6 @@ class JMHJsonRule(Rule):
         package = [str(x[0]) for x in s[:-2]]
         return ".".join(package + clazz)
 
-    def benchSuiteName(self):
-        return self.suiteName
-
     def getExtraJmhKeys(self):
         return JMHJsonRule.extra_jmh_keys
 
@@ -885,7 +890,7 @@ class JMHJsonRule(Rule):
                         raise RuntimeError("Unknown benchmark mode {0}".format(mode))
 
                 d = {
-                    "bench-suite" : self.benchSuiteName(),
+                    "bench-suite" : self.suiteName,
                     "benchmark" : self.shortenPackageName(benchmark),
                     "metric.name": metricName,
                     "metric.unit": metricUnit,
@@ -2068,6 +2073,10 @@ def build_url():
 
 
 def get_rss_parse_rule(suite, bmSuiteArgs):
+    if mx_benchmark_compatibility().bench_suite_needs_suite_args():
+        suite_name = suite.benchSuiteName(bmSuiteArgs)
+    else:
+        suite_name = suite.benchSuiteName()
     if mx.get_os() == "linux":
         # Output of 'time -v' on linux contains:
         #        Maximum resident set size (kbytes): 511336
@@ -2076,7 +2085,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"Maximum resident set size \(kbytes\): (?P<rss>[0-9]+)",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.benchSuiteName(bmSuiteArgs),
+                    "bench-suite": suite_name,
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
                     "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024))),
@@ -2096,7 +2105,7 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
                 r"(?P<rss>[0-9]+)\s+maximum resident set size",
                 {
                     "benchmark": suite.currently_running_benchmark(),
-                    "bench-suite": suite.benchSuiteName(),
+                    "bench-suite": suite_name,
                     "config.vm-flags": ' '.join(suite.vmArgs(bmSuiteArgs)),
                     "metric.name": "max-rss",
                     "metric.value": ("<rss>", lambda x: int(float(x)/(1024*1024))),
