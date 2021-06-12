@@ -847,9 +847,6 @@ class JMHJsonRule(Rule):
         package = [str(x[0]) for x in s[:-2]]
         return ".".join(package + clazz)
 
-    def benchSuiteName(self):
-        return self.suiteName
-
     def getExtraJmhKeys(self):
         return JMHJsonRule.extra_jmh_keys
 
@@ -893,7 +890,7 @@ class JMHJsonRule(Rule):
                         raise RuntimeError("Unknown benchmark mode {0}".format(mode))
 
                 d = {
-                    "bench-suite" : self.benchSuiteName(),
+                    "bench-suite" : self.suiteName,
                     "benchmark" : self.shortenPackageName(benchmark),
                     "metric.name": metricName,
                     "metric.unit": metricUnit,
