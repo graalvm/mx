@@ -64,20 +64,29 @@ def _format_bytes(num):
     unit = 'TiB'
     return _fmt(num, unit)
 
-
-def _get_size_in_bytes(path):
-    if not os.path.exists(path) or os.path.islink(path):
-        return 0
-    if os.path.isdir(path):
-        return sum(_get_size_in_bytes(os.path.join(path, f)) for f in os.listdir(path))
+_has_scandir = 'scandir' in dir(os)
+def _get_size_in_bytes(path, isdir=None):
+    if isdir is None:
+        if not os.path.exists(path) or os.path.islink(path):
+            return 0
+    if isdir or os.path.isdir(path):
+        if not _has_scandir:
+            return sum(_get_size_in_bytes(os.path.join(path, f)) for f in os.listdir(path))
+        s = 0
+        with os.scandir(path) as it:
+            for e in it:
+                if not e.is_symlink():
+                    if e.is_dir(follow_symlinks=False):
+                        s += _get_size_in_bytes(e.path, isdir=True)
+                    else:
+                        s += e.stat(follow_symlinks=False).st_size
+        return s
     return os.path.getsize(path)
-
 
 def _listdir(path):
     if os.path.isdir(path):
         return [p for p in os.listdir(path) if not os.path.islink(p)]
     return []
-
 
 class TimeAction(argparse.Action):
     pattern = re.compile(r'^(?:(?P<year>\d\d\d\d)-(?P<month>\d\d)-(?P<day>\d\d))?T?(?:(?P<hour>\d\d):(?P<minute>\d\d)(?::(?P<second>\d\d))?)?$')
