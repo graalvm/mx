@@ -310,6 +310,10 @@ An option has precedence over the corresponding environment variable.
 Mx comes with a [`select_jdk.py`](select_jdk.py) helper that simplifies
 switching between different values for `JAVA_HOME` and `EXTRA_JAVA_HOMES`.
 
+#### Install a JDK with fetch-jdk
+
+The `mx fetch-jdk` command can download and install JDKs defined in JSON files. See `mx fetch-jdk --help` for more detail.    
+
 ### Generated artifacts
 
 The build artifacts of mx are in directories separate from the source file directories.
