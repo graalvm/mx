@@ -1741,7 +1741,7 @@ class DefaultJavaVm(OutputCapturingJavaVm):
 
 class DummyJavaVm(OutputCapturingJavaVm):
     """
-    Dummy VM to work around: "pylint #111138 disabling R0921 does'nt work"
+    Dummy VM to work around: "pylint #111138 disabling R0921 doesn't work"
     https://www.logilab.org/ticket/111138
 
     Note that the warning R0921 (abstract-class-little-used) has been removed
@@ -1749,6 +1749,9 @@ class DummyJavaVm(OutputCapturingJavaVm):
     """
 
 def add_java_vm(javavm, suite=None, priority=0):
+    """
+    Registers a JavaVm.  Higher numbers represent a higher priority.
+    """
     java_vm_registry.add_vm(javavm, suite, priority)
 
 
