@@ -152,9 +152,9 @@ mx_fetchjdk_test = {
     FETCH_JDK_TEST_FOLDER: "fetch-jdk-test-folder/",
   },
   run: [
-    ['./mx', 'fetch-jdk', '--java-distribution', 'labsjdk-ce-11', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-11'],
+    ['./mx', 'fetch-jdk', '--jdk-id', 'labsjdk-ce-11', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-11'],
     ['./$FETCH_JDK_TEST_FOLDER/jdk-11/bin/java', '-version'],
-    ['./mx', 'fetch-jdk', '--java-distribution', 'openjdk8', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-8'],
+    ['./mx', 'fetch-jdk', '--jdk-id', 'openjdk8', '--to', '$FETCH_JDK_TEST_FOLDER', '--alias', 'jdk-8'],
     ['./$FETCH_JDK_TEST_FOLDER/jdk-8/bin/java', '-version'],
   ],
   teardown: [
@@ -180,7 +180,7 @@ mx_bisect_test = {
   # Overlay
   java8: oraclejdk_jvmci,
   java11: jdks['labsjdk-ee-11'],
-  overlay: 'd136a8a8b0820954ada5a53cf6f1413c825128fb',
+  overlay: '039ce621b3bea26974d1a7f85c8ef2d4623ad38c',
 
   builds: [
     gate_unix +    {capabilities: ['linux', 'amd64'],   name: "gate-linux-amd64-python2"} + python2,

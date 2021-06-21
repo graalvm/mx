@@ -1,0 +1,30 @@
+ {
+    "jdk-binaries": {
+	    "openjdk8": {
+	        "filename": "openjdk-{version}-{platform}",
+	        "url": "https://github.com/graalvm/graal-jvmci-8/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    },
+	    "openjdk8:-fastdebug": {
+	        "filename": "openjdk-{version}-fastdebug-{platform}",
+	        "url": "https://github.com/graalvm/graal-jvmci-8/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    },
+	
+	    "labsjdk-ce-11": {
+	        "filename": "labsjdk-{version}-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-11/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    },
+	    "labsjdk-ce-11:-debug": {
+	        "filename": "labsjdk-{version}-debug-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-11/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    },
+	
+	    "labsjdk-ce-16": {
+	        "filename": "labsjdk-{version}-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-16/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    },
+	    "labsjdk-ce-16:-debug": {
+	        "filename": "labsjdk-{version}-debug-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-16/releases/download/jvmci-{version|jvmci}/{filename}.tar.gz"
+	    }
+	}
+}
