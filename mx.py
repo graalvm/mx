@@ -807,7 +807,7 @@ def suite_context_free(func):
 
 # Names of commands that don't need a primary suite but will use one if it can be found.
 # This cannot be used outside of mx because of implementation restrictions
-_optional_suite_context = ['help', 'paths']
+_optional_suite_context = ['help', 'paths', 'fetch-jdk']
 
 
 def optional_suite_context(func):
