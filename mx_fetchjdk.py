@@ -26,7 +26,7 @@
 #
 from __future__ import print_function
 import os, shutil, json, re
-from os.path import join, exists, abspath, dirname
+from os.path import join, exists, abspath, dirname, isdir
 from argparse import ArgumentParser
 
 from mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
@@ -133,12 +133,22 @@ def fetch_jdk(args):
 def _find_file(start, filename):
     """
     Searches up the directory hierarchy starting at `start` for a file named `filename`
-    and returns the first one found or None if no match is found.
+    and returns the first one found or None if no match is found. If a git or hg repo
+    directory is encountered in the search, its siblings are also probed for `filename`.
     """
     probe_dir = start
     path = join(probe_dir, filename)
     while not exists(path):
-        next_probe_dir = dirname(probe_dir)
+        probe_dir_parent = dirname(probe_dir)
+
+        # Look in sibling git or hg directories
+        if isdir(join(probe_dir, '.git')) or isdir(join(probe_dir, '.hg')):
+            for e in os.listdir(probe_dir_parent):
+                path = join(probe_dir_parent, e, filename)
+                if exists(path):
+                    return path
+
+        next_probe_dir = probe_dir_parent
         if not next_probe_dir or next_probe_dir == probe_dir:
             break
         probe_dir = next_probe_dir
