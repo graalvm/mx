@@ -793,9 +793,16 @@ def _command_function_names(func):
     """
     Generates list of guesses for command name based on its function name
     """
-    command_names = [func.__name__]
-    if '_' in func.__name__:
-        command_names.append(func.__name__.replace("_", "-"))
+    if isinstance(func, MxCommand):
+        func_name = func.command
+    else:
+        func_name = func.__name__
+    command_names = [func_name]
+    if func_name.endswith('_cli'):
+        command_names.append(func_name[0:-len('_cli')])
+    for command_name in command_names:
+        if '_' in command_name:
+            command_names.append(command_name.replace("_", "-"))
     return command_names
 
 def suite_context_free(func):
@@ -17527,7 +17534,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.301.4")  # GR-28853
+version = VersionSpec("5.301.5")  # GR-28853_2
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
