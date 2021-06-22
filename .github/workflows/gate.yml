@@ -23,8 +23,11 @@ jobs:
       - uses: actions/setup-java@v1
         with:
             java-version: 8
-      - run: pip install pylint==2.4
-      - run: pip install autopep8==1.5.4
+      - name: Style dependencies
+        run: |
+          cat common.json |
+            jq -r '.deps.common.packages | to_entries[] | select(.key | startswith("pip:")) | (.key | split(":")[1]) + .value' |
+            xargs pip install
       - run: pylint --version
       - name: Download and set up dependencies
         run: |

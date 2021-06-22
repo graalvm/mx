@@ -31,12 +31,13 @@ mx is a command line tool for managing the development of Java code organized as
 from __future__ import print_function
 
 import os
+import shutil
 import zipfile
 import time
 import re
 import pickle
 
-from os.path import join, exists, basename, dirname
+from os.path import join, exists, basename, dirname, isdir, islink
 from argparse import ArgumentTypeError
 from stat import S_IMODE
 
@@ -225,24 +226,48 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         :param archiveparticipant: an object for which the following methods, if defined, will be called by `make_archive`:
 
             __opened__(arc, srcArc, services)
-                Called when archiving starts. The `arc` and `srcArc` Archiver objects are for writing to the
-                binary and source jars for the distribution. The `services` dict is for collating the files
-                that will be written to ``META-INF/services`` in the binary jar. It is a map from service names
-                to a list of providers for the named service. If services should be versioned, an integer can be used
-                as a key and the value is a map from service names to a list of providers for this version.
+                Called when archiving starts. The `arc` and `srcArc` values are objects that have a `path` field
+                which is the path of the binary and source jars respectively for the distribution. The `services`
+                dict is for collating the files that will be written to ``META-INF/services`` in the binary jar.
+                It is a map from service names to a list of providers for the named service. If services should
+                be versioned, an integer can be used as a key instead and the value is a map from service names to a list
+                of providers for the version denoted by the integer.
+
+            __process__(arcname, contents_supplier, is_source)
+                Notifies of an entry destined for the binary (`is_source` is False) or source archive (`is_source` is True).
+                Returns True if this object consumes the contents supplied by `contents_supplier`,
+                False if the caller should add the contents to the relevant archive.
+
+            # Deprecated: Define __process__ instead
             __add__(arcname, contents)
-                Submits an entry for addition to the binary archive (via the `zf` ZipFile field of the `arc` object).
-                Returns True if this object claims responsibility for adding/eliding `contents` to/from the archive,
-                False otherwise (i.e., the caller must take responsibility for the entry).
+                Notifies of an entry that is about to be added to the binary archive.
+                Returns True if this object consumes `contents`,
+                False if the caller should add `contents` to the binary archive.
+
+            # Deprecated: Define __process__ instead
             __addsrc__(arcname, contents)
-                Same as `__add__` except that it targets the source archive.
+                Notifies of an entry that is about to be added to the source archive.
+                Returns True if this object consumes `contents`,
+                False if the caller should add `contents` to the source archive.
+
             __closing__()
-                Called just before the `services` are written to the binary archive and both archives are
-                written to their underlying files.
+                Called just before the `services` are written to the binary archive and both archives are finalized.
+                If the archive participant wants to add extra entries to the archive, it returns a 2-tuple
+                with each value being a dict of (arcname, contents) describing the extra entries.
         """
+        ap_type = archiveparticipant.__class__.__name__
+        if ap_type == 'FastRArchiveParticipant':
+            # This archive participant deletes directories that are assumed
+            # to have been already added to fastr-release.jar. It is removed
+            # in FastR by GR-30568 but this workaround allows mx to keep working
+            # with older versions.
+            mx.warn('Ignoring registration of {} object for {}'.format(ap_type, self))
+            return
+
         if archiveparticipant not in self.archiveparticipants:
             if not hasattr(archiveparticipant, '__opened__'):
                 mx.abort(str(archiveparticipant) + ' must define __opened__')
+            _patch_archiveparticipant(archiveparticipant.__class__)
             self.archiveparticipants.append(archiveparticipant)
         else:
             mx.warn('registering archive participant ' + str(archiveparticipant) + ' for ' + str(self) + ' twice')
@@ -280,346 +305,21 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         # are sources combined into main archive?
         unified = self.original_path() == self.sourcesPath
-        snippetsPattern = None
-        if hasattr(self.suite, 'snippetsPattern'):
-            snippetsPattern = re.compile(self.suite.snippetsPattern)
+        exploded = self._is_exploded()
 
-        versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
+        bin_archive = _Archive(self, self.original_path(), exploded)
+        src_archive = _Archive(self, self.sourcesPath, exploded) if not unified else bin_archive
 
-        services = {}
-        manifestEntries = self.manifestEntries.copy()
-        with mx.Archiver(self.original_path()) as arc:
-            with mx.Archiver(None if unified else self.sourcesPath, compress=True) as srcArcRaw:
-                srcArc = arc if unified else srcArcRaw
+        bin_archive.clean()
+        src_archive.clean()
 
-                for a in self.archiveparticipants:
-                    a.__opened__(arc, srcArc, services)
-
-                def participants__add__(arcname, contents, addsrc=False):
-                    """
-                    Calls the __add__ or __addsrc__ method on `self.archiveparticipants`, ensuring at most one participant claims
-                    responsibility for adding/omitting `contents` under the name `arcname` to/from the archive.
-
-                    :param str arcname: name in archive for `contents`
-                    :params str contents: byte array to write to the archive under `arcname`
-                    :return: True if a participant claimed responsibility, False otherwise
-                    """
-                    claimer = None
-                    for a in self.archiveparticipants:
-                        method = getattr(a, '__add__' if not addsrc else '__addsrc__', None)
-                        if method:
-                            if method(arcname, contents):
-                                if claimer:
-                                    mx.abort('Archive participant ' + str(a) + ' cannot claim responsibility for ' + arcname + ' in ' +
-                                          arc.path + ' as it was already claimed by ' + str(claimer))
-                                claimer = a
-                    return claimer is not None
-
-                class ArchiveWriteGuard:
-                    """
-                    A scope for adding an entry to an archive. The addition should only be performed
-                    if the scope object is not None when entered:
-                    ```
-                    with ArchiveWriteGuard(...) as guard:
-                        if guard: <add entry to archive
-                    ```
-                    """
-                    def __init__(self, path, zf, arcname, source, source_zf=None):
-                        self.path = path
-                        self.zf = zf
-                        self.source_zf = source_zf
-                        self.arcname = arcname
-                        self.source = source
-                        self._can_write = False
-
-                    def __enter__(self):
-                        arcname = self.arcname
-                        source = self.source
-                        if os.path.basename(arcname).startswith('.'):
-                            mx.logv('Excluding dotfile: ' + source)
-                            return None
-                        elif arcname == "META-INF/MANIFEST.MF":
-                            if self.source_zf:
-                                # Do not inherit the manifest from other jars
-                                mx.logv('Excluding META-INF/MANIFEST.MF from ' + source)
-                                return None
-                        if not hasattr(self.zf, '_provenance'):
-                            self.zf._provenance = {}
-                        existingSource = self.zf._provenance.get(arcname, None)
-                        if existingSource and existingSource != source:
-                            if arcname[-1] not in (os.path.sep, '/'):
-                                if self.source_zf and self.source_zf.read(arcname) == self.zf.read(arcname):
-                                    mx.logv(self.path + ': file ' + arcname + ' is already present\n  new: ' + source + '\n  old: ' + existingSource)
-                                else:
-                                    mx.warn(self.path + ': avoid overwrite of ' + arcname + '\n  new: ' + source + '\n  old: ' + existingSource)
-                            return None
-                        self._can_write = True
-                        return self
-
-                    def __exit__(self, exc_type, exc_value, traceback):
-                        if self._can_write:
-                            if self.arcname in self.zf.namelist():
-                                self.zf._provenance[self.arcname] = self.source
-
-                def addFromJAR(jarPath):
-                    with zipfile.ZipFile(jarPath, 'r') as source_zf:
-                        for info in source_zf.infolist():
-                            arcname = info.filename
-                            if arcname == 'module-info.class':
-                                mx.logv(jarPath + ' contains ' + arcname + '. It will not be included in ' + arc.path)
-                            elif arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
-                                service = arcname[len('META-INF/services/'):]
-                                assert '/' not in service
-                                services.setdefault(service, []).extend(mx._decode(source_zf.read(arcname)).splitlines())
-                            else:
-                                with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, jarPath + '!' + arcname, source_zf=source_zf) as guard:
-                                    if guard:
-                                        contents = source_zf.read(arcname)
-                                        if not participants__add__(arcname, contents):
-                                            if versioned_meta_inf_re.match(arcname):
-                                                mx.warn("META-INF resources can not be versioned ({} from {}). The resulting JAR will be invalid.".format(arcname, jarPath))
-                                            # The JDK's ZipInputStream will fail to read files with a data descriptor written by python's zipfile
-                                            info.flag_bits &= ~0x08
-                                            arc.zf.writestr(info, contents)
-
-                def addFile(outputDir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
-                    arcname = join(archivePrefix, relpath).replace(os.sep, '/')
-                    assert arcname[-1] != '/'
-                    if arcnameCheck is not None and not arcnameCheck(arcname):
-                        return
-                    if relpath.startswith(join('META-INF', 'services')):
-                        if includeServices:
-                            service = basename(relpath)
-                            assert dirname(relpath) == join('META-INF', 'services')
-                            m = versioned_meta_inf_re.match(arcname)
-                            if m:
-                                service_version = int(m.group(1))
-                                services_dict = services.setdefault(service_version, {})
-                            else:
-                                services_dict = services
-                            with mx.open(join(outputDir, relpath), 'r') as fp:
-                                services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
-                    else:
-                        if snippetsPattern and snippetsPattern.match(relpath):
-                            return
-                        source = join(outputDir, relpath)
-                        with ArchiveWriteGuard(self.original_path(), arc.zf, arcname, source) as guard:
-                            if guard:
-                                with mx.open(source, 'rb') as fp:
-                                    contents = fp.read()
-                                if not participants__add__(arcname, contents):
-                                    if versioned_meta_inf_re.match(arcname):
-                                        mx.warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(source))
-                                    info = zipfile.ZipInfo(arcname, time.localtime(mx.getmtime(source))[:6])
-                                    info.compress_type = arc.zf.compression
-                                    info.external_attr = S_IMODE(mx.stat(source).st_mode) << 16
-                                    arc.zf.writestr(info, contents)
-
-                def addSrcFromDir(srcDir, archivePrefix='', arcnameCheck=None):
-                    for root, _, files in os.walk(srcDir):
-                        relpath = root[len(srcDir) + 1:]
-                        for f in files:
-                            if f.endswith('.java'):
-                                arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
-                                if arcnameCheck is None or arcnameCheck(arcname):
-                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, join(root, f)) as guard:
-                                        if guard:
-                                            with mx.open(join(root, f), 'rb') as fp:
-                                                contents = fp.read()
-                                            if not participants__add__(arcname, contents, addsrc=True):
-                                                info = zipfile.ZipInfo(arcname, time.localtime(mx.getmtime(join(root, f)))[:6])
-                                                info.compress_type = srcArc.zf.compression
-                                                info.external_attr = S_IMODE(mx.stat(join(root, f)).st_mode) << 16
-                                                srcArc.zf.writestr(info, contents)
-
-                if self.mainClass:
-                    if 'Main-Class' in manifestEntries:
-                        mx.abort("Main-Class is defined both as the 'mainClass': '" + self.mainClass + "' argument and in 'manifestEntries' as "
-                              + manifestEntries['Main-Class'] + " of the " + self.name + " distribution. There should be only one definition.")
-                    manifestEntries['Main-Class'] = self.mainClass
-
-                # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
-                # as the overlay classes must be added to the jar instead of the overlayed classes. Overlays for
-                # JDK 9 or later use the multi-release jar layout.
-                head = [d for d in self.archived_deps() if d.isJavaProject() and d.javaCompliance.value < 9 and hasattr(d, 'overlayTarget')]
-                tail = [d for d in self.archived_deps() if d not in head]
-
-                # Map from JDK 8 or earlier overlays to the projects that define them
-                overlays = {}
-
-                for dep in head + tail:
-                    if hasattr(dep, "doNotArchive") and dep.doNotArchive:
-                        mx.logv('[' + self.original_path() + ': ignoring project ' + dep.name + ']')
-                        continue
-                    if self.theLicense is not None and set(self.theLicense or []) < set(dep.theLicense or []):
-                        if dep.suite.getMxCompatibility().supportsLicenses() and self.suite.getMxCompatibility().supportsLicenses():
-                            report = mx.abort
-                        else:
-                            report = mx.warn
-                        depLicense = [l.name for l in dep.theLicense] if dep.theLicense else ['??']
-                        selfLicense = [l.name for l in self.theLicense] if self.theLicense else ['??']
-                        report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(self.name, ', '.join(selfLicense), dep.name, ', '.join(depLicense)))
-                    if dep.isLibrary() or dep.isJARDistribution():
-                        if dep.isLibrary():
-                            l = dep
-                            # optional libraries and their dependents should already have been removed
-                            assert not l.optional or l.is_available()
-                            # merge library jar into distribution jar
-                            mx.logv('[' + self.original_path() + ': adding library ' + l.name + ']')
-                            jarPath = l.get_path(resolve=True)
-                            jarSourcePath = l.get_source_path(resolve=True)
-                        elif dep.isJARDistribution():
-                            mx.logv('[' + self.original_path() + ': adding distribution ' + dep.name + ']')
-                            jarPath = dep.path
-                            jarSourcePath = dep.sourcesPath
-                        else:
-                            raise mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
-                        if jarPath:
-                            addFromJAR(jarPath)
-                        if srcArc.zf and jarSourcePath:
-                            with zipfile.ZipFile(jarSourcePath, 'r') as source_zf:
-                                for arcname in source_zf.namelist():
-                                    with ArchiveWriteGuard(self.original_path(), srcArc.zf, arcname, jarPath + '!' + arcname, source_zf=source_zf) as guard:
-                                        if guard:
-                                            contents = source_zf.read(arcname)
-                                            if not participants__add__(arcname, contents, addsrc=True):
-                                                srcArc.zf.writestr(arcname, contents)
-                    elif dep.isMavenProject():
-                        mx.logv('[' + self.original_path() + ': adding jar from Maven project ' + dep.name + ']')
-                        addFromJAR(dep.classpath_repr())
-                        for srcDir in dep.source_dirs():
-                            addSrcFromDir(srcDir)
-                    elif dep.isJavaProject():
-                        p = dep
-                        javaCompliance = self.maxJavaCompliance()
-                        if javaCompliance:
-                            if p.javaCompliance > javaCompliance:
-                                mx.abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(self.name, javaCompliance, p.name, p.javaCompliance), context=self)
-
-                        mx.logv('[' + self.original_path() + ': adding project ' + p.name + ']')
-                        outputDir = p.output_dir()
-
-                        archivePrefix = p.archive_prefix() if hasattr(p, 'archive_prefix') else ''
-                        mrjVersion = getattr(p, 'multiReleaseJarVersion', None)
-                        is_overlay = False
-                        if mrjVersion is not None:
-                            if p.javaCompliance.value < 9:
-                                mx.abort('Project with "multiReleaseJarVersion" attribute must have javaCompliance >= 9', context=p)
-                            if archivePrefix:
-                                mx.abort("Project cannot have a 'multiReleaseJarVersion' attribute if it has an 'archivePrefix' attribute", context=p)
-                            try:
-                                mrjVersion = mx._parse_multireleasejar_version(mrjVersion)
-                            except ArgumentTypeError as e:
-                                mx.abort(str(e), context=p)
-                            archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
-                            manifestEntries['Multi-Release'] = 'true'
-                        elif hasattr(p, 'overlayTarget'):
-                            if p.javaCompliance.value > 8:
-                                if p.suite.getMxCompatibility().automatic_overlay_distribution_deps:
-                                    mx.abort('Project with an "overlayTarget" attribute and javaCompliance >= 9 must also have a "multiReleaseJarVersion" attribute', context=p)
-                                mx.abort('Project with an "overlayTarget" attribute must have javaCompliance < 9', context=p)
-                            is_overlay = True
-                            if archivePrefix:
-                                mx.abort("Project cannot have a 'overlayTarget' attribute if it has an 'archivePrefix' attribute", context=p)
-
-                        def overlay_check(arcname):
-                            if is_overlay:
-                                if arcname in overlays:
-                                    mx.abort('Overlay for {} is defined by more than one project: {} and {}'.format(arcname, p, overlays[arcname]))
-                                overlays[arcname] = p
-                                return True
-                            else:
-                                return arcname not in overlays
-
-                        def addClasses(archivePrefix, includeServices):
-                            for root, _, files in os.walk(outputDir):
-                                reldir = root[len(outputDir) + 1:]
-                                for f in files:
-                                    relpath = join(reldir, f)
-                                    addFile(outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
-
-                        addClasses(archivePrefix, includeServices=True)
-                        if srcArc.zf:
-                            sourceDirs = p.source_dirs()
-                            if p.source_gen_dir():
-                                sourceDirs.append(p.source_gen_dir())
-                            for srcDir in sourceDirs:
-                                addSrcFromDir(srcDir, archivePrefix, arcnameCheck=overlay_check)
-
-                        if p.javaCompliance.value <= 8:
-                            for ver in p.javaCompliance._values():
-                                if ver > 8:
-                                    # Make a multi-release-jar versioned copy of the class files
-                                    # if compliance includes 8 or less and a version higher than 8.
-                                    # Anything below that version will pick up the class files in the
-                                    # root directory of the jar.
-                                    if mx.get_jdk(str(mx.JavaCompliance(ver)), cancel='probing'):
-                                        archivePrefix = 'META-INF/versions/{}/'.format(ver)
-                                        addClasses(archivePrefix, includeServices=False)
-                                    break
-
-                    elif dep.isArchivableProject():
-                        mx.logv('[' + self.original_path() + ': adding archivable project ' + dep.name + ']')
-                        archivePrefix = dep.archive_prefix()
-                        outputDir = dep.output_dir()
-                        for f in dep.getResults():
-                            relpath = dep.get_relpath(f, outputDir)
-                            addFile(outputDir, relpath, archivePrefix)
-                    elif dep.isClasspathDependency():
-                        mx.logv('[' + self.original_path() + ': adding classpath ' + dep.name + ']')
-                        jarPath = dep.classpath_repr(resolve=True)
-                        addFromJAR(jarPath)
-                    else:
-                        mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
-
-                if len(manifestEntries) != 0:
-                    if 'Manifest-Version' not in manifestEntries:
-                        manifest = 'Manifest-Version: 1.0' + '\n'
-                    else:
-                        manifest = 'Manifest-Version: ' + manifestEntries['Manifest-Version'] + '\n'
-                        manifestEntries.pop('Manifest-Version')
-
-                    for manifestKey, manifestValue in manifestEntries.items():
-                        manifest = manifest + manifestKey + ': ' + manifestValue + '\n'
-
-                    arc.zf.writestr("META-INF/MANIFEST.MF", manifest)
-                for a in self.archiveparticipants:
-                    if hasattr(a, '__closing__'):
-                        a.__closing__()
-
-                # accumulate services
-                services_versions = sorted([v for v in services if isinstance(v, int)])
-                if services_versions:
-                    acummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, str)}
-                    for v in services_versions:
-                        for service, providers in services[v].items():
-                            providers_set = frozenset(providers)
-                            accumulated_providers = acummulated_services.setdefault(service, set())
-                            missing = accumulated_providers - providers_set
-                            accumulated_providers.update(providers_set)
-                            if missing:
-                                mx.warn("Adding {} for {} at version {}".format(missing, service, v))
-                                services[v][service] = frozenset(accumulated_providers)
-
-                def add_service_providers(service, providers, archive_prefix=''):
-                    arcname = archive_prefix + 'META-INF/services/' + service
-                    # Convert providers to a set before printing to remove duplicates
-                    arc.zf.writestr(arcname, '\n'.join(frozenset(providers)) + '\n')
-
-                for service_or_version, providers in services.items():
-                    if isinstance(service_or_version, int):
-                        services_version = service_or_version
-                        for service, providers_ in providers.items():
-                            add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
-                    else:
-                        add_service_providers(service_or_version, providers)
+        stager = _ArchiveStager(bin_archive, src_archive, exploded)
 
         self.notify_updated()
-
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
             jdk = mx.get_jdk(compliance)
-            jmd = mx.make_java_module(self, jdk, javac_daemon)
+            jmd = mx.make_java_module(self, jdk, stager.bin_archive, javac_daemon=javac_daemon)
             if jmd:
                 setattr(self, '.javaModule', jmd)
                 dependency_file = self._jmod_build_jdk_dependency_file()
@@ -628,6 +328,26 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         if self.is_stripped():
             self.strip_jar()
+
+    # See https://docs.oracle.com/en/java/javase/16/docs/api/java.instrument/java/lang/instrument/package-summary.html
+    _javaagent_manifest_attributes = ('Premain-Class', 'Agent-Class')
+
+    def _can_be_exploded(self):
+        """
+        Determines if `self` can have its artifact be a directory instead of a jar.
+        This is true if `self` does not:
+         - Define an annotation processor. Eclipse only supports annotation processors packaged as jars.
+         - Define an Java agent since Java agents can only be deployed as jars.
+        """
+        if 'Premain-Class' in self.manifestEntries or 'Agent-Class' in self.manifestEntries or self.definedAnnotationProcessors:
+            return False
+        return True
+
+    def _is_exploded(self):
+        """
+        Determines if the result of `self.make_archive` is (or would be) a directory instead of a jar.
+        """
+        return self._can_be_exploded() and _use_exploded_build()
 
     _strip_map_file_suffix = '.map'
     _strip_cfg_deps_file_suffix = '.conf.d'
@@ -859,6 +579,13 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
                 return res
         if self.suite.isBinarySuite():
             return None
+
+        if exists(self.path):
+            # Re-build if switching to/from exploded builds
+            if _use_exploded_build() != isdir(self.path):
+                if self._can_be_exploded():
+                    return 'MX_BUILD_EXPLODED value has changed'
+
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
             info = mx.get_java_module_info(self)
@@ -899,3 +626,770 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
     def get_declaring_module_name(self):
         return mx.get_module_name(self)
+
+class _StagingGuard:
+    """
+    A context manager implementing a predicate for whether a file should be staged.
+    The staging should only be performed if the context manager does not return None when entered:
+    ```
+    with _StagingGuard(entry) as guard:
+        if guard:
+            <stage_file>
+    ```
+    """
+    def __init__(self, entry):
+        self.entry = entry
+        self.entries = entry.archive.entries
+        self._can_write = False
+
+    def __enter__(self):
+        arcname = self.entry.name
+        origin = self.entry.origin
+        if os.path.basename(arcname).startswith('.'):
+            mx.logv('Excluding dotfile: ' + origin)
+            return None
+        elif arcname == "META-INF/MANIFEST.MF":
+            if self.entry.origin_is_archive:
+                # Do not inherit the manifest from other jars
+                mx.logv('Excluding META-INF/MANIFEST.MF from ' + origin)
+                return None
+        existing_entry = self.entries.get(arcname, None)
+        if existing_entry and existing_entry.origin != origin:
+            entry = existing_entry.resolve_origin_conflict(self.entry)
+            if entry is None:
+                return
+            if entry is existing_entry:
+                mx.warn('{}: skipping update of {}\n     using: {}\n  ignoring: {}'.format(self.entry.archive.path, arcname, existing_entry.origin, origin))
+                return None
+            else:
+                mx.logv('{}: replacing contents of {}\n  replacing: {}\n       with: {}'.format(self.entry.archive.path, arcname, existing_entry.origin, origin))
+        self._can_write = True
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._can_write:
+            if exists(self.entry.staged):
+                self.entries[self.entry.name] = self.entry
+
+class _ArchiveStager(object):
+    """
+    Object used to create and populate the staging directory for a distribution's archive(s).
+    """
+
+    # Pattern for a versioned META-INF directory
+    versioned_meta_inf_re = re.compile(r'META-INF/versions/([1-9][0-9]*)/META-INF/')
+
+    def __init__(self, bin_archive, src_archive, exploded):
+        """
+        :param JARDistribution dist: the distribution whose archive contents are being staged
+        :param _Archive bin_archive: the distribution's binary archive
+        :param _Archive src_archive: the distribution's source archive
+        """
+        self.dist = bin_archive.dist
+        self.bin_archive = bin_archive
+        self.src_archive = src_archive
+        self.exploded = exploded
+
+        self.services = {}
+        self.manifest = self.dist.manifestEntries.copy()
+
+        self.snippetsPattern = None
+        if hasattr(self.dist.suite, 'snippetsPattern'):
+            self.snippetsPattern = re.compile(self.dist.suite.snippetsPattern)
+
+        # Map from overlays to the projects that define them
+        self.overlays = {}
+        self.stage_archive()
+
+    def stage_archive(self):
+        """
+        Creates and populates the archive staging directories.
+        For efficiency, symbolic links are used where possible.
+        """
+
+        dist = self.dist
+
+        for a in dist.archiveparticipants:
+            a.__opened__(self.bin_archive, self.src_archive, self.services)
+
+        # Overlay projects whose JDK version is less than 9 must be processed before the overlayed projects
+        # as the overlay classes must be added to the jar instead of the overlayed classes. Overlays for
+        # JDK 9 or later use the multi-release jar layout.
+        head = [d for d in dist.archived_deps() if d.isJavaProject() and (self.exploded or d.javaCompliance.value < 9) and hasattr(d, 'overlayTarget')]
+        tail = [d for d in dist.archived_deps() if d not in head]
+
+        mainClass = dist.mainClass
+        if mainClass:
+            if 'Main-Class' in self.manifest:
+                mx.abort("Main-Class is defined both as the 'mainClass': '" + mainClass + "' argument and in 'manifestEntries' as "
+                        + self.manifest['Main-Class'] + " of the " + dist.name + " distribution. There should be only one definition.")
+            self.manifest['Main-Class'] = mainClass
+
+        for dep in head + tail:
+            self.stage_dep(dep)
+
+        for a in dist.archiveparticipants:
+            self.close_archiveparticipant(a)
+
+        _accumulate_services(self.services)
+
+        for service_or_version, providers in self.services.items():
+            if isinstance(service_or_version, int):
+                services_version = service_or_version
+                for service, providers_ in sorted(providers.items()):
+                    self.add_service_providers(service, providers_, 'META-INF/_versions/' + str(services_version) + '/')
+            else:
+                self.add_service_providers(service_or_version, providers)
+
+        self.bin_archive.finalize_archive_or_directory(self.manifest, zipfile.ZIP_STORED)
+        if self.bin_archive is not self.src_archive:
+            self.src_archive.finalize_archive_or_directory(None, zipfile.ZIP_DEFLATED)
+
+    def close_archiveparticipant(self, a):
+        """
+        Closes the archive participant `a` just prior to finalizing the archive (see `_Archive.finalize_archive_or_directory`).
+        """
+        closing = getattr(a, '__closing__', None)
+        if closing is not None:
+            extra = a.__closing__()
+            if extra:
+                try:
+                    bin_archive_extra, src_archive_extra = extra
+                except (TypeError, ValueError) as e:
+                    mx.abort('Value returned by __closing__ ({}) must be None or a 2-tuple: {}'.format(_source_pos(closing), e))
+
+                def stage_extra(extra, archive):
+                    if extra is None:
+                        return
+                    if not isinstance(extra, dict):
+                        index = 0 if extra is bin_archive_extra else 1
+                        mx.abort('Type of value {} in tuple returned by __closing__ ({}) must be None or a dict, not {}'.format(index, _source_pos(closing), extra.__class__.__name__))
+                    for arcname, content in extra.items():
+                        self.add_contents(archive, arcname, content)
+
+                stage_extra(bin_archive_extra, self.bin_archive)
+                stage_extra(src_archive_extra, self.src_archive)
+
+    def add_service_providers(self, service, providers, archive_prefix=''):
+        arcname = archive_prefix + 'META-INF/services/' + service
+        # Convert providers to a set before printing to remove duplicates
+        contents = '\n'.join(sorted(frozenset(providers))) + '\n'
+        self.add_contents(self.bin_archive, arcname, contents)
+
+    def add_contents(self, archive, arcname, contents):
+        """
+        Creates a file at `arcname` under `archive.staging_dir` with the data in `contents`
+        and adds an entry to `archive.entries`.
+        """
+        origin = _FileContentsSupplier(join(archive.staging_dir, arcname))
+        entry = _ArchiveEntry(None, arcname, archive, origin)
+        staged = entry.staged
+        mx.ensure_dir_exists(dirname(staged))
+        if callable(contents):
+            contents = contents()
+        with open(staged, 'w' if isinstance(contents, str) else 'wb') as fp:
+            assert arcname not in archive.entries, (arcname, archive.path)
+            fp.write(contents)
+        archive.entries[arcname] = entry
+
+    def add_jar(self, dep, jar_path, is_sources_jar=False):
+        """
+        Adds the contents of `jar_path` to the relevant staging directory.
+
+        :param Dependency dep: the Dependency owning the jar file
+        :param str jar_path: path to the jar file to be extracted
+        :param is_sources_jar: False if the contents are to be extracted to the primary staging directory,
+                            True if they should be extracted to the sources staging directory
+        """
+        jar_timestamp = mx.TimeStampFile(jar_path)
+        with zipfile.ZipFile(jar_path, 'r') as zf:
+            for arcname in zf.namelist():
+                if arcname.endswith('/'):
+                    continue
+                if not is_sources_jar and arcname == 'module-info.class':
+                    mx.logv(jar_path + ' contains ' + arcname + '. It will not be included in ' + self.bin_archive.path)
+                elif not is_sources_jar and arcname.startswith('META-INF/services/') and not arcname == 'META-INF/services/':
+                    service = arcname[len('META-INF/services/'):]
+                    assert '/' not in service
+                    self.services.setdefault(service, []).extend(mx._decode(zf.read(arcname)).splitlines())
+                else:
+                    entry = _ArchiveEntry(dep, arcname, self.src_archive if is_sources_jar else self.bin_archive, jar_path + '!' + arcname)
+                    with _StagingGuard(entry) as guard:
+                        if guard:
+                            staged = entry.staged
+                            if not exists(staged) or jar_timestamp.isNewerThan(staged):
+                                zf.extract(arcname, entry.archive.staging_dir)
+                            contents = _FileContentsSupplier(staged)
+                            if not _process_archiveparticipants(self.dist, entry.archive, arcname, contents.get, staged, is_source=is_sources_jar):
+                                if self.versioned_meta_inf_re.match(arcname):
+                                    mx.warn("META-INF resources can not be versioned ({} from {}). The resulting JAR will be invalid.".format(arcname, jar_path))
+
+    def add_file(self, dep, base_dir, relpath, archivePrefix, arcnameCheck=None, includeServices=False):
+        """
+        Adds the contents of the file `base_dir`/`relpath` to `self.bin_archive.staging_dir`
+        under the path formed by concatenating `archivePrefix` with `relpath`.
+
+        :param Dependency dep: the Dependency owning the file
+        """
+        filepath = join(base_dir, relpath)
+        arcname = join(archivePrefix, relpath).replace(os.sep, '/')
+        assert arcname[-1] != '/'
+        if arcnameCheck is not None and not arcnameCheck(arcname):
+            return
+        if relpath.startswith(join('META-INF', 'services')):
+            if includeServices:
+                service = basename(relpath)
+                assert dirname(relpath) == join('META-INF', 'services')
+                m = self.versioned_meta_inf_re.match(arcname)
+                if m:
+                    service_version = int(m.group(1))
+                    services_dict = self.services.setdefault(service_version, {})
+                else:
+                    services_dict = self.services
+                with mx.open(filepath, 'r') as fp:
+                    services_dict.setdefault(service, []).extend([provider.strip() for provider in fp.readlines()])
+        else:
+            if self.snippetsPattern and self.snippetsPattern.match(relpath):
+                return
+            contents = _FileContentsSupplier(filepath)
+            entry = _ArchiveEntry(dep, arcname, self.bin_archive, filepath)
+            with _StagingGuard(entry) as guard:
+                if guard:
+                    staged = entry.staged
+                    if not _process_archiveparticipants(self.dist, self.bin_archive, arcname, contents.get, staged):
+                        self.stage_file(filepath, staged)
+                        if self.versioned_meta_inf_re.match(arcname):
+                            mx.warn("META-INF resources can not be versioned ({}). The resulting JAR will be invalid.".format(filepath))
+
+    def add_java_sources(self, dep, srcDir, archivePrefix='', arcnameCheck=None):
+        """
+        Adds the contents of the Java source files under `srcDir` to the sources archive staging directory.
+
+        :param Dependency dep: the Dependency owning the Java sources
+        """
+        for root, _, files in os.walk(srcDir):
+            relpath = root[len(srcDir) + 1:]
+            for f in files:
+                if f.endswith('.java'):
+                    arcname = join(archivePrefix, relpath, f).replace(os.sep, '/')
+                    if arcnameCheck is None or arcnameCheck(arcname):
+                        contents = _FileContentsSupplier(join(root, f))
+                        entry = _ArchiveEntry(dep, arcname, self.src_archive, contents.path)
+                        with _StagingGuard(entry) as guard:
+                            staged = entry.staged
+                            if guard:
+                                if not _process_archiveparticipants(self.dist, self.src_archive, arcname, contents.get, staged, is_source=True):
+                                    self.stage_file(contents.path, staged)
+
+    def stage_file(self, src, dst):
+        """
+        Copies or symlinks `src` to `dst`.
+        """
+        mx.ensure_dir_exists(dirname(dst))
+        if not mx.can_symlink():
+            if exists(dst):
+                os.remove(dst)
+            shutil.copy(src, dst)
+        else:
+            if exists(dst):
+                if islink(dst):
+                    target = os.readlink(dst)
+                    if target == src:
+                        return
+                    if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
+                        # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                        return
+                os.remove(dst)
+            os.symlink(src, dst)
+
+    def stage_dep(self, dep):
+        """
+        Copies or symlinks the content from `dep` into the appropriate staging directories.
+        """
+        dist = self.dist
+        original_path = dist.original_path()
+
+        if hasattr(dep, "doNotArchive") and dep.doNotArchive:
+            mx.logv('[' + original_path + ': ignoring project ' + dep.name + ']')
+            return
+        if dist.theLicense is not None and set(dist.theLicense or []) < set(dep.theLicense or []):
+            if dep.suite.getMxCompatibility().supportsLicenses() and dist.suite.getMxCompatibility().supportsLicenses():
+                report = mx.abort
+            else:
+                report = mx.warn
+            depLicense = [l.name for l in dep.theLicense] if dep.theLicense else ['??']
+            selfLicense = [l.name for l in dist.theLicense] if dist.theLicense else ['??']
+            report('Incompatible licenses: distribution {} ({}) can not contain {} ({})'.format(dist, ', '.join(selfLicense), dep, ', '.join(depLicense)))
+        if dep.isLibrary() or dep.isJARDistribution():
+            if dep.isLibrary():
+                l = dep
+                # optional libraries and their dependents should already have been removed
+                assert not l.optional or l.is_available()
+                # merge library jar into distribution jar
+                mx.logv('[' + original_path + ': adding library ' + l.name + ']')
+                jarPath = l.get_path(resolve=True)
+                jarSourcePath = l.get_source_path(resolve=True)
+            elif dep.isJARDistribution():
+                mx.logv('[' + original_path + ': adding distribution ' + dep.name + ']')
+                jarPath = dep.path
+                jarSourcePath = dep.sourcesPath
+            else:
+                raise mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+            if jarPath:
+                self.add_jar(dep, jarPath)
+            if jarSourcePath:
+                self.add_jar(dep, jarSourcePath, True)
+        elif dep.isMavenProject():
+            mx.logv('[' + original_path + ': adding jar from Maven project ' + dep.name + ']')
+            self.add_jar(dep, dep.classpath_repr())
+            for srcDir in dep.source_dirs():
+                self.add_java_sources(dep, srcDir)
+        elif dep.isJavaProject():
+            p = dep
+            javaCompliance = dist.maxJavaCompliance()
+            if javaCompliance:
+                if p.javaCompliance > javaCompliance:
+                    mx.abort("Compliance level doesn't match: Distribution {0} requires {1}, but {2} is {3}.".format(dist, javaCompliance, p, p.javaCompliance), context=dist)
+
+            mx.logv('[' + original_path + ': adding project ' + p.name + ']')
+            outputDir = p.output_dir()
+
+            archivePrefix = p.archive_prefix() if hasattr(p, 'archive_prefix') else ''
+            mrjVersion = getattr(p, 'multiReleaseJarVersion', None)
+            is_overlay = False
+            if mrjVersion is not None:
+                if p.javaCompliance.value < 9:
+                    mx.abort('Project with "multiReleaseJarVersion" attribute must have javaCompliance >= 9', context=p)
+                if archivePrefix:
+                    mx.abort("Project cannot have a 'multiReleaseJarVersion' attribute if it has an 'archivePrefix' attribute", context=p)
+                if self.exploded:
+                    is_overlay = True
+                else:
+                    try:
+                        mrjVersion = mx._parse_multireleasejar_version(mrjVersion)
+                    except ArgumentTypeError as e:
+                        mx.abort(str(e), context=p)
+                    archivePrefix = 'META-INF/versions/{}/'.format(mrjVersion)
+                    self.manifest['Multi-Release'] = 'true'
+            elif hasattr(p, 'overlayTarget'):
+                if p.javaCompliance.value > 8:
+                    if p.suite.getMxCompatibility().automatic_overlay_distribution_deps:
+                        mx.abort('Project with an "overlayTarget" attribute and javaCompliance >= 9 must also have a "multiReleaseJarVersion" attribute', context=p)
+                    mx.abort('Project with an "overlayTarget" attribute must have javaCompliance < 9', context=p)
+                is_overlay = True
+                if archivePrefix:
+                    mx.abort("Project cannot have a 'overlayTarget' attribute if it has an 'archivePrefix' attribute", context=p)
+
+            def overlay_check(arcname):
+                if is_overlay:
+                    current_overlayer = self.overlays.get(arcname)
+                    if current_overlayer:
+                        if mrjVersion is None and getattr(p, 'multiReleaseJarVersion', current_overlayer) is None:
+                            mx.abort('Overlay for {} is defined by more than one project: {} and {}'.format(arcname, current_overlayer, p))
+                        else:
+                            if current_overlayer.javaCompliance.highest_specified_value() > p.javaCompliance.highest_specified_value():
+                                # Overlay from project with highest javaCompliance wins
+                                return False
+                    self.overlays[arcname] = p
+                    return True
+                else:
+                    return arcname not in self.overlays
+
+            def add_classes(archivePrefix, includeServices):
+                for root, _, files in os.walk(outputDir):
+                    reldir = root[len(outputDir) + 1:]
+                    for f in files:
+                        relpath = join(reldir, f)
+                        self.add_file(dep, outputDir, relpath, archivePrefix, arcnameCheck=overlay_check, includeServices=includeServices)
+
+            add_classes(archivePrefix, includeServices=True)
+            sourceDirs = p.source_dirs()
+            if p.source_gen_dir():
+                sourceDirs.append(p.source_gen_dir())
+            for srcDir in sourceDirs:
+                self.add_java_sources(dep, srcDir, archivePrefix, arcnameCheck=overlay_check)
+
+            if not self.exploded and p.javaCompliance.value <= 8:
+                for ver in p.javaCompliance._values():
+                    if ver > 8:
+                        # Make a multi-release-jar versioned copy of the class files
+                        # if compliance includes 8 or less and a version higher than 8.
+                        # Anything below that version will pick up the class files in the
+                        # root directory of the jar.
+                        if mx.get_jdk(str(mx.JavaCompliance(ver)), cancel='probing'):
+                            archivePrefix = 'META-INF/versions/{}/'.format(ver)
+                            add_classes(archivePrefix, includeServices=False)
+                        break
+
+        elif dep.isArchivableProject():
+            mx.logv('[' + original_path + ': adding archivable project ' + dep.name + ']')
+            archivePrefix = dep.archive_prefix()
+            outputDir = dep.output_dir()
+            for f in dep.getResults():
+                relpath = dep.get_relpath(f, outputDir)
+                self.add_file(dep, outputDir, relpath, archivePrefix)
+        elif dep.isClasspathDependency():
+            mx.logv('[' + original_path + ': adding classpath ' + dep.name + ']')
+            jarPath = dep.classpath_repr(resolve=True)
+            self.add_jar(dep, jarPath)
+        else:
+            mx.abort('Dependency not supported: {} ({})'.format(dep.name, dep.__class__.__name__))
+
+class _FileContentsSupplier(object):
+    def __init__(self, path, eager=False):
+        self.path = path
+        self.contents = None
+        if eager:
+            self.get()
+
+    def get(self):
+        if self.contents is None:
+            with open(self.path, 'rb') as fp:
+                self.contents = fp.read()
+        return self.contents
+
+def _accumulate_services(services):
+    """
+    Process `services` such that the services for version N include
+    all the services defined for all versions < N.
+
+    :param services: a dict whose keys are either str or int.
+           A str key is a service name and the value is a list of provider names.
+           An int key is a Java major version and the value is itself a dict from
+           service name to a list of service provider names.
+
+           Example:
+
+           { "Foo": [ "FooImpl" ],
+             11: { "Bar": [ "BarImpl" ] }
+             16: { "Baz": [ "BazImpl" ] }
+           }
+
+           becomes:
+
+           { "Foo": [ "FooImpl" ],
+             11: { "Foo": [ "FooImpl" ], "Bar": [ "BarImpl" ] },
+             16: { "Foo": [ "FooImpl" ], "Bar": [ "BarImpl" ], "Baz": [ "BazImpl" ] }
+           }
+    """
+    versions = sorted([v for v in services if isinstance(v, int)])
+    if versions:
+        # Initialize accumulated services with non-versioned services
+        accummulated_services = {n: set(p) for n, p in services.items() if isinstance(n, str)}
+
+        # Now accumulate and update services for each version
+        for v in versions:
+            for service, providers in services[v].items():
+                accumulated_providers = accummulated_services.setdefault(service, set())
+                accumulated_providers.update(providers)
+                services[v][service] = list(accumulated_providers)
+
+# Suffix added to a distributions archive path to create the staging directory for the archive
+_staging_dir_suffix = '.files'
+
+class _Archive(object):
+    """
+    The path to a distribution's archive and its staging directory as well as the metadata for
+    entries in the staging directory.
+    """
+    def __init__(self, dist, path, exploded):
+        self.dist = dist
+        self.path = path
+        self.exploded = exploded
+        self.staging_dir = path if exploded else mx.ensure_dir_exists(path + _staging_dir_suffix)
+        self.entries = {} # Map from archive entry names to _ArchiveEntry objects
+
+    def clean(self):
+        path = self.path
+        exploded_marker = join(self.path, '.exploded')
+        if self.exploded:
+            # Clean non-exploded staging directory if it exists
+            if exists(path + _staging_dir_suffix):
+                mx.rmtree(path + _staging_dir_suffix)
+
+            # Remove jar file if last build was not exploded
+            if not exists(exploded_marker):
+                if exists(path):
+                    os.remove(path)
+                os.mkdir(path)
+                with open(exploded_marker, 'w'):
+                    pass
+            return
+
+        # Not exploded
+        if exists(path):
+            # If last build was exploded, remove it completely
+            if exists(exploded_marker):
+                mx.rmtree(path)
+            else:
+                # Remove jar file
+                os.remove(path)
+
+    def finalize_archive_or_directory(self, manifest, compression):
+        """
+        Creates the archive in `self.path` from the files in `self.staging_dir` or, if `exploded` is True,
+        make `self.path` be equivalent to `self.staging_dir` either by symlinking or copying it.
+        """
+        self.finalize_staging_directory()
+
+        if self.exploded:
+            return
+
+        with zipfile.ZipFile(self.path, 'w', compression=compression) as zf:
+            if manifest:
+                version = manifest.pop('Manifest-Version', '1.0')
+                manifest_contents = 'Manifest-Version: ' + version + '\n'
+                for manifestKey, manifestValue in manifest.items():
+                    manifest_contents = manifest_contents + manifestKey + ': ' + manifestValue + '\n'
+                zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
+
+            for dirpath, _, filenames in os.walk(self.staging_dir):
+                for filename in filenames:
+                    if filename == self.jdk_8268216:
+                        # Do not include placeholder file
+                        continue
+                    filepath = join(dirpath, filename)
+                    arcname = filepath[len(self.staging_dir) + 1:]
+                    with open(filepath, 'rb') as fp:
+                        contents = fp.read()
+                    info = zipfile.ZipInfo(arcname, time.localtime(os.path.getmtime(filepath))[:6])
+                    info.compress_type = compression
+                    info.external_attr = S_IMODE(os.stat(filepath).st_mode) << 16
+                    zf.writestr(info, contents)
+
+    # Name of non-symlink dummy file required workaround JDK-8267583 and JDK-8268216.
+    jdk_8268216 = 'JDK_8268216'
+
+    @staticmethod
+    def create_jdk_8268216(dirpath):
+        filepath = join(dirpath, _Archive.jdk_8268216)
+        with open(filepath, 'w'):
+            pass
+        return filepath
+
+    def finalize_staging_directory(self):
+        """
+        Deletes all stale entries under `self.staging_dir` and applies workaround for JDK-8267583 and JDK-8268216.
+        These bugs force the requirement of at least one non-symlinked file in an non-empty directory.
+        """
+
+        # Maps a directory to the staged files it contains
+        staged_dir_files = {}
+
+        for entry in self.entries.values():
+            staged_dir = dirname(entry.staged)
+            staged_dir_files.setdefault(staged_dir, set()).add(basename(entry.staged))
+
+        for dirpath, dirnames, filenames in os.walk(self.staging_dir, topdown=False):
+            staged_files = staged_dir_files.get(dirpath)
+            if staged_files:
+                has_jdk_8268216 = False
+                for filename in filenames:
+                    if filename not in staged_files:
+                        if filename == self.jdk_8268216:
+                            has_jdk_8268216 = True
+                        else:
+                            os.remove(join(dirpath, filename))
+                    else:
+                        staged_files.remove(filename)
+                assert not staged_files, staged_files
+
+                if not has_jdk_8268216:
+                    self.create_jdk_8268216(dirpath)
+            elif not any((exists(join(dirpath, dirname)) for dirname in dirnames)):
+                for filename in filenames:
+                    os.remove(join(dirpath, filename))
+                os.rmdir(dirpath)
+
+    def __str__(self):
+        return self.path
+
+class _ArchiveEntry(object):
+    """
+    Describes the contents of an entry to be added to an archive.
+
+    :param Dependency dep: the Dependency providing the contents or None
+    :param str name: name of archive entry
+    :param _Archive archive: archive containing entry
+    :param str|callable origin: the file path from which the contents are read or a callable that generates the contents
+    """
+    def __init__(self, dep, name, archive, origin):
+        self.dep = dep
+        self.name = name
+        self.archive = archive
+        self.origin = origin
+        relpath = self.name if os.sep == '/' else self.name.replace('/', os.sep)
+        # absolute path to the staged contents of this entry.
+        self.staged = join(self.archive.staging_dir, relpath)
+
+    def origin_is_archive(self):
+        if callable(self.origin):
+            return False
+        if '!' in self.origin:
+            return True
+        return False
+
+    def resolve_origin_conflict(self, other):
+        """
+        Resolves a conflict between `self` and `other` which have different origins.
+
+        :return: None if the contents of `self` and `other` are equal, `self` if
+                 this entry's content takes precedence over `other`'s content,
+                 otherwise `other`
+        """
+        assert isinstance(other, _ArchiveEntry) and other.name == self.name
+
+        # Should never conflict on generated entries
+        assert not callable(self.origin), self
+        assert not callable(other.origin), other
+
+        self_is_JavaProject = self.dep.isJavaProject()
+        self_is_JARDistribution = self.dep.isJARDistribution()
+        other_is_JavaProject = other.dep.isJavaProject()
+        other_is_JARDistribution = other.dep.isJARDistribution()
+
+        if self_is_JavaProject and other_is_JavaProject:
+            # Select Java project with highest Java compliance
+            if int(self.dep.javaCompliance.highest_specified_value()) > int(other.dep.javaCompliance.highest_specified_value()):
+                return self
+            else:
+                return other
+
+        # If self includes other or vice versa, there is no conflict
+        if self_is_JavaProject and other_is_JARDistribution:
+            if self.dep in other.dep.archived_deps():
+                return None
+        elif self_is_JARDistribution and other_is_JavaProject:
+            if other.dep in self.dep.archived_deps():
+                return None
+
+        # Now try avoid reading complete contents if self and other are from zip files
+        left, right = self.origin.split('!', 1), other.origin.split('!', 1)
+        if len(left) == 2:
+            # left is a zip file entry
+            with zipfile.ZipFile(left[0]) as left_zf:
+                left_info = left_zf.getinfo(left[1])
+                if len(right) == 2:
+                    # right is also a zip file entry
+                    with zipfile.ZipFile(right[0]) as right_zf:
+                        right_info = right_zf.getinfo(right[1])
+                        # Avoid reading zip contents - the file size and CRC-32 should be
+                        # sufficient for an equality comparison
+                        if left_info.file_size == right_info.file_size and left_info.CRC == right_info.CRC:
+                            return None
+                else:
+                    # right is a normal file
+                    left = left_zf.read(left_info)
+                    with open(right, 'rb') as fp:
+                        right = fp.read()
+                        if left == right:
+                            return None
+        else:
+            # left is a normal file
+            with open(left[0], 'rb') as fp:
+                left = fp.read()
+            if len(right) == 2:
+                # right is a zip file
+                with zipfile.ZipFile(right[0]) as right_zf:
+                    right = right_zf.read(right[1])
+            else:
+                # right is a normal file
+                with open(right, 'rb') as fp:
+                    right = fp.read()
+            if left == right:
+                return None
+        return self
+
+    def __str__(self):
+        return '{}:{}, origin={}, archive={}'.format(self.dep, self.name, self.origin, self.archive)
+
+_build_exploded = None
+def _use_exploded_build():
+    """
+    Gets (and caches) the value of the MX_BUILD_EXPLODED environment variable.
+
+    If it is not "true" (i.e. not defined or defined to any other value), a distribution's archivable contents
+    will be in a jar file located at `dist.path`. If the distribution defines a module, the jar will be updated to be a
+    multi-release, modular jar and a jmod will be created that is compatible with the Java version corresponding in JAVA_HOME.
+
+    If it is "true", a distribution's archivable contents will be in a directory located at `dist.path`.
+    Since there's no support in Java for multi-release directories, there must be exactly one JDK specified
+    by JAVA_HOME and EXTRA_JAVA_HOMES. If the distribution defines a module, the directory will be updated to be
+    an exploded module compatible with the Java version corresponding in JAVA_HOME.
+
+    :return bool: True iff the MX_BUILD_EXPLODED environment variable is "true"
+    """
+    global _build_exploded
+    if _build_exploded is None:
+        if mx.get_env('MX_BUILD_EXPLODED', None) == 'true':
+            if mx._opts.strip_jars:
+                mx.abort('MX_BUILD_EXPLODED=true is incompatible with --strip-jars')
+            _build_exploded = True
+        else:
+            _build_exploded = False
+    return _build_exploded
+
+def _process_archiveparticipants(dist, archive, arcname, contents_supplier, staged, is_source=False):
+    """
+    Calls the __process__ method on `dist.archiveparticipants`, ensuring at most one participant claims
+    responsibility for adding/omitting `contents` under the name `arcname` to/from the archive.
+
+    :param str arcname: name in archive for `contents`
+    :param str contents_supplier: a callable that returns a byte array to write to the archive under `arcname`
+    :param str staged: path to file in which contents are staged. This will be deleted if it exists and a participant claims responsibility
+    :return: True if a participant claimed responsibility, False otherwise
+
+    """
+    claimer = None
+    for a in dist.archiveparticipants:
+        if a.__process__(arcname, contents_supplier, is_source):
+            if claimer:
+                mx.abort('Archive participant ' + str(a) + ' cannot claim responsibility for ' + arcname + ' in ' +
+                        archive.path + ' as it was already claimed by ' + str(claimer))
+            claimer = a
+    if claimer is None:
+        return False
+    if exists(staged):
+        os.remove(staged)
+    return True
+
+def _patch_archiveparticipant(ap_type):
+    """
+    Adds an instance method named "__process__" to `ap_type` if it does not already define one.
+    This method implements the protocol described by `JARDistribution.set_archiveparticipant`.
+    """
+    process = getattr(ap_type, '__process__', None)
+    if process is None:
+
+        def get_deprecated_method(name):
+            """
+            Gets the `name` method from `ap_type` if it exists and issue a warning about its deprecation.
+            """
+            method = getattr(ap_type, name, None)
+            if method is not None:
+                code = method.__code__
+                protocol = JARDistribution.set_archiveparticipant.__code__
+                mx.warn('The {} method at {} is deprecated. See set_archiveparticipant at {}.'.
+                        format(name, _source_pos(code), _source_pos(protocol)))
+            return method
+
+        add = get_deprecated_method('__add__')
+        addsrc = get_deprecated_method('__addsrc__')
+        if add or addsrc:
+            def process_impl(self, arcname, contents_supplier, is_source):
+                if is_source:
+                    return addsrc and addsrc(self, arcname, contents_supplier())
+                return add and add(self, arcname, contents_supplier())
+        else:
+            def process_impl(self, arcname, contents_supplier, is_source):
+                return False
+
+        ap_type.__process__ = process_impl
+
+def _source_pos(code):
+    """
+    Gets a string representing the file and source line at which `code` is declared.
+
+    :param code: an object with ``co_filename`` and ``co_firstlineno`` fields
+    """
+    return '{}:{}'.format(code.co_filename, code.co_firstlineno)

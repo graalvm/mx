@@ -30,10 +30,10 @@ gate = setup_mx + java + {
     "gcc": "==4.9.2",
   },
   downloads+: {
-    JDT: {name: 'ecj', version: "4.14.0", platformspecific: false},
     ECLIPSE: {name: 'eclipse', version: "4.14.0", platformspecific: true},
   },
   environment+: {
+    JDT: "builtin",
     # Required to keep pylint happy on Darwin
     # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
     LC_ALL: "en_US.UTF-8",

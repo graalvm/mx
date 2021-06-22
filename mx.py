@@ -495,6 +495,7 @@ class ArgParser(ArgumentParser):
 environment variables:
   JAVA_HOME             Default value for primary JDK directory. Can be overridden with --java-home option.
   EXTRA_JAVA_HOMES      Secondary JDK directories. Can be overridden with --extra-java-homes option.
+  MX_BUILD_EXPLODED     Create and use jar distributions as extracted directories.
   MX_ALT_OUTPUT_ROOT    Alternate directory for generated content. Instead of <suite>/mxbuild, generated
                         content will be placed under $MX_ALT_OUTPUT_ROOT/<suite>. A suite can override
                         this with the suite level "outputRoot" attribute in suite.py.
@@ -738,10 +739,33 @@ def warn(msg, context=None):
             msg = contextMsg + ":\n" + msg
         print(colorize('WARNING: ' + msg, color='magenta', bright=True, stream=sys.stderr), file=sys.stderr)
 
-"""
-A simple timing facility.
-"""
 class Timer():
+    """
+    A simple timing facility.
+
+    Example 1:
+
+        with Timer('phase'):
+            phase()
+
+    will emit the following as soon as `phase()` returns:
+
+        "phase took 2.45 seconds"
+
+    Example 2:
+
+        times = []
+        with Timer('phase1', times):
+            phase1()
+        with Timer('phase2', times):
+            phase2()
+
+    will not emit anything but will have leave `times` with something like:
+
+        [('phase1', 2.45), ('phase2', 1.75)]
+
+    See also _show_timestamp.
+    """
     def __init__(self, name, times=None):
         self.name = name
         self.times = times
@@ -754,6 +778,22 @@ class Timer():
             print('{} took {} seconds'.format(self.name, elapsed))
         else:
             self.times.append((self.name, elapsed))
+
+_last_timestamp = None
+
+def _show_timestamp(label):
+    """
+    Prints the current date and time followed by `label` followed by the
+    milliseconds elapsed since the last call to this method, if any.
+    """
+    global _last_timestamp
+    now = datetime.utcnow()
+    if _last_timestamp is not None:
+        duration = (now - _last_timestamp).total_seconds() * 1000
+        print('{}: {} [{:.02f} ms]'.format(now, label, duration))
+    else:
+        print('{}: {}'.format(now, label))
+    _last_timestamp = now
 
 def glob_match_any(patterns, path):
     return any((glob_match(pattern, path) for pattern in patterns))
@@ -3679,7 +3719,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     in which case it copies the cache entry.
     """
     sha1Check = sha1 and sha1 != 'NOCHECK'
-    canSymlink = canSymlink and not (is_windows() or is_cygwin())
+    canSymlink = canSymlink and can_symlink()
 
     if len(urls) == 0 and not sha1Check:
         return path
@@ -3695,7 +3735,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
 
         def _copy_or_symlink(source, link_name):
             ensure_dirname_exists(link_name)
-            if canSymlink and 'symlink' in dir(os):
+            if canSymlink:
                 logvv('Symlinking {} to {}'.format(link_name, source))
                 if os.path.lexists(link_name):
                     os.unlink(link_name)
@@ -4125,6 +4165,27 @@ def _suggest_tlsv1_error(e):
             sys.executable) +
              'This should be fixed by installing the latest 2.7 release from https://www.python.org/downloads')
 
+def _init_can_symlink():
+    if 'symlink' in dir(os):
+        try:
+            dst = '.symlink_dst.{}'.format(os.getpid())
+            while exists(dst):
+                dst = '{}.{}'.format(dst, time.time())
+            os.symlink(__file__, dst)
+            os.remove(dst)
+            return True
+        except (OSError, NotImplementedError):
+            pass
+    print('symlinking not supported')
+    return False
+
+_can_symlink = _init_can_symlink()
+
+def can_symlink():
+    """
+    Determines if ``os.symlink`` is supported on the current platform.
+    """
+    return _can_symlink
 
 def getmtime(name):
     """
@@ -5054,7 +5115,13 @@ class BuildTask(Buildable, Task):
                 self.clean(forBuild=True)
             start_time = time.time()
             self.logBuild(reason)
-            _built = self.build()
+            try:
+                _built = self.build()
+            except:
+                if self.args.parallelize:
+                    # In concurrent builds, this helps identify on the console which build failed
+                    log(self._timestamp() + "{}: Failed due to error: {}".format(self, sys.exc_info()[1]))
+                raise
             self._persist_deps()
             # The build task is `built` if the `build()` function returns True or None (legacy)
             self.built = _built or _built is None
@@ -5252,6 +5319,15 @@ class Distribution(Dependency):
             deps = []
             def _visit(dep, edges):
                 if dep is not self:
+                    if dep.isJARDistribution():
+                        if _use_exploded_build():
+                            abort('When MX_BUILD_EXPLODED=true, distribution {} depended on by {} must be in the "distDependencies" attribute'.format(dep, self), context=self)
+
+                        # A distribution that defines a module cannot include another distribution's contents
+                        import mx_javamodules
+                        module_name = mx_javamodules.get_module_name(self)
+                        if module_name is not None:
+                            abort('Distribution {} depended on by {} (which defines module {}) must be in the "distDependencies" attribute'.format(dep, self, module_name), context=self)
                     deps.append(dep)
             def _preVisit(dst, edge):
                 if edge and edge.src.isNativeProject():
@@ -5357,9 +5433,9 @@ class Distribution(Dependency):
         yield  # pylint: disable=unreachable
 
 
-from mx_jardistribution import JARDistribution, _proguard_version
+from mx_jardistribution import JARDistribution, _proguard_version, _use_exploded_build
 
-class JMHArchiveParticipant:
+class JMHArchiveParticipant(object):
     """ Archive participant for building JMH benchmarking jars. """
 
     def __init__(self, dist):
@@ -5374,23 +5450,17 @@ class JMHArchiveParticipant:
             'META-INF/CompilerHints': None,
         }
 
-    def __add__(self, arcname, contents): #pylint: disable=unexpected-special-method-signature
-        if arcname in self.meta_files:
+    def __process__(self, arcname, contents_supplier, is_source):
+        if not is_source and arcname in self.meta_files:
             if self.meta_files[arcname] is None:
-                self.meta_files[arcname] = contents
+                self.meta_files[arcname] = contents_supplier()
             else:
-                self.meta_files[arcname] += contents
+                self.meta_files[arcname] += contents_supplier()
             return True
         return False
 
-    def __addsrc__(self, arcname, contents):
-        return False
-
     def __closing__(self):
-        for filename, content in self.meta_files.items():
-            if content is not None:
-                self.arc.zf.writestr(filename, content)
-
+        return ({filename: content for filename, content in self.meta_files.items() if content is not None}, None)
 
 class AbstractArchiveTask(BuildTask):
     def __init__(self, args, dist):
@@ -5436,11 +5506,12 @@ class JARArchiveTask(AbstractArchiveTask):
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             abort('should not reach here')
-        for path in self.subject.paths_to_clean():
+        for path in self.subject.paths_to_clean() + [self.subject.sourcesPath]:
             if exists(path):
-                os.remove(path)
-        if self.subject.sourcesPath and exists(self.subject.sourcesPath):
-            os.remove(self.subject.sourcesPath)
+                if isdir(path) and not islink(path):
+                    rmtree(path)
+                else:
+                    os.remove(path)
 
     def cleanForbidden(self):
         if super(JARArchiveTask, self).cleanForbidden():
@@ -5981,6 +6052,7 @@ class LayoutDistribution(AbstractDistribution):
         if source_type == 'dependency':
             d = dependency(source['dependency'], context=self)
             if_stripped = source.get('if_stripped')
+            archive = not isinstance(d, JARDistribution) or not _use_exploded_build()
             if if_stripped is not None and d.isJARDistribution():
                 if if_stripped not in ('include', 'exclude'):
                     abort("Could not understand `if_stripped` value '{}'. Valid values are 'include' and 'exclude'".format(if_stripped), context=self)
@@ -5988,7 +6060,7 @@ class LayoutDistribution(AbstractDistribution):
                     return
             if source.get('path') is None:
                 try:
-                    _install_source_files([next(d.getArchivableResults(single=True))])
+                    _install_source_files([next(d.getArchivableResults(single=True))], archive=archive)
                 except ValueError as e:
                     assert e.args[0] == 'single not supported'
                     msg = "Can not use '{}' of type {} without a path.".format(d.name, d.__class__.__name__)
@@ -6000,7 +6072,7 @@ class LayoutDistribution(AbstractDistribution):
             else:
                 _install_source_files((
                     results[:2] for results in d.getArchivableResults()
-                ), include=source['path'], excludes=source.get('exclude'), optional=source['optional'])
+                ), include=source['path'], excludes=source.get('exclude'), optional=source['optional'], archive=archive)
         elif source_type == 'extracted-dependency':
             path = source['path']
             exclude = source.get('exclude', [])
@@ -6074,16 +6146,26 @@ class LayoutDistribution(AbstractDistribution):
 
             with TempDir() if output_done else NoOpContext(unarchiver_dest_directory) as unarchiver_dest_directory:
                 if ext.endswith('zip') or ext.endswith('jar'):
-                    with zipfile.ZipFile(source_archive_file) as zf:
-                        for zipinfo in zf.infolist():
-                            zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
-                            if not zipinfo.filename:
-                                continue
-                            extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
-                            unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
-                            if unix_attributes != 0:
-                                os.chmod(extracted_file, unix_attributes)
-                            archiver.add(extracted_file, dest_arcname(zipinfo.filename), provenance)
+                    if isdir(source_archive_file):
+                        assert d.isJARDistribution() and _use_exploded_build()
+                        for root, _, filenames in os.walk(source_archive_file):
+                            for filename in filenames:
+                                filepath = join(root, filename)
+                                rel_path = os.path.relpath(filepath, source_archive_file)
+                                arcname, _ = _filter_archive_name(rel_path)
+                                if arcname:
+                                    archiver.add(filepath, arcname, provenance)
+                    else:
+                        with zipfile.ZipFile(source_archive_file) as zf:
+                            for zipinfo in zf.infolist():
+                                zipinfo.filename, _ = _filter_archive_name(zipinfo.filename)
+                                if not zipinfo.filename:
+                                    continue
+                                extracted_file = zf.extract(zipinfo, unarchiver_dest_directory)
+                                unix_attributes = (zipinfo.external_attr >> 16) & 0xFFFF
+                                if unix_attributes != 0:
+                                    os.chmod(extracted_file, unix_attributes)
+                                archiver.add(extracted_file, dest_arcname(zipinfo.filename), provenance)
                 elif 'tar' in ext or ext.endswith('tgz'):
                     with tarfile.TarFile.open(source_archive_file) as tf:
                         # from tarfile.TarFile.extractall:
@@ -12427,6 +12509,8 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
     _jdks_cache[cache_key] = jdk
     return jdk
 
+_warned_about_ignoring_extra_jdks = False
+
 def _find_jdk(versionCheck=None, versionDescription=None):
     """
     Selects a JDK and returns a JDKConfig object representing it.
@@ -12459,6 +12543,7 @@ def _find_jdk(versionCheck=None, versionDescription=None):
                 os.environ['JAVA_HOME'] = _opts.java_home
             return result[0]
 
+    javaHomeCandidateJdks = candidateJdks
     candidateJdks = []
     if _opts.extra_java_homes:
         candidateJdks += _opts.extra_java_homes.split(os.pathsep)
@@ -12467,9 +12552,18 @@ def _find_jdk(versionCheck=None, versionDescription=None):
         candidateJdks += os.environ.get('EXTRA_JAVA_HOMES').split(os.pathsep)
         source = 'EXTRA_JAVA_HOMES'
 
-    result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
-    if result:
-        return result[0]
+    if candidateJdks:
+        if _use_exploded_build():
+            # Warning about using more than
+            global _warned_about_ignoring_extra_jdks
+            if not _warned_about_ignoring_extra_jdks:
+                if javaHomeCandidateJdks != candidateJdks:
+                    warn('Ignoring JDKs specified by {} since MX_BUILD_EXPLODED=true'.format(source))
+                _warned_about_ignoring_extra_jdks = True
+        else:
+            result = _filtered_jdk_configs(candidateJdks, versionCheck, missingIsError=False, source=source)
+            if result:
+                return result[0]
     return None
 
 _all_jdks = None
@@ -13951,6 +14045,40 @@ def _before_fork():
     except ImportError:
         pass
 
+def _resolve_ecj_jar(spec):
+    """
+    Resolves `spec` to the path of a local jar file containing the Eclipse batch compiler.
+    """
+    ecj = spec
+    if spec.startswith('builtin'):
+        available = {VersionSpec(lib.maven['version']): lib for lib in _libs.values() if lib.suite is _mx_suite and lib.name.startswith('ECJ_')}
+        assert available, 'no ECJ libraries defined by mx suite'
+        if spec == 'builtin':
+            ecj_lib = sorted(available.items(), reverse=True)[0][1]
+        else:
+            if not spec.startswith('builtin:'):
+                abort('Invalid value for JDT: "{}"'.format(spec))
+            available_desc = 'Available ECJ version(s): ' + ', '.join((str(v) for v in sorted(available.keys())))
+            if spec == 'builtin:list':
+                log(available_desc)
+                abort(0)
+            version = VersionSpec(spec.split(':', 1)[1])
+            ecj_lib = available.get(version)
+            if ecj_lib is None:
+                abort('Specified ECJ version is not available: {}\n{}'.format(version, available_desc))
+        ecj = ecj_lib.get_path(resolve=True)
+
+    if not ecj.endswith('.jar'):
+        abort('Path for Eclipse batch compiler does not look like a jar file: ' + ecj)
+    if not exists(ecj):
+        abort('Eclipse batch compiler jar does not exist: ' + ecj)
+    else:
+        with zipfile.ZipFile(ecj, 'r') as zf:
+            if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
+                abort('Specified Eclipse compiler does not include annotation processing support. ' +
+                      'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
+                      'from within the plugins/ directory of an Eclipse IDE installation.')
+    return ecj
 
 def build(cmd_args, parser=None):
     """builds the artifacts of one or more dependencies"""
@@ -13992,7 +14120,9 @@ def build(cmd_args, parser=None):
 
     compilerSelect = parser.add_mutually_exclusive_group()
     compilerSelect.add_argument('--error-prone', dest='error_prone', help='path to error-prone.jar', metavar='<path>')
-    compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). ' +
+    compilerSelect.add_argument('--jdt', help='path to a stand alone Eclipse batch compiler jar (e.g. ecj.jar). '
+                                'Use the value "builtin:<version>" (e.g. "builtin:3.25") to use the ECJ_<version> library defined in the mx suite. '
+                                'Specifying "builtin" will use the latest version, and "builtin:list" will list the available built-in versions. '
                                 'This can also be specified with the JDT environment variable.', default=_defaultEcjPath(), metavar='<path>')
     compilerSelect.add_argument('--force-javac', action='store_true', dest='force_javac', help='use javac even if an Eclipse batch compiler jar is specified')
 
@@ -14027,16 +14157,8 @@ def build(cmd_args, parser=None):
             args.parallelize = True
 
     if not args.force_javac and args.jdt is not None:
-        if not args.jdt.endswith('.jar'):
-            abort('Path for Eclipse batch compiler does not look like a jar file: ' + args.jdt)
-        if not exists(args.jdt):
-            abort('Eclipse batch compiler jar does not exist: ' + args.jdt)
-        else:
-            with zipfile.ZipFile(args.jdt, 'r') as zf:
-                if 'org/eclipse/jdt/internal/compiler/apt/' not in zf.namelist():
-                    abort('Specified Eclipse compiler does not include annotation processing support. ' +
-                          'Ensure you are using a stand alone ecj.jar, not org.eclipse.jdt.core_*.jar ' +
-                          'from within the plugins/ directory of an Eclipse IDE installation.')
+        args.jdt = _resolve_ecj_jar(args.jdt)
+
     onlyDeps = None
     removed = []
     if args.only is not None:
@@ -17534,10 +17656,11 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.301.5")  # GR-28853_2
+version = VersionSpec("5.302.0")  # GR-30568
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
+_last_timestamp = _mx_start_datetime
 
 if __name__ == '__main__':
     # Capture the current umask since there's no way to query it without mutating it.

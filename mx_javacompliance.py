@@ -45,6 +45,9 @@ class JavaCompliance(mx.Comparable):
     than 10 can have an optional "1." prefix. The lowest recognized major version is 2.
     """
 
+    # Examples: "8", "13"
+    _int_re = re.compile(r'(\d+)$')
+
     # Example: "1.8..13"
     _version_range_re = re.compile(r'(1\.)?(\d+)\.\.(1\.)?(\d+)$')
 
@@ -138,7 +141,8 @@ class JavaCompliance(mx.Comparable):
                 _error(value, 0, 'has unsupported {} since it is less than 2'.format(value_desc))
             return value
 
-        if isinstance(spec, int):
+        int_spec = spec if isinstance(spec, int) else int(spec) if isinstance(spec, str) and JavaCompliance._int_re.match(spec) else None
+        if int_spec is not None:
             value = _check_value(spec)
             self._parts = (JavaCompliance._Range(value, value),)
             return
@@ -261,6 +265,18 @@ class JavaCompliance(mx.Comparable):
         compliance, this will generate an infinite sequence.
         """
         return itertools.chain(*(p._values(stop=stop) for p in self._parts))
+
+    def highest_specified_value(self):
+        """
+        Gets the highest explicitly specified value of this Java compliance.
+        Examples:
+           8+        --> 8
+           8,13+     --> 13
+           8,11,13+  --> 13
+           8..11,13+ --> 13
+        """
+        highest_part = self._parts[-1]
+        return highest_part._high or highest_part._low
 
 def _test():
     """

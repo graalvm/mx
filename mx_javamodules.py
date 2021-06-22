@@ -28,11 +28,10 @@ from __future__ import print_function
 
 import os
 import re
-import zipfile
 import pickle
 import shutil
 import mx_javacompliance
-from os.path import join, exists, dirname, basename
+from os.path import join, exists, dirname, basename, isdir, islink
 from collections import defaultdict
 
 from zipfile import ZipFile
@@ -499,12 +498,12 @@ def get_library_as_module(dep, jdk):
 _versioned_prefix = 'META-INF/versions/'
 _special_versioned_prefix = 'META-INF/_versions/'  # used for versioned services
 _versioned_re = re.compile(r'META-INF/_?versions/([1-9][0-9]*)/(.+)')
+_javamodule_buildlevel = None
 
-
-def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
+def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name=None):
     """
     Creates a Java module from a distribution.
-    This updates the JAR by adding `module-info` classes.
+    This updates the jar (or exploded jar) by adding `module-info` classes.
 
     The `META-INF` directory can not be versioned. However, we make an exception here for `META-INF/services`:
     if different versions should have different service providers, a `META-INF/_versions/<version>/META-INF/services`
@@ -532,15 +531,20 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
 
     :param JARDistribution dist: the distribution from which to create a module
     :param JDKConfig jdk: a JDK with a version >= 9 that can be used to compile the module-info class
+    :param _Archive archive: info about the jar being converted to a module
+    :param CompilerDaemon javac_daemon: compiler daemon (if not None) to use for compiling module-info.java
+    :param str alt_module_info_name: name of alternative module descriptor in `dist` (in the attribute "moduleInfo:" + `alt_module_info_name`)
     :return: the `JavaModuleDescriptor` for the created Java module
     """
     info = get_java_module_info(dist)
     if info is None:
         return None
 
+    from mx_jardistribution import _FileContentsSupplier, _Archive, _staging_dir_suffix
+
     times = []
     with mx.Timer('total', times):
-        moduleName, _, moduleJar = info  # pylint: disable=unpacking-non-sequence
+        moduleName, _, module_jar = info  # pylint: disable=unpacking-non-sequence
         exports = {}
         requires = {}
         opens = {}
@@ -592,6 +596,9 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
               "<package-info>" -> set of all entries in `available_packages` denoting a package with a package-info.java file
               "org.graalvm.*" -> set of all entries in `available_packages` that start with "org.graalvm."
               "org.graalvm.compiler.code" -> set("org.graalvm.compiler.code")
+
+            :param dict available_packages: map from package names to JavaCompliance values
+            :return dict: entries from `available_packages` selected by `packages_spec`
             """
             if not packages_spec:
                 mx.abort('exports attribute cannot have entry with empty packages specification', context=dist)
@@ -637,6 +644,7 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
         alt_module_info = None
 
         if alt_module_info_name is not None:
+            assert not archive.exploded, archive
             assert isinstance(alt_module_info_name, str)
             alt_module_info_attr_name = 'moduleInfo:' + alt_module_info_name
             alt_module_info = getattr(dist, alt_module_info_attr_name, None)
@@ -647,23 +655,45 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
             invalid = [k for k in alt_module_info.keys() if k != 'exports']
             if invalid:
                 mx.abort('Sub-attribute(s) "{}" of "{}" attribute not supported. Only "exports" is currently supported.'.format('", "'.join(invalid), alt_module_info_attr_name), context=dist)
-            alt_module_jar = join(dirname(moduleJar), basename(moduleJar)[:-len('.jar')] + '-' + alt_module_info_name + '.jar')
+            alt_module_jar = join(dirname(module_jar), basename(module_jar)[:-len('.jar')] + '-' + alt_module_info_name + '.jar')
             alt_module_src_zip = alt_module_jar[:-len('.jar')] + '.src.zip'
-            module_src_zip = moduleJar[:-len('.jar')] + '.src.zip'
-            if exists(alt_module_jar):
-                os.remove(alt_module_jar)
-            shutil.copy(moduleJar, alt_module_jar)
-            if exists(alt_module_src_zip):
-                os.remove(alt_module_src_zip)
-            if exists(module_src_zip):
-                shutil.copy(module_src_zip, alt_module_src_zip)
-            moduleJar = alt_module_jar
-            alternatives = {alt_module_info_name : None}
-        else:
-            alt_module_info_names = [key[len('moduleInfo:'):] for key in dir(dist) if key.startswith('moduleInfo:')]
-            alternatives = {name : make_java_module(dist, jdk, javac_daemon=javac_daemon, alt_module_info_name=name) for name in alt_module_info_names}
+            module_src_zip = module_jar[:-len('.jar')] + '.src.zip'
 
-        mx.log('Building Java module {} ({}) from {}'.format(moduleName, basename(moduleJar), dist.name))
+            def replicate(src, dst):
+                """
+                Replicates `src` at `dst`.
+                If `src` does not exist, `dst` is deleted.
+                If `exploded` is True, `src` is assumed to be a directory and it is deep copied to `dst`,
+                otherwise `src` is assumed to be a normal file and is copied to `dst`.
+                """
+                if isdir(dst) and not islink(dst):
+                    mx.rmtree(dst)
+                elif exists(dst):
+                    os.remove(dst)
+                if exists(src):
+                    if isdir(src):
+                        mx.copytree(src, dst, symlinks=True)
+                    else:
+                        shutil.copy(src, dst)
+
+            replicate(module_jar, alt_module_jar)
+            replicate(module_jar + _staging_dir_suffix, alt_module_jar + _staging_dir_suffix)
+            replicate(module_src_zip, alt_module_src_zip)
+            module_jar = alt_module_jar
+            module_jar_staging_dir = module_jar + _staging_dir_suffix
+            alternatives = {alt_module_info_name : None}
+        elif not archive.exploded:
+            alt_module_info_names = [key[len('moduleInfo:'):] for key in dir(dist) if key.startswith('moduleInfo:')]
+            alternatives = {
+                name : make_java_module(dist, jdk, archive, javac_daemon=javac_daemon, alt_module_info_name=name)
+                for name in alt_module_info_names
+            }
+            module_jar_staging_dir = module_jar + _staging_dir_suffix
+        else:
+            alternatives = {}
+            module_jar_staging_dir = module_jar
+
+        mx.log('Building Java module {} ({}) from {}'.format(moduleName, basename(module_jar), dist.name))
 
         if module_info:
             for entry in module_info.get("requires", []):
@@ -740,128 +770,159 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                     if not module_info:
                         mx.warn("Module {} re-packages library {} but doesn't have a `moduleInfo` attribute. Note that library packages are not auto-exported")
 
-        build_directory = mx.ensure_dir_exists(moduleJar + ".build")
+        build_directory = mx.ensure_dir_exists(module_jar + ".build")
         try:
             files_to_remove = set()
 
             # To compile module-info.java, all classes it references must either be given
             # as Java source files or already exist as class files in the output directory.
+            # This is due to the constraint that all the classes in a module must be in
+            # a single directory (or jar).
             # As such, the jar file for each constituent distribution must be unpacked
             # in the output directory.
-            versions = {}
-            for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
-                if d.isJARDistribution():
-                    with zipfile.ZipFile(d.original_path(), 'r') as zf:
-                        for arcname in sorted(zf.namelist()):
-                            m = _versioned_re.match(arcname)
-                            if m:
-                                version = m.group(1)
-                                unversioned_name = m.group(2)
-                                if version <= jdk.javaCompliance:
-                                    versions.setdefault(version, {})[unversioned_name] = arcname
-                                else:
-                                    # Ignore resource whose version is too high
-                                    pass
-                                if unversioned_name.startswith('META-INF/services/'):
-                                    files_to_remove.add(arcname)
-                                elif unversioned_name.startswith('META-INF/'):
-                                    mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
+
+            # Set of ints representing version numbers
+            versions = set()
+
+            # List of 4-tuples representing a versioned resource:
+            #  str arcname: name of resource within its archive
+            #  _ArchiveEntry entry: describes the contents of the resource
+            #  int version: earliest Java version in which resource is valid
+            # str unversioned_name: name of the resource in a version-flattened archive
+            versioned = []
+
+            # List of 2-tuples representing a versioned resource:
+            #  str arcname: name of resource within its archive
+            #  _ArchiveEntry entry: describes the contents of the resource
+            unversioned = []
+
+            for arcname, entry in archive.entries.items():
+                m = _versioned_re.match(arcname)
+                if m:
+                    version = int(m.group(1))
+                    versions.add(version)
+                    if version > jdk.javaCompliance.value:
+                        # Ignore resource whose version is too high
+                        continue
+                    unversioned_name = m.group(2)
+                    if not archive.exploded:
+                        if unversioned_name.startswith('META-INF/services/'):
+                            files_to_remove.add(arcname)
+                        elif unversioned_name.startswith('META-INF/'):
+                            mx.abort("META-INF resources can not be versioned and will make modules fail to load ({}).".format(arcname))
+                    versioned.append((arcname, entry, version, unversioned_name))
+                else:
+                    unversioned.append((arcname, entry))
+
             default_jmd = None
 
-            all_versions = list(sorted(versions.keys(), key=int))
-            if '9' not in all_versions:
-                # 9 is the first version that supports modules and can be versioned in the JAR:
-                # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
-                # so that the module works on JDK 9.
-                default_version = 'common'
-                if all_versions:
-                    max_version = str(max((int(v) for v in all_versions)))
-                else:
-                    max_version = default_version
-                all_versions = all_versions + ['common']
+            if archive.exploded:
+                default_version = str(jdk.javaCompliance.value)
+                max_version = default_version
+                all_versions = [default_version]
             else:
-                max_version = str(max((int(v) for v in all_versions)))
-                default_version = max_version
+                all_versions = [str(v) for v in sorted(versions)]
+                if '9' not in all_versions:
+                    # 9 is the first version that supports modules and can be versioned in the JAR:
+                    # if there is no `META-INF/versions/9` then we should add a `module-info.class` to the root of the JAR
+                    # so that the module works on JDK 9.
+                    default_version = 'common'
+                    if all_versions:
+                        max_version = str(max((int(v) for v in all_versions)))
+                    else:
+                        max_version = default_version
+                    all_versions = all_versions + ['common']
+                else:
+                    max_version = str(max((int(v) for v in all_versions)))
+                    default_version = max_version
 
-            last_dest_dir = None
-            unversioned_resources = set()
+            def create_missing_dirs(path):
+                if not exists(path):
+                    create_missing_dirs(dirname(path))
+                    os.mkdir(path)
+                    _Archive.create_jdk_8268216(path)
+
+            def sync_file(src, dst, restore_files):
+                """
+                Ensures that `dst` points at or contains the same contents as `src`.
+
+                :param dict restore_files: map from `dst` to a callable that will restore its original
+                            content or to None should `dst` be deleted once the module-info.class has
+                            been produced
+                """
+                while islink(src):
+                    src = os.readlink(src)
+                if not mx.can_symlink():
+                    mx.ensure_dir_exists(dirname(dst))
+                    if exists(dst):
+                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).get
+                        os.remove(dst)
+                    else:
+                        restore_files[dst] = None
+                    shutil.copy(src, dst)
+                else:
+                    if exists(dst):
+                        if islink(dst):
+                            target = os.readlink(dst)
+                            if target == src:
+                                return
+                            if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
+                                # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                                return
+                            restore_files[dst] = lambda: os.symlink(target, dst)
+                        else:
+                            restore_files[dst] = _FileContentsSupplier(dst, eager=True).get
+                        os.remove(dst)
+                    else:
+                        restore_files[dst] = None
+                        create_missing_dirs(dirname(dst))
+                    os.symlink(src, dst)
+
             for version in all_versions:
-                unversioned_resources_backup = {}
+                restore_files = {}
                 with mx.Timer('jmd@' + version, times):
                     uses = base_uses.copy()
                     provides = {}
-                    dest_dir = join(build_directory, version)
-                    if exists(dest_dir):
-                        # Clean up any earlier build artifacts
-                        mx.rmtree(dest_dir)
-
-                    if last_dest_dir:
-                        # The unversioned resources have been preserved from the
-                        # last dest_dir so we can simply reuse last_dest_dir by
-                        # renaming it. This avoids the need for extracting the
-                        # unversioned resources for each version.
-                        os.rename(last_dest_dir, dest_dir)
-
                     int_version = int(version) if version != 'common' else -1
 
-                    for d in [dist] + [md for md in module_deps if md.isJARDistribution()]:
-                        if d.isJARDistribution():
-                            with zipfile.ZipFile(d.original_path(), 'r') as zf:
-                                # Extract unversioned resources first
-                                if not last_dest_dir:
-                                    for name in zf.namelist():
-                                        m = _versioned_re.match(name)
-                                        if not m:
-                                            zf.extract(name, mx._safe_path(dest_dir))
-                                            rel_name = name if os.sep == '/' else name.replace('/', os.sep)
-                                            unversioned_resources.add(rel_name)
+                    # Modify staging directory in-situ
+                    dest_dir = module_jar_staging_dir
 
-                                # Extract versioned resources second
-                                for name in zf.namelist():
-                                    m = _versioned_re.match(name)
-                                    if m:
-                                        file_version = int(m.group(1))
-                                        if file_version > int_version:
-                                            continue
-                                        unversioned_name = m.group(2)
-                                        if name.startswith(_special_versioned_prefix):
-                                            if not unversioned_name.startswith('META-INF/services'):
-                                                raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
-                                        if unversioned_name:
-                                            contents = zf.read(name)
-                                            dst = join(dest_dir, unversioned_name)
-                                            if exists(dst) and dst not in unversioned_resources_backup:
-                                                with open(dst, 'rb') as fp:
-                                                    unversioned_contents = fp.read()
-                                                    if unversioned_contents != contents:
-                                                        unversioned_resources_backup[dst] = unversioned_contents
-                                            parent = dirname(dst)
-                                            if parent and not exists(parent):
-                                                os.makedirs(parent)
-                                            with open(dst, 'wb') as fp:
-                                                fp.write(contents)
+                    if not archive.exploded:
+                        # Put versioned resources into their non-versioned locations
+                        for arcname, entry, entry_version, unversioned_name in versioned:
+                            if entry_version > int_version:
+                                continue
+                            if arcname.startswith(_special_versioned_prefix):
+                                if not unversioned_name.startswith('META-INF/services'):
+                                    raise mx.abort("The special versioned directory ({}) is only supported for META-INF/services files. Got {}".format(_special_versioned_prefix, name))
+                            if unversioned_name:
+                                dst = join(dest_dir, unversioned_name)
+                                sync_file(entry.staged, dst, restore_files)
 
-                                servicesDir = join(dest_dir, 'META-INF', 'services')
-                                if exists(servicesDir):
-                                    for servicePathName in os.listdir(servicesDir):
-                                        # While a META-INF provider configuration file must use a fully qualified binary
-                                        # name[1] of the service, a provides directive in a module descriptor must use
-                                        # the fully qualified non-binary name[2] of the service.
-                                        #
-                                        # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
-                                        # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
-                                        service = servicePathName.replace('$', '.')
+                    services_dir = join(dest_dir, 'META-INF', 'services')
+                    if exists(services_dir):
+                        for servicePathName in os.listdir(services_dir):
+                            if servicePathName == _Archive.jdk_8268216:
+                                continue
+                            # While a META-INF provider configuration file must use a fully qualified binary
+                            # name[1] of the service, a provides directive in a module descriptor must use
+                            # the fully qualified non-binary name[2] of the service.
+                            #
+                            # [1] https://docs.oracle.com/javase/9/docs/api/java/util/ServiceLoader.html
+                            # [2] https://docs.oracle.com/javase/9/docs/api/java/lang/module/ModuleDescriptor.Provides.html#service--
+                            service = servicePathName.replace('$', '.')
 
-                                        assert '/' not in service
-                                        with open(join(servicesDir, servicePathName)) as fp:
-                                            serviceContent = fp.read()
-                                        provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in serviceContent.splitlines())
-                                        # Service types defined in the module are assumed to be used by the module
-                                        serviceClassfile = service.replace('.', '/') + '.class'
-                                        if exists(join(dest_dir, serviceClassfile)):
-                                            uses.add(service)
+                            assert '/' not in service
+                            with open(join(services_dir, servicePathName)) as fp:
+                                serviceContent = fp.read()
+                            provides.setdefault(service, set()).update(provider.replace('$', '.') for provider in serviceContent.splitlines())
+                            # Service types defined in the module are assumed to be used by the module
+                            serviceClassfile = service.replace('.', '/') + '.class'
+                            if exists(join(dest_dir, serviceClassfile)):
+                                uses.add(service)
 
-                    version_java_compliance = None if version == 'common' else mx.JavaCompliance(version + '+')
+                    version_java_compliance = mx.JavaCompliance('8+') if version == 'common' else mx.JavaCompliance(version + '+')
 
                     def allow_export(java_compliance):
                         if version_java_compliance is None:
@@ -869,7 +930,6 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         return java_compliance <= version_java_compliance
 
                     exports_clean = {package_java_compliance[0]: targets for package_java_compliance, targets in exports.items() if allow_export(package_java_compliance[1])}
-
                     requires_clean = {}
                     for required_module_spec, requires_directives in requires.items():
                         if '@' in required_module_spec:
@@ -882,14 +942,12 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         requires_clean[module_name] = requires_directives
 
                     jmd = JavaModuleDescriptor(moduleName, exports_clean, requires_clean, uses, provides, packages=module_packages.keys(), concealedRequires=concealedRequires,
-                                               jarpath=moduleJar, dist=dist, modulepath=modulepath, alternatives=alternatives, opens=opens)
+                                               jarpath=module_jar, dist=dist, modulepath=modulepath, alternatives=alternatives, opens=opens)
 
                     # Compile module-info.class
                     module_info_java = join(dest_dir, 'module-info.java')
                     with open(module_info_java, 'w') as fp:
                         print(jmd.as_module_info(), file=fp)
-
-                last_dest_dir = dest_dir
 
                 with mx.Timer('compile@' + version, times):
                     def safe_path_arg(p):
@@ -941,88 +999,74 @@ def make_java_module(dist, jdk, javac_daemon=None, alt_module_info_name=None):
                         mx.run([jdk.javac] + javac_args, cmdlinefile=dest_dir + '.cmdline')
 
                 # Create .jmod for module
-                if version == max_version:
-                    # Delete module-info.java so that it does not get included in the .jmod file
-                    os.remove(module_info_java)
+                if version == max_version and not archive.exploded:
 
-                    # Temporarily move META-INF/services out of dest_dir. JDK 9+ service lookup
-                    # still processes this directory but ProGuard does not.
-                    services_dir = join(dest_dir, 'META-INF', 'services')
-                    tmp_services_dir = None
-                    if exists(services_dir):
-                        tmp_services_dir = join(build_directory, version + '_services_tmp')
-                        os.rename(services_dir, tmp_services_dir)
+                    class HideDirectory(object):
+                        def __init__(self, dirpath):
+                            self.dirpath = dirpath
+                            self.tmp_dirpath = None
+                        def __enter__(self):
+                            if exists(self.dirpath):
+                                self.tmp_dirpath = join(build_directory, '{}_{}.{}'.format(version, basename(self.dirpath), os.getpid()))
+                                os.rename(self.dirpath, self.tmp_dirpath)
+                        def __exit__(self, exc_type, exc_value, traceback):
+                            if self.tmp_dirpath:
+                                os.rename(self.tmp_dirpath, self.dirpath)
 
-                    jmod_path = jmd.get_jmod_path(respect_stripping=False, alt_module_info_name=alt_module_info_name)
-                    if exists(jmod_path):
-                        os.remove(jmod_path)
+                    # Temporarily move META-INF/services and META-INF/versions out of dest_dir
+                    # so that they do not end up in the jmod.
+                    with HideDirectory(join(dest_dir, 'META-INF', 'services')), HideDirectory(join(dest_dir, 'META-INF', 'versions')):
+                        jmod_path = jmd.get_jmod_path(respect_stripping=False, alt_module_info_name=alt_module_info_name)
+                        if exists(jmod_path):
+                            os.remove(jmod_path)
 
-                    jdk_jmod = join(jdk_jmods, basename(jmod_path))
-                    jmod_args = ['create', '--class-path=' + dest_dir]
-                    if not dist.is_stripped():
-                        # There is a ProGuard bug that corrupts the ModuleTarget
-                        # attribute of module-info.class.
-                        target_os = mx.get_os()
-                        target_os = 'macos' if target_os == 'darwin' else target_os
-                        target_arch = mx.get_arch()
-                        jmod_args.append('--target-platform={}-{}'.format(target_os, target_arch))
-                    if exists(jdk_jmod):
-                        with ZipFile(jdk_jmod, 'r') as zf:
-                            # Copy commands and legal notices (if any) from JDK version of the module
-                            for jmod_dir, jmod_option in (('bin', '--cmds'), ('legal', '--legal-notices')):
-                                entries = [name for name in zf.namelist() if name.startswith(jmod_dir + '/')]
-                                if entries:
-                                    extracted_dir = join(dest_dir, jmod_dir)
-                                    assert not exists(extracted_dir), extracted_dir
-                                    zf.extractall(dest_dir, entries)
-                                    entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
-                                    if exists(entries_dir):
-                                        shutil.rmtree(entries_dir)
-                                    os.rename(extracted_dir, entries_dir)
-                                    jmod_args.extend([jmod_option, join(entries_dir)])
-                    mx.run([jdk.exe_path('jmod')] + jmod_args + [jmod_path])
+                        jdk_jmod = join(jdk_jmods, basename(jmod_path))
+                        jmod_args = ['create', '--class-path=' + dest_dir]
+                        if not dist.is_stripped():
+                            # There is a ProGuard bug that corrupts the ModuleTarget
+                            # attribute of module-info.class.
+                            target_os = mx.get_os()
+                            target_os = 'macos' if target_os == 'darwin' else target_os
+                            target_arch = mx.get_arch()
+                            jmod_args.append('--target-platform={}-{}'.format(target_os, target_arch))
+                        if exists(jdk_jmod):
+                            with ZipFile(jdk_jmod, 'r') as zf:
+                                # Copy commands and legal notices (if any) from JDK version of the module
+                                for jmod_dir, jmod_option in (('bin', '--cmds'), ('legal', '--legal-notices')):
+                                    entries = [name for name in zf.namelist() if name.startswith(jmod_dir + '/')]
+                                    if entries:
+                                        extracted_dir = join(dest_dir, jmod_dir)
+                                        assert not exists(extracted_dir), extracted_dir
+                                        zf.extractall(dest_dir, entries)
+                                        entries_dir = mx._derived_path(dest_dir, '.' + jmod_dir)
+                                        if exists(entries_dir):
+                                            shutil.rmtree(entries_dir)
+                                        os.rename(extracted_dir, entries_dir)
+                                        jmod_args.extend([jmod_option, join(entries_dir)])
+                        mx.run([jdk.exe_path('jmod')] + jmod_args + [jmod_path])
 
-                    if tmp_services_dir:
-                        os.rename(tmp_services_dir, services_dir)
-
-                # Append the module-info.class
-                module_info_arc_dir = ''
-                if version != 'common':
-                    module_info_arc_dir = _versioned_prefix + version + '/'
                 if version == default_version:
                     default_jmd = jmd
 
                 with mx.Timer('jar@' + version, times):
-                    with ZipFile(moduleJar, 'a') as zf:
-                        module_info_class = join(dest_dir, 'module-info.class')
-                        zf.write(module_info_class, module_info_arc_dir + basename(module_info_class))
+                    if not archive.exploded:
+                        # Append the module-info.class
+                        module_info_arc_dir = '' if version == 'common' else _versioned_prefix + version + '/'
+                        with ZipFile(module_jar, 'a') as zf:
+                            module_info_class = join(dest_dir, 'module-info.class')
+                            arcname = module_info_arc_dir + basename(module_info_class)
+                            zf.write(module_info_class, arcname)
+                        os.remove(module_info_class)
 
-                if version != max_version:
-                    # Leave output in place for last version so that the jmod command above
-                    # can be manually re-executed (helps debugging).
-                    with mx.Timer('cleanup@' + version, times):
-                        if unversioned_resources_backup:
-                            for dst, contents in unversioned_resources_backup.items():
-                                with open(dst, 'wb') as fp:
-                                    fp.write(contents)
-                        for dirpath, dirnames, filenames in os.walk(dest_dir, topdown=False):
-                            del_dirpath = True
-                            for filename in filenames:
-                                abs_filename = join(dirpath, filename)
-                                rel_filename = os.path.relpath(abs_filename, dest_dir)
-                                if rel_filename not in unversioned_resources:
-                                    os.remove(abs_filename)
-                                else:
-                                    del_dirpath = False
-                            for dname in dirnames:
-                                if exists(join(dirpath, dname)):
-                                    del_dirpath = False
-                            if del_dirpath:
-                                os.rmdir(dirpath)
+                if restore_files:
+                    for dst, restore in restore_files.items():
+                        os.remove(dst)
+                        if restore is not None:
+                            restore()
 
             if files_to_remove:
-                with mx.Timer('cleanup', times), mx.SafeFileCreation(moduleJar) as sfc:
-                    with ZipFile(moduleJar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
+                with mx.Timer('cleanup', times), mx.SafeFileCreation(module_jar) as sfc:
+                    with ZipFile(module_jar, 'r') as inzf, ZipFile(sfc.tmpPath, 'w', inzf.compression) as outzf:
                         for info in inzf.infolist():
                             if info.filename not in files_to_remove:
                                 outzf.writestr(info, inzf.read(info))
