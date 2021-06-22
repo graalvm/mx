@@ -152,6 +152,17 @@ def _check_exists_or_None(path):
         mx.abort("File doesn't exist: " + path)
     return path
 
+class PathList(object):
+    def __init__(self):
+        self.paths = []
+
+    def add(self, path):
+        if path is not None and exists(path) and path not in self.paths:
+            self.paths.append(path)
+
+    def __repr__(self):
+        return os.pathsep.join(self.paths)
+
 def _parse_args(args):
     """
     Defines and parses the command line arguments in `args` for the ``fetch-jdk`` command.
@@ -167,10 +178,27 @@ def _parse_args(args):
     settings["keep-archive"] = False
     settings["base-path"] = _default_base_path()
 
-    mx_jdk_versions_location = join(_mx_home, 'common.json')
-    mx_jdk_binaries_location = join(_mx_home, 'jdk-binaries.json')
-    default_jdk_versions_location = _find_file(os.getcwd(), 'common.json') or mx_jdk_versions_location
-    default_jdk_binaries_location = _find_file(os.getcwd(), 'jdk-binaries.json') or mx_jdk_binaries_location
+    # Order in which to look for common.json:
+    # 1. Primary suite path (i.e. -p mx option)
+    # 2. Current working directory
+    # 4. $MX_HOME/common.json
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'common.json'))
+    path_list.add(_find_file(os.getcwd(), 'common.json'))
+    path_list.add(join(_mx_home, 'common.json'))
+    default_jdk_versions_location = path_list.paths[0]
+
+    # Order in which to look for jdk-binaries.json:
+    # 1. Primary suite path (i.e. -p mx option)
+    # 2. Current working directory
+    # 4. $MX_HOME/jdk-binaries.json
+    path_list = PathList()
+    if mx._primary_suite_path:
+        path_list.add(_find_file(mx._primary_suite_path, 'jdk-binaries.json'))
+    path_list.add(_find_file(os.getcwd(), 'jdk-binaries.json'))
+    path_list.add(join(_mx_home, 'jdk-binaries.json'))
+    default_jdk_binaries_location = str(path_list)
 
     parser = ArgumentParser(prog='mx fetch-jdk', usage='%(prog)s [options]' + """
         Download and install JDKs.
@@ -221,7 +249,7 @@ def _parse_args(args):
 
     parser.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', metavar='<path>', help='location of JSON file containing JDK definitions (default: {})'.format(default_jdk_versions_location))
-    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='location of JSON file specifying location of JDK binaries (default: {})'.format(default_jdk_binaries_location))
+    parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
     parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed (default: {})'.format(settings["base-path"]))
     parser.add_argument('--alias', action='store', metavar='<path>', help='path of a symlink to create to the extracted JDK. A relative path will be resolved against the value of the --to option.')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
@@ -236,9 +264,7 @@ def _parse_args(args):
                 "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
     jdk_versions_location = _check_exists_or_None(args.configuration) or default_jdk_versions_location
-    jdk_binaries_locations = [_check_exists_or_None(args.jdk_binaries), default_jdk_binaries_location]
-    if mx_jdk_binaries_location != default_jdk_binaries_location:
-        jdk_binaries_locations.append(mx_jdk_binaries_location)
+    jdk_binaries_locations = (args.jdk_binaries or default_jdk_binaries_location).split(os.pathsep)
 
     jdk_versions = _parse_jdk_versions(jdk_versions_location)
     jdk_binaries = _parse_jdk_binaries(jdk_binaries_locations, jdk_versions)
@@ -284,8 +310,8 @@ def _parse_jdk_versions(path):
 def _parse_jdk_binaries(paths, jdk_versions):
     jdk_binaries = {}
     for path in paths:
-        if path is None:
-            continue
+        if not exists(path):
+            mx.abort("File doesn't exist: " + path)
 
         obj = _parse_json(path)
 
