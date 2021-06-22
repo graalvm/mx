@@ -315,7 +315,7 @@ def _get_json_attr(json_object, name, expect_type, source):
 
 def _parse_jdk_versions(path):
     obj = _parse_json(path)
-    return {jdk_id: _get_json_attr(jdk_obj, 'version', str, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
+    return {jdk_id: _get_json_attr(jdk_obj, 'version', mx._unicode, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
 
 def _parse_jdk_binaries(paths, jdk_versions):
     jdk_binaries = {}
@@ -329,8 +329,8 @@ def _parse_jdk_binaries(paths, jdk_versions):
             source = '{} -> "jdk-binaries" -> "{}"'.format(path, qualified_jdk_id)
             def get_entry(name):
                 value = config.get(name) or mx.abort('{}: missing "{}" attribute'.format(source, name))
-                if not isinstance(value, str):
-                    mx.abort('{} -> "{}": value ({}) must be a string, not a {}'.format(source, name, value, value.__class__.__name__))
+                if not isinstance(value, mx._unicode):
+                    mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, mx._unicode.__name__, value.__class__.__name__))
                 return value
 
             jdk_id, qualifier = qualified_jdk_id.split(':', 1) if ':' in qualified_jdk_id else (qualified_jdk_id, '')
