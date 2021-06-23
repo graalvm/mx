@@ -24,7 +24,7 @@
  */
 package com.oracle.mxtool.junit;
 
-import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -99,9 +99,8 @@ public class FindClassesByAnnotatedMethods {
             System.out.print(jarFilePath);
             for (ClassFile cf : classfiles) {
                 Set<String> methodAnnotationTypes = new HashSet<>();
-                DataInputStream stream = new DataInputStream(new BufferedInputStream(cf.getInputStream(), cf.getSize()));
                 boolean isSupported = true;
-                try {
+                try (DataInputStream stream = new DataInputStream(new ByteArrayInputStream(cf.getBytes()))) {
                     readClassfile(stream, methodAnnotationTypes);
                 } catch (UnsupportedClassVersionError ucve) {
                     isSupported = false;
@@ -169,11 +168,14 @@ public class FindClassesByAnnotatedMethods {
 
     interface ClassFile {
 
-        InputStream getInputStream() throws IOException;
+        byte[] getBytes() throws IOException;
 
         String getName();
 
-        int getSize();
+        default byte[] readFully(InputStream in, byte[] bytes) throws IOException {
+            new DataInputStream(in).readFully(bytes);
+            return bytes;
+        }
     }
 
     static class JarClassFile implements ClassFile {
@@ -187,18 +189,15 @@ public class FindClassesByAnnotatedMethods {
         }
 
         @Override
-        public InputStream getInputStream() throws IOException {
-            return jarFile.getInputStream(je);
+        public byte[] getBytes() throws IOException {
+            try (InputStream in = jarFile.getInputStream(je)) {
+                return readFully(in, new byte[(int) je.getSize()]);
+            }
         }
 
         @Override
         public String getName() {
             return je.getName();
-        }
-
-        @Override
-        public int getSize() {
-            return (int) je.getSize();
         }
     }
 
@@ -213,18 +212,15 @@ public class FindClassesByAnnotatedMethods {
         }
 
         @Override
-        public InputStream getInputStream() throws IOException {
-            return new FileInputStream(file);
+        public byte[] getBytes() throws IOException {
+            try (InputStream in = new FileInputStream(file)) {
+                return readFully(in, new byte[(int) this.file.length()]);
+            }
         }
 
         @Override
         public String getName() {
             return name;
-        }
-
-        @Override
-        public int getSize() {
-            return (int) this.file.length();
         }
     }
 

@@ -26,7 +26,7 @@
 #
 from __future__ import print_function
 import os, shutil, json, re
-from os.path import join, exists, abspath, dirname, isdir
+from os.path import join, exists, abspath, dirname, isdir, basename, isabs
 from argparse import ArgumentParser
 
 from mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
@@ -52,13 +52,13 @@ def fetch_jdk(args):
     settings = _parse_args(args)
 
     jdk_binary = settings["jdk-binary"]
-    base_path = settings["base-path"]
-    artifact = jdk_binary.get_folder_name()
-    final_path = jdk_binary.get_final_path(base_path)
+    jdks_dir = settings["jdks-dir"]
+    artifact = jdk_binary._folder_name
+    final_path = jdk_binary.get_final_path(jdks_dir)
     url = mx_urlrewrites.rewriteurl(jdk_binary._url)
     sha_url = url + ".sha1"
     archive_name = jdk_binary._archive
-    archive_target_location = join(base_path, archive_name)
+    archive_target_location = join(jdks_dir, archive_name)
 
     if not is_quiet():
         if not mx.ask_yes_no("Install {} to {}".format(artifact, final_path), default='y'):
@@ -70,7 +70,7 @@ def fetch_jdk(args):
         mx.log("Requested JDK is already installed at {}".format(final_path))
     else:
         # Try to extract on the same file system as the target to be able to atomically move the result.
-        with mx.TempDir(parent_dir=base_path) as temp_dir:
+        with mx.TempDir(parent_dir=jdks_dir) as temp_dir:
             mx.log("Fetching {} archive from {}...".format(artifact, url))
             archive_location = join(temp_dir, archive_name)
             mx._opts.no_download_progress = is_quiet()
@@ -109,18 +109,28 @@ def fetch_jdk(args):
         else:
             final_path = join(final_path, 'Contents', 'Home')
 
-    if "alias" in settings:
-        alias_full_path = join(base_path, settings["alias"])
-        if os.path.islink(alias_full_path):
-            os.unlink(alias_full_path)
-        elif exists(alias_full_path):
-            mx.abort(alias_full_path + ' exists and it is not an existing symlink so it can not be used for a new symlink. Please remove it manually.')
+    alias = settings.get('alias')
+    if alias:
+        alias_full_path = join(jdks_dir, alias)
+        if not exists(alias_full_path) or os.path.realpath(alias_full_path) != os.path.realpath(abspath(curr_path)):
+            if os.path.islink(alias_full_path):
+                os.unlink(alias_full_path)
+            elif exists(alias_full_path):
+                mx.abort(alias_full_path + ' exists and it is not an existing symlink so it can not be used for a new symlink. Please remove it manually.')
 
-        if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(abspath(curr_path), alias_full_path)
-        else:
-            mx.copytree(curr_path, alias_full_path, symlinks=True) # fallback for windows
-        final_path = alias_full_path
+            if mx.can_symlink():
+                if isabs(alias):
+                    os.symlink(curr_path, alias_full_path)
+                else:
+                    reldir = os.path.relpath(dirname(curr_path), dirname(alias_full_path))
+                    if reldir == '.':
+                        alias_target = basename(curr_path)
+                    else:
+                        alias_target = join(reldir, basename(curr_path))
+                    os.symlink(alias_target, alias_full_path)
+            else:
+                mx.copytree(curr_path, alias_full_path)
+            final_path = alias_full_path
 
 
     mx.log("Run the following to set JAVA_HOME in your shell:")
@@ -179,14 +189,14 @@ def _parse_args(args):
 
     :return dict: a dictionary configuring the action to be taken by ``fetch-jdk``. The entries are:
                 "keep-archive": True if the downloaded archive is to be retained after extraction, False if it is to be deleted
-                "base-path": directory in which archive is to be extracted
+                "jdks-dir": directory in which archive is to be extracted
                 "jdk-binary": a _JdkBinary object
                 "alias": path of a symlink to create to the extracted JDK
                 "strip-contents-home": True if the ``Contents/Home`` should be stripped if it exists from the extracted JDK
     """
     settings = {}
     settings["keep-archive"] = False
-    settings["base-path"] = _default_base_path()
+    settings["jdks-dir"] = join(mx.dot_mx_dir(), 'jdks')
 
     # Order in which to look for common.json:
     # 1. Primary suite path (i.e. -p mx option)
@@ -253,24 +263,27 @@ def _parse_args(args):
         Each keyword value can be processed by a filter by appending "|<filter>" to the keyword selector.
         The supported filters are:
 
-        jvmci      Extracts the first string that looks like a jvmci version (e.g. "jvmci-21.2-b01" -> "21.2-b01").
+        jvmci      Extracts the first string that looks like a jvmci version (e.g. "8u302+05-jvmci-21.2-b01" -> "21.2-b01").
+        jvmci-tag  Extracts the first string that looks like a jvmci tag (e.g. "8u302+05-jvmci-21.2-b01" -> "jvmci-21.2-b01").
     """)
 
 
     parser.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', metavar='<path>', help='location of JSON file containing JDK definitions (default: {})'.format(default_jdk_versions_location))
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
-    parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed (default: {})'.format(settings["base-path"]))
-    parser.add_argument('--alias', action='store', metavar='<path>', help='path of a symlink to create to the extracted JDK. A relative path will be resolved against the value of the --to option.')
+    parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed. Specify <system> to use the system default location. (default: {})'.format(settings["jdks-dir"]))
+    parser.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     args = parser.parse_args(args)
 
     if args.to is not None:
-        settings["base-path"] = args.to
+        if args.to == '<system>':
+            args.to = _default_system_jdks_dir()
+        settings["jdks-dir"] = args.to
 
-    if not _check_write_access(settings["base-path"]):
-        mx.abort("JDK installation directory {} is not writeable.".format(settings["base-path"]) + os.linesep +
+    if not _check_write_access(settings["jdks-dir"]):
+        mx.abort("JDK installation directory {} is not writeable.".format(settings["jdks-dir"]) + os.linesep +
                 "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
     jdk_versions_location = _check_exists_or_None(args.configuration) or default_jdk_versions_location
@@ -315,7 +328,7 @@ def _get_json_attr(json_object, name, expect_type, source):
 
 def _parse_jdk_versions(path):
     obj = _parse_json(path)
-    return {jdk_id: _get_json_attr(jdk_obj, 'version', str, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
+    return {jdk_id: _get_json_attr(jdk_obj, 'version', mx._unicode, '{} -> "jdks" -> "{}"'.format(path, jdk_id)) for jdk_id, jdk_obj in _get_json_attr(obj, 'jdks', dict, path).items()}
 
 def _parse_jdk_binaries(paths, jdk_versions):
     jdk_binaries = {}
@@ -329,8 +342,8 @@ def _parse_jdk_binaries(paths, jdk_versions):
             source = '{} -> "jdk-binaries" -> "{}"'.format(path, qualified_jdk_id)
             def get_entry(name):
                 value = config.get(name) or mx.abort('{}: missing "{}" attribute'.format(source, name))
-                if not isinstance(value, str):
-                    mx.abort('{} -> "{}": value ({}) must be a string, not a {}'.format(source, name, value, value.__class__.__name__))
+                if not isinstance(value, mx._unicode):
+                    mx.abort('{} -> "{}": value ({}) must be a {}, not a {}'.format(source, name, value, mx._unicode.__name__, value.__class__.__name__))
                 return value
 
             jdk_id, qualifier = qualified_jdk_id.split(':', 1) if ':' in qualified_jdk_id else (qualified_jdk_id, '')
@@ -342,7 +355,7 @@ def _parse_jdk_binaries(paths, jdk_versions):
                 jdk_binaries[jdk_binary_id] = jdk_binary
     return jdk_binaries
 
-def _default_base_path():
+def _default_system_jdks_dir():
     locations = {
         "darwin": '/Library/Java/JavaVirtualMachines',
         "linux" : '/usr/lib/jvm',
@@ -414,22 +427,19 @@ class _JdkBinary(object):
         keywords = {'version': version, 'platform': platform}
         self._filename = _instantiate(filename, keywords, source)
         keywords['filename'] = self._filename
-        self._short_version = _instantiate('{version|jvmci}', keywords, source)
+        self._folder_name = "{}-{}".format(jdk_id, _instantiate('{version|jvmci-tag}', keywords, source))
         self._url = _instantiate(url, keywords, source)
         self._archive = self._url[self._url.rfind(self._filename):]
 
     def __repr__(self):
         return '{}: file={}, url={}'.format(self._jdk_id, self._filename, self._url)
 
-    def get_folder_name(self):
-        return "{}-{}".format(self._jdk_id, self._short_version)
-
     def get_final_path(self, jdk_path):
-        return join(jdk_path, self.get_folder_name())
-
+        return join(jdk_path, self._folder_name)
 
 _instantiate_filters = {
-    'jvmci': lambda value: re.sub(r".*jvmci-(\d+\.\d+-b\d+).*", r"\1", value)
+    'jvmci': lambda value: re.sub(r".*jvmci-(\d+\.\d+-b\d+).*", r"\1", value),
+    'jvmci-tag': lambda value: re.sub(r".*(jvmci-\d+\.\d+-b\d+).*", r"\1", value)
 }
 
 def _instantiate(template, keywords, source):
