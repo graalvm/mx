@@ -26,7 +26,7 @@
 #
 from __future__ import print_function
 import os, shutil, json, re
-from os.path import join, exists, abspath, dirname, isdir
+from os.path import join, exists, abspath, dirname, isdir, basename, isabs
 from argparse import ArgumentParser
 
 from mx import suite_context_free, _mx_home, command, atomic_file_move_with_fallback, is_quiet
@@ -109,18 +109,28 @@ def fetch_jdk(args):
         else:
             final_path = join(final_path, 'Contents', 'Home')
 
-    if "alias" in settings:
-        alias_full_path = join(jdks_dir, settings["alias"])
-        if os.path.islink(alias_full_path):
-            os.unlink(alias_full_path)
-        elif exists(alias_full_path):
-            mx.abort(alias_full_path + ' exists and it is not an existing symlink so it can not be used for a new symlink. Please remove it manually.')
+    alias = settings.get('alias')
+    if alias:
+        alias_full_path = join(jdks_dir, alias)
+        if not exists(alias_full_path) or os.path.realpath(alias_full_path) != os.path.realpath(abspath(curr_path)):
+            if os.path.islink(alias_full_path):
+                os.unlink(alias_full_path)
+            elif exists(alias_full_path):
+                mx.abort(alias_full_path + ' exists and it is not an existing symlink so it can not be used for a new symlink. Please remove it manually.')
 
-        if not (mx.is_windows() or mx.is_cygwin()):
-            os.symlink(abspath(curr_path), alias_full_path)
-        else:
-            mx.copytree(curr_path, alias_full_path, symlinks=True) # fallback for windows
-        final_path = alias_full_path
+            if mx.can_symlink():
+                if isabs(alias):
+                    os.symlink(curr_path, alias_full_path)
+                else:
+                    reldir = os.path.relpath(dirname(curr_path), dirname(alias_full_path))
+                    if reldir == '.':
+                        alias_target = basename(curr_path)
+                    else:
+                        alias_target = join(reldir, basename(curr_path))
+                    os.symlink(alias_target, alias_full_path)
+            else:
+                mx.copytree(curr_path, alias_full_path)
+            final_path = alias_full_path
 
 
     mx.log("Run the following to set JAVA_HOME in your shell:")
@@ -262,7 +272,7 @@ def _parse_args(args):
     parser.add_argument('--configuration', action='store', metavar='<path>', help='location of JSON file containing JDK definitions (default: {})'.format(default_jdk_versions_location))
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
     parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed. Specify <system> to use the system default location. (default: {})'.format(settings["jdks-dir"]))
-    parser.add_argument('--alias', action='store', metavar='<path>', help='path of a symlink to create to the extracted JDK. A relative path will be resolved against the value of the --to option.')
+    parser.add_argument('--alias', action='store', metavar='<path>', help='name under which the extracted JDK should be made available (e.g. via a symlink). A relative path will be resolved against the value of the --to option.')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     args = parser.parse_args(args)
