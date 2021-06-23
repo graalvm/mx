@@ -5506,7 +5506,7 @@ class JARArchiveTask(AbstractArchiveTask):
     def clean(self, forBuild=False):
         if isinstance(self.subject.suite, BinarySuite):  # make sure we never clean distributions from BinarySuites
             abort('should not reach here')
-        for path in self.subject.paths_to_clean() + [self.subject.sourcesPath]:
+        for path in self.subject.paths_to_clean():
             if exists(path):
                 if isdir(path) and not islink(path):
                     rmtree(path)
@@ -17656,7 +17656,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.302.1")  # GR-32243
+version = VersionSpec("5.302.2")  # GR-32260
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
