@@ -53,7 +53,7 @@ def fetch_jdk(args):
 
     jdk_binary = settings["jdk-binary"]
     base_path = settings["base-path"]
-    artifact = jdk_binary.get_folder_name()
+    artifact = jdk_binary._folder_name
     final_path = jdk_binary.get_final_path(base_path)
     url = mx_urlrewrites.rewriteurl(jdk_binary._url)
     sha_url = url + ".sha1"
@@ -253,7 +253,8 @@ def _parse_args(args):
         Each keyword value can be processed by a filter by appending "|<filter>" to the keyword selector.
         The supported filters are:
 
-        jvmci      Extracts the first string that looks like a jvmci version (e.g. "jvmci-21.2-b01" -> "21.2-b01").
+        jvmci      Extracts the first string that looks like a jvmci version (e.g. "8u302+05-jvmci-21.2-b01" -> "21.2-b01").
+        jvmci-tag  Extracts the first string that looks like a jvmci tag (e.g. "8u302+05-jvmci-21.2-b01" -> "jvmci-21.2-b01").
     """)
 
 
@@ -414,22 +415,19 @@ class _JdkBinary(object):
         keywords = {'version': version, 'platform': platform}
         self._filename = _instantiate(filename, keywords, source)
         keywords['filename'] = self._filename
-        self._short_version = _instantiate('{version|jvmci}', keywords, source)
+        self._folder_name = "{}-{}".format(jdk_id, _instantiate('{version|jvmci-tag}', keywords, source))
         self._url = _instantiate(url, keywords, source)
         self._archive = self._url[self._url.rfind(self._filename):]
 
     def __repr__(self):
         return '{}: file={}, url={}'.format(self._jdk_id, self._filename, self._url)
 
-    def get_folder_name(self):
-        return "{}-{}".format(self._jdk_id, self._short_version)
-
     def get_final_path(self, jdk_path):
-        return join(jdk_path, self.get_folder_name())
-
+        return join(jdk_path, self._folder_name)
 
 _instantiate_filters = {
-    'jvmci': lambda value: re.sub(r".*jvmci-(\d+\.\d+-b\d+).*", r"\1", value)
+    'jvmci': lambda value: re.sub(r".*jvmci-(\d+\.\d+-b\d+).*", r"\1", value),
+    'jvmci-tag': lambda value: re.sub(r".*(jvmci-\d+\.\d+-b\d+).*", r"\1", value)
 }
 
 def _instantiate(template, keywords, source):
