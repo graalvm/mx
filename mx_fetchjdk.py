@@ -52,13 +52,13 @@ def fetch_jdk(args):
     settings = _parse_args(args)
 
     jdk_binary = settings["jdk-binary"]
-    base_path = settings["base-path"]
+    jdks_dir = settings["jdks-dir"]
     artifact = jdk_binary._folder_name
-    final_path = jdk_binary.get_final_path(base_path)
+    final_path = jdk_binary.get_final_path(jdks_dir)
     url = mx_urlrewrites.rewriteurl(jdk_binary._url)
     sha_url = url + ".sha1"
     archive_name = jdk_binary._archive
-    archive_target_location = join(base_path, archive_name)
+    archive_target_location = join(jdks_dir, archive_name)
 
     if not is_quiet():
         if not mx.ask_yes_no("Install {} to {}".format(artifact, final_path), default='y'):
@@ -70,7 +70,7 @@ def fetch_jdk(args):
         mx.log("Requested JDK is already installed at {}".format(final_path))
     else:
         # Try to extract on the same file system as the target to be able to atomically move the result.
-        with mx.TempDir(parent_dir=base_path) as temp_dir:
+        with mx.TempDir(parent_dir=jdks_dir) as temp_dir:
             mx.log("Fetching {} archive from {}...".format(artifact, url))
             archive_location = join(temp_dir, archive_name)
             mx._opts.no_download_progress = is_quiet()
@@ -110,7 +110,7 @@ def fetch_jdk(args):
             final_path = join(final_path, 'Contents', 'Home')
 
     if "alias" in settings:
-        alias_full_path = join(base_path, settings["alias"])
+        alias_full_path = join(jdks_dir, settings["alias"])
         if os.path.islink(alias_full_path):
             os.unlink(alias_full_path)
         elif exists(alias_full_path):
@@ -179,14 +179,14 @@ def _parse_args(args):
 
     :return dict: a dictionary configuring the action to be taken by ``fetch-jdk``. The entries are:
                 "keep-archive": True if the downloaded archive is to be retained after extraction, False if it is to be deleted
-                "base-path": directory in which archive is to be extracted
+                "jdks-dir": directory in which archive is to be extracted
                 "jdk-binary": a _JdkBinary object
                 "alias": path of a symlink to create to the extracted JDK
                 "strip-contents-home": True if the ``Contents/Home`` should be stripped if it exists from the extracted JDK
     """
     settings = {}
     settings["keep-archive"] = False
-    settings["base-path"] = _default_base_path()
+    settings["jdks-dir"] = join(mx.dot_mx_dir(), 'jdks')
 
     # Order in which to look for common.json:
     # 1. Primary suite path (i.e. -p mx option)
@@ -261,17 +261,19 @@ def _parse_args(args):
     parser.add_argument('--jdk-id', '--java-distribution', action='store', metavar='<id>', help='Identifier of the JDK that should be downloaded (e.g., "labsjdk-ce-11" or "openjdk8")')
     parser.add_argument('--configuration', action='store', metavar='<path>', help='location of JSON file containing JDK definitions (default: {})'.format(default_jdk_versions_location))
     parser.add_argument('--jdk-binaries', action='store', metavar='<path>', help='{} separated JSON files specifying location of JDK binaries (default: {})'.format(os.pathsep, default_jdk_binaries_location))
-    parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed (default: {})'.format(settings["base-path"]))
+    parser.add_argument('--to', action='store', metavar='<dir>', help='location where JDK will be installed. Specify <system> to use the system default location. (default: {})'.format(settings["jdks-dir"]))
     parser.add_argument('--alias', action='store', metavar='<path>', help='path of a symlink to create to the extracted JDK. A relative path will be resolved against the value of the --to option.')
     parser.add_argument('--keep-archive', action='store_true', help='keep downloaded JDK archive')
     parser.add_argument('--strip-contents-home', action='store_true', help='strip Contents/Home if it exists from installed JDK')
     args = parser.parse_args(args)
 
     if args.to is not None:
-        settings["base-path"] = args.to
+        if args.to == '<system>':
+            args.to = _default_system_jdks_dir()
+        settings["jdks-dir"] = args.to
 
-    if not _check_write_access(settings["base-path"]):
-        mx.abort("JDK installation directory {} is not writeable.".format(settings["base-path"]) + os.linesep +
+    if not _check_write_access(settings["jdks-dir"]):
+        mx.abort("JDK installation directory {} is not writeable.".format(settings["jdks-dir"]) + os.linesep +
                 "Either re-run with elevated privileges (e.g. sudo) or specify a writeable directory with the --to option.")
 
     jdk_versions_location = _check_exists_or_None(args.configuration) or default_jdk_versions_location
@@ -343,7 +345,7 @@ def _parse_jdk_binaries(paths, jdk_versions):
                 jdk_binaries[jdk_binary_id] = jdk_binary
     return jdk_binaries
 
-def _default_base_path():
+def _default_system_jdks_dir():
     locations = {
         "darwin": '/Library/Java/JavaVirtualMachines',
         "linux" : '/usr/lib/jvm',
