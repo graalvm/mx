@@ -207,7 +207,14 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         return getattr(self, '.maxJavaCompliance')
 
     def paths_to_clean(self):
-        paths = [self.original_path(), self._stripped_path(), self.strip_mapping_file()]
+        paths = [
+            self.original_path(),
+            self.sourcesPath,
+            self.original_path() + _staging_dir_suffix,
+            self.sourcesPath + _staging_dir_suffix,
+            self._stripped_path(),
+            self.strip_mapping_file()
+        ]
         jdk = mx.get_jdk(tag='default')
         if jdk.javaCompliance >= '9':
             info = mx.get_java_module_info(self)
