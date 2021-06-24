@@ -13345,8 +13345,7 @@ def apply_command_mapper_hooks(command, hooks):
     new_cmd = command
     if _use_command_mapper_hooks:
         if hooks:
-            hooks.reverse()
-            for hook in hooks:
+            for hook in reversed(hooks):
                 hook_name, hook_func, suite = hook[:3]
                 logv("Applying command mapper hook '{}'".format(hook_name))
                 new_cmd = hook_func(new_cmd, suite)
@@ -17656,7 +17655,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.302.2")  # GR-32260
+version = VersionSpec("5.303.0")  # GR-32112
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

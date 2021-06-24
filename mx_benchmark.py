@@ -1204,6 +1204,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         for parser_name in self.parserNames():
             parser = get_parser(parser_name)
             _, args = parser.parse_known_args(args)
+
         if self.profilerNames(bmSuiteArgs):
             for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
@@ -2121,6 +2122,15 @@ def get_rss_parse_rule(suite, bmSuiteArgs):
         rule = []
     return rule
 
+_use_tracker = True
+
+def enable_tracker():
+    global _use_tracker
+    _use_tracker = True
+
+def disable_tracker():
+    global _use_tracker
+    _use_tracker = False
 
 def rss_hook(cmd, bmSuite):
     """
@@ -2130,7 +2140,7 @@ def rss_hook(cmd, bmSuite):
     :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
     :return:
     """
-    if "-version" in cmd:
+    if not _use_tracker:
         return cmd
     if mx.get_os() == "linux":
         prefix = ["time", "-v"]
@@ -2150,7 +2160,7 @@ def psrecord_hook(cmd, bmSuite):
     :param BenchmarkSuite bmSuite: the benchmark suite to which this command corresponds to if any
     :return:
     """
-    if "-version" in cmd:
+    if not _use_tracker:
         return cmd
 
     if mx.run(["psrecord", "-h"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
@@ -2450,6 +2460,8 @@ class BenchmarkExecutor(object):
             "--fork-count-file", default=None,
             help="Path to the file that lists the number of re-executions for the targeted benchmarks, using the JSON format: { (<name>: <count>,)* }")
         parser.add_argument(
+            "--hwloc-bind", type=str, default=None, help="A space-separated string of one or more arguments that should passed to 'hwloc-bind'.")
+        parser.add_argument(
             "-h", "--help", action="store_true", default=None,
             help="Show usage information.")
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
@@ -2469,6 +2481,10 @@ class BenchmarkExecutor(object):
                 raise ValueError(
                     "Profiler '{}' and tracker '{}' both want to set the VM prefix".format(mxBenchmarkArgs.profiler,
                                                                                            mxBenchmarkArgs.tracker))
+
+        if mxBenchmarkArgs.hwloc_bind:
+            suite.register_command_mapper_hook("hwloc-bind", make_hwloc_bind(mxBenchmarkArgs.hwloc_bind))
+
         if not mxBenchmarkArgs.tracker:
             # Use the rss tracker by default
             mxBenchmarkArgs.tracker = 'rss'
@@ -2587,6 +2603,14 @@ class BenchmarkExecutor(object):
             return 1
         return 0
 
+def make_hwloc_bind(hwloc_bind_args):
+    if mx.run(["hwloc-bind", "--version"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
+        mx.abort("'hwloc-bind' is not on the path. Please install it for your operating system or remove the '--hwloc-bind' argument.")
+
+    def hwloc_bind(cmd, bmSuite):
+        return ["hwloc-bind"] + hwloc_bind_args.split() + cmd
+
+    return hwloc_bind
 
 _benchmark_executor = BenchmarkExecutor()
 
