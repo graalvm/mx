@@ -8285,7 +8285,7 @@ class Extractor(_with_metaclass(ABCMeta, object)):
 
     @staticmethod
     def create(src):
-        if src.endswith(".tar") or src.endswith(".tar.gz"):
+        if src.endswith(".tar") or src.endswith(".tar.gz") or src.endswith(".tgz"):
             return TarExtractor(src)
         if src.endswith(".zip"):
             return ZipExtractor(src)
@@ -17655,7 +17655,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.303.0")  # GR-32112
+version = VersionSpec("5.304.0")  # GR-32294
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
