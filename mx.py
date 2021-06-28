@@ -18495,6 +18495,7 @@ import mx_fetchjdk # pylint: disable=unused-import
 import mx_bisect # pylint: disable=unused-import
 import mx_gc # pylint: disable=unused-import
 import mx_multiplatform # pylint: disable=unused-import
+import mx_foreach # pylint: disable=unused-import
 
 from mx_unittest import unittest
 from mx_jackpot import jackpot
