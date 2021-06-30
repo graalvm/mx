@@ -33,8 +33,23 @@ import re
 import tempfile
 import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
-from os.path import exists, join, basename
+from os.path import exists, join, basename, isdir
 
+def _newest(path):
+    """
+    Computes the newest timestamp for `path`. This is simply the timestamp of
+    `path` if it is a file. Otherwise, it's the timestamp of the newest file
+    in the `path` directory.
+    """
+    ts = mx.TimeStampFile(path)
+    if isdir(path):
+        for dirpath, _, filenames in os.walk(path):
+            for filename in filenames:
+                if filename.endswith('.class') and filename not in ('module-info.class', 'package-info.class'):
+                    file_ts = mx.TimeStampFile(join(dirpath, filename))
+                    if file_ts.isNewerThan(ts):
+                        ts = file_ts
+    return ts
 
 def _read_cached_testclasses(cachesDir, jar, jdk):
     """
@@ -47,7 +62,8 @@ def _read_cached_testclasses(cachesDir, jar, jdk):
     """
     jdkVersion = '.jdk' + str(jdk.javaCompliance)
     cache = join(cachesDir, basename(jar) + jdkVersion + '.testclasses')
-    if exists(cache) and mx.TimeStampFile(cache).isNewerThan(jar):
+    jar_ts = _newest(jar)
+    if exists(cache) and mx.TimeStampFile(cache).isNewerThan(jar_ts):
         # Only use the cached result if the source jar is older than the cache file
         try:
             with open(cache) as fp:
