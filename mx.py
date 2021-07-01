@@ -9275,14 +9275,22 @@ class VC(_with_metaclass(ABCMeta, object)):
 class OutputCapture:
     def __init__(self):
         self.data = ""
+
     def __call__(self, data):
         self.data += data
+
+    def __repr__(self):
+        return self.data
 
 class LinesOutputCapture:
     def __init__(self):
         self.lines = []
+
     def __call__(self, data):
         self.lines.append(data.rstrip())
+
+    def __repr__(self):
+        return os.linesep.join(self.lines)
 
 class TeeOutputCapture:
     def __init__(self, underlying):
@@ -9291,6 +9299,11 @@ class TeeOutputCapture:
     def __call__(self, data):
         log(data.rstrip())
         self.underlying(data)
+
+    def __repr__(self):
+        if isinstance(self.underlying, OutputCapture) or isinstance(self.underlying, LinesOutputCapture):
+            return repr(self.underlying)
+        return object.__repr__(self)
 
 class HgConfig(VC):
     has_hg = None

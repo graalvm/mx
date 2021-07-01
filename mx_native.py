@@ -152,8 +152,7 @@ class Ninja(object):
             os.chmod(self.binary, 0o755)
             self._run(*args, **kwargs)  # retry
         else:
-            not rc or mx.abort(rc if verbose else out.data)  # pylint: disable=expression-not-assigned
-
+            not rc or mx.abort(rc if verbose else (out, err))  # pylint: disable=expression-not-assigned
 
 class NativeDependency(mx.Dependency):
     """A Dependency that can be included and linked in when building native projects.
