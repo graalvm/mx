@@ -4176,16 +4176,27 @@ def _init_can_symlink():
             return True
         except (OSError, NotImplementedError):
             pass
-    print('symlinking not supported')
     return False
 
 _can_symlink = _init_can_symlink()
+
+# Can only warn about lack of symlink support once options
+# have been parsed so that the warning is suppressed by --no-warning.
+_can_symlink_warned = False
 
 def can_symlink():
     """
     Determines if ``os.symlink`` is supported on the current platform.
     """
-    return _can_symlink
+    if not _can_symlink:
+        global _can_symlink_warned
+        if not _can_symlink_warned:
+            # The warning may actually be issue multiple times if this
+            # method is called by multiple mx build subprocesses.
+            warn('symlinking not supported')
+            _can_symlink_warned = True
+        return False
+    return True
 
 def getmtime(name):
     """
@@ -9301,7 +9312,7 @@ class TeeOutputCapture:
         self.underlying(data)
 
     def __repr__(self):
-        if isinstance(self.underlying, OutputCapture) or isinstance(self.underlying, LinesOutputCapture):
+        if isinstance(self.underlying, (OutputCapture, LinesOutputCapture)):
             return repr(self.underlying)
         return object.__repr__(self)
 
@@ -17668,7 +17679,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.304.2")  # GR-32302
+version = VersionSpec("5.304.3")  # GR-32420
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
