@@ -4176,16 +4176,27 @@ def _init_can_symlink():
             return True
         except (OSError, NotImplementedError):
             pass
-    print('symlinking not supported')
     return False
 
 _can_symlink = _init_can_symlink()
+
+# Can only warn about lack of symlink support once options
+# have been parsed so that the warning is suppressed by --no-warning.
+_can_symlink_warned = False
 
 def can_symlink():
     """
     Determines if ``os.symlink`` is supported on the current platform.
     """
-    return _can_symlink
+    if not _can_symlink:
+        global _can_symlink_warned
+        if not _can_symlink_warned:
+            # The warning may actually be issue multiple times if this
+            # method is called by multiple mx build subprocesses.
+            warn('symlinking not supported')
+            _can_symlink_warned = True
+        return False
+    return True
 
 def getmtime(name):
     """
@@ -9275,14 +9286,22 @@ class VC(_with_metaclass(ABCMeta, object)):
 class OutputCapture:
     def __init__(self):
         self.data = ""
+
     def __call__(self, data):
         self.data += data
+
+    def __repr__(self):
+        return self.data
 
 class LinesOutputCapture:
     def __init__(self):
         self.lines = []
+
     def __call__(self, data):
         self.lines.append(data.rstrip())
+
+    def __repr__(self):
+        return os.linesep.join(self.lines)
 
 class TeeOutputCapture:
     def __init__(self, underlying):
@@ -9291,6 +9310,11 @@ class TeeOutputCapture:
     def __call__(self, data):
         log(data.rstrip())
         self.underlying(data)
+
+    def __repr__(self):
+        if isinstance(self.underlying, (OutputCapture, LinesOutputCapture)):
+            return repr(self.underlying)
+        return object.__repr__(self)
 
 class HgConfig(VC):
     has_hg = None
@@ -17655,7 +17679,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.304.2")  # GR-32302
+version = VersionSpec("5.304.3")  # GR-32420
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
