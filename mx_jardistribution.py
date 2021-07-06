@@ -809,9 +809,13 @@ class _ArchiveStager(object):
                             True if they should be extracted to the sources staging directory
         """
         jar_timestamp = mx.TimeStampFile(jar_path)
+        archive = self.src_archive if is_sources_jar else self.bin_archive
         with zipfile.ZipFile(jar_path, 'r') as zf:
             for arcname in zf.namelist():
                 if arcname.endswith('/'):
+                    if not self.exploded:
+                        # Use a self reference for a directory that needs an explicit entry in the archive
+                        archive.entries[arcname] = arcname
                     continue
                 if not is_sources_jar and arcname == 'module-info.class':
                     mx.logv(jar_path + ' contains ' + arcname + '. It will not be included in ' + self.bin_archive.path)
@@ -820,7 +824,7 @@ class _ArchiveStager(object):
                     assert '/' not in service
                     self.services.setdefault(service, []).extend(mx._decode(zf.read(arcname)).splitlines())
                 else:
-                    entry = _ArchiveEntry(dep, arcname, self.src_archive if is_sources_jar else self.bin_archive, jar_path + '!' + arcname)
+                    entry = _ArchiveEntry(dep, arcname, archive, jar_path + '!' + arcname)
                     with _StagingGuard(entry) as guard:
                         if guard:
                             staged = entry.staged
@@ -1150,6 +1154,17 @@ class _Archive(object):
                     manifest_contents = manifest_contents + manifestKey + ': ' + manifestValue + '\n'
                 zf.writestr("META-INF/MANIFEST.MF", manifest_contents)
 
+            # Add explicit archive entries for directories and
+            # remove them from self.entries in the process
+            new_entries = {}
+            for name, entry in self.entries.items():
+                if name == entry:
+                    assert entry.endswith('/'), entry
+                    zf.writestr(entry, '')
+                else:
+                    new_entries[name] = entry
+            self.entries = new_entries
+
             for dirpath, _, filenames in os.walk(self.staging_dir):
                 for filename in filenames:
                     if filename == self.jdk_8268216:
@@ -1183,7 +1198,10 @@ class _Archive(object):
         # Maps a directory to the staged files it contains
         staged_dir_files = {}
 
-        for entry in self.entries.values():
+        for name, entry in self.entries.items():
+            if name == entry:
+                # Entry for a directory
+                continue
             staged_dir = dirname(entry.staged)
             staged_dir_files.setdefault(staged_dir, set()).add(basename(entry.staged))
 
