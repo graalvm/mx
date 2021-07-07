@@ -6792,9 +6792,6 @@ class JavaProject(Project, ClasspathDependency):
                 if isinstance(dep, Project) and dep.is_test_project():
                     abort('Non-test project {} can not depend on the test project {}'.format(self.name, dep.name))
         overlayTargetName = getattr(self, 'overlayTarget', None)
-        if hasattr(self, 'multiReleaseJarVersion'):
-            if self.suite.getMxCompatibility().automatic_overlay_distribution_deps() and overlayTargetName is None:
-                abort('Project with "multiReleaseJarVersion" attribute must also have an "overlayTarget" attribute', context=self)
         if overlayTargetName:
             project(self.overlayTarget, context=self)._overlays.append(self)
 
