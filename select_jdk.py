@@ -59,7 +59,8 @@ def find_system_jdks():
         '/usr/lib/jvm',
         '/usr/java',
         '/usr/jdk/instances',
-        r'C:\Program Files\Java'
+        r'C:\Program Files\Java',
+        join(expanduser('~'), '.mx', 'jdks') # default --to value for `mx fetch-jdk` command
     ]
     jdks = set()
     for base in bases:
