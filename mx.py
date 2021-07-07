@@ -571,7 +571,7 @@ environment variables:
         self.add_argument('--jmods-dir', action='store', help='path to built jmods (default JAVA_HOME/jmods)', metavar='<path>')
         self.add_argument('--version-conflict-resolution', dest='version_conflict_resolution', action='store', help='resolution mechanism used when a suite is imported with different versions', default='suite', choices=['suite', 'none', 'latest', 'latest_all', 'ignore'])
         self.add_argument('-c', '--max-cpus', action='store', type=int, dest='cpu_count', help='the maximum number of cpus to use during build', metavar='<cpus>', default=None)
-        self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars (jar containing ProGuard main class must be first) to be used instead of default versions')
+        self.add_argument('--proguard-cp', action='store', help='class path containing ProGuard jars to be used instead of default versions')
         self.add_argument('--strip-jars', action='store_true', help='produce and use stripped jars in all mx commands.')
         self.add_argument('--env', dest='additional_env', help='load an additional env file in the mx dir of the primary suite', metavar='<name>')
         self.add_argument('--trust-http', action='store_true', help='Suppress warning about downloading from non-https sources')
@@ -5444,7 +5444,7 @@ class Distribution(Dependency):
         yield  # pylint: disable=unreachable
 
 
-from mx_jardistribution import JARDistribution, _proguard_version, _use_exploded_build
+from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build
 
 class JMHArchiveParticipant(object):
     """ Archive participant for building JMH benchmarking jars. """
@@ -14995,7 +14995,7 @@ def _unstrip(args):
     return 0
 
 def unstrip(args, **run_java_kwargs):
-    proguard_cp = _opts.proguard_cp or (library('PROGUARD_RETRACE_' + _proguard_version).get_path(resolve=True) + os.pathsep + library('PROGUARD_' + _proguard_version).get_path(resolve=True))
+    proguard_cp = _get_proguard_cp()
     # A slightly more general pattern for matching stack traces than the default.
     # This version does not require the "at " prefix.
     regex = r'(?:.*?\s+%c\.%m\s*\(%s(?::%l)?\)\s*(?:~\[.*\])?)|(?:(?:.*?[:"]\s+)?%c(?::.*)?)'
@@ -17679,7 +17679,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.304.4")  # GR-32462
+version = VersionSpec("5.304.5")  # GR-32364
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
