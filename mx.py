@@ -4283,11 +4283,14 @@ def clean(args, parser=None):
     parser.add_argument('--no-dist', action='store_false', dest='dist', help='do not delete distributions')
     parser.add_argument('--all', action='store_true', help='clear all dependencies (not just default targets)')
     parser.add_argument('--aggressive', action='store_true', help='clear all suite output')
+    parser.add_argument('--disk-usage', action='store_true', help='compute and show disk usage before and after')
 
     args = parser.parse_args(args)
 
     suite_roots = {s:s.get_output_root(platformDependent=False, jdkDependent=False) for s in suites()}
-    disk_usage = {s:mx_gc._get_size_in_bytes(root) for s, root in suite_roots.items()}
+    disk_usage = None
+    if args.disk_usage:
+        disk_usage = {s:mx_gc._get_size_in_bytes(root) for s, root in suite_roots.items()}
 
     def _collect_clean_dependencies():
         if args.all:
@@ -4321,10 +4324,11 @@ def clean(args, parser=None):
                 log('Cleaning {}...'.format(root))
                 rmtree(root)
 
-    for s in disk_usage:
-        before = disk_usage[s]
-        after = mx_gc._get_size_in_bytes(suite_roots[s])
-        log('{}: {} -> {}'.format(s, mx_gc._format_bytes(before), mx_gc._format_bytes(after)))
+    if args.disk_usage:
+        for s in disk_usage:
+            before = disk_usage[s]
+            after = mx_gc._get_size_in_bytes(suite_roots[s])
+            log('{}: {} -> {}'.format(s, mx_gc._format_bytes(before), mx_gc._format_bytes(after)))
 
     if suppliedParser:
         return args
@@ -17676,7 +17680,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.305.0")  # GR-32211
+version = VersionSpec("5.305.1")  # GR-32534
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
