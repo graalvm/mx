@@ -458,6 +458,11 @@ dynamicCodeGenerated(jvmtiEnv *jvmti,
 
 JNIEXPORT jint JNICALL
 Agent_OnLoad(JavaVM *jvm, char *options, void *reserved) {
+  if (output_file != NULL) {
+    report_error("jvmtiasmagent being initialized twice");
+    return -1;
+  }
+
   if (options == NULL) {
     usage("Must specify an output file name");
   }
