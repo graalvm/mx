@@ -1813,6 +1813,9 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+        if self.profilerNames(bmSuiteArgs):
+            mx.abort("Profilers are not currently compatible with the JMH benchmark runner.")
+
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
         return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + (benchmarks if benchmarks else [])
