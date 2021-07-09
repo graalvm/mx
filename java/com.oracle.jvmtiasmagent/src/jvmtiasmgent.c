@@ -543,7 +543,9 @@ Agent_OnLoad(JavaVM *jvm, char *options, void *reserved) {
 JNIEXPORT void JNICALL
 Agent_OnUnload(JavaVM *jvm) {
   lock_output_file();
-  fclose(output_file);
-  output_file = NULL;
+  if (output_file != NULL) {
+    fclose(output_file);
+    output_file = NULL;
+  }
   unlock_output_file();
 }
