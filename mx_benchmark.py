@@ -1829,8 +1829,8 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
 
         if self.profilerNames(bmSuiteArgs) and _is_forking(runArgs):
-            mx.abort("Profilers are not currently compatible with the JMH benchmark runner in forked mode.\n" +
-                     "Forking can be disable with `-f0` but be aware that this significantly changes the way the benchmark is executed.")
+            mx.warn("Profilers are not currently compatible with the JMH benchmark runner in forked mode.\n" +
+                    "Forking can be disable with `-f0` but be aware that this significantly changes the way the benchmark is executed.")
 
         return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + (benchmarks if benchmarks else [])
 
