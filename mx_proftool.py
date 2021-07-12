@@ -32,14 +32,18 @@ import io
 import shutil
 import subprocess
 import struct
+import sys
+import zipfile
 
 import mx
 import mx_benchmark
 
 import os
 import re
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Action, OPTIONAL
 from zipfile import ZipFile
+
+import mx_logcompilation
 
 try:
     # import into the global scope but don't complain if it's not there.  The commands themselves
@@ -78,17 +82,22 @@ class ExperimentFiles(object):
         pass
 
     @staticmethod
+    def open_experiment(filename):
+        if os.path.isdir(filename):
+            return FlatExperimentFiles(directory=filename)
+        elif zipfile.is_zipfile(filename):
+            return ZipExperimentFiles(filename)
+        return None
+
+    @staticmethod
     def open(options):
-        options_dict = vars(options)
-        if options_dict.get('experiment'):
-            experiment = options_dict.get('experiment')
-            if os.path.isdir(experiment):
-                return FlatExperimentFiles(directory=experiment)
-            else:
-                return ZipExperimentFiles(experiment)
+        experiment = options.experiment
+        if experiment is None:
+            mx.abort('Must specify an experiment')
+        if os.path.isdir(experiment):
+            return FlatExperimentFiles(directory=experiment)
         else:
-            return FlatExperimentFiles(jvmti_asm_name=options_dict.get('jvmti_asm_file'),
-                                       perf_binary_name=options_dict.get('perf_binary_file'))
+            return ZipExperimentFiles(experiment)
 
     def open_jvmti_asm_file(self):
         raise NotImplementedError()
@@ -108,6 +117,15 @@ class ExperimentFiles(object):
     def open_perf_output_file(self, mode='r'):
         raise NotImplementedError()
 
+    def has_log_compilation(self):
+        raise NotImplementedError()
+
+    def get_log_compilation_filename(self):
+        raise NotImplementedError()
+
+    def open_log_compilation_file(self):
+        raise NotImplementedError()
+
     def package(self, name=None):
         raise NotImplementedError()
 
@@ -116,7 +134,7 @@ class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
     def __init__(self, directory=None, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
-                 perf_output_name='perf_output_file'):
+                 perf_output_name='perf_output_file', log_compilation_name='log_compilation'):
         super(FlatExperimentFiles, self).__init__()
         self.dump_path = None
         if directory:
@@ -126,11 +144,13 @@ class FlatExperimentFiles(ExperimentFiles):
             self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
             self.perf_binary_filename = os.path.join(directory, perf_binary_name)
             self.perf_output_filename = os.path.join(directory, perf_output_name)
+            self.log_compilation_filename = os.path.join(directory, log_compilation_name)
         else:
             self.directory = None
             self.jvmti_asm_filename = jvmti_asm_name
             self.perf_binary_filename = perf_binary_name
             self.perf_output_filename = perf_output_name
+            self.log_compilation_filename = log_compilation_name
 
     @staticmethod
     def create(experiment, overwrite=False):
@@ -165,6 +185,15 @@ class FlatExperimentFiles(ExperimentFiles):
 
     def has_perf_output(self):
         return self.perf_output_filename and os.path.exists(self.perf_output_filename)
+
+    def get_log_compilation_filename(self):
+        return self.log_compilation_filename
+
+    def open_log_compilation_file(self):
+        return open(self.log_compilation_filename, mode='r', encoding='utf-8')
+
+    def has_log_compilation(self):
+        return self.log_compilation_filename and os.path.exists(self.log_compilation_filename)
 
     def create_dump_dir(self):
         if self.dump_path:
@@ -201,26 +230,37 @@ class ZipExperimentFiles(ExperimentFiles):
         self.experiment_file = ZipFile(filename)
         self.jvmti_asm_file = self.find_file('jvmti_asm_file')
         self.perf_output_filename = self.find_file('perf_output_file')
+        self.log_compilation_filename = self.find_file('log_compilation', error=False)
 
-    def find_file(self, name):
+    def find_file(self, name, error=True):
         for f in self.experiment_file.namelist():
             if f.endswith(os.sep + name):
                 return f
-        mx.abort('Missing file ' + name)
+        if error:
+            mx.abort('Missing file ' + name)
 
     def open_jvmti_asm_file(self):
         return self.experiment_file.open(self.jvmti_asm_file, 'r')
 
     def has_assembly(self):
-        return 'jvmti_asm_file' in self.experiment_file.namelist()
+        return self.jvmti_asm_file is not None
 
     def open_perf_output_file(self, mode='r'):
         return io.TextIOWrapper(self.experiment_file.open(self.perf_output_filename, mode), encoding='utf-8')
+
+    def open_log_compilation_file(self):
+        return io.TextIOWrapper(self.experiment_file.open(self.log_compilation_filename, 'r'), encoding='utf-8')
+
+    def has_log_compilation(self):
+        return self.log_compilation_filename is not None
 
     def get_jvmti_asm_filename(self):
         mx.abort('Unable to output directly to zip file')
 
     def get_perf_binary_filename(self):
+        mx.abort('Unable to output directly to zip file')
+
+    def get_log_compilation_filename(self):
         mx.abort('Unable to output directly to zip file')
 
 
@@ -253,11 +293,15 @@ class DisassemblyBlock:
 class DisassemblyDecoder:
     """A lightweight wrapper around the CapStone disassembly provide some extra functionality."""
 
-    def __init__(self, decoder):
+    def __init__(self, decoder, fp):
         decoder.detail = True
         self.decoder = decoder
         self.annotators = []
         self.hex_bytes = False
+        self.fp = fp
+
+    def print(self, string):
+        print(string, file=self.fp)
 
     def add_annotator(self, annotator):
         self.annotators.append(annotator)
@@ -322,17 +366,20 @@ class DisassemblyDecoder:
                 mx.abort(message)
         return preannotations[0] if preannotations else None, postannotations
 
-    def filter_by_hot_region(self, instructions, hotpc, context_size=16):
+    def filter_by_hot_region(self, instructions, hotpc, hot_threshold, context_size=16):
         index = 0
         begin = None
         skip = 0
         regions = []
         for instruction in instructions:
             if instruction.address in hotpc:
+                event = hotpc.pop(instruction.address)
+                if hot_threshold:
+                    if event.percent < hot_threshold:
+                        continue
                 skip = 0
                 if not begin:
                     begin = max(index - context_size, 0)
-                hotpc.remove(instruction.address)
             else:
                 skip += 1
             if begin and skip > context_size:
@@ -346,19 +393,20 @@ class DisassemblyDecoder:
             print('Unattributed pcs {}'.format(['{:x}'.format(x) for x in list(hotpc)]))
         return regions
 
-    def disassemble(self, code, code_addr, hotpc, show_regions=False):
+    def disassemble(self, code, code_addr, hotpc, hot_threshold=0.5):
         instructions = self.disassemble_with_skip(code, code_addr)
-        regions = self.filter_by_hot_region(instructions, hotpc)
-        if not show_regions:
+        if hot_threshold == 0:
             regions = [(0, len(instructions))]
+        else:
+            regions = self.filter_by_hot_region(instructions, hotpc, hot_threshold)
         instructions = [(i,) + self.get_annotations(i) for i in instructions]
         prefix_width = max(len(p) if p else 0 for i, p, a in instructions) + 1
         prefix_format = '{:' + str(prefix_width) + '}'
         region = 1
 
         for begin, end in regions:
-            if show_regions:
-                print("Hot region {}".format(region))
+            if hot_threshold != 0:
+                self.print("Hot region {}".format(region))
             for i, prefix, annotations in instructions[begin:end]:
                 hex_bytes = ''
                 if self.hex_bytes:
@@ -375,24 +423,24 @@ class DisassemblyDecoder:
                     lines = [padding] * len(annotations)
                     lines[0] = line
                     for a, b in zip(lines, annotations):
-                        print('{}; {}'.format(a, b))
+                        self.print('{}; {}'.format(a, b))
                 else:
-                    print(line)
-            if show_regions:
-                print("End of hot region {}".format(region))
-            print('')
+                    self.print(line)
+            if hot_threshold != 0:
+                self.print("End of hot region {}".format(region))
+            self.print('')
             region += 1
 
         last, _, _ = instructions[-1]
         decode_end = last.address + last.size
         buffer_end = code_addr + len(code)
         if decode_end != buffer_end:
-            print('Skipping {} bytes {:x} {:x} '.format(buffer_end - decode_end, buffer_end, decode_end))
+            self.print('Skipping {} bytes {:x} {:x} '.format(buffer_end - decode_end, buffer_end, decode_end))
 
 
 class AMD64DisassemblerDecoder(DisassemblyDecoder):
-    def __init__(self):
-        DisassemblyDecoder.__init__(self, capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64))
+    def __init__(self, fp):
+        DisassemblyDecoder.__init__(self, capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64), fp)
 
     def successors(self, i):
         if len(i.groups) > 0:
@@ -412,8 +460,8 @@ class AMD64DisassemblerDecoder(DisassemblyDecoder):
 
 
 class AArch64DisassemblyDecoder(DisassemblyDecoder):
-    def __init__(self):
-        DisassemblyDecoder.__init__(self, capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM))
+    def __init__(self, fp):
+        DisassemblyDecoder.__init__(self, capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM), fp)
 
     def successors(self, i):
         if len(i.groups) > 0:
@@ -449,7 +497,10 @@ class Method:
         return self.class_signature + '.' + self.name + (self.method_arguments if with_arguments else '')
 
     def method_filter_format(self, with_arguments=False):
-        return self.class_signature + '.' + self.name + (self.method_arguments if with_arguments else '')
+        return self.format_name(with_arguments=with_arguments)
+
+    def __repr__(self):
+        return self.format_name()
 
     @staticmethod
     def decode_type(argument_type):
@@ -497,16 +548,24 @@ class CompiledCodeInfo:
         self.code_addr = code_addr
         self.name = name
         self.debug_info = debug_info
+        self.debug_info_map = None
         self.unload_time = None
         self.generated = generated
         self.events = []
+        self.event_map = None
         self.total_period = 0
         self.total_samples = 0
         self.methods = methods
+        self.nmethod = None
 
     def __str__(self):
         return '0x{:x}-0x{:x} {} {}-{}'.format(self.code_begin(), self.code_end(), self.name, self.timestamp,
                                                self.unload_time or '')
+
+    def get_compile_id(self):
+        if self.nmethod is None:
+            return None
+        return self.nmethod.get_compile_id()
 
     def set_unload_time(self, timestamp):
         self.unload_time = timestamp
@@ -534,30 +593,51 @@ class CompiledCodeInfo:
         return timestamp >= self.timestamp and \
                (self.unload_time is None or self.unload_time > timestamp)
 
-    def get_annotations(self, pc):
+    def get_event_map(self):
+        if self.event_map is None:
+            self.event_map = {}
+            for event in self.events:
+                self.event_map[event.pc] = event
+        return self.event_map
+
+    def get_debug_info_map(self):
+        if self.debug_info_map is None:
+            self.debug_info_map = {}
+            for debug_info in self.debug_info:
+                self.debug_info_map[debug_info.pc] = debug_info
+        return self.debug_info_map
+
+    def get_code_annotations(self, pc, show_debuginfo=True, show_perf=True):
         annotations = []
         prefix = None
-        for event in self.events:
-            if event.pc == pc:
+        if show_perf:
+            event = self.get_event_map().get(pc)
+            if event:
                 prefix = '{:5.2f}%'.format(100.0 * event.period / float(self.total_period))
-                break
-        if self.debug_info:
-            for d in self.debug_info:
-                if d.pc == pc:
-                    for frame in d.frames:
-                        annotations.append(str(frame))
-                    break
+
+        if self.debug_info and show_debuginfo:
+            debug_info = self.get_debug_info_map().get(pc)
+            if debug_info:
+                for frame in debug_info.frames:
+                    annotations.append(str(frame))
+
         return annotations, prefix
 
-    def disassemble(self, decoder, hot_only=False):
-        print(self.name)
-        print('0x{:x}-0x{:x} (samples={}, period={})'.format(self.code_begin(), self.code_end(),
-                                                             self.total_samples, self.total_period))
-        hotpc = set()
+    def disassemble(self, decoder, hot_threshold=0.5):
+        """
+
+        :type decoder: DisassemblyDecoder
+        """
+        decoder.print(self.name)
+        decoder.print('0x{:x}-0x{:x} (samples={}, period={})'.format(self.code_begin(), self.code_end(),
+                                                                     self.total_samples, self.total_period))
+        hotpc = {}
         for event in self.events:
-            hotpc.add(event.pc)
-        decoder.disassemble(self.code, self.code_addr, hotpc, show_regions=hot_only)
-        print('')
+            event = copy.copy(event)
+            event.percent = event.period * 100 / self.total_period
+            hotpc[event.pc] = event
+        decoder.disassemble(self.code, self.code_addr, hotpc, hot_threshold=hot_threshold)
+        decoder.print('')
 
 
 class PerfEvent:
@@ -635,6 +715,7 @@ class PerfOutput:
             e = events_by_address.get(event.pc)
             if e:
                 e.period = e.period + event.period
+                e.samples = e.samples + event.samples
             else:
                 # avoid mutating the underlying raw event
                 events_by_address[event.pc] = copy.copy(event)
@@ -663,9 +744,17 @@ class PerfOutput:
 
 
 class GeneratedAssembly:
-    """All the assembly generated by the HotSpot JIT including any helpers and the interpreter"""
+    """
+    All the assembly generated by the HotSpot JIT including any helpers and the interpreter
+
+    :type code_info: list[CompiledCodeInfo]
+    """
 
     def __init__(self, files, verbose=False):
+        """
+
+        :type files: ExperimentFiles
+        """
         self.code_info = []
         self.low_address = None
         self.high_address = None
@@ -685,11 +774,45 @@ class GeneratedAssembly:
             self.read(fp, verbose)
             self.fp = None
 
-    def decoder(self):
+        if files.has_log_compilation():
+            # try to attribute the nmethods to the JVMTI output so that compile ids are available
+            with files.open_log_compilation_file() as fp:
+                # build a map from the entry pc to the nmethod information
+                nmethods = {}
+                for nmethod in mx_logcompilation.find_nmethods(fp):
+                    current = nmethods.get(nmethod.entry_pc)
+                    if current is None:
+                        current = list()
+                        nmethods[nmethod.entry_pc] = current
+                    current.append(nmethod)
+
+            for code in self.code_info:
+                if code.generated:
+                    # stubs aren't mentioned in the LogCompilation output
+                    continue
+
+                name = code.methods[0].format_name(with_arguments=True)
+                matches = nmethods.get(code.code_begin())
+                if matches:
+                    found = matches.pop(0)
+                    found_name = found.format_name(with_arguments=True)
+                    assert found_name == name or \
+                           '$$Lambda$' in name or \
+                           name.startswith('java.lang.invoke.MethodHandle.linkToStatic') or \
+                           name.startswith('java.lang.invoke.LambdaForm'), '{} {} != {} {}'.format(name, type(name),
+                                                                                                   found_name,
+                                                                                                   type(found_name))
+                    code.nmethod = found
+                    continue
+                print(matches)
+                print('Unable to find matching nmethod for code {}'.format(code))
+                mx.abort('Unable to find matching nmethod for code {}'.format(code))
+
+    def decoder(self, fp=sys.stdout):
         if self.arch == 'amd64':
-            return AMD64DisassemblerDecoder()
+            return AMD64DisassemblerDecoder(fp)
         if self.arch == 'aarch64':
-            return AArch64DisassemblyDecoder()
+            return AArch64DisassemblyDecoder(fp)
         raise AssertionError('Unknown arch ' + self.arch)
 
     def round_up(self, value):
@@ -928,23 +1051,31 @@ def find_jvmti_asm_agent():
     return None
 
 
-def profrecord_command(args):
+@mx.command('mx', 'profrecord', '[options]')
+@mx.suite_context_free
+def profrecord(args):
     """Capture the profile of a Java program."""
     # capstone is not required for the capture step
-    parser = ArgumentParser(description='Capture a profile of a Java program.')
-    parser.add_argument('--script', help='Emit a script to run and capture annotated assembly', action='store_true')
-    parser.add_argument('--experiment', '-E',
+    parser = ArgumentParser(description='Capture a profile of a Java program.', prog='mx profrecord')
+    parser.add_argument('-s', '--script', help='Emit a script to run and capture annotated assembly',
+                        action='store_true')
+    parser.add_argument('-E', '--experiment',
                         help='The directory containing the data files from the experiment',
                         action='store', required=True)
-    parser.add_argument('--overwrite', '-O', help='Overwrite an existing dump directory',
+    parser.add_argument('-O', '--overwrite', help='Overwrite an existing dump directory',
                         action='store_true')
-    parser.add_argument('--dump-hot', '-D', help='Run the program and then rerun it with dump options enabled for the hottest methods',
+    parser.add_argument('-D', '--dump-hot',
+                        help='Run the program and then rerun it with dump options enabled for the hottest methods',
                         action='store_true')
-    parser.add_argument('--dump-level', help='The Graal dump level to use with the --dump-hot option',
+    parser.add_argument('-l', '--dump-level', help='The Graal dump level to use with the --dump-hot option',
                         action='store', default=1)
-    parser.add_argument('--limit', '-L', help='The number of hot methods to dump with the --dump-hot option',
+    parser.add_argument('-L', '--limit', help='The number of hot methods to dump with the --dump-hot option',
                         action='store', default=5)
+    parser.add_argument('-F', '--frequency', help='Frequency argument passed to perf',
+                        action='store', default=1000)
     options, args = parser.parse_known_args(args)
+    if args[0] == '--':
+        args = args[1:]
     files = FlatExperimentFiles.create(options.experiment, options.overwrite)
 
     if not PerfOutput.is_supported() and not options.script:
@@ -980,57 +1111,105 @@ def profrecord_command(args):
             # because of the effects of dumping.  This command might need to be smarter about the side effects
             # of dumping on the performance since the overhead of dumping might perturb the execution.  It's not
             # entirely clear how to cope with that though.
-            full_cmd = build_capture_command(files, args, extra_vm_args=dump_arguments)
+            full_cmd = build_capture_command(files, options.command, extra_vm_args=dump_arguments)
             convert_cmd = PerfOutput.perf_convert_binary_command(files)
             mx.run(full_cmd)
             with files.open_perf_output_file(mode='w') as fp:
                 mx.run(convert_cmd, out=fp)
 
 
-def profpackage_command(args):
-    """Package a directory based profrecord experiment into a zip."""
+@mx.command('mx', 'profpackage', '[options]')
+@mx.suite_context_free
+def profpackage(args):
+    """Package a directory based proftool experiment into a zip."""
     # capstone is not required for packaging
-    parser = ArgumentParser(description='Capture a profile of a Java program.')
-    parser.add_argument('--experiment', '-E',
-                        help='The directory containing the data files from the experiment',
-                        action='store', required=True)
-    options, args = parser.parse_known_args(args)
-    files = FlatExperimentFiles(directory=options.experiment)
+    parser = ArgumentParser(description='Package a directory based proftool experiment into a zip.',
+                            prog='mx profpackage')
+    parser.add_argument('-D', '--delete',
+                        help='Delete the directory after creating the zip',
+                        action='store_true')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-E', '--experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store')
+    group.add_argument('experiments',
+                       help='The directory containing the data files from the experiment',
+                       action='store', nargs='*', default=[])
+    options = parser.parse_args(args)
+    if options.experiment:
+        options.experiments = list(options.experiment)
+    for experiment in options.experiments:
+        files = FlatExperimentFiles(directory=experiment)
+        name = files.package()
+        print('Created {}'.format(name))
+        if options.delete:
+            shutil.rmtree(experiment)
 
-    name = files.package()
-    print('Created {}'.format(name))
 
-
-def build_capture_args(files, extra_vm_args=None):
+def build_capture_args(files, extra_vm_args=None, options=None):
     jvmti_asm_file = files.get_jvmti_asm_filename()
     perf_binary_file = files.get_perf_binary_filename()
     perf_cmd = ['perf', 'record']
     if not PerfOutput.is_supported() or PerfOutput.supports_dash_k_option():
         perf_cmd += ['-k', '1']
-    perf_cmd += ['--freq', '1000', '--event', 'cycles', '--output', perf_binary_file]
+    if options:
+        frequency = options.frequency
+    else:
+        frequency = 1000
+    perf_cmd += ['--freq', str(frequency), '--event', 'cycles', '--output', perf_binary_file]
     vm_args = ['-agentpath:{}={}'.format(find_jvmti_asm_agent(), jvmti_asm_file), '-XX:+UnlockDiagnosticVMOptions',
-               '-XX:+DebugNonSafepoints']
+               '-XX:+DebugNonSafepoints', '-XX:+LogCompilation',
+               '-XX:LogFile={}'.format(files.get_log_compilation_filename())]
     if extra_vm_args:
         vm_args += extra_vm_args
     return perf_cmd, vm_args
 
 
-def build_capture_command(files, command_line, extra_vm_args=None):
+def build_capture_command(files, command_line, extra_vm_args=None, options=None):
     java_cmd = command_line[0]
     java_args = command_line[1:]
-    perf_cmd, vm_args = build_capture_args(files, extra_vm_args)
+    perf_cmd, vm_args = build_capture_args(files, extra_vm_args, options)
     full_cmd = perf_cmd + [java_cmd] + vm_args + java_args
     return full_cmd
 
 
-def profhot_command(args):
+class CommaSeparatedArgs(Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, set([x.strip() for x in values.split(',')]))
+
+
+class SuppressNoneArgs(Action):
+    """
+    Mixing positionals and explicit arguments can result in overwriting the value with None so suppress writes of None.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values:
+            setattr(namespace, self.dest, values)
+
+
+@mx.command('mx', 'profhot', '[options]')
+@mx.suite_context_free
+def profhot(args):
     """Display the top hot methods and their annotated disassembly"""
     check_capstone_import('profhot')
-    parser = ArgumentParser(description='')
-    parser.add_argument('--experiment', '-E',
-                        help='The directory containing the data files from the experiment',
-                        action='store', required=True)
-    parser.add_argument('--limit', '-n', help='Show the top n entries', action='store', default=10, type=int)
+    parser = ArgumentParser(prog='mx profhot',
+                            description='Display the top hot methods and their annotated disassembly')
+
+    parser.add_argument('-n', '--limit', help='Show the top n entries', action='store', default=10, type=int)
+    parser.add_argument('-H', '--hot-threshold', help='Minimum percentage for a pc to be considered hot',
+                        action='store', type=float, default=0.5)
+    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default',
+                        action='store')
+    parser.add_argument('-a', '--annotators', help='Controls which annotations appear in the final assembly',
+                        action=CommaSeparatedArgs, default={'debuginfo', 'perf'})
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-E', '--experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store', required=False)
+    group.add_argument('experiment',
+                       help='The directory containing the data files from the experiment',
+                       action=SuppressNoneArgs, nargs=OPTIONAL)
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
     perf_data = PerfOutput(files)
@@ -1038,25 +1217,43 @@ def profhot_command(args):
     assembly.attribute_events(perf_data)
     entries = perf_data.get_top_methods()
     non_jit_entries = [(s, d, c) for s, d, c in entries if d not in ('[JIT]', '[Generated]')]
-    print('Hot C functions:')
+    fp = sys.stdout
+    if options.output:
+        fp = open(options.output, 'w')
+    print('Hot C functions:', file=fp)
+    print('  Percent   Name', file=fp)
     for symbol, _, count in non_jit_entries[:options.limit]:
-        print('{:8.2f}% {}'.format(100 * (float(count) / perf_data.total_period), symbol))
-    print('')
+        print('   {:5.2f}%   {}'.format(100 * (float(count) / perf_data.total_period), symbol), file=fp)
+    print('', file=fp)
 
     hot = assembly.top_methods(lambda x: x.total_period > 0)
     hot = hot[:options.limit]
-    print('Hot generated code:')
+    print('Hot generated code:', file=fp)
+    if files.has_log_compilation():
+        id_title = 'Compile Id  '
+        empty_id = '         '
+        id_format = '{:>10}  '
+    else:
+        id_title = ''
+        empty_id = ''
+        id_format = '{}'
+
+    print('  Percent   ' + id_title + 'Name', file=fp)
     for code in hot:
-        print('{:8.2f}% {}'.format(100 * (float(code.total_period) / perf_data.total_period), code.name))
-    print('')
+        print(('   {:5.2f}%   ' + id_format + '{}').format(100 * (float(code.total_period) / perf_data.total_period),
+                                                           str(code.get_compile_id()) if code.get_compile_id() else empty_id,
+                                                           code.name), file=fp)
+    print('', file=fp)
 
     for h in hot:
         if h.name == 'Interpreter':
             continue
-        decoder = assembly.decoder()
+        decoder = assembly.decoder(fp)
 
-        def get_call_annotations(instruction):
-            return h.get_annotations(instruction.address)
+        def get_code_annotations(instruction):
+            return h.get_code_annotations(instruction.address,
+                                          show_debuginfo='debuginfo' in options.annotators,
+                                          show_perf='perf' in options.annotators)
 
         def get_stub_call_name(instruction):
             if 'call' in instruction.groups():
@@ -1064,18 +1261,26 @@ def profhot_command(args):
             return None
 
         decoder.add_annotator(get_stub_call_name)
-        decoder.add_annotator(get_call_annotations)
+        decoder.add_annotator(get_code_annotations)
 
-        h.disassemble(decoder, hot_only=True)
+        h.disassemble(decoder, hot_threshold=options.hot_threshold)
+    if fp != sys.stdout:
+        fp.close()
 
 
-def profasm_command(args):
+@mx.command('mx', 'profasm', '[options]')
+@mx.suite_context_free
+def profasm(args):
     """Dump the assembly from a jvmtiasmagent dump"""
     check_capstone_import('profasm')
-    parser = ArgumentParser(description='')
-    parser.add_argument('--experiment', '-E',
-                        help='The directory or zip containing the data files from the experiment',
-                        action='store', required=True)
+    parser = ArgumentParser(description='Dump the assembly from a jvmtiasmagent dump', prog='mx profasm')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-E', '--experiment',
+                       help='The directory containing the data files from the experiment',
+                       action='store', required=False)
+    group.add_argument('experiment',
+                       help='The directory containing the data files from the experiment',
+                       action=SuppressNoneArgs, nargs='?')
     options = parser.parse_args(args)
     files = ExperimentFiles.open(options)
     assembly = GeneratedAssembly(files)
@@ -1086,6 +1291,10 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
     """
     Use perf on linux and a JVMTI agent to capture Java profiles.
     """
+
+    def __init__(self):
+        super(ProftoolProfiler, self).__init__()
+        self.filename = None
 
     def name(self):
         return "proftool"
@@ -1102,18 +1311,22 @@ class ProftoolProfiler(mx_benchmark.JVMProfiler):
     def additional_options(self, dump_path):
         if not self.nextItemName:
             return [], []
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        if self.nextItemName:
-            directory = os.path.join(dump_path, "proftool_{}_{}".format(self.nextItemName, timestamp))
-        else:
-            directory = os.path.join(dump_path, "proftool_{}".format(timestamp))
+        directory = os.path.join(dump_path, self.filename)
         files = FlatExperimentFiles.create(directory, overwrite=True)
         perf_cmd, vm_args = build_capture_args(files)
 
         # reset the next item name since it has just been consumed
         self.nextItemName = None
         return vm_args, perf_cmd
+
+    def setup(self, benchmarks, bmSuiteArgs):
+        super(ProftoolProfiler, self).setup(benchmarks, bmSuiteArgs)
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        if self.nextItemName:
+            self.filename = "proftool_{}_{}".format(self.nextItemName, timestamp)
+        else:
+            self.filename = "proftool_{}".format(timestamp)
 
 
 if PerfOutput.is_supported():
