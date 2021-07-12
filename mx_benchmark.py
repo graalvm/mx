@@ -1813,8 +1813,25 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         raise NotImplementedError()
 
     def createCommandLineArgs(self, benchmarks, bmSuiteArgs):
+
+        def _is_forking(args):
+            if '-f0' in args:
+                return False
+            try:
+                f_idx = args.index('-f')
+                if args[f_idx + 1] == '0':
+                    return False
+            except (ValueError, IndexError) as _:
+                pass
+            return True
+
         vmArgs = self.vmArgs(bmSuiteArgs) + self.extraVmArgs()
         runArgs = self.extraRunArgs() + self.runArgs(bmSuiteArgs)
+
+        if self.profilerNames(bmSuiteArgs) and _is_forking(runArgs):
+            mx.warn("Profilers are not currently compatible with the JMH benchmark runner in forked mode.\n" +
+                    "Forking can be disable with `-f0` but be aware that this significantly changes the way the benchmark is executed.")
+
         return vmArgs + self.getJMHEntry(bmSuiteArgs) + ['--jvmArgsPrepend', ' '.join(vmArgs)] + runArgs + (benchmarks if benchmarks else [])
 
     def successPatterns(self):
