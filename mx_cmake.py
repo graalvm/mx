@@ -262,23 +262,3 @@ class CMakeNinjaProject(CMakeMixin, mx_native.NinjaProject):  # pylint: disable=
         out_dir_arch = mx.join(self.out_dir, target_arch)
         for _result in self.getResults():
             yield result(out_dir_arch, _result)
-
-
-class VariantCMakeNinjaBuildTask(CMakeNinjaBuildTask):
-    def __init__(self, args, project, target_arch=mx.get_arch(), ninja_targets=None, variant=None):
-        self.variant = variant
-        # abuse target_arch to inject variant
-        super(VariantCMakeNinjaBuildTask, self).__init__(args, project, target_arch=os.path.join("build", variant), ninja_targets=ninja_targets)
-        # set correct target_arch
-        self.target_arch = target_arch
-
-    @property
-    def name(self):
-        return '{} ({})'.format(self.subject.name, self.variant)
-
-    def build(self):
-        try:
-            self.subject.current_variant = self.variant
-            super(VariantCMakeNinjaBuildTask, self).build()
-        finally:
-            self.subject.current_variant = None
