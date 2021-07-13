@@ -17680,7 +17680,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.305.2")  # fix libjvmtiasmagent segfault
+version = VersionSpec("5.305.3")  # GR-32568 CMakeNinjaProject
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
