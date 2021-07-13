@@ -76,7 +76,7 @@ class CMakeProjectMixin(object):
         self._cmake_config_raw = kwargs.pop('cmakeConfig', {})
 
     def cmake_config(self):
-        return [CMakeProjectMixin.config_entry(k, v.replace('{{}}', '$')) for k, v in sorted(self._cmake_config_raw.items())]
+        return [CMakeProjectMixin.config_entry(k, v) for k, v in sorted(self._cmake_config_raw.items())]
 
 
 class CMakeBuildTaskMixin(object):
@@ -206,7 +206,7 @@ class CMakeNinjaProject(CMakeProjectMixin, mx_native.NinjaProject):  # pylint: d
         ninja_targets: list of str, optional
             Targets that should be built using Ninja
         ninja_install_targets: list of str, optional
-            Targets that executed after a successful build. In contrast to `ninja_targets`, the `ninja_install_targets`
+            Targets that should be executed after a successful build. In contrast to `ninja_targets`, the `ninja_install_targets`
             are not considered when deciding whether a project needs to be rebuilt. This is needed because `install`
             targets created by CMake are often executed unconditionally, which would cause the project to be always
             rebuilt.
@@ -228,7 +228,6 @@ class CMakeNinjaProject(CMakeProjectMixin, mx_native.NinjaProject):  # pylint: d
         self._install_targets = [mx_subst.path_substitutions.substitute(x) for x in ninja_install_targets or []]
         self._ninja_targets = [mx_subst.path_substitutions.substitute(x) for x in ninja_targets or []]
         super(CMakeNinjaProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, d, results=results, output=output, **args)
-        # self.dir = self.getOutput()
         self.silent = not cmake_show_warnings
 
     def generate_manifest(self, path, extra_cmake_config=None):
