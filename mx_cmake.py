@@ -169,6 +169,27 @@ class CMakeMixin(object):
         return [CMakeMixin.config_entry(k, v.replace('{{}}', '$')) for k, v in sorted(self._cmake_config_raw.items())]
 
 
+class CMakeProject(CMakeMixin, mx.NativeProject):  # pylint: disable=too-many-ancestors
+    def __init__(self, suite, name, deps, workingSets, subDir, results=None, output=None, **args):
+        projectDir = args.pop('dir', None)
+        if projectDir:
+            d_rel = projectDir
+        elif subDir is None:
+            d_rel = name
+        else:
+            d_rel = os.path.join(subDir, name)
+        d = os.path.join(suite.dir, d_rel.replace('/', os.sep))
+        srcDir = args.pop('sourceDir', d)
+        if not srcDir:
+            mx.abort("Exactly one 'sourceDir' is required")
+        srcDir = mx_subst.path_substitutions.substitute(srcDir)
+        super(CMakeProject, self).__init__(suite, name, subDir, [srcDir], deps, workingSets, results, output, d, **args)
+        self.dir = self.getOutput()
+
+    def getBuildTask(self, args):
+        return CMakeBuildTask(args, self)
+
+
 class CMakeNinjaBuildTask(CMakeBuildTaskMixin, mx_native.NinjaBuildTask):
 
     def needsBuild(self, newestInput):
