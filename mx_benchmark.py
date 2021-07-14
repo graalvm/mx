@@ -2369,7 +2369,7 @@ class BenchmarkExecutor(object):
             mx.abort("Cannot find benchmark suite '{0}'.  Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
         if args.bench_suite_version:
             suite.setDesiredVersion(args.bench_suite_version)
-        if benchspec == "*":
+        if not exclude and benchspec == "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif not exclude and benchspec.startswith("*[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
