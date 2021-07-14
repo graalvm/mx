@@ -2371,7 +2371,7 @@ class BenchmarkExecutor(object):
             suite.setDesiredVersion(args.bench_suite_version)
         if benchspec == "*":
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
-        elif benchspec.startswith("*[") and benchspec.endswith("]"):
+        elif not exclude and benchspec.startswith("*[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
             requested_benchmarks = benchspec[2:-1].split(",")
             if not set(requested_benchmarks) <= set(all_benchmarks):
