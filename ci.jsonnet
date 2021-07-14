@@ -173,6 +173,13 @@ mx_bisect_test = {
   teardown: [
     ['rm', '-f', 'mxbuild/bisect_*.log'],
   ],
+},
+mx_unit_test = {
+  capabilities: ['linux', 'amd64'],
+  targets: ['gate'],
+  run: [
+    [ "tests/run" ],
+  ],
 }
 ;
 
@@ -195,6 +202,8 @@ mx_bisect_test = {
     build_truffleruby + {capabilities: ['linux', 'amd64'], name: "gate-build-truffleruby-native-linux-amd64"},
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,
+    python2 + { name: "unit-tests-python2" } + mx_unit_test,
+    python3 + { name: "unit-tests-python3" } + mx_unit_test,
 
     {
       capabilities: ['linux', 'amd64'], targets: ['gate'], name: "gate-version-update-check",
@@ -202,15 +211,6 @@ mx_bisect_test = {
         [ "./tag_version.py", "--check-only", "HEAD" ],
       ],
     },
-
-    {
-      capabilities: ['linux', 'amd64'], targets: ['gate'], name: "unit tests",
-      run: [
-        [ "python2", "tests/benchmark_tests.py" ],
-        [ "python3", "tests/benchmark_tests.py" ],
-      ],
-    },
-
     {
       capabilities: ['linux', 'amd64'], targets: ['post-merge'], name: "post-merge-tag-version",
       run: [
