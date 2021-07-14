@@ -2379,6 +2379,14 @@ class BenchmarkExecutor(object):
                 plural = "" if len(difference) == 1 else "s"
                 mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
             return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
+        elif exclude and benchspec.startswith("[") and benchspec.endswith("]"):
+            all_benchmarks = suite.benchmarkList(bmSuiteArgs)
+            excluded_benchmarks = benchspec[1:-1].split(",")
+            if not set(excluded_benchmarks) < set(all_benchmarks):
+                difference = list(set(excluded_benchmarks) - set(all_benchmarks))
+                plural = "" if len(difference) == 1 else "s"
+                mx.abort("The benchmark{0} {1} are not in the suite ".format(plural, ",".join(difference)))
+            return (suite, [[b] for b in all_benchmarks if b not in excluded_benchmarks])
         elif benchspec == "":
             return (suite, [None])
         else:
@@ -2683,6 +2691,7 @@ def benchmark(args):
             benchmarks are executed as part of one run.
             If a wildcard with a `*[bench1,bench2,...]` list is specified,
             then only the subset of the benchmarks from the list is run.
+            The syntax `~[bench1,bench2,...]` is equivalent to `~bench1,bench2`.
         `mxBenchmarkArgs`: Optional arguments to the `mx benchmark` command.
 
             --results-file: Target path where the results will be stored (default: bench-results.json).
