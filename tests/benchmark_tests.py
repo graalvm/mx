@@ -1,16 +1,19 @@
-from os.path import dirname, realpath, sep, pardir
+from __future__ import print_function
+
+
+from os.path import dirname, realpath, sep
 import sys
 import json
 
-dir = dirname(realpath(__file__))
-sys.path.append(dir + sep + "..")
+file_dir = dirname(realpath(__file__))
+sys.path.append(file_dir + sep + "..")
 
 import mx
 import mx_benchmark
 from mx_benchmark import benchmark
 
 # setup the primary suite
-_suite = mx.Suite(mxDir=dir + sep + 'mx.benchmarks', primary=True, internal=True, importing_suite=None, load=False, vc=None, vc_dir='.')
+_suite = mx.Suite(mxDir=file_dir + sep + 'mx.benchmarks', primary=True, internal=True, importing_suite=None, load=False, vc=None, vc_dir='.')
 mx._primary_suite_init(_suite)
 
 # Ensure attribute existence for test
@@ -41,10 +44,7 @@ class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
         return _test_vm_registry
 
     def run(self, benchmarks, bmSuiteArgs):
-        return [
-            { "benchmark" : benchmark, "arguments": bmSuiteArgs }
-            for benchmark in benchmarks
-        ]
+        return [{"benchmark" : benchmark, "arguments": bmSuiteArgs} for benchmark in benchmarks]
 
 def check(command, included, excluded):
     print("mx benchmark " + command)
