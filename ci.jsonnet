@@ -54,7 +54,7 @@ gate_darwin = common.sulong.deps.darwin + gate + {
   },
   setup+: [
       # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
-      # it will fail to start on later macOS versions. 
+      # it will fail to start on later macOS versions.
       ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
   ]
 },
@@ -202,6 +202,15 @@ mx_bisect_test = {
         [ "./tag_version.py", "--check-only", "HEAD" ],
       ],
     },
+
+    {
+      capabilities: ['linux', 'amd64'], targets: ['gate'], name: "unit tests",
+      run: [
+        [ "python2", "tests/benchmark_tests.py" ],
+        [ "python3", "tests/benchmark_tests.py" ],
+      ],
+    },
+
     {
       capabilities: ['linux', 'amd64'], targets: ['post-merge'], name: "post-merge-tag-version",
       run: [
