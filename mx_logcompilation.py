@@ -39,16 +39,19 @@ def unique_prefix(key, choices):
 
 
 class HotSpotNMethod:
-    def __init__(self, compile_id, is_osr, name, entry_pc, level, stamp):
+    def __init__(self, compile_id, is_osr, name, installed_code_name, entry_pc, level, stamp):
         self.compile_id = compile_id
         self.is_osr = is_osr
         self.method = HotSpotNMethod.parse_method(name)
+        self.installed_code_name = installed_code_name
         self.entry_pc = entry_pc
         self.level = level
         self.stamp = stamp
 
     def __repr__(self):
-        return '{}{} 0x{:x} {}'.format(self.compile_id, '%' if self.is_osr else '', self.entry_pc, self.format_name())
+        return '{}: {}{}'.format(self.get_compile_id(),
+                                 '' if not self.installed_code_name else '\"{}\" '.format(self.installed_code_name),
+                                 self.format_name())
 
     def format_name(self, with_arguments=True):
         return self.method.format_name(with_arguments=with_arguments)
@@ -88,7 +91,8 @@ def collect_nmethods(tree):
         compile_kind = x.get('compile_kind')
         name = x.get('method')
         stamp = float(x.get('stamp'))
-        nmethods.append(HotSpotNMethod(compile_id, compile_kind == 'osr', name, entry, level, stamp))
+        installed_code_name = x.get('jvmci_mirror_name')
+        nmethods.append(HotSpotNMethod(compile_id, compile_kind == 'osr', name, installed_code_name, entry, level, stamp))
     return nmethods
 
 

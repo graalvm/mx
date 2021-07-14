@@ -567,6 +567,21 @@ class CompiledCodeInfo:
             return None
         return self.nmethod.get_compile_id()
 
+    def set_nmethod(self, nmethod):
+        self.nmethod = nmethod
+        nmethod_name = nmethod.format_name(with_arguments=True)
+        if nmethod_name != self.name:
+            # LogCompilation output doesn't seem to handle anonymous classes consistently so correct the names
+            # based on what JVMTI recorded.
+            assert '$$Lambda$' in self.name or \
+                   self.name.startswith('java.lang.invoke.MethodHandle.linkToStatic') or \
+                   self.name.startswith('java.lang.invoke.LambdaForm'), '{} != {}'.format(self.name,
+                                                                                          nmethod_name)
+            # correct the method naming
+            nmethod.method = self.methods[0]
+        # update the name to include the LogCompilation id and any truffle names
+        self.name = str(nmethod)
+
     def set_unload_time(self, timestamp):
         self.unload_time = timestamp
 
@@ -786,6 +801,10 @@ class GeneratedAssembly:
                         nmethods[nmethod.entry_pc] = current
                     current.append(nmethod)
 
+            # multiple pieces of code could end up with the same entry point but both the LogCompilation output
+            # and the JVMTI asm dump should be follow the same linear ordering of nmethod definition.  This mean the
+            # first nmethod with an entry pc is also the first code info with that pc, so it suffices to just pick
+            # the nmethod at the head of the list.
             for code in self.code_info:
                 if code.generated:
                     # stubs aren't mentioned in the LogCompilation output
@@ -795,14 +814,7 @@ class GeneratedAssembly:
                 matches = nmethods.get(code.code_begin())
                 if matches:
                     found = matches.pop(0)
-                    found_name = found.format_name(with_arguments=True)
-                    assert found_name == name or \
-                           '$$Lambda$' in name or \
-                           name.startswith('java.lang.invoke.MethodHandle.linkToStatic') or \
-                           name.startswith('java.lang.invoke.LambdaForm'), '{} {} != {} {}'.format(name, type(name),
-                                                                                                   found_name,
-                                                                                                   type(found_name))
-                    code.nmethod = found
+                    code.set_nmethod(found)
                     continue
                 print(matches)
                 print('Unable to find matching nmethod for code {}'.format(code))
@@ -1111,7 +1123,7 @@ def profrecord(args):
             # because of the effects of dumping.  This command might need to be smarter about the side effects
             # of dumping on the performance since the overhead of dumping might perturb the execution.  It's not
             # entirely clear how to cope with that though.
-            full_cmd = build_capture_command(files, options.command, extra_vm_args=dump_arguments)
+            full_cmd = build_capture_command(files, args, extra_vm_args=dump_arguments)
             convert_cmd = PerfOutput.perf_convert_binary_command(files)
             mx.run(full_cmd)
             with files.open_perf_output_file(mode='w') as fp:
@@ -1229,20 +1241,9 @@ def profhot(args):
     hot = assembly.top_methods(lambda x: x.total_period > 0)
     hot = hot[:options.limit]
     print('Hot generated code:', file=fp)
-    if files.has_log_compilation():
-        id_title = 'Compile Id  '
-        empty_id = '         '
-        id_format = '{:>10}  '
-    else:
-        id_title = ''
-        empty_id = ''
-        id_format = '{}'
-
-    print('  Percent   ' + id_title + 'Name', file=fp)
+    print('  Percent   Name', file=fp)
     for code in hot:
-        print(('   {:5.2f}%   ' + id_format + '{}').format(100 * (float(code.total_period) / perf_data.total_period),
-                                                           str(code.get_compile_id()) if code.get_compile_id() else empty_id,
-                                                           code.name), file=fp)
+        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period), code.name), file=fp)
     print('', file=fp)
 
     for h in hot:
