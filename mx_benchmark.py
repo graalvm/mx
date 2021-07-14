@@ -2374,7 +2374,7 @@ class BenchmarkExecutor(object):
         elif benchspec.startswith("*[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
             requested_benchmarks = benchspec[2:-1].split(",")
-            if not set(requested_benchmarks) < set(all_benchmarks):
+            if not set(requested_benchmarks) <= set(all_benchmarks):
                 difference = list(set(requested_benchmarks) - set(all_benchmarks))
                 plural = "" if len(difference) == 1 else "s"
                 mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
@@ -2382,7 +2382,7 @@ class BenchmarkExecutor(object):
         elif exclude and benchspec.startswith("[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
             excluded_benchmarks = benchspec[1:-1].split(",")
-            if not set(excluded_benchmarks) < set(all_benchmarks):
+            if not set(excluded_benchmarks) <= set(all_benchmarks):
                 difference = list(set(excluded_benchmarks) - set(all_benchmarks))
                 plural = "" if len(difference) == 1 else "s"
                 mx.abort("The benchmark{0} {1} are not in the suite ".format(plural, ",".join(difference)))
