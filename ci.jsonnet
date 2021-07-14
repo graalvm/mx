@@ -54,7 +54,7 @@ gate_darwin = common.sulong.deps.darwin + gate + {
   },
   setup+: [
       # Need to remove the com.apple.quarantine attribute from Eclipse otherwise
-      # it will fail to start on later macOS versions. 
+      # it will fail to start on later macOS versions.
       ["xattr", "-d", "-r", "com.apple.quarantine", "${ECLIPSE}"],
   ]
 },
@@ -173,6 +173,13 @@ mx_bisect_test = {
   teardown: [
     ['rm', '-f', 'mxbuild/bisect_*.log'],
   ],
+},
+mx_unit_test = {
+  capabilities: ['linux', 'amd64'],
+  targets: ['gate'],
+  run: [
+    [ "tests/run" ],
+  ],
 }
 ;
 
@@ -195,6 +202,8 @@ mx_bisect_test = {
     build_truffleruby + {capabilities: ['linux', 'amd64'], name: "gate-build-truffleruby-native-linux-amd64"},
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python2"} + python2,
     build_graalvm_ce_linux + {capabilities: ['linux', 'amd64'], name: "gate-build-graalvm-ce-linux-amd64-python3"} + python3,
+    python2 + { name: "unit-tests-python2" } + mx_unit_test,
+    python3 + { name: "unit-tests-python3" } + mx_unit_test,
 
     {
       capabilities: ['linux', 'amd64'], targets: ['gate'], name: "gate-version-update-check",
