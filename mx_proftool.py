@@ -29,20 +29,18 @@ from __future__ import print_function
 
 import copy
 import io
+import os
+import re
 import shutil
-import subprocess
 import struct
+import subprocess
 import sys
 import zipfile
+from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
+from zipfile import ZipFile
 
 import mx
 import mx_benchmark
-
-import os
-import re
-from argparse import ArgumentParser, Action, OPTIONAL
-from zipfile import ZipFile
-
 import mx_logcompilation
 
 try:
@@ -240,7 +238,11 @@ class ZipExperimentFiles(ExperimentFiles):
             mx.abort('Missing file ' + name)
 
     def open_jvmti_asm_file(self):
-        return self.experiment_file.open(self.jvmti_asm_file, 'r')
+        with self.experiment_file.open(self.jvmti_asm_file, 'r') as fp:
+            # These files can be large and zip i/o is somewhat slow, so
+            # reading the whole file at once significantly improves
+            # the processing speed.
+            return io.BytesIO(fp.read())
 
     def has_assembly(self):
         return self.jvmti_asm_file is not None
@@ -366,16 +368,17 @@ class DisassemblyDecoder:
                 mx.abort(message)
         return preannotations[0] if preannotations else None, postannotations
 
-    def filter_by_hot_region(self, instructions, hotpc, hot_threshold, context_size=16):
+    def filter_by_hot_region(self, instructions, hotpc, threshold, context_size=16):
         index = 0
         begin = None
         skip = 0
         regions = []
-        for instruction in instructions:
+        for index in range(len(instructions)):
+            instruction = instructions[index]
             if instruction.address in hotpc:
                 event = hotpc.pop(instruction.address)
-                if hot_threshold:
-                    if event.percent < hot_threshold:
+                if threshold:
+                    if event.percent < threshold:
                         continue
                 skip = 0
                 if not begin:
@@ -386,26 +389,27 @@ class DisassemblyDecoder:
                 regions.append((begin, index))
                 begin = None
                 skip = 0
-            index += 1
         if begin:
             regions.append((begin, index))
         if len(hotpc) != 0:
             print('Unattributed pcs {}'.format(['{:x}'.format(x) for x in list(hotpc)]))
         return regions
 
-    def disassemble(self, code, code_addr, hotpc, hot_threshold=0.5):
-        instructions = self.disassemble_with_skip(code, code_addr)
-        if hot_threshold == 0:
+    def disassemble(self, code, hotpc, short_class_names=False, threshold=0.001):
+        instructions = self.disassemble_with_skip(code.code, code.code_addr)
+        if threshold == 0:
             regions = [(0, len(instructions))]
         else:
-            regions = self.filter_by_hot_region(instructions, hotpc, hot_threshold)
+            regions = self.filter_by_hot_region(instructions, hotpc, threshold)
         instructions = [(i,) + self.get_annotations(i) for i in instructions]
         prefix_width = max(len(p) if p else 0 for i, p, a in instructions) + 1
         prefix_format = '{:' + str(prefix_width) + '}'
         region = 1
 
         for begin, end in regions:
-            if hot_threshold != 0:
+            if threshold != 0:
+                if region != 1:
+                    self.print(code.format_name(short_class_names=short_class_names))
                 self.print("Hot region {}".format(region))
             for i, prefix, annotations in instructions[begin:end]:
                 hex_bytes = ''
@@ -426,14 +430,14 @@ class DisassemblyDecoder:
                         self.print('{}; {}'.format(a, b))
                 else:
                     self.print(line)
-            if hot_threshold != 0:
+            if threshold != 0:
                 self.print("End of hot region {}".format(region))
             self.print('')
             region += 1
 
         last, _, _ = instructions[-1]
         decode_end = last.address + last.size
-        buffer_end = code_addr + len(code)
+        buffer_end = code.code_addr + len(code.code)
         if decode_end != buffer_end:
             self.print('Skipping {} bytes {:x} {:x} '.format(buffer_end - decode_end, buffer_end, decode_end))
 
@@ -488,13 +492,28 @@ class Method:
         self.name = name
         args, return_type = method_signature[1:].split(')')
         arguments = re.findall(method_signature_re, args)
-        self.method_arguments = '(' + ', '.join([Method.decode_type(x) for x in arguments]) + ')'
+        self.method_arguments = [Method.decode_type(x) for x in arguments]
         self.return_type = Method.decode_type(return_type)
         self.source_file = source_file
         self.class_signature = Method.decode_class_signature(class_signature)
 
-    def format_name(self, with_arguments=True):
-        return self.class_signature + '.' + self.name + (self.method_arguments if with_arguments else '')
+    @staticmethod
+    def format_type(typestr, short_class_names):
+        if short_class_names:
+            return typestr.rsplit('.', 1)[-1]
+        else:
+            return typestr
+
+    @staticmethod
+    def format_types(types, short_class_names):
+        if short_class_names:
+            return [Method.format_type(x, short_class_names) for x in types]
+        else:
+            return types
+
+    def format_name(self, with_arguments=True, short_class_names=False):
+        return Method.format_type(self.class_signature, short_class_names) + '.' + self.name +\
+               (('(' + ', '.join(Method.format_types(self.method_arguments, short_class_names)) + ')') if with_arguments else '')
 
     def method_filter_format(self, with_arguments=False):
         return self.format_name(with_arguments=with_arguments)
@@ -527,8 +546,8 @@ class DebugFrame:
         self.method = method
         self.bci = bci
 
-    def __str__(self):
-        return '{}:{}'.format(self.method.format_name(with_arguments=False), self.bci)
+    def format(self, short_class_names=False):
+        return '{}:{}'.format(self.method.format_name(with_arguments=False, short_class_names=short_class_names), self.bci)
 
 
 class DebugInfo:
@@ -561,6 +580,13 @@ class CompiledCodeInfo:
     def __str__(self):
         return '0x{:x}-0x{:x} {} {}-{}'.format(self.code_begin(), self.code_end(), self.name, self.timestamp,
                                                self.unload_time or '')
+
+    def format_name(self, short_class_names=False):
+        if self.generated or not short_class_names:
+            return self.name
+        if self.nmethod:
+            return self.nmethod.format(short_class_names=short_class_names)
+        return self.methods[0].format_name(short_class_names=short_class_names)
 
     def get_compile_id(self):
         if self.nmethod is None:
@@ -616,34 +642,42 @@ class CompiledCodeInfo:
         return self.event_map
 
     def get_debug_info_map(self):
+        """
+
+        :return:
+        :rtype: dict[int, DebugInfo]
+        """
         if self.debug_info_map is None:
             self.debug_info_map = {}
             for debug_info in self.debug_info:
                 self.debug_info_map[debug_info.pc] = debug_info
         return self.debug_info_map
 
-    def get_code_annotations(self, pc, show_debuginfo=True, show_perf=True):
+    def get_code_annotations(self, pc, show_call_stack_depth=None, hide_perf=False, short_class_names=False):
         annotations = []
         prefix = None
-        if show_perf:
+        if not hide_perf:
             event = self.get_event_map().get(pc)
             if event:
                 prefix = '{:5.2f}%'.format(100.0 * event.period / float(self.total_period))
 
-        if self.debug_info and show_debuginfo:
+        if self.debug_info and show_call_stack_depth != 0:
             debug_info = self.get_debug_info_map().get(pc)
             if debug_info:
-                for frame in debug_info.frames:
-                    annotations.append(str(frame))
+                frames = debug_info.frames
+                if show_call_stack_depth:
+                    frames = frames[:show_call_stack_depth]
+                for frame in frames:
+                    annotations.append(frame.format(short_class_names))
 
         return annotations, prefix
 
-    def disassemble(self, decoder, hot_threshold=0.5):
+    def disassemble(self, decoder, short_class_names=False, threshold=0.001):
         """
 
         :type decoder: DisassemblyDecoder
         """
-        decoder.print(self.name)
+        decoder.print(self.format_name(short_class_names=short_class_names))
         decoder.print('0x{:x}-0x{:x} (samples={}, period={})'.format(self.code_begin(), self.code_end(),
                                                                      self.total_samples, self.total_period))
         hotpc = {}
@@ -651,7 +685,7 @@ class CompiledCodeInfo:
             event = copy.copy(event)
             event.percent = event.period * 100 / self.total_period
             hotpc[event.pc] = event
-        decoder.disassemble(self.code, self.code_addr, hotpc, hot_threshold=hot_threshold)
+        decoder.disassemble(self, hotpc, short_class_names=short_class_names, threshold=threshold)
         decoder.print('')
 
 
@@ -802,7 +836,7 @@ class GeneratedAssembly:
                     current.append(nmethod)
 
             # multiple pieces of code could end up with the same entry point but both the LogCompilation output
-            # and the JVMTI asm dump should be follow the same linear ordering of nmethod definition.  This mean the
+            # and the JVMTI asm dump should have the same linear ordering of nmethod definitions.  This mean the
             # first nmethod with an entry pc is also the first code info with that pc, so it suffices to just pick
             # the nmethod at the head of the list.
             for code in self.code_info:
@@ -810,14 +844,11 @@ class GeneratedAssembly:
                     # stubs aren't mentioned in the LogCompilation output
                     continue
 
-                name = code.methods[0].format_name(with_arguments=True)
                 matches = nmethods.get(code.code_begin())
                 if matches:
                     found = matches.pop(0)
                     code.set_nmethod(found)
                     continue
-                print(matches)
-                print('Unable to find matching nmethod for code {}'.format(code))
                 mx.abort('Unable to find matching nmethod for code {}'.format(code))
 
     def decoder(self, fp=sys.stdout):
@@ -998,37 +1029,46 @@ class GeneratedAssembly:
                 return x
         return None
 
-    def print_all(self):
-        for h in self.code_info:
-            if h.name == 'Intepreter':
+    def print_all(self, codes=None, fp=sys.stdout, show_call_stack_depth=None, hide_perf=False,
+                  threshold=None, short_class_names=False):
+        stub_name_cache = {}
+        for h in codes or self.code_info:
+            if h.name == 'Interpreter':
                 continue
-            decoder = self.decoder()
+            decoder = self.decoder(fp=fp)
 
             def get_call_annotations(instruction):
-                return h.get_annotations(instruction.address)
+                return h.get_code_annotations(instruction.address, show_call_stack_depth=show_call_stack_depth,
+                                              hide_perf=hide_perf, short_class_names=short_class_names)
 
             def get_stub_call_name(instruction):
                 if 'call' in instruction.groups():
-                    return self.get_stub_name(instruction.insn.operands[0].imm)
+                    call_pc = instruction.insn.operands[0].imm
+                    result = stub_name_cache.get(call_pc)
+                    if result:
+                        return None if result == stub_name_cache else result
+                    result = self.get_stub_name(call_pc)
+                    stub_name_cache[call_pc] = result or stub_name_cache
+                    return result
                 return None
 
             decoder.add_annotator(get_stub_call_name)
             decoder.add_annotator(get_call_annotations)
 
-            h.disassemble(decoder)
+            h.disassemble(decoder, short_class_names=short_class_names, threshold=threshold)
 
     def read_jint(self):
         b = self.fp.read(4)
         if not b:
             return None
-        assert len(b) == 4
+        assert b[3] is not None, 'input truncated'
         return int.from_bytes(b, byteorder='big', signed=True)
 
     def read_unsigned_jlong(self):
         b = self.fp.read(8)
         if not b:
             return None
-        assert len(b) == 8
+        assert b[7] is not None, 'input truncated'
         return int.from_bytes(b, byteorder='big', signed=False)
 
     def read_string(self):
@@ -1085,15 +1125,22 @@ def profrecord(args):
                         action='store', default=5)
     parser.add_argument('-F', '--frequency', help='Frequency argument passed to perf',
                         action='store', default=1000)
-    options, args = parser.parse_known_args(args)
-    if args[0] == '--':
-        args = args[1:]
+    parser.add_argument('-e', '--event', help='Event argument passed to perf.\n'
+                                              'Valid values can found with \'perf list\'',
+                        action='store', default='cycles')
+    parser.add_argument('command', nargs=REMAINDER, default=[], metavar='java arg [arg ...]')
+    options = parser.parse_args(args)
+    if len(options.command) > 0 and options.command[0] == '--':
+        options.command = options.command[1:]
+    if len(options.command) == 0:
+        mx.abort('Command to execute is required')
+
     files = FlatExperimentFiles.create(options.experiment, options.overwrite)
 
     if not PerfOutput.is_supported() and not options.script:
         mx.abort('Linux perf is unsupported on this platform')
 
-    full_cmd = build_capture_command(files, args)
+    full_cmd = build_capture_command(files, options.command, options=options)
     convert_cmd = PerfOutput.perf_convert_binary_command(files)
     if options.script:
         print(mx.list_to_cmd_line(full_cmd))
@@ -1123,7 +1170,7 @@ def profrecord(args):
             # because of the effects of dumping.  This command might need to be smarter about the side effects
             # of dumping on the performance since the overhead of dumping might perturb the execution.  It's not
             # entirely clear how to cope with that though.
-            full_cmd = build_capture_command(files, args, extra_vm_args=dump_arguments)
+            full_cmd = build_capture_command(files, options.command, extra_vm_args=dump_arguments, options=options)
             convert_cmd = PerfOutput.perf_convert_binary_command(files)
             mx.run(full_cmd)
             with files.open_perf_output_file(mode='w') as fp:
@@ -1166,11 +1213,14 @@ def build_capture_args(files, extra_vm_args=None, options=None):
         perf_cmd += ['-k', '1']
     if options:
         frequency = options.frequency
+        event = options.event
     else:
         frequency = 1000
-    perf_cmd += ['--freq', str(frequency), '--event', 'cycles', '--output', perf_binary_file]
+        event = 'cycles'
+
+    perf_cmd += ['--freq', str(frequency), '--event', event, '--output', perf_binary_file]
     vm_args = ['-agentpath:{}={}'.format(find_jvmti_asm_agent(), jvmti_asm_file), '-XX:+UnlockDiagnosticVMOptions',
-               '-XX:+DebugNonSafepoints', '-XX:+LogCompilation',
+               '-XX:+DebugNonSafepoints', '-Dgraal.TrackNodeSourcePosition=true', '-XX:+LogCompilation',
                '-XX:LogFile={}'.format(files.get_log_compilation_filename())]
     if extra_vm_args:
         vm_args += extra_vm_args
@@ -1183,11 +1233,6 @@ def build_capture_command(files, command_line, extra_vm_args=None, options=None)
     perf_cmd, vm_args = build_capture_args(files, extra_vm_args, options)
     full_cmd = perf_cmd + [java_cmd] + vm_args + java_args
     return full_cmd
-
-
-class CommaSeparatedArgs(Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, set([x.strip() for x in values.split(',')]))
 
 
 class SuppressNoneArgs(Action):
@@ -1206,15 +1251,22 @@ def profhot(args):
     """Display the top hot methods and their annotated disassembly"""
     check_capstone_import('profhot')
     parser = ArgumentParser(prog='mx profhot',
-                            description='Display the top hot methods and their annotated disassembly')
+                            description='Display the top hot methods and their annotated disassembly',
+                            formatter_class=RawTextHelpFormatter)
 
     parser.add_argument('-n', '--limit', help='Show the top n entries', action='store', default=10, type=int)
-    parser.add_argument('-H', '--hot-threshold', help='Minimum percentage for a pc to be considered hot',
-                        action='store', type=float, default=0.5)
-    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default',
+    parser.add_argument('-t', '--threshold',
+                        help='Minimum percentage for a pc to be considered hot when building regions.\n'
+                        'A threshold of 0 shows the all the generated code instead of just the hot regions.',
+                        action='store', type=float, default=0.001)
+    parser.add_argument('-o', '--output', help='Write output to named file.  Writes to stdout by default.',
                         action='store')
-    parser.add_argument('-a', '--annotators', help='Controls which annotations appear in the final assembly',
-                        action=CommaSeparatedArgs, default={'debuginfo', 'perf'})
+    parser.add_argument('-c', '--call-stack-depth', help='Limit the number of Java frames printed from debug info.',
+                        type=int, default=None)
+    parser.add_argument('-s', '--short-class-names', help='Drop package names from class names',
+                        action='store_true')
+    parser.add_argument('-H', '--hide-perf', help='Don\'t display perf information in the output.\n'
+                        'This can be useful when comparing the assembly from different runs.')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-E', '--experiment',
                        help='The directory containing the data files from the experiment',
@@ -1243,28 +1295,14 @@ def profhot(args):
     print('Hot generated code:', file=fp)
     print('  Percent   Name', file=fp)
     for code in hot:
-        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period), code.name), file=fp)
+        print('   {:5.2f}%   {}'.format(100 * (float(code.total_period) / perf_data.total_period),
+                                        code.format_name(options.short_class_names)), file=fp)
     print('', file=fp)
 
-    for h in hot:
-        if h.name == 'Interpreter':
-            continue
-        decoder = assembly.decoder(fp)
+    assembly.print_all(hot, fp=fp, show_call_stack_depth=options.call_stack_depth,
+                       hide_perf=options.hide_perf, threshold=options.threshold,
+                       short_class_names=options.short_class_names)
 
-        def get_code_annotations(instruction):
-            return h.get_code_annotations(instruction.address,
-                                          show_debuginfo='debuginfo' in options.annotators,
-                                          show_perf='perf' in options.annotators)
-
-        def get_stub_call_name(instruction):
-            if 'call' in instruction.groups():
-                return assembly.get_stub_name(instruction.insn.operands[0].imm)
-            return None
-
-        decoder.add_annotator(get_stub_call_name)
-        decoder.add_annotator(get_code_annotations)
-
-        h.disassemble(decoder, hot_threshold=options.hot_threshold)
     if fp != sys.stdout:
         fp.close()
 

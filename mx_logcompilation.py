@@ -49,12 +49,15 @@ class HotSpotNMethod:
         self.stamp = stamp
 
     def __repr__(self):
+        return self.format()
+
+    def format(self, short_class_names=False):
         return '{}: {}{}'.format(self.get_compile_id(),
                                  '' if not self.installed_code_name else '\"{}\" '.format(self.installed_code_name),
-                                 self.format_name())
+                                 self.format_name(short_class_names=short_class_names))
 
-    def format_name(self, with_arguments=True):
-        return self.method.format_name(with_arguments=with_arguments)
+    def format_name(self, with_arguments=True, short_class_names=False):
+        return self.method.format_name(with_arguments=with_arguments, short_class_names=short_class_names)
 
     def get_compile_id(self):
         return str(self.compile_id) + ('%' if self.is_osr else '')
