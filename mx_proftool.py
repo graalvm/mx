@@ -89,13 +89,9 @@ class ExperimentFiles(object):
 
     @staticmethod
     def open(options):
-        experiment = options.experiment
-        if experiment is None:
+        if options.experiment is None:
             mx.abort('Must specify an experiment')
-        if os.path.isdir(experiment):
-            return FlatExperimentFiles(directory=experiment)
-        else:
-            return ZipExperimentFiles(experiment)
+        return ExperimentFiles.open_experiment(options.experiment)
 
     def open_jvmti_asm_file(self):
         raise NotImplementedError()
@@ -131,24 +127,18 @@ class ExperimentFiles(object):
 class FlatExperimentFiles(ExperimentFiles):
     """A collection of data files from a performance data collection experiment."""
 
-    def __init__(self, directory=None, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
+    def __init__(self, directory, jvmti_asm_name='jvmti_asm_file', perf_binary_name='perf_binary_file',
                  perf_output_name='perf_output_file', log_compilation_name='log_compilation'):
         super(FlatExperimentFiles, self).__init__()
         self.dump_path = None
-        if directory:
-            self.directory = os.path.abspath(directory)
-            if not os.path.isdir(directory):
-                raise AssertionError('Must be directory')
-            self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
-            self.perf_binary_filename = os.path.join(directory, perf_binary_name)
-            self.perf_output_filename = os.path.join(directory, perf_output_name)
-            self.log_compilation_filename = os.path.join(directory, log_compilation_name)
-        else:
-            self.directory = None
-            self.jvmti_asm_filename = jvmti_asm_name
-            self.perf_binary_filename = perf_binary_name
-            self.perf_output_filename = perf_output_name
-            self.log_compilation_filename = log_compilation_name
+        if not os.path.isdir(directory):
+            raise AssertionError('Must be directory')
+        self.directory = os.path.abspath(directory)
+        self.jvmti_asm_filename = os.path.join(directory, jvmti_asm_name)
+        self.perf_binary_filename = os.path.join(directory, perf_binary_name)
+        self.perf_output_filename = os.path.join(directory, perf_output_name)
+        self.log_compilation_filename = os.path.join(directory, log_compilation_name)
+
 
     @staticmethod
     def create(experiment, overwrite=False):
@@ -203,21 +193,27 @@ class FlatExperimentFiles(ExperimentFiles):
         else:
             raise AssertionError('Unhandled')
 
-    def package(self, name=None):
-        if self.directory:
-            if not self.has_perf_output():
-                convert_cmd = PerfOutput.perf_convert_binary_command(self)
-                # convert the perf binary data into text format
-                with self.open_perf_output_file(mode='w') as fp:
-                    mx.run(convert_cmd, out=fp)
+    def ensure_perf_output(self):
+        """Convert the binary perf output into the text form if it doesn't already exist."""
+        if not self.has_perf_output():
+            if not PerfOutput.is_supported():
+                mx.abort('perf output parsing must be done on a system which supports the perf command')
+            if not self.has_perf_binary():
+                mx.abort('perf data file \'{}\' is missing'.format(self.perf_binary_filename))
+            convert_cmd = PerfOutput.perf_convert_binary_command(self)
+            # convert the perf binary data into text format
+            with self.open_perf_output_file(mode='w') as fp:
+                mx.run(convert_cmd, out=fp)
+            print('Created perf output file in {}'.format(self.directory))
 
-            directory_name = os.path.basename(self.directory)
-            parent = os.path.dirname(self.directory)
-            if not name:
-                name = directory_name
-            return shutil.make_archive(name, 'zip', root_dir=parent, base_dir=directory_name)
-        else:
-            raise AssertionError('Unhandled')
+    def package(self, name=None):
+        self.ensure_perf_output()
+
+        directory_name = os.path.basename(self.directory)
+        parent = os.path.dirname(self.directory)
+        if not name:
+            name = directory_name
+        return shutil.make_archive(name, 'zip', root_dir=parent, base_dir=directory_name)
 
 
 class ZipExperimentFiles(ExperimentFiles):
@@ -1182,25 +1178,32 @@ def profrecord(args):
 def profpackage(args):
     """Package a directory based proftool experiment into a zip."""
     # capstone is not required for packaging
-    parser = ArgumentParser(description='Package a directory based proftool experiment into a zip.',
+    parser = ArgumentParser(description='Ensure a directory based proftool experiment has perf output and '
+                                        'then package the directory into a zip.',
                             prog='mx profpackage')
-    parser.add_argument('-D', '--delete',
-                        help='Delete the directory after creating the zip',
-                        action='store_true')
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument('-D', '--delete',
+                       help='Delete the directory after creating the zip',
+                       action='store_true')
+    group.add_argument('-n', '--no-zip',
+                       help='Don\'t create the zip file',
+                       action='store_true')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-E', '--experiment',
-                       help='The directory containing the data files from the experiment',
+                       help='The directory containing the data files from an experiment',
                        action='store')
     group.add_argument('experiments',
-                       help='The directory containing the data files from the experiment',
+                       help='One or more directories containing the data files from experiments',
                        action='store', nargs='*', default=[])
     options = parser.parse_args(args)
     if options.experiment:
         options.experiments = list(options.experiment)
     for experiment in options.experiments:
         files = FlatExperimentFiles(directory=experiment)
-        name = files.package()
-        print('Created {}'.format(name))
+        files.ensure_perf_output()
+        if not options.no_zip:
+            name = files.package()
+            print('Created {}'.format(name))
         if options.delete:
             shutil.rmtree(experiment)
 

@@ -24,28 +24,64 @@ to collect the data.
 $ mx profrecord -E fop /home/graal/oraclejdk1.8.0_291-jvmci-21.1-b03/bin/java -jar dacapo.jar fop -n 56
 ```
 
-The second and simplest way is to use the `proftool` profiler with the `mx benchmark` command.  The `proftool` profiler
-conflicts with the `rss` tracker which is enabled by default, so it must be explicitly turned off.  For example, running:
+This should work with any Java command line you can supply.
+
+The second way is to use the `proftool` profiler with the `mx benchmark` command.  The `proftool` profiler
+conflicts with the `rss` tracker which is enabled by default, so it currently must be explicitly turned off.  For example, running:
 
 ```
 $ mx benchmark dacapo:fop --tracker none -- --profiler proftool
 ```
 
 produces a uniquely named directory like `proftool_fop_2021-07-11_181530` which contains a profile of the full
-benchmark run.  After capturing the profile, the perf binary output needs to be converted to text
-using the `profpackage` command.
+benchmark run.  Note that the `--tracker` and `--profiler` arguments are on different sides of the `--` separator.
+
+After capturing the profile, the perf binary output needs to be converted to text
+using the `profpackage` command because the current benchmark profiler infrastructure can't do that automatically.
 
 ```
 $ mx profpackage proftool_fop_2021-07-11_181530
 Created /home/graal/ws/graal/compiler/proftool_fop_2021-07-11_181530.zip
 ```
 
-This command additionally packs everything into a zip to make it easy to pass profiles around.
-The zip can be used directly by all the `proftool` commands.
+This command additionally packs everything into a zip to make it easy to move profiles around,
+though that step can be skipped with the `-n` option.  Both the zip and directory form can be used directly
+by all the `proftool` commands so use whichever form is most convenient.
+
+Not all benchmark suites actually support the `--profiler` option even though it's broadly advertised in the
+help output.  At the current time, only the `dacapo`, `scala-dacapo`, `renaissance` and `renassiance-legacy`
+suites fully support the `--profiler` option.  The `JMH` benchmarks only correctly support it when the
+the JMH option `-f 0` is used to suppress forking by the harness.  Note that this changes that way the benchmark
+is run and might not produce the same results.  With `JMH` you can always fall back to the `JMH` `perfasm`
+profiler which is sufficient for most uses.
+
+For other benchmarks, you can always use `mx profrecord` directly by capturing the command
+line used to launch the benchmark with `mx -v benchmark ...` and then passing that to `mx profrecord`.  For example,
+to use `proftool` with the octane benchmarks:
+
+```
+$ mx -v --dy /graal-js,js-benchmarks benchmark octane:zlib --tracker none --
+```
+displays a very long command line in the middle of all the output that looks kind of like this:
+
+```
+/home/graal/ws/graal/compiler/mxbuild/darwin-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
+  com.oracle.truffle.js.shell.JSLauncher /home/graal/ws/js-benchmarks/harness.js -- --show-warmup \
+  /home/graal/ws/js-benchmarks/octane-zlib.js    
+```
+
+For compactness, the sample output above doesn't include all required arguments.
+Copy and paste that line to use it with `mx profrecord`:
+
+```
+$ mx profrecord -E zlib /home/graal/ws/graal/compiler/mxbuild/darwin-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
+  com.oracle.truffle.js.shell.JSLauncher /home/graal/ws/js-benchmarks/harness.js -- --show-warmup \
+  /home/graal/ws/js-benchmarks/octane-zlib.js    
+```
 
 ### Examining a profile.
 
-Profile collection currently only supports Linux perf once the data is captured then the profile can
+Profile collection currently only supports Linux perf though once the data is captured then the profile can
 be viewed anywhere.  The primary command for examining profiles is `profhot`.  This gives a summary
 of the top C functions and the top JIT methods.  The JIT methods are additionally disassembled and
 annotated with the profile information.  Truncated sample output looks like this:
@@ -98,4 +134,9 @@ Hot region 1
 ```
 
 Every piece of generated code is disassembled and broken into hot regions where ticks are clustered.  This gives a general
-overview of the hot parts of the execution.  Other options to profhot give more control over how this is printed.
+overview of the hot parts of the execution.
+
+Other options to profhot give more control over how this is printed.  It's possible to strip package names from the output
+using the '-s' option which can make the output more compact.  The debug information associated with a pc can be
+quite deep which will overwhelm the actually assembly output.  The '-c' option can be used to control the number of frames printed,
+so passing `0` will hide the frame information completely and `1` will show just deepest inline frame.
