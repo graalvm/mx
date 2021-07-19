@@ -36,6 +36,7 @@ import struct
 import subprocess
 import sys
 import zipfile
+from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, Action, OPTIONAL, RawTextHelpFormatter, REMAINDER
 from zipfile import ZipFile
 
@@ -73,7 +74,7 @@ DebugInfoTag, = struct.unpack('>i', b'DEBI')
 CompiledMethodUnloadTag, = struct.unpack('>i', b'CMUT')
 
 
-class ExperimentFiles(object):
+class ExperimentFiles(mx._with_metaclass(ABCMeta), object):
     """A collection of data files from a performance data collection experiment."""
 
     def __init__(self):
@@ -91,36 +92,41 @@ class ExperimentFiles(object):
     def open(options):
         if options.experiment is None:
             mx.abort('Must specify an experiment')
-        return ExperimentFiles.open_experiment(options.experiment)
+        experiment = ExperimentFiles.open_experiment(options.experiment)
+        if experiment is None:
+            mx.abort('Experiment \'{}\' does not exist'.format(options.experiment))
+        return experiment
 
+    @abstractmethod
     def open_jvmti_asm_file(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def has_assembly(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def get_jvmti_asm_filename(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def get_perf_binary_filename(self):
         raise NotImplementedError()
 
-    def get_perf_output_filename(self):
-        raise NotImplementedError()
-
+    @abstractmethod
     def open_perf_output_file(self, mode='r'):
         raise NotImplementedError()
 
+    @abstractmethod
     def has_log_compilation(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def get_log_compilation_filename(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def open_log_compilation_file(self):
-        raise NotImplementedError()
-
-    def package(self, name=None):
         raise NotImplementedError()
 
 
@@ -289,7 +295,7 @@ class DisassemblyBlock:
 
 
 class DisassemblyDecoder:
-    """A lightweight wrapper around the CapStone disassembly provide some extra functionality."""
+    """A lightweight wrapper around the CapStone disassembly providing some extra functionality."""
 
     def __init__(self, decoder, fp):
         decoder.detail = True

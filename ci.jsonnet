@@ -108,7 +108,7 @@ proftool_test = setup_mx + python3 {
     ['./mx', '-p', '../graal/compiler', 'profhot', 'proftool_fop_*'],
     ['./mx', '-p', '../graal/compiler', 'benchmark', 'scala-dacapo:tmt', '--tracker', 'none', '--', '--profiler', 'proftool'],
     ['./mx', '-p', '../graal/compiler', 'profpackage', '-D', 'proftool_tmt_*'],
-    ['./mx', '-p', '../graal/compiler', 'profhot', '-C', '1', '-s', 'proftool_tmt_*']
+    ['./mx', '-p', '../graal/compiler', 'profhot', '-c', '1', '-s', 'proftool_tmt_*']
   ]
 },
 build_truffleruby = common.sulong.deps.linux + {
