@@ -136,7 +136,29 @@ Hot region 1
 Every piece of generated code is disassembled and broken into hot regions where ticks are clustered.  This gives a general
 overview of the hot parts of the execution.
 
+Proftool provides limited extra support for Truffle programs at the moment.  The only extra information printed is the Truffle
+provided name of the generated nmethod when printing the nmethod names.  This results in summary output like this for
+the octane splay benchmark:
+
+```
+Hot generated code:
+  Percent   Name
+    3.04%   10260: "MeasureDefault#2" OptimizedCallTarget.profiledPERoot(Object[])
+    1.79%   5934: "GeneratePayloadTree#2" OptimizedCallTarget.profiledPERoot(Object[])
+    0.74%   10118: "SplayTree.remove#2" OptimizedCallTarget.profiledPERoot(Object[])
+    0.65%   Interpreter
+    0.18%   7976: "SplayRun#2" OptimizedCallTarget.profiledPERoot(Object[])
+    0.16%   11695: FastDtoa.digitGen(DiyFp, DiyFp, DiyFp, DtoaBuffer, int)
+    0.13%   8914: "SplayTree.splay_#2" OptimizedCallTarget.profiledPERoot(Object[])
+    0.07%   1345: OptimizedCallTarget.callBoundary(Object[])
+    0.07%   jshort_disjoint_arraycopy
+    0.07%   7877: "SplayTree.splay_#1" OptimizedCallTarget.profiledPERoot(Object[])
+```
+
+OptimizedCallTarget is the Java method that is used by the partial evaluator when compiling Truffle methods and the name
+in quotes should correspond to the compiled JavaScript function.  More support is planned for future versions of prftool. 
+
 Other options to profhot give more control over how this is printed.  It's possible to strip package names from the output
 using the '-s' option which can make the output more compact.  The debug information associated with a pc can be
-quite deep which will overwhelm the actually assembly output.  The '-c' option can be used to control the number of frames printed,
+quite deep which will overwhelm the actual assembly output.  The '-c' option can be used to control the number of frames printed,
 so passing `0` will hide the frame information completely and `1` will show just deepest inline frame.
