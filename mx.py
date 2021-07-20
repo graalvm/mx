@@ -7779,7 +7779,7 @@ class JavacCompiler(JavacLikeCompiler):
                             addExportArgs(e, exports)
 
                 if required_modules is not None:
-                    concealed = parse_requiresConcealed_attribute(jdk, getattr(project, 'requiresConcealed', None), {}, None, self)
+                    concealed = parse_requiresConcealed_attribute(jdk, getattr(project, 'requiresConcealed', None), {}, None, project)
                     required_modules.update((m for m in concealed if m not in jdk_modules_overridden_on_classpath))
 
                 addExportArgs(project, exports, '', jdk, required_modules)
@@ -17699,7 +17699,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.308.1")  # GR-33052 addendum
+version = VersionSpec("5.309.0")  # GR-32352
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
