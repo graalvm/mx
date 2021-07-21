@@ -9,7 +9,8 @@ aid with JIT performance analysis.  It currently consists of three primary compo
 * a parser for HotSpot LogCompilation information
 
 By combining these components into a single command line, the perf
-profile information can be attributed to the JIT code.
+profile information can be attributed to the JIT code.  Profile collection currently only supports Linux perf though
+once the data is captured then the profile can be viewed anywhere.  
 
 This suite must be built first to create the JVMTI agent library and the suite is normally dynamically
 imported to make the commands available through mx.
@@ -24,7 +25,9 @@ to collect the data.
 $ mx profrecord -E fop /home/graal/oraclejdk1.8.0_291-jvmci-21.1-b03/bin/java -jar dacapo.jar fop -n 56
 ```
 
-This should work with any Java command line you can supply.
+The required argument `-E <name>` specifies the directory that will contain the output the files.  It's an error if it
+already exists but the `-O` will overwrite the directory if it already exists.
+`mx profrecord` should work with any Java command line you can supply.
 
 The second way is to use the `proftool` profiler with the `mx benchmark` command.  The `proftool` profiler
 conflicts with the `rss` tracker which is enabled by default, so it currently must be explicitly turned off.  For example, running:
@@ -46,43 +49,41 @@ Created /home/graal/ws/graal/compiler/proftool_fop_2021-07-11_181530.zip
 
 This command additionally packs everything into a zip to make it easy to move profiles around,
 though that step can be skipped with the `-n` option.  Both the zip and directory form can be used directly
-by all the `proftool` commands so use whichever form is most convenient.
+by all the `proftool` commands so use whichever form is most convenient.  Packaging as a zip it intended to
+simplify capturing the profile on a Linux machine then moving it to another machine for analysis.
 
 Not all benchmark suites actually support the `--profiler` option even though it's broadly advertised in the
 help output.  At the current time, only the `dacapo`, `scala-dacapo`, `renaissance` and `renassiance-legacy`
 suites fully support the `--profiler` option.  The `JMH` benchmarks only correctly support it when the
-the JMH option `-f 0` is used to suppress forking by the harness.  Note that this changes that way the benchmark
+the JMH option `-f 0` is used to suppress forking by the harness.  Note that this changes the way the benchmark
 is run and might not produce the same results.  With `JMH` you can always fall back to the `JMH` `perfasm`
 profiler which is sufficient for most uses.
 
 For other benchmarks, you can always use `mx profrecord` directly by capturing the command
 line used to launch the benchmark with `mx -v benchmark ...` and then passing that to `mx profrecord`.  For example,
-to use `proftool` with the octane benchmarks:
+for the fop benchmark above:
 
 ```
-$ mx -v --dy /graal-js,js-benchmarks benchmark octane:zlib --tracker none --
+$ mx -v benchmark dacapo:fop --tracker none 
 ```
-displays a very long command line in the middle of all the output that looks kind of like this:
+displays a very long command line in the middle of all the output that includes something like the follow:
 
 ```
-/home/graal/ws/graal/compiler/mxbuild/darwin-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
-  com.oracle.truffle.js.shell.JSLauncher /home/graal/ws/js-benchmarks/harness.js -- --show-warmup \
-  /home/graal/ws/js-benchmarks/octane-zlib.js    
+/home/tkrodrig/ws/unroll/graal/compiler/mxbuild/linux-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
+-jar /home/graal/.mx/cache/DACAPO_e39957904b7e79caf4fa54f30e8e4ee74d4e9e37/dacapo.jar fop -n 56
 ```
 
 For compactness, the sample output above doesn't include all required arguments.
 Copy and paste that line to use it with `mx profrecord`:
 
 ```
-$ mx profrecord -E zlib /home/graal/ws/graal/compiler/mxbuild/darwin-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
-  com.oracle.truffle.js.shell.JSLauncher /home/graal/ws/js-benchmarks/harness.js -- --show-warmup \
-  /home/graal/ws/js-benchmarks/octane-zlib.js    
+$ mx profrecord -E fop /home/tkrodrig/ws/unroll/graal/compiler/mxbuild/linux-amd64/graaljdks/jdk1.8-cmp/bin/java -server ... \
+-jar /home/graal/.mx/cache/DACAPO_e39957904b7e79caf4fa54f30e8e4ee74d4e9e37/dacapo.jar fop -n 56
 ```
 
 ### Examining a profile.
 
-Profile collection currently only supports Linux perf though once the data is captured then the profile can
-be viewed anywhere.  The primary command for examining profiles is `profhot`.  This gives a summary
+The primary command for examining profiles is `profhot`.  This gives a summary
 of the top C functions and the top JIT methods.  The JIT methods are additionally disassembled and
 annotated with the profile information.  Truncated sample output looks like this:
 
