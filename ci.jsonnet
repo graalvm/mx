@@ -97,8 +97,18 @@ proftool_test = setup_mx + python3 {
     ["./mx", "build"],
   ],
   run: [
-    ["./mx", "profrecord", "-E", "gate-xcomp", "$JAVA_HOME/bin/java", "-Xcomp", "foo", "||", "true"],
-    ["./mx", "profhot", "-E", "gate-xcomp"]
+    ['./mx', 'sclone', '--kind', 'git', '--source', 'https://github.com/oracle/graal.git', '--dest', '../graal'],
+    ['./mx', '-p', '../graal/compiler', 'build'],
+    ['./mx', '-p', '../graal/compiler', 'profrecord', '-E', 'gate-xcomp', '$JAVA_HOME/bin/java', '-Xcomp', 'foo', '||', 'true'],
+    ['./mx', '-p', '../graal/compiler', 'profpackage', 'gate-xcomp'],
+    ['./mx', '-p', '../graal/compiler', 'profhot', 'gate-xcomp.zip'],
+    ['./mx', '-p', '../graal/compiler', 'profhot', 'gate-xcomp'],
+    ['./mx', '-p', '../graal/compiler', 'benchmark', 'dacapo:fop', '--tracker', 'none', '--', '--profiler', 'proftool'],
+    ['./mx', '-p', '../graal/compiler', 'profpackage', '-n', 'proftool_fop_*'],
+    ['./mx', '-p', '../graal/compiler', 'profhot', 'proftool_fop_*'],
+    ['./mx', '-p', '../graal/compiler', 'benchmark', 'scala-dacapo:tmt', '--tracker', 'none', '--', '--profiler', 'proftool'],
+    ['./mx', '-p', '../graal/compiler', 'profpackage', '-D', 'proftool_tmt_*'],
+    ['./mx', '-p', '../graal/compiler', 'profhot', '-c', '1', '-s', 'proftool_tmt_*']
   ]
 },
 build_truffleruby = common.sulong.deps.linux + {

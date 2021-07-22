@@ -3672,7 +3672,8 @@ import mx_compat
 import mx_urlrewrites
 import mx_benchmark
 import mx_benchplot
-import mx_proftool
+import mx_proftool # pylint: disable=unused-import
+import mx_logcompilation # pylint: disable=unused-import
 import mx_downstream
 import mx_subst
 import mx_ideconfig # pylint: disable=unused-import
@@ -17353,10 +17354,6 @@ update_commands("mx", {
     'maven-install' : [maven_install, ''],
     'maven-url': [maven_url, '<repository id> <distribution name>'],
     'minheap' : [run_java_min_heap, ''],
-    'profasm': [mx_proftool.profasm_command, '[options]'],
-    'profhot': [mx_proftool.profhot_command, '[options]'],
-    'profrecord': [mx_proftool.profrecord_command, '[options]'],
-    'profpackage': [mx_proftool.profpackage_command, '[options]'],
     'projectgraph': [projectgraph, ''],
     'projects': [show_projects, ''],
     'jar-distributions': [show_jar_distributions, ''],
@@ -17680,7 +17677,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.305.5")  # GR-32738
+version = VersionSpec("5.305.6")  # GR-31563
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
