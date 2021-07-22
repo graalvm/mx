@@ -1065,6 +1065,11 @@ class _FileContentsSupplier(object):
                 self.contents = fp.read()
         return self.contents
 
+    def restore(self):
+        assert self.contents is not None, ('must create with eager=True:', self.path)
+        with open(self.path, 'wb') as fp:
+            fp.write(self.contents)
+
 def _accumulate_services(services):
     """
     Process `services` such that the services for version N include
