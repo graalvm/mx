@@ -855,7 +855,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                 if not mx.can_symlink():
                     mx.ensure_dir_exists(dirname(dst))
                     if exists(dst):
-                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).get
+                        restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
                         os.remove(dst)
                     else:
                         restore_files[dst] = None
@@ -871,7 +871,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                                 return
                             restore_files[dst] = lambda: os.symlink(target, dst)
                         else:
-                            restore_files[dst] = _FileContentsSupplier(dst, eager=True).get
+                            restore_files[dst] = _FileContentsSupplier(dst, eager=True).restore
                         os.remove(dst)
                     else:
                         restore_files[dst] = None
