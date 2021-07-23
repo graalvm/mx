@@ -17585,6 +17585,8 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
+    SourceSuite._load_env_file(_global_env_file())
+
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
     _mx_suite._init_metadata()
@@ -17610,7 +17612,6 @@ def main():
             else:
                 _binary_suites = []
 
-    SourceSuite._load_env_file(_global_env_file())
     primarySuiteMxDir = None
     if is_suite_context_free:
         _setup_binary_suites()
