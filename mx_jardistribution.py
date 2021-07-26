@@ -322,7 +322,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
         src_archive = _Archive(self, self.sourcesPath, exploded) if not unified else bin_archive
 
         # GR-31142
-        latest_bin_archive = join([self.suite.get_output_root(False,False), "dists", os.path.basename(bin_archive.path)])
+        latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
         _stage_file_impl(bin_archive.path, latest_bin_archive)
 
         bin_archive.clean()
