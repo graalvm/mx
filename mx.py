@@ -14970,6 +14970,22 @@ class Archiver(SafeFileCreation):
     def add_link(self, target, archive_name, provenance):
         self._add_link(target, archive_name, provenance)
 
+class NullArchiver(Archiver):
+    def add(self, filename, archive_name, provenance):
+        pass
+
+    def add_str(self, data, archive_name, provenance):
+        pass
+
+    def add_link(self, target, archive_name, provenance):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
 def make_unstrip_map(dists):
     """
     Gets the contents of a map file that can be used with the `unstrip` command to deobfuscate stack
@@ -17677,7 +17693,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.305.7")  # GR-32683
+version = VersionSpec("5.306.0")  # GR-23857
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
