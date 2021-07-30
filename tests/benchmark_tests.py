@@ -69,7 +69,7 @@ def check(command, included, excluded):
     if included: # not empty
         mx.abort("The expected tests are not executed: " + str(included))
 
-def checkInclded(command, included):
+def checkIncluded(command, included):
     check(command, included, set(benchmark_list) - set(included))
 
 def checkExcluded(command, excluded):
@@ -77,8 +77,8 @@ def checkExcluded(command, excluded):
 
 mx_benchmark.add_bm_suite(TestBenchBenchmarkSuite())
 
-checkInclded("benchSuite:a", ["a"])
-checkInclded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"]) # no space allowed around comma
+checkIncluded("benchSuite:a", ["a"])
+checkIncluded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"]) # no space allowed around comma
 checkExcluded("benchSuite:*", [])
 checkExcluded("benchSuite:~a", ["a"])
 checkExcluded("benchSuite:~a,b", ["a", "b"])
