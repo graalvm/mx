@@ -2381,10 +2381,11 @@ class BenchmarkExecutor(object):
             return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
         elif benchspec.startswith("r[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
-            regex = re.compile(benchspec[2:-1])
+            # python2 compat: instead of regex.fullmatch, use the end-of-string anchor and regex.match
+            regex = re.compile(benchspec[2:-1] + r"\Z")
             requested_benchmarks = set()
             for bench in all_benchmarks:
-                if regex.fullmatch(bench):
+                if regex.match(bench):
                     requested_benchmarks.add(bench)
             if requested_benchmarks == set():
                 mx.warn("The pattern '{0}' doesn't match any benchmark in suite '{1}'".format(regex.pattern, suitename))
