@@ -25,7 +25,7 @@ setattr(mx._opts, "cpu_count", None)
 
 _test_vm_registry = mx_benchmark.VmRegistry('TestBench', 'testbench-vm')
 
-benchmark_list = ["a", "b", "123", "hello-world", "A", "X-Y"]
+benchmark_list = ["a", "b", "bbb", "123", "hello-world", "A", "X-Y"]
 
 class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
     def group(self):
@@ -80,6 +80,7 @@ mx_benchmark.add_bm_suite(TestBenchBenchmarkSuite())
 checkIncluded("benchSuite:a", ["a"])
 checkIncluded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"]) # no space allowed around comma
 checkIncluded("benchSuite:r[[ah].*]", ["a", "hello-world"])
+checkIncluded("benchSuite:r[b]", ["b"]) # does not contain bbb, since we use fullmatch
 checkExcluded("benchSuite:*", [])
 checkExcluded("benchSuite:~a", ["a"])
 checkExcluded("benchSuite:~a,b", ["a", "b"])
