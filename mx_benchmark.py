@@ -431,6 +431,36 @@ class BenchmarkSuite(object):
         """
         self._command_mapper_hooks.append((name, func, self))
 
+    def version(self):
+        """The suite version selected for execution which is either the :defaultSuiteVerion:
+        or the :desiredVersion: if any.
+
+        NOTE: This value is present in the result file for suite identification.
+
+        :return: actual version.
+        :rtype: str
+        """
+        current_version = self.defaultSuiteVersion()
+        selected_version = self.desiredVersion() if self.desiredVersion() else current_version
+        if selected_version not in self.availableSuiteVersions():
+            mx.abort("Available suite versions are: {}".format(self.availableSuiteVersions()))
+        return selected_version
+
+    def defaultSuiteVersion(self):
+        """ The default benchmark version to use.
+
+        :return: default version.
+        """
+        return "unknown"
+
+    def availableSuiteVersions(self):
+        """List of available versions of that benchmark suite.
+
+        :return: list of version strings.
+        :rtype: list[str]
+        """
+        return [self.defaultSuiteVersion()]
+
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
 
@@ -441,14 +471,6 @@ class BenchmarkSuite(object):
 
     def setDesiredVersion(self, version):
         self._desired_version = version
-
-    def version(self):
-        """Actual suite version used that will be stored in the results file.
-
-        :return: suite version.
-        :rtype: str
-        """
-        return "unknown"
 
     def validateEnvironment(self):
         """Validates the environment and raises exceptions if validation fails.
