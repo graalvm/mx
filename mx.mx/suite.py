@@ -498,71 +498,6 @@ suite = {
       }
     },
 
-    "PROGUARD" : {
-      "sha1" : "996a984a7e230fdcfc269d66a6c91fd1587edd50",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-base",
-        "version" : "5.3.1",
-      }
-    },
-
-    "PROGUARD_RETRACE" : {
-      "sha1" : "4a57d643d2ded6ebcf4b7bcdab8fcf3d2588aa1b",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-retrace",
-        "version" : "5.3.1",
-      }
-    },
-
-    # ProGuard introduced support for JDK 9
-    "PROGUARD_6_0_3" : {
-      "sha1" : "7135739d2d3834964c543ed21e2936ce34747aca",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-base",
-        "version" : "6.0.3",
-      }
-    },
-
-    "PROGUARD_RETRACE_6_0_3" : {
-      "sha1" : "4f249d487b06bedd29f0b7d9277a63d12d5d0a7e",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-retrace",
-        "version" : "6.0.3",
-      }
-    },
-
-    "PROGUARD_6_1_1" : {
-      "sha1" : "1d351efe6ada35a40cd1a0fdad4a255229e1c41b",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-base",
-        "version" : "6.1.1",
-      }
-    },
-
-    "PROGUARD_RETRACE_6_1_1" : {
-      "sha1" : "8b86348867593bd221521b01554724411f939d3c",
-      "maven" : {
-        "groupId" : "net.sf.proguard",
-        "artifactId" : "proguard-retrace",
-        "version" : "6.1.1",
-      }
-    },
-
-    "PROGUARD_7_1_0_beta1" : {
-      "sha1" : "05a934dc927ec2b905f8da50e6db81c2684da336",
-      "urls" : ["jar:https://github.com/Guardsquare/proguard/releases/download/v7.1.0-beta1/proguard-7.1.0-beta1.zip!/proguard-7.1.0-beta1/lib/proguard.jar"],
-    },
-
-    "PROGUARD_RETRACE_7_1_0_beta1" : {
-      "sha1" : "52aa564fbbb72586b38eb070ad3de7ade88c1a39",
-      "urls" : ["jar:https://github.com/Guardsquare/proguard/releases/download/v7.1.0-beta1/proguard-7.1.0-beta1.zip!/proguard-7.1.0-beta1/lib/retrace.jar"],
-    },
-
     "PROGUARD_BASE_7_1_0" : {
       "sha1" : "e295aed38344b46315e0e76a4e3c5f6f28c6891c",
       "maven" : {
@@ -588,6 +523,57 @@ suite = {
         "artifactId" : "proguard-retrace",
         "version" : "7.1.0",
       }
+    },
+
+    "LOG4J_API_2_14_1" : {
+      "sha1" : "cd8858fbbde69f46bce8db1152c18a43328aae78",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-api",
+        "version" : "2.14.1",
+      }
+    },
+
+    "LOG4J_CORE_2_14_1" : {
+      "sha1" : "9141212b8507ab50a45525b545b39d224614528b",
+      "maven" : {
+        "groupId" : "org.apache.logging.log4j",
+        "artifactId" : "log4j-core",
+        "version" : "2.14.1",
+      }
+    },
+
+    # As of 8.0.0, the versioning of ProGuardCORE is unlinked from ProguardBASE and ProguardRETRACE
+    # since ProGuardCORE is a general library used by other projects.
+    # https://github.com/Guardsquare/proguard/issues/132#issuecomment-887610759
+    "PROGUARD_CORE_8_0_0" : {
+      "sha1" : "6205518d4c7b2908e024e3c60795800adfdd5d89",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-core",
+        "version" : "8.0.0",
+      },
+      "dependencies" : ["LOG4J_CORE_2_14_1", "LOG4J_API_2_14_1"],
+    },
+
+    "PROGUARD_RETRACE_7_2_0_beta1" : {
+      "sha1" : "b49442f6e2eb905b1b812316d68b4fd811046f32",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-retrace",
+        "version" : "7.2.0-beta1",
+      },
+      "dependencies" : ["PROGUARD_CORE_8_0_0"],
+    },
+
+    "PROGUARD_BASE_7_2_0_beta1" : {
+      "sha1" : "7a037414c1be2a1d98845a7fc2f352973f791f76",
+      "maven" : {
+        "groupId" : "com.guardsquare",
+        "artifactId" : "proguard-base",
+        "version" : "7.2.0-beta1",
+      },
+      "dependencies" : ["PROGUARD_CORE_8_0_0"],
     },
 
     "NINJA" : {

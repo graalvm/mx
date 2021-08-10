@@ -45,9 +45,12 @@ import mx
 import mx_subst
 
 # ProGuard version used for stripping/unstripping
-_proguard_version = '7_1_0'
-_proguard_supported_jdk_version = 16
-_proguard_lib_names = ('CORE', 'BASE', 'RETRACE')
+_proguard_supported_jdk_version = 17
+
+_proguard_libs = {
+    'BASE':'7_2_0_beta1',
+    'RETRACE':'7_2_0_beta1'
+}
 
 class JARDistribution(mx.Distribution, mx.ClasspathDependency):
     """
@@ -127,9 +130,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             # Make this a build dependency to avoid concurrency issues that can arise
             # when the library is lazily resolved by build tasks (which can be running
             # concurrently).
-            for pg_name in _proguard_lib_names:
-                if pg_name != 'RETRACE':
-                    self.buildDependencies.append("mx:PROGUARD_" + pg_name + '_' + _proguard_version)
+            self.buildDependencies.extend((l.suite.name + ':' + l.name for l in mx.classpath_entries('PROGUARD_BASE_' + _proguard_libs['BASE'])))
 
     def post_init(self):
         # paths are initialized late to be able to figure out the max jdk
@@ -637,7 +638,7 @@ def _get_proguard_cp():
     """
     proguard_cp = mx.get_opts().proguard_cp
     if not proguard_cp:
-        proguard_cp = os.pathsep.join((mx.library('PROGUARD_' + name + '_' + _proguard_version).get_path(resolve=True) for name in _proguard_lib_names))
+        proguard_cp = mx.classpath(['PROGUARD_' + name + '_' + version for name, version in _proguard_libs.items()])
     return proguard_cp
 
 class _StagingGuard:
