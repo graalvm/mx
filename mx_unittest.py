@@ -33,7 +33,7 @@ import re
 import tempfile
 import fnmatch
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, ArgumentTypeError, Action
-from os.path import exists, join, basename, isdir
+from os.path import exists, join, basename, isdir, isabs
 
 def _newest(path):
     """
@@ -96,7 +96,7 @@ def _write_cached_testclasses(cachesDir, jar, jdk, testclasses, excludedclasses)
     except IOError as e:
         mx.warn('Error writing to ' + cache + ': ' + str(e))
 
-def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
+def _find_classes_by_annotated_methods(annotations, dists, buildCacheDir, jdk=None):
     if len(dists) == 0:
         return {}
 
@@ -109,7 +109,7 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
     cachesDir = None
     jarsToParse = []
     if primarySuite and primarySuite != mx._mx_suite:
-        cachesDir = mx.ensure_dir_exists(join(primarySuite.get_output_root(), 'unittest'))
+        cachesDir = mx.ensure_dir_exists(join(primarySuite.get_output_root(), buildCacheDir))
         for d in dists:
             jar = d.classpath_repr()
             testclasses = _read_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk())
@@ -174,32 +174,7 @@ def add_global_ignore_glob(ignore):
     _global_ignore_globs.append(re.compile(fnmatch.translate(ignore)))
 
 
-def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
-    vmArgs, tests = mx.extract_VM_args(args)
-    for t in tests:
-        if t.startswith('-'):
-            mx.abort('VM option ' + t + ' must precede ' + tests[0])
-
-    # this is what should be used
-    compat_suite = suite if suite else mx.primary_suite()
-    if suite != mx._mx_suite and compat_suite.getMxCompatibility().useDistsForUnittest():
-        jar_distributions = [d for d in mx.sorted_dists() if d.isJARDistribution() and exists(d.classpath_repr(resolve=False)) and (not suite or d.suite == suite)]
-        # find a corresponding distribution for each test
-        candidates = _find_classes_by_annotated_methods(annotations, jar_distributions, vmLauncher.jdk())
-    else:
-        binary_deps = [d for d in mx.dependencies(opt_limit_to_suite=True) if d.isJARDistribution() and
-                       isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
-        candidates = _find_classes_by_annotated_methods(annotations, binary_deps, vmLauncher.jdk())
-        for p in mx.projects(opt_limit_to_suite=True):
-            if not p.isJavaProject():
-                continue
-            if suite and not p.suite == suite:
-                continue
-            if vmLauncher.jdk().javaCompliance < p.javaCompliance:
-                continue
-            for c in _find_classes_with_annotations(p, None, annotations):
-                candidates[c] = p
-
+def _filter_test_candidates(candidates, tests):
     classes = []
     if len(tests) == 0:
         classes = list(candidates.keys())
@@ -242,6 +217,52 @@ def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whit
                         depsContainingTests.add(p)
                 if not found:
                     mx.abort('no tests matched by substring: ' + t + ' (did you forget to run "mx build"?)')
+    return classes, depsContainingTests
+
+
+def find_test_candidates(annotations, suite, jdk, buildCacheDir='unittest'):
+    """
+    Finds all classes containing methods annotated with one of the supplied annotations.
+    To speed up subsequent invocations, the results are cached in the `buildCacheDir`.
+
+    :param list annotations: a list of annotations to recognize test methods, e.g. ['@Test', '@Parameters']
+    :param suite: the mx suite in which to look for test classes. If no suite is given, the primary suite is used.
+    :param JDKConfig jdk: the JDK for which the list of classes must be found
+    :param str buildCacheDir: a path relative to the mx suite output root that is used to store the cache files.
+    :return: a dictionary associating each found test class with the distribution it occurs in.
+    """
+
+    assert not isabs(buildCacheDir), "buildCacheDir must be a relative path"
+    compat_suite = suite if suite else mx.primary_suite()
+    if suite != mx._mx_suite and compat_suite.getMxCompatibility().useDistsForUnittest():
+        jar_distributions = [d for d in mx.sorted_dists() if
+                             d.isJARDistribution() and exists(d.classpath_repr(resolve=False)) and (
+                                     not suite or d.suite == suite)]
+        # find a corresponding distribution for each test
+        candidates = _find_classes_by_annotated_methods(annotations, jar_distributions, buildCacheDir, jdk)
+    else:
+        binary_deps = [d for d in mx.dependencies(opt_limit_to_suite=True) if d.isJARDistribution() and
+                       isinstance(d.suite, mx.BinarySuite) and (not suite or suite == d.suite)]
+        candidates = _find_classes_by_annotated_methods(annotations, binary_deps, buildCacheDir, jdk)
+        for p in mx.projects(opt_limit_to_suite=True):
+            if not p.isJavaProject():
+                continue
+            if suite and not p.suite == suite:
+                continue
+            if jdk.javaCompliance < p.javaCompliance:
+                continue
+            for c in _find_classes_with_annotations(p, None, annotations):
+                candidates[c] = p
+    return candidates
+
+
+def _run_tests(args, harness, vmLauncher, annotations, testfile, blacklist, whitelist, regex, suite):
+    vmArgs, tests = mx.extract_VM_args(args)
+    for t in tests:
+        if t.startswith('-'):
+            mx.abort('VM option ' + t + ' must precede ' + tests[0])
+    candidates = find_test_candidates(annotations, suite, vmLauncher.jdk())
+    classes, depsContainingTests = _filter_test_candidates(candidates, tests)
 
     full_ignorelist = blacklist or []
     full_ignorelist += _global_ignore_globs
@@ -289,6 +310,17 @@ def set_vm_launcher(name, launcher, jdk=None):
 
 def add_config_participant(p):
     _config_participants.append(p)
+
+
+def get_config_participants_copy():
+    """
+    Returns a copy of the currently registered config participants. A config participant is a
+    function that receives a tuple (VM arguments, main class, main class arguments) and returns
+    a potentially modified tuple. Other parts of mx can register config participants with
+    :func:`add_config_participant` to change the way unit tests are invoked.
+
+    """
+    return _config_participants.copy()
 
 
 _extra_unittest_arguments = []
@@ -405,14 +437,52 @@ unittestHelpSuffix = """
       --open-packages jdk.internal.vm.*/org.graalvm.compiler.*=ALL-UNNAMED,org.graalvm.enterprise
 """
 
+
 def is_strictly_positive(value):
     try:
         if int(value) <= 0:
             raise ArgumentTypeError("%s must be greater than 0" % value)
     except ValueError:
         raise ArgumentTypeError("%s: integer greater than 0 expected" % value)
-    return value
+    return int(value)
 
+
+def parse_split_args(args, parser, delimiter):
+    """
+    Parses arguments potentially separated by a delimiter, e.g., ``[mx options] -- [VM options]``.
+    The options preceding the delimiter are parsed with the supplied argparse parser. That is,
+    the parser is expected to recognize all arguments before the delimiter. If no delimiter is
+    present, the supplied parser does not have to recognize all arguments.
+
+    :param list args: a list of arguments to parse.
+    :param parser: an argparse parser that can recognize any argument preceding the delimiter.
+    :param str delimiter: the delimiter separating the arguments.
+    :return: a tuple consisting of the args not parsed by the parser (i.e. either the args after
+            the delimiter or the args not recognized by the parser if no delimiter is present)
+            and the parsed argument structure returned by argparse.
+    """
+
+    args_before_delimiter = []
+    delimiter_found = False
+
+    # copy the input so we don't modify the parameter
+    args_copy = args.copy()
+
+    # check for delimiter
+    while len(args_copy) > 0:
+        arg = args_copy.pop(0)
+        if arg == delimiter:
+            delimiter_found = True
+            break
+        args_before_delimiter.append(arg)
+
+    if delimiter_found:
+        # all arguments before '--' must be recognized
+        parsed_args = parser.parse_args(args_before_delimiter)
+    else:
+        # parse all known arguments
+        parsed_args, args_copy = parser.parse_known_args(args_before_delimiter)
+    return args_copy, parsed_args
 
 @mx.command(suite_name="mx",
             command_name='unittest',
@@ -480,22 +550,7 @@ def unittest(args):
         usage = usage[len('usage: '):]
     parser.usage = usage + ' [test filters...] [VM options...]'
 
-    ut_args = []
-    delimiter = False
-    # check for delimiter
-    while len(args) > 0:
-        arg = args.pop(0)
-        if arg == '--':
-            delimiter = True
-            break
-        ut_args.append(arg)
-
-    if delimiter:
-        # all arguments before '--' must be recognized
-        parsed_args = parser.parse_args(ut_args)
-    else:
-        # parse all known arguments
-        parsed_args, args = parser.parse_known_args(ut_args)
+    args, parsed_args = parse_split_args(args, parser, "--")
 
     # Remove junit_args values from parsed_args
     for a in junit_arg_actions:
