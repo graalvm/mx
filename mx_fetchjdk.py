@@ -137,7 +137,11 @@ def fetch_jdk(args):
     shell = os.environ.get("SHELL")
     if shell is None:
         shell = ''
-    mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(final_path)))
+    if not settings["strip-contents-home"] and exists(join(final_path, 'Contents', 'Home')):
+        java_home = join(final_path, 'Contents', 'Home')
+    else:
+        java_home = final_path
+    mx.log(get_setvar_format(shell) % ("JAVA_HOME", abspath(java_home)))
     return final_path
 
 def _find_file(start, filename):
