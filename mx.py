@@ -12066,12 +12066,16 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
     return _entries_to_classpath(cpEntries=cpEntries, resolve=resolve, includeBootClasspath=includeBootClasspath, jdk=jdk, unique=unique, ignoreStripped=ignoreStripped)
 
 
-def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None):
+def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
     distributions. If 'names' is None, then all registered dependencies are used.
     """
     cpEntries = classpath_entries(names=names)
+    if exclude_names:
+        for excludeEntry in classpath_entries(names=exclude_names):
+            cpEntries.remove(excludeEntry)
+
     ret = ["-cp", _separatedCygpathU2W(_entries_to_classpath(cpEntries, cp_prefix=cp_prefix, cp_suffix=cp_suffix, jdk=jdk))]
 
     def add_props(d):
