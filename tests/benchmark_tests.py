@@ -25,7 +25,7 @@ setattr(mx._opts, "cpu_count", None)
 
 _test_vm_registry = mx_benchmark.VmRegistry('TestBench', 'testbench-vm')
 
-benchmark_list = ["a", "b", "bbb", "123", "hello-world", "A", "X-Y"]
+benchmark_list = ["a", "b", "bbb", "123", "hello-world", "A", "X-Y", "meta, tests"]
 
 class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
     def group(self):
@@ -78,14 +78,19 @@ def checkExcluded(command, excluded):
 mx_benchmark.add_bm_suite(TestBenchBenchmarkSuite())
 
 checkIncluded("benchSuite:a", ["a"])
-checkIncluded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"]) # no space allowed around comma
+checkIncluded("benchSuite:*[a,X-Y,123]", ["a", "X-Y", "123"])
+checkIncluded("benchSuite:*[a , X-Y , 123]", ["a", "X-Y", "123"]) # space allowed around comma
 checkIncluded("benchSuite:r[[ah].*]", ["a", "hello-world"])
 checkIncluded("benchSuite:r[b]", ["b"]) # does not contain bbb, since we use fullmatch
+checkIncluded("benchSuite:r[.*, .*]", ["meta, tests"]) # comma and space are interpreted correctly
 checkExcluded("benchSuite:*", [])
 checkExcluded("benchSuite:~a", ["a"])
 checkExcluded("benchSuite:~a,b", ["a", "b"])
-checkExcluded("benchSuite:~[a,b]", ["a", "b"]) # no space allowed around comma
+checkExcluded("benchSuite:~a , b", ["a", "b"])   # space allowed around comma
+checkExcluded("benchSuite:~[a,b]", ["a", "b"])
+checkExcluded("benchSuite:~[a , b]", ["a", "b"]) # space allowed around comma
 checkExcluded("benchSuite:~r[[ah].*]", ["a", "hello-world"])
+checkExcluded("benchSuite:~r[.*, .*]", ["meta, tests"])  # comma and space are interpreted correctly
 
 # TODO: check exceptional cases
 #

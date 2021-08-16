@@ -2373,7 +2373,7 @@ class BenchmarkExecutor(object):
             return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
         elif not exclude and benchspec.startswith("*[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
-            requested_benchmarks = benchspec[2:-1].split(",")
+            requested_benchmarks = [bench.strip() for bench in benchspec[2:-1].split(",")]
             if not set(requested_benchmarks) <= set(all_benchmarks):
                 difference = list(set(requested_benchmarks) - set(all_benchmarks))
                 plural = "" if len(difference) == 1 else "s"
@@ -2394,7 +2394,7 @@ class BenchmarkExecutor(object):
             return (suite, [[b] for b in requested_benchmarks])
         elif exclude and benchspec.startswith("[") and benchspec.endswith("]"):
             all_benchmarks = suite.benchmarkList(bmSuiteArgs)
-            excluded_benchmarks = benchspec[1:-1].split(",")
+            excluded_benchmarks = [bench.strip() for bench in benchspec[1:-1].split(",")]
             if not set(excluded_benchmarks) <= set(all_benchmarks):
                 difference = list(set(excluded_benchmarks) - set(all_benchmarks))
                 plural = "" if len(difference) == 1 else "s"
@@ -2403,7 +2403,7 @@ class BenchmarkExecutor(object):
         elif benchspec == "":
             return (suite, [None])
         else:
-            benchspec = benchspec.split(",")
+            benchspec = [bench.strip() for bench in benchspec.split(",")]
             benchmark_list = suite.benchmarkList(bmSuiteArgs)
             for bench in benchspec:
                 if not bench in benchmark_list:
