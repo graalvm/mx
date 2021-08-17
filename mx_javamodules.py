@@ -922,7 +922,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             if exists(join(dest_dir, serviceClassfile)):
                                 uses.add(service)
 
-                    version_java_compliance = mx.JavaCompliance('8+') if version == 'common' else mx.JavaCompliance(version + '+')
+                    version_java_compliance = mx.JavaCompliance('9+') if version == 'common' else mx.JavaCompliance(version + '+')
 
                     def allow_export(java_compliance):
                         if version_java_compliance is None:
