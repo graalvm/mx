@@ -207,21 +207,30 @@ def _gc_layout_dists(suite, parsed_args):
     def _to_archive_name(d):
         return d.lower().replace("_", "-")
 
+    # distribution name -> modification date
+    found_dists = {}
     # We use 'savedLayouts' to identify layout distributions. Whenever mx builds a layout distribution, this file is updated.
-    saved_layouts_dir = os.path.join(suite.get_mx_output_dir(), "savedLayouts")
-    if not os.path.exists(saved_layouts_dir):
-        return []
-    found_dists = [d for d in _listdir(saved_layouts_dir) if os.path.isfile(os.path.join(saved_layouts_dir, d))]
-    candidates = {}
-    # search for the layout distribution folder as well as for the archive, platform dependent and independent
-    for platformDependent in [True, False]:
-        # we use modification time of the saved layouts file since that is the canonical modified time
-        unknown_dists = {d: datetime.fromtimestamp(os.path.getmtime(os.path.join(saved_layouts_dir, d))) for d in found_dists if d not in known_dists}
-        dist_dir = suite.get_output_root(platformDependent=platformDependent)
-        candidates.update({os.path.join(dist_dir, x): x for x in _listdir(dist_dir) if x in unknown_dists.keys()})
+    for dirpath, _, filenames in os.walk(suite.get_output_root(platformDependent=False, jdkDependent=False)):
+        if os.path.basename(dirpath) == "savedLayouts":
+            for filename in filenames:
+                abs_filename = os.path.join(dirpath, filename)
+                if os.path.isfile(abs_filename) and not os.path.islink(abs_filename):
+                    # we use modification time of the saved layouts file since that is the canonical modified time
+                    found_dists[filename] = datetime.fromtimestamp(os.path.getmtime(abs_filename))
 
-        for ext in [".tar", ".zip"]:
-            unknown_archives = {_to_archive_name(d) + ext: d for d in unknown_dists.keys()}
-            archive_dir = os.path.join(dist_dir, "dists")
-            candidates.update({os.path.join(archive_dir, x): unknown_archives.get(x) for x in _listdir(archive_dir) if x in unknown_archives.keys()})
-    return [(k, unknown_dists.get(v), _get_size_in_bytes(k)) for k, v in candidates.items()]
+    # distribution name -> modification date
+    unknown_dists = {distname: moddate for distname, moddate in found_dists.items() if distname not in known_dists}
+
+    # full artifact path -> dist
+    candidates = {}
+    # search for the layout distribution folder as well as for the archive, platform/jdk dependent and independent
+    for jdkDependent in [True, False]:
+        for platformDependent in [True, False]:
+            dist_dir = suite.get_output_root(platformDependent=platformDependent, jdkDependent=jdkDependent)
+            candidates.update({os.path.join(dist_dir, x): x for x in _listdir(dist_dir) if x in unknown_dists.keys()})
+
+            for ext in [".tar", ".zip"]:
+                unknown_archives = {_to_archive_name(d) + ext: d for d in unknown_dists.keys()}
+                archive_dir = os.path.join(dist_dir, "dists")
+                candidates.update({os.path.join(archive_dir, x): unknown_archives.get(x) for x in _listdir(archive_dir) if x in unknown_archives.keys()})
+    return [(full_path, unknown_dists.get(dist), _get_size_in_bytes(full_path)) for full_path, dist in candidates.items()]
