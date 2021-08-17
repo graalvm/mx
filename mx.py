@@ -12069,7 +12069,8 @@ def classpath(names=None, resolve=True, includeSelf=True, includeBootClasspath=F
 def get_runtime_jvm_args(names=None, cp_prefix=None, cp_suffix=None, jdk=None, exclude_names=None):
     """
     Get the VM arguments (e.g. classpath and system properties) for a list of named projects and
-    distributions. If 'names' is None, then all registered dependencies are used.
+    distributions. If 'names' is None, then all registered dependencies are used. 'exclude_names'
+    can be used to transitively exclude dependencies from the final classpath result.
     """
     cpEntries = classpath_entries(names=names)
     if exclude_names:
