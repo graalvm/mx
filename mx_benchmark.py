@@ -485,7 +485,7 @@ class BenchmarkSuite(object):
     def dataPoints(self):
         """Returns the list of data points collected throughout the execution.
 
-        The list is emptied once the results are dumped.
+        The list is emptied every time the main benchmark command is called on this suite.
 
         :return: the list of data points
         :rtype: list[dict]
@@ -495,6 +495,9 @@ class BenchmarkSuite(object):
     def appendDataPoints(self, new_points):
         if new_points:
             self._data_points += new_points
+
+    def resetDataPoints(self):
+        self._data_points = []
 
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
@@ -2571,6 +2574,7 @@ class BenchmarkExecutor(object):
             # and therewith produce a list of benchmark sets to run in separate forks.
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
+            suite.resetDataPoints()
 
 
         if mxBenchmarkArgs.hwloc_bind:

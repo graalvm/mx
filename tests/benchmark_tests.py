@@ -3,7 +3,6 @@ from __future__ import print_function
 
 from os.path import dirname, realpath, sep
 import sys
-import json
 
 file_dir = dirname(realpath(__file__))
 sys.path.append(file_dir + sep + "..")
@@ -44,36 +43,34 @@ class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
         return _test_vm_registry
 
     def run(self, benchmarks, bmSuiteArgs):
-        return [{"benchmark" : benchmark, "arguments": bmSuiteArgs} for benchmark in benchmarks]
+        return [{"benchmark": benchmark, "arguments": bmSuiteArgs} for benchmark in benchmarks]
 
 def check(command, included, excluded):
-    print("mx benchmark " + command)
+    mx.log("mx benchmark " + command)
 
-    benchmark([command, '--results-file', 'results.json'])
+    exit_code, benchmark_suite = benchmark([command, '--tracker', 'none'], returnSuiteObj=True)
 
-    f = open('results.json')
-    results = json.load(f)
-    f.close()
+    if exit_code != 0:
+        mx.abort("{} exit code was {}".format(command, exit_code))
 
-    for result in results['queries']:
-        benchmarks = result["benchmark"]
+    executed_benchmarks = set([point["benchmark"] for point in benchmark_suite.dataPoints()])
 
-        if not benchmarks in included:
-            mx.abort("The test " + benchmarks + " is not in the specified list: " + str(included))
+    for test_bench in included:
+        if test_bench not in executed_benchmarks:
+            mx.abort("The test " + test_bench + " is not in the specified list: " + str(included))
 
-        included.remove(benchmarks)
+    for executed_bench in executed_benchmarks:
+        if executed_bench in excluded:
+            mx.abort("The test " + executed_bench + " is in excluded list: " + str(excluded))
 
-        if benchmarks in excluded:
-            mx.abort("The test " + benchmarks + " is in the excluded list: " + str(excluded))
-
-    if included: # not empty
-        mx.abort("The expected tests are not executed: " + str(included))
 
 def checkIncluded(command, included):
     check(command, included, set(benchmark_list) - set(included))
 
+
 def checkExcluded(command, excluded):
     check(command, set(benchmark_list) - set(excluded), excluded)
+
 
 mx_benchmark.add_bm_suite(TestBenchBenchmarkSuite())
 
