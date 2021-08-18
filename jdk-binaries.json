@@ -25,6 +25,15 @@
 	    "labsjdk-ce-16:-debug": {
 	        "filename": "labsjdk-{version}-debug-{platform}",
 	        "url": "https://github.com/graalvm/labs-openjdk-16/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
+	    },
+
+	    "labsjdk-ce-17": {
+	        "filename": "labsjdk-{version}-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-17/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
+	    },
+	    "labsjdk-ce-17:-debug": {
+	        "filename": "labsjdk-{version}-debug-{platform}",
+	        "url": "https://github.com/graalvm/labs-openjdk-17/releases/download/{version|jvmci-tag}/{filename}.tar.gz"
 	    }
 	}
 }
