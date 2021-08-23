@@ -2551,7 +2551,6 @@ class BenchmarkExecutor(object):
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         suite = None
-        results = None
         if mxBenchmarkArgs.benchmark:
             # The suite will read the benchmark specifier,
             # and therewith produce a list of benchmark sets to run in separate forks.
@@ -2613,6 +2612,8 @@ class BenchmarkExecutor(object):
 
         self.checkEnvironmentVars()
 
+        results = []
+
         # The fork-counts file can be used to specify how many times to repeat the whole fork of the benchmark.
         # For simplicity, this feature is only supported if the benchmark harness invokes each benchmark in the suite separately
         # (i.e. when the harness does not ask the suite to run a set of benchmarks within the same process).
@@ -2648,7 +2649,7 @@ class BenchmarkExecutor(object):
                         if fork_count_spec:
                             mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                         try:
-                            results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
+                            results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
                             mx.log(traceback.format_exc())
@@ -2661,7 +2662,10 @@ class BenchmarkExecutor(object):
                 failures_seen = True
                 mx.log(traceback.format_exc())
 
-        suite.dump_results_file(mxBenchmarkArgs.results_file, results)
+        if not returnSuiteAndResults:
+            suite.dump_results_file(mxBenchmarkArgs.results_file, results)
+        else:
+            mx.log("Skipping benchmark results dumping since they're programmatically returned")
 
         exit_code = 0
         if failures_seen:

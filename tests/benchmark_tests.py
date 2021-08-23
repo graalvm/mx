@@ -48,12 +48,12 @@ class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
 def check(command, included, excluded):
     mx.log("mx benchmark " + command)
 
-    exit_code, benchmark_suite, results = gate_mx_benchmark([command, '--tracker', 'none'], nonZeroIsFatal=False)
+    exit_code, _, results = gate_mx_benchmark([command, '--tracker', 'none'], nonZeroIsFatal=False)
 
     if exit_code != 0:
         mx.abort("{} exit code was {}".format(command, exit_code))
 
-    executed_benchmarks = set([point["benchmark"] for point in benchmark_suite.dataPoints()])
+    executed_benchmarks = set([point["benchmark"] for point in results])
 
     for test_bench in included:
         if test_bench not in executed_benchmarks:
