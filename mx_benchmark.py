@@ -26,6 +26,7 @@
 
 from __future__ import print_function
 
+import sys
 import json
 import os.path
 import platform
@@ -431,6 +432,36 @@ class BenchmarkSuite(object):
         """
         self._command_mapper_hooks.append((name, func, self))
 
+    def version(self):
+        """The suite version selected for execution which is either the :defaultSuiteVerion:
+        or the :desiredVersion: if any.
+
+        NOTE: This value is present in the result file for suite identification.
+
+        :return: actual version.
+        :rtype: str
+        """
+        current_version = self.defaultSuiteVersion()
+        selected_version = self.desiredVersion() if self.desiredVersion() else current_version
+        if selected_version not in self.availableSuiteVersions():
+            mx.abort("Available suite versions are: {}".format(self.availableSuiteVersions()))
+        return selected_version
+
+    def defaultSuiteVersion(self):
+        """ The default benchmark version to use.
+
+        :return: default version.
+        """
+        return "unknown"
+
+    def availableSuiteVersions(self):
+        """List of available versions of that benchmark suite.
+
+        :return: list of version strings.
+        :rtype: list[str]
+        """
+        return [self.defaultSuiteVersion()]
+
     def desiredVersion(self):
         """Returns the benchmark suite version that is requested for execution.
 
@@ -442,20 +473,13 @@ class BenchmarkSuite(object):
     def setDesiredVersion(self, version):
         self._desired_version = version
 
-    def version(self):
-        """Actual suite version used that will be stored in the results file.
-
-        :return: suite version.
-        :rtype: str
-        """
-        return "unknown"
-
     def validateEnvironment(self):
         """Validates the environment and raises exceptions if validation fails.
 
         Can be overridden to check for existence of required environment variables
         before the benchmark suite executed.
         """
+        pass
 
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
@@ -545,6 +569,16 @@ class BenchmarkSuite(object):
         :rtype: object
         """
         raise NotImplementedError()
+
+    def dump_results_file(self, file_path, data_points):
+        if not data_points:
+            return 0
+        dump = json.dumps({"queries": data_points}, sort_keys=True, indent=2)
+        with open(file_path, "w") as txtfile:
+            txtfile.write(dump)
+        file_size_kb = int(os.path.getsize(file_path) / 1024)
+        mx.log("{} benchmark data points dumped to {} ({} KB)".format(len(data_points), file_path, file_size_kb))
+        return len(data_points)
 
     def workingDirectory(self, benchmarks, bmSuiteArgs):
         """Returns the desired working directory for running the benchmark.
@@ -1027,6 +1061,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 datapoint.update(dims)
                 if "bench-suite" not in datapoint:
                     datapoint["bench-suite"] = self.name()
+                if "bench-suite-version" not in datapoint:
+                    datapoint["bench-suite-version"] = self.version()
             datapoints.extend(parsedpoints)
 
         flaky = False
@@ -1385,6 +1421,7 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
         parser = parsers["temporary_workdir_parser"].parser
         bmArgs, otherArgs = parser.parse_known_args(bmSuiteArgs)
         self.keepScratchDir = bmArgs.keep_scratch
+        self.scratchDirectories = []
         if not bmArgs.no_scratch:
             self._create_tmp_workdir()
         else:
@@ -1398,9 +1435,13 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
     def workingDirectory(self, benchmarks, bmSuiteArgs):
         return self.workdir
 
+    def scratchDirs(self):
+        return self.scratchDirectories
+
     def after(self, bmSuiteArgs):
         if hasattr(self, "keepScratchDir") and self.keepScratchDir:
             mx.warn("Scratch directory NOT deleted (--keep-scratch): {0}".format(self.workdir))
+            self.scratchDirectories.append(os.path.abspath(self.workdir))
         elif self.workdir:
             shutil.rmtree(self.workdir)
         super(TemporaryWorkdirMixin, self).after(bmSuiteArgs)
@@ -1412,6 +1453,7 @@ class TemporaryWorkdirMixin(VmBenchmarkSuite):
             if self.workdir:
                 # keep old workdir for investigation, create a new one for further benchmarking
                 mx.warn("Keeping scratch directory after failed benchmark: {0}".format(self.workdir))
+                self.scratchDirectories.append(os.path.abspath(self.workdir))
                 self._create_tmp_workdir()
 
     def parserNames(self):
@@ -2439,17 +2481,20 @@ class BenchmarkExecutor(object):
             datapoint['metric.fork-number'] = fork_number
 
     def execute(self, suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=0):
+        start_time = time.time()
         def postProcess(results):
             processed = []
             dim = self.dimensions(suite, mxBenchmarkArgs, bmSuiteArgs)
             for result in results:
                 if not isinstance(result, dict):
                     result = result.__dict__
-                point = dim.copy()
-                point.update(result)
-                self.applyScoreFunction(point)
-                self.add_fork_number(point, fork_number)
-                processed.append(point)
+                data_point = dim.copy()
+                data_point.update(result)
+                data_point["benchmarking.start-ts"] = int(start_time)
+                data_point["benchmarking.end-ts"] = int(time.time())
+                self.applyScoreFunction(data_point)
+                self.add_fork_number(data_point, fork_number)
+                processed.append(data_point)
             return processed
 
         suite._currently_running_benchmark = ''.join(benchnames) if benchnames else ""
@@ -2458,7 +2503,7 @@ class BenchmarkExecutor(object):
         suite._currently_running_benchmark = None
         return processedResults
 
-    def benchmark(self, mxBenchmarkArgs, bmSuiteArgs):
+    def benchmark(self, mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=False):
         """Run a benchmark suite."""
         parser = ArgumentParser(
             prog="mx benchmark",
@@ -2604,13 +2649,7 @@ class BenchmarkExecutor(object):
                         if fork_count_spec:
                             mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                         try:
-                            start_time = time.time()
-                            partialResults = self.execute(
-                                suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
-                            for res in partialResults:
-                                res["benchmarking.start-ts"] = int(start_time)
-                                res["benchmarking.end-ts"] = int(time.time())
-                            results.extend(partialResults)
+                            results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
                             mx.log(traceback.format_exc())
@@ -2621,17 +2660,22 @@ class BenchmarkExecutor(object):
                 suite.after(bmSuiteArgs)
             except RuntimeError:
                 failures_seen = True
+                mx.log(traceback.format_exc())
 
-        topLevelJson = {
-          "queries": results
-        }
-        dump = json.dumps(topLevelJson, sort_keys=True, indent=2)
-        with open(mxBenchmarkArgs.results_file, "w") as txtfile:
-            txtfile.write(dump)
+        if not returnSuiteAndResults:
+            suite.dump_results_file(mxBenchmarkArgs.results_file, results)
+        else:
+            mx.log("Skipping benchmark results dumping since they're programmatically returned")
+
+        exit_code = 0
         if failures_seen:
             mx.log_error("Failures happened during benchmark(s) execution !")
-            return 1
-        return 0
+            exit_code = 1
+
+        if returnSuiteAndResults:
+            return exit_code, suite, results
+        else:
+            return exit_code
 
 def make_hwloc_bind(hwloc_bind_args):
     if mx.run(["hwloc-bind", "--version"], nonZeroIsFatal=False, out=mx.OutputCapture(), err=mx.OutputCapture()) != 0:
@@ -2684,7 +2728,7 @@ def rsplitArgs(args, separator):
     return list(reversed(rbefore)), list(reversed(rafter))
 
 
-def benchmark(args):
+def benchmark(args, returnSuiteAndResults=False):
     """Run benchmark suite with given name.
 
     :Example:
@@ -2725,4 +2769,47 @@ def benchmark(args):
         mx benchmark dacapo:* --results-file ./results.json --
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
-    return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs)
+    return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=returnSuiteAndResults)
+
+class TTYCapturing(object):
+    def __init__(self, out=None, err=None):
+        self._out = out
+        self._err = err
+        self._stdout = None
+        self._stderr = None
+        if (out is not None and not callable(out)) or (err is not None and not callable(err)):
+            mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
+
+    def __enter__(self):
+        if sys.version_info[0] < 3:
+            from StringIO import StringIO
+        else:
+            from io import StringIO
+
+        if self._out is not None:
+            self._stdout = sys.stdout
+            sys.stdout = self._stringio_stdout = StringIO()
+        if self._err is not None:
+            self._stderr = sys.stderr
+            sys.stderr = self._stringio_stderr = StringIO()
+        return self
+
+    def __exit__(self, *args):
+        if self._out is not None:
+            sys.stdout = self._stdout
+        if self._err is not None:
+            sys.stderr = self._stderr
+        if self._out:
+            self._out(self._stringio_stdout.getvalue())
+        if self._err:
+            self._err(self._stringio_stderr.getvalue())
+
+
+def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
+    with TTYCapturing(out=out, err=err):
+        exit_code, suite, results = benchmark(args, returnSuiteAndResults=True)
+        if (out is not None and not callable(out)) or (err is not None and not callable(err)):
+            mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
+    if exit_code != 0 and nonZeroIsFatal is True:
+        mx.abort("Benchmark gate failed with args: {}".format(args))
+    return exit_code, suite, results
