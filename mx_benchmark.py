@@ -365,7 +365,6 @@ class BenchmarkSuite(object):
         self._desired_version = None
         self._suite_dimensions = {}
         self._command_mapper_hooks = []
-        self._data_points = []
         self._currently_running_benchmark = None
 
     def name(self):
@@ -482,23 +481,6 @@ class BenchmarkSuite(object):
         """
         pass
 
-    def dataPoints(self):
-        """Returns the list of data points collected throughout the execution.
-
-        The list is emptied every time the main benchmark command is called on this suite.
-
-        :return: the list of data points
-        :rtype: list[dict]
-        """
-        return self._data_points
-
-    def appendDataPoints(self, new_points):
-        if new_points:
-            self._data_points += new_points
-
-    def resetDataPoints(self):
-        self._data_points = []
-
     def vmArgs(self, bmSuiteArgs):
         """Extracts the VM flags from the list of arguments passed to the suite.
 
@@ -588,9 +570,8 @@ class BenchmarkSuite(object):
         """
         raise NotImplementedError()
 
-    def dump_results_file(self, file_path):
-        data_points = self.dataPoints()
-        if len(data_points) == 0:
+    def dump_results_file(self, file_path, data_points):
+        if not data_points:
             return 0
         dump = json.dumps({"queries": data_points}, sort_keys=True, indent=2)
         with open(file_path, "w") as txtfile:
@@ -1080,6 +1061,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                 datapoint.update(dims)
                 if "bench-suite" not in datapoint:
                     datapoint["bench-suite"] = self.name()
+                if "bench-suite-version" not in datapoint:
+                    datapoint["bench-suite-version"] = self.version()
             datapoints.extend(parsedpoints)
 
         flaky = False
@@ -2517,11 +2500,10 @@ class BenchmarkExecutor(object):
         suite._currently_running_benchmark = ''.join(benchnames) if benchnames else ""
         results = suite.run(benchnames, bmSuiteArgs)
         processedResults = postProcess(results)
-        suite.appendDataPoints(processedResults)
         suite._currently_running_benchmark = None
         return processedResults
 
-    def benchmark(self, mxBenchmarkArgs, bmSuiteArgs, returnSuiteObj=False):
+    def benchmark(self, mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=False):
         """Run a benchmark suite."""
         parser = ArgumentParser(
             prog="mx benchmark",
@@ -2569,12 +2551,12 @@ class BenchmarkExecutor(object):
         mxBenchmarkArgs = parser.parse_args(mxBenchmarkArgs)
 
         suite = None
+        results = None
         if mxBenchmarkArgs.benchmark:
             # The suite will read the benchmark specifier,
             # and therewith produce a list of benchmark sets to run in separate forks.
             # Later, the harness passes each set of benchmarks from this list to the suite separately.
             suite, benchNamesList = self.getSuiteAndBenchNames(mxBenchmarkArgs, bmSuiteArgs)
-            suite.resetDataPoints()
 
 
         if mxBenchmarkArgs.hwloc_bind:
@@ -2666,7 +2648,7 @@ class BenchmarkExecutor(object):
                         if fork_count_spec:
                             mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                         try:
-                            self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
+                            results = self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num)
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
                             mx.log(traceback.format_exc())
@@ -2679,15 +2661,15 @@ class BenchmarkExecutor(object):
                 failures_seen = True
                 mx.log(traceback.format_exc())
 
-        suite.dump_results_file(mxBenchmarkArgs.results_file)
+        suite.dump_results_file(mxBenchmarkArgs.results_file, results)
 
         exit_code = 0
         if failures_seen:
             mx.log_error("Failures happened during benchmark(s) execution !")
             exit_code = 1
 
-        if returnSuiteObj:
-            return exit_code, suite
+        if returnSuiteAndResults:
+            return exit_code, suite, results
         else:
             return exit_code
 
@@ -2742,7 +2724,7 @@ def rsplitArgs(args, separator):
     return list(reversed(rbefore)), list(reversed(rafter))
 
 
-def benchmark(args, returnSuiteObj=False):
+def benchmark(args, returnSuiteAndResults=False):
     """Run benchmark suite with given name.
 
     :Example:
@@ -2783,7 +2765,7 @@ def benchmark(args, returnSuiteObj=False):
         mx benchmark dacapo:* --results-file ./results.json --
     """
     mxBenchmarkArgs, bmSuiteArgs = splitArgs(args, "--")
-    return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs, returnSuiteObj=returnSuiteObj)
+    return _benchmark_executor.benchmark(mxBenchmarkArgs, bmSuiteArgs, returnSuiteAndResults=returnSuiteAndResults)
 
 class TTYCapturing(object):
     def __init__(self, out=None, err=None):
@@ -2821,9 +2803,9 @@ class TTYCapturing(object):
 
 def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
     with TTYCapturing(out=out, err=err):
-        res, suite = benchmark(args, returnSuiteObj=True)
+        exit_code, suite, results = benchmark(args, returnSuiteAndResults=True)
         if (out is not None and not callable(out)) or (err is not None and not callable(err)):
             mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
-    if res != 0 and nonZeroIsFatal is True:
+    if exit_code != 0 and nonZeroIsFatal is True:
         mx.abort("Benchmark gate failed with args: {}".format(args))
-    return res, suite
+    return exit_code, suite, results

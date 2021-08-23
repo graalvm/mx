@@ -9,7 +9,7 @@ sys.path.append(file_dir + sep + "..")
 
 import mx
 import mx_benchmark
-from mx_benchmark import benchmark
+from mx_benchmark import gate_mx_benchmark
 
 # setup the primary suite
 _suite = mx.Suite(mxDir=file_dir + sep + 'mx.benchmarks', primary=True, internal=True, importing_suite=None, load=False, vc=None, vc_dir='.')
@@ -48,7 +48,7 @@ class TestBenchBenchmarkSuite(mx_benchmark.VmBenchmarkSuite):
 def check(command, included, excluded):
     mx.log("mx benchmark " + command)
 
-    exit_code, benchmark_suite = benchmark([command, '--tracker', 'none'], returnSuiteObj=True)
+    exit_code, benchmark_suite, results = gate_mx_benchmark([command, '--tracker', 'none'], nonZeroIsFatal=False)
 
     if exit_code != 0:
         mx.abort("{} exit code was {}".format(command, exit_code))
