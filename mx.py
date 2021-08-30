@@ -17699,7 +17699,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.309.2")  # GR-18301
+version = VersionSpec("5.309.3")  # mx unittest: report multi-version jars
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

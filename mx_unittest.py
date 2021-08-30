@@ -133,6 +133,9 @@ def _find_classes_by_annotated_methods(annotations, dists, jdk=None):
             reportedclasses = parts[1:] if len(parts) > 1 else []
             testclasses = [c for c in reportedclasses if not c.startswith("!")]
             excludedclasses = [c for c in reportedclasses if c.startswith("!")]
+            multi_jar_classes = [c for c in testclasses if c.startswith("META-INF")]
+            if multi_jar_classes:
+                mx.abort('mx unittest does not support multi-release jar\n  ' + '\n    '.join([jar + ':'] + multi_jar_classes))
             if cachesDir:
                 _write_cached_testclasses(cachesDir, jar, jdk if jdk else mx.get_jdk(), testclasses, excludedclasses)
             for classname in testclasses:
