@@ -7741,16 +7741,19 @@ class JavacCompiler(JavacLikeCompiler):
                             exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
                             javacArgs.append(exportArg)
 
-            def addRootModules(exports, prefix):
+            def addRootModules(exports, required_modules, prefix):
                 """
-                Makes all modules in `exports` root modules since modules exported
-                via ``--add-exports`` must be root modules.
+                Makes all modules in `exports` and all incubator modules in `required_modules` be root modules.
 
                 :param dict exports: a set of exports per module for which ``--add-exports`` args
                    have been added to `javacArgs`
+                :param list required_modules: a list of required modules
                 """
-                if exports:
-                    javacArgs.append(prefix + '--add-modules=' + ','.join(exports.keys()))
+                root_modules = set(exports.keys())
+                if required_modules:
+                    root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
+                if root_modules:
+                    javacArgs.append(prefix + '--add-modules=' + ','.join(root_modules))
 
             if compliance >= '9':
                 exports = {}
@@ -7783,7 +7786,7 @@ class JavacCompiler(JavacLikeCompiler):
                     required_modules.update((m for m in concealed if m not in jdk_modules_overridden_on_classpath))
 
                 addExportArgs(project, exports, '', jdk, required_modules)
-                addRootModules(exports, '')
+                addRootModules(exports, required_modules, '')
                 if required_modules:
                     javacArgs.append('--limit-modules=' + ','.join(required_modules))
 
@@ -7820,7 +7823,7 @@ class JavacCompiler(JavacLikeCompiler):
                             elif apDep.isJavaProject():
                                 addExportArgs(apDep, exports, '-J', jdk, observable_modules)
 
-                addRootModules(exports, '-J')
+                addRootModules(exports, None, '-J')
 
                 if len(jdk_modules_overridden_on_classpath) != 0:
                     javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
@@ -17699,7 +17702,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.309.3")  # mx unittest: report multi-version jars
+version = VersionSpec("5.309.4")  # GR-33544: support incubator modules
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
