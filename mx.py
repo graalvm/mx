@@ -17707,7 +17707,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.309.4")  # GR-33544: support incubator modules
+version = VersionSpec("5.309.5")  # GR-29289: mx quiet-run --ignore-exit-code
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
