@@ -13181,6 +13181,8 @@ def quiet_run(args):
     parser = ArgumentParser(prog='mx quiet-run')
     parser.add_argument('output_file', metavar='FILE', action='store', help='file to redirect the output to')
     parser.add_argument('cmd', metavar='CMD', nargs=PARSER, help='command to be executed')
+    parser.add_argument('-i', '--ignore-exit-code', action='store_true',
+                        help='ignores exit code of the command and always succeeds')
     parsed_args = parser.parse_args(args)
 
     with open(parsed_args.output_file, 'w') as out:
@@ -13192,6 +13194,9 @@ def quiet_run(args):
         with open(parsed_args.output_file, 'r') as out:
             print("From '{}':".format(out.name))
             shutil.copyfileobj(out, sys.stdout)
+
+    if parsed_args.ignore_exit_code:
+        return 0
 
     return retcode
 
@@ -17702,7 +17707,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.309.5")  # arr.copy() not supported
+version = VersionSpec("5.309.6")  # arr.copy() not supported
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
