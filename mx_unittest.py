@@ -466,7 +466,7 @@ def parse_split_args(args, parser, delimiter):
     delimiter_found = False
 
     # copy the input so we don't modify the parameter
-    args_copy = args.copy()
+    args_copy = list(args)
 
     # check for delimiter
     while len(args_copy) > 0:
