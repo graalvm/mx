@@ -17707,7 +17707,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.309.5")  # GR-29289: mx quiet-run --ignore-exit-code
+version = VersionSpec("5.309.6")  # arr.copy() not supported
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
