@@ -88,19 +88,23 @@ class TextRunListener implements MxRunListener {
             public void testStarted(Description description) {
                 Class<?> currentClass = description.getTestClass();
                 if (currentClass != lastClass) {
-                    if (lastClass != null) {
-                        l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
-                        l.testClassFinishedDelimiter();
-                    }
-                    lastClass = currentClass;
-                    passedInLastClass = 0;
-                    failedInLastClass = 0;
-                    l.testClassStarted(currentClass);
-                    l.testClassStartedDelimiter();
+                    testClassStarted(currentClass);
                 }
                 failed = false;
                 l.testStarted(description);
                 l.testStartedDelimiter();
+            }
+
+            private void testClassStarted(Class<?> clazz) {
+                if (lastClass != null) {
+                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
+                    l.testClassFinishedDelimiter();
+                }
+                lastClass = clazz;
+                passedInLastClass = 0;
+                failedInLastClass = 0;
+                l.testClassStarted(clazz);
+                l.testClassStartedDelimiter();
             }
 
             @Override
@@ -146,7 +150,23 @@ class TextRunListener implements MxRunListener {
 
             @Override
             public void testAssumptionFailure(Failure failure) {
+                Class<?> currentClass = failure.getDescription().getTestClass();
+                if (currentClass != lastClass) {
+                    testClassAssumptionFailure(failure);
+                } else {
+                    l.testAssumptionFailure(failure);
+                }
+            }
+
+            private void testClassAssumptionFailure(Failure failure) {
+                testClassStarted(failure.getDescription().getTestClass());
+                if (l.beVerbose()) {
+                    l.getWriter().print("  ");
+                }
                 l.testAssumptionFailure(failure);
+                if (l.beVerbose()) {
+                    l.getWriter().println();
+                }
             }
 
             @Override
