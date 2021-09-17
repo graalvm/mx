@@ -428,11 +428,7 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
             versions = {}
             for info in in_zf.infolist():
                 if not info.filename.startswith('META-INF/versions/'):
-                    if info.filename.startswith('META-INF/services/') and jdk9_or_later and self.get_declaring_module_name():
-                        # Omit JDK 8 style service descriptors when flattening for a 9+ module
-                        pass
-                    else:
-                        flattened_entries[info.filename] = (info, in_zf.read(info))
+                    flattened_entries[info.filename] = (info, in_zf.read(info))
 
             for info in in_zf.infolist():
                 if info.filename.startswith('META-INF/versions/'):
