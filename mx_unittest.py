@@ -444,7 +444,7 @@ def is_strictly_positive(value):
             raise ArgumentTypeError("%s must be greater than 0" % value)
     except ValueError:
         raise ArgumentTypeError("%s: integer greater than 0 expected" % value)
-    return int(value)
+    return value
 
 
 def parse_split_args(args, parser, delimiter):
@@ -522,7 +522,7 @@ def unittest(args):
     parser.add_argument('--whitelist', help='run testcases specified in <file> only', metavar='<file>')
     parser.add_argument('--verbose', help='enable verbose JUnit output', dest='JUnitVerbose', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--very-verbose', help='enable very verbose JUnit output', dest='JUnitVeryVerbose', action=MxJUnitWrapperBoolArg)
-    parser.add_argument('--max-class-failures', help='stop after N test classes that have a failure (default is no limit)', metavar='<N>', dest='JUnitMaxClassFailures', action=MxJUnitWrapperArg)
+    parser.add_argument('--max-class-failures', help='stop after N test classes that have a failure (default is no limit)', type=is_strictly_positive, metavar='<N>', dest='JUnitMaxClassFailures', action=MxJUnitWrapperArg)
     parser.add_argument('--fail-fast', help='alias for --max-class-failures=1', dest='JUnitFailFast', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--enable-timing', help='enable JUnit test timing (requires --verbose/--very-verbose)', dest='JUnitEnableTiming', action=MxJUnitWrapperBoolArg)
     parser.add_argument('--regex', help='run only testcases matching a regular expression', metavar='<regex>')
