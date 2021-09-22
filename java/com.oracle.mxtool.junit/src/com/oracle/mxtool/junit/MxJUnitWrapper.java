@@ -78,6 +78,8 @@ public class MxJUnitWrapper {
         public int maxClassFailures;
         public String recordFailed;
         public String recordPassed;
+        public String jsonResults;
+        public String jsonResultTags;
     }
 
     private static class RepeatingRunner extends Runner {
@@ -179,6 +181,10 @@ public class MxJUnitWrapper {
                     config.recordFailed = parseStringArg(system, expandedArgs, each, ++i);
                 } else if (each.contentEquals("-JUnitRepeat")) {
                     config.repeatCount = parseIntArg(system, expandedArgs, each, ++i);
+                } else if (each.contentEquals("-JUnitJsonResults")) {
+                    config.jsonResults = parseStringArg(system, expandedArgs, each, ++i);
+                } else if (each.contentEquals("-JUnitJsonResultTags")) {
+                    config.jsonResultTags = parseStringArg(system, expandedArgs, each, ++i);
                 } else {
                     system.out().println("Unknown command line argument: " + each);
                 }
@@ -295,6 +301,13 @@ public class MxJUnitWrapper {
         if (config.recordFailed != null || config.recordPassed != null) {
             resultLoggerDecorator = new ResultCollectorDecorator(mxListener);
             mxListener = resultLoggerDecorator;
+        }
+
+        if (config.jsonResults != null) {
+            system.out().println("generate json reports.....");
+            mxListener = new JsonResultsDecorator(mxListener, openFile(system, config.jsonResults), config.jsonResultTags);
+        } else if (config.jsonResultTags != null && config.jsonResultTags.length() > 0) {
+            system.out().println("Ignoring -JUnitJsonResultTags since -JUnitJsonResults was not set");
         }
 
         junitCore.addListener(TextRunListener.createRunListener(mxListener, mxRequest.missingClasses));
