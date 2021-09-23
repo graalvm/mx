@@ -582,8 +582,8 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
                 source_path = library.get_source_path(True)
             elif library.isJARDistribution():
                 path = library.path
-                if library.sourcesPath:
-                    source_path = library.sourcesPath
+                # don't report the source path since the source already exists in the project
+                # and IntelliJ sometimes picks the source zip instead of the real source file
             elif library.isClasspathDependency():
                 path = library.classpath_repr()
             else:
