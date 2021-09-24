@@ -554,13 +554,12 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
             libraryXml.element('root', attributes={'url': 'jar://' + pathX + '!/'})
             libraryXml.close('CLASSES')
             libraryXml.element('JAVADOC')
-            if sourcePath:
+            if source_path:
                 libraryXml.open('SOURCES')
-                if os.path.isdir(sourcePath):
-                    sourcePathX = mx.relpath_or_absolute(sourcePath, suite_dir, prefix='$PROJECT_DIR$')
-                    libraryXml.element('root', attributes={'url': 'file://' + sourcePathX})
+                source_pathX = mx.relpath_or_absolute(source_path, suite_dir, prefix='$PROJECT_DIR$')
+                if os.path.isdir(source_path):
+                    libraryXml.element('root', attributes={'url': 'file://' + source_pathX})
                 else:
-                    source_pathX = mx.relpath_or_absolute(source_path, suite_dir, prefix='$PROJECT_DIR$')
                     libraryXml.element('root', attributes={'url': 'jar://' + source_pathX + '!/'})
                 libraryXml.close('SOURCES')
             else:
@@ -573,23 +572,23 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
         # Setup the libraries that were used above
         for library in libraries:
-            sourcePath = None
+            source_path = None
             if library.isLibrary():
                 path = library.get_path(True)
                 if library.sourcePath:
-                    sourcePath = library.get_source_path(True)
+                    source_path = library.get_source_path(True)
             elif library.isMavenProject():
                 path = library.get_path(True)
-                sourcePath = library.get_source_path(True)
+                source_path = library.get_source_path(True)
             elif library.isJARDistribution():
                 path = library.path
-                if library.sourcesPath:
-                    sourcePath = library.sourcesPath
+                # don't report the source path since the source already exists in the project
+                # and IntelliJ sometimes picks the source zip instead of the real source file
             elif library.isClasspathDependency():
                 path = library.classpath_repr()
             else:
                 mx.abort('Dependency not supported: {} ({})'.format(library.name, library.__class__.__name__))
-            make_library(library.name, path, sourcePath, s.dir)
+            make_library(library.name, path, source_path, s.dir)
 
         jdk = mx.get_jdk()
         updated = False
