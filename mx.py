@@ -5445,6 +5445,8 @@ class Distribution(Dependency):
         return
         yield  # pylint: disable=unreachable
 
+    def get_artifact_metadata(self):
+        return None
 
 from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build, _stage_file_impl
 
@@ -11287,6 +11289,76 @@ def _deploy_skip_existing(args, dists, version, repo):
         return dists
 
 
+def _deploy_artifact(uploader, dist, path, version, jdk, platform, suite_revisions, artifact_repo_key,
+                     skip_existing=False, dry_run=False):
+
+    def get_artifact_name(project_prefix, artifact_id, artifact_version, extension, is_release):
+        import uuid
+        if is_release:
+            return "{}/{}-{}.{}".format(project_prefix, artifact_id, artifact_version, extension)
+        return "{}/{}-{}-{}.{}".format(project_prefix, artifact_id, artifact_version, uuid.uuid4(), extension)
+
+    assert exists(path), "{} does not exist".format(path)
+    maven_artifact_id = dist.maven_artifact_id(platform)
+    dist_metadata = dist.get_artifact_metadata()
+
+    def get_required_metadata(name):
+        if name not in dist_metadata or not dist_metadata.get(name):
+            abort("Artifact metadata for distribution '{}' must have '{}'".format(dist.name, name))
+        return dist_metadata.get(name)
+
+
+    distribution_type = get_required_metadata("type")
+    edition = get_required_metadata("edition")
+    project = get_required_metadata("project")
+    extra_metadata = {"suite": dist.suite.name,
+                      "artifactId": maven_artifact_id,
+                      "groupId": dist.maven_group_id()}
+    extra_metadata.update({k: v for k, v in dist_metadata.items() if k not in ["edition", "type", "project"]})
+
+    def dump_metadata_json(data, suffix):
+        with tempfile.NamedTemporaryFile(prefix="{}_{}".format(maven_artifact_id, suffix),
+                                         suffix=".json",
+                                         delete=False,
+                                         mode="w") as file:
+            file_name = file.name
+            json.dump(data, file)
+        return file_name
+
+    suite_revision_file = dump_metadata_json(suite_revisions, "suiteRevisions")
+    extra_metadata_file = dump_metadata_json(extra_metadata, "extraMetadata")
+
+    cmd = ["python", uploader, "--version", version, "--revision", dist.suite.vc.parent(dist.suite.vc_dir),
+           "--suite-revisions", suite_revision_file,
+           "--extra-metadata", extra_metadata_file,
+           "--lifecycle", "release" if dist.suite.is_release() else "snapshot",
+           path,
+           get_artifact_name(project, maven_artifact_id, version, dist.remoteExtension(), dist.suite.is_release()),
+           project]
+    if edition:
+        cmd.extend(["--edition", edition])
+    if distribution_type:
+        cmd.extend(["--artifact-type", distribution_type])
+    if jdk:
+        cmd.extend(["--jdk", jdk])
+    if platform:
+        cmd.extend(["--platform", platform])
+    if skip_existing:
+        cmd.append("--skip-existing")
+    if artifact_repo_key:
+        cmd.extend(["--artifact-repo-key", artifact_repo_key])
+    log("Uploading {}:{}".format(dist.maven_group_id(), dist.maven_artifact_id(platform)))
+    try:
+        if not dry_run:
+            result = run(cmd)
+            log("Returned code {}".format(result))
+        else:
+            log(list_to_cmd_line(cmd))
+    finally:
+        os.unlink(extra_metadata_file)
+        os.unlink(suite_revision_file)
+
+
 def deploy_binary(args):
     """deploy binaries for the primary suite to remote maven repository
 
@@ -11553,23 +11625,60 @@ def _maven_deploy_dists(dists, versionGetter, repo, settingsXml,
         os.unlink(repo_metadata_name)
 
 
-def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_types):
+def _deploy_dists(uploader, dists, version_getter, artifact_repo_key, skip_existing=False, dry_run=False):
+    related_suites_revisions = [{"suite": s_.name, "revision": s_.vc.parent(s_.vc_dir)} for s_ in suites() if s_.vc]
+    if _opts.very_verbose or (dry_run and _opts.verbose):
+        log(related_suites_revisions)
+    jdk_version = get_jdk(tag='default').javaCompliance.value
+    for dist in dists:
+        to_deploy = dist.path
+        if not dist.isTARDistribution() and not dist.isZIPDistribution() and not dist.isLayoutJARDistribution():
+            abort('Unsupported distribution: ' + dist.name)
+
+        pushed_file = dist.prePush(to_deploy)
+        try:
+            _deploy_artifact(dist=dist, path=pushed_file, version=version_getter(dist.suite), uploader=uploader,
+                             jdk=str(jdk_version),
+                             platform=Distribution.platformName().replace("_", "-"),
+                             suite_revisions=related_suites_revisions,
+                             skip_existing=skip_existing,
+                             artifact_repo_key=artifact_repo_key,
+                             dry_run=dry_run)
+        finally:
+            if pushed_file != to_deploy:
+                os.unlink(pushed_file)
+
+def _match_tags(dist, tags):
     maven = getattr(dist, 'maven', False)
-    if tags is not None:
-        maven_tag = 'default'
-        if isinstance(maven, dict) and 'tag' in maven:
-            maven_tag = maven['tag']
-        if maven_tag not in tags:
-            return False
+    maven_tag = 'default'
+    if isinstance(maven, dict) and 'tag' in maven:
+        maven_tag = maven['tag']
+    return maven_tag in tags
+
+def _file_name_match(dist, names):
+    return any(fnmatch.fnmatch(dist.name, n) or fnmatch.fnmatch(dist.qualifiedName(), n) for n in names)
+
+def _dist_matcher(dist, tags, all_distributions, only, skip, all_distribution_types):
+    if tags is not None and not _match_tags(dist, tags):
+        return False
     if all_distributions:
         return True
     if not dist.isJARDistribution() and not all_distribution_types:
         return False
     if only is not None:
-        return any(fnmatch.fnmatch(dist.name, o) or fnmatch.fnmatch(dist.qualifiedName(), o) for o in only)
-    if skip is not None and any(fnmatch.fnmatch(dist.name, s) or fnmatch.fnmatch(dist.qualifiedName(), s) for s in skip):
+        return _file_name_match(dist, only)
+    if skip is not None and _file_name_match(dist, skip):
         return False
     return getattr(dist, 'maven', False) and not dist.is_test_distribution()
+
+def _dist_matcher_all(dist, tags, only, skip):
+    if tags is not None and not _match_tags(dist, tags):
+        return False
+    if only is not None:
+        return _file_name_match(dist, only)
+    if skip is not None and _file_name_match(dist, skip):
+        return False
+    return True
 
 def maven_deploy(args):
     """deploy jars for the primary suite to remote maven repository
@@ -11650,6 +11759,64 @@ def maven_deploy(args):
                             keyid=args.gpg_keyid,
                             generateJavadoc=generateJavadoc,
                             deployRepoMetadata=args.with_suite_revisions_metadata)
+        has_deployed_dist = True
+    if not has_deployed_dist:
+        abort("No distribution was deployed!")
+
+def deploy_artifacts(args):
+    """Uses provided custom uploader to deploy primary suite to a remote repository
+    The upload script needs to respect the following interface :
+        path
+        artifact-name
+        project
+        --artifact-type     : base, installable, standalone ...
+        --version
+        --jdk               : java major version
+        --edition           : ee or ce
+        --extra-metadata    : accepts a json file with any extra metadata related to the artifact
+        --suite-revisions   : accepts a json file in this format [{"suite": str, "revision":  valid sha1}]
+        --revision          : hash of the sources for the artifact (valid sha1)
+        --lifecycle         : one of 'snapshot' or 'release'
+        --platform          : <os>-<arch>
+    All binaries must be built first using 'mx build'.
+    """
+    parser = ArgumentParser(prog='mx deploy_artifacts')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='Dry run that only prints the action a normal run would perform without actually deploying anything')
+    parser.add_argument('--all-suites', action='store_true', help='Deploy suite and the distributions it depends on in other suites')
+    parser.add_argument('--only', action='store', help='Comma-separated list of globs of distributions to be deployed')
+    parser.add_argument('--skip', action='store', help='Comma-separated list of globs of distributions not to be deployed')
+    parser.add_argument('--skip-existing', action='store_true', help='Do not deploy distributions if already in repository')
+    parser.add_argument('--version-string', action='store', help='Provide custom version string for deployment')
+    parser.add_argument('--tags', help='Comma-separated list of tags to match in the maven metadata of the distribution. When left unspecified, no filtering is done. The default tag is \'default\'', default=None)
+    parser.add_argument('--artifact-repo-key', help='Artifact repo api key file', metavar='FILE')
+    parser.add_argument('--uploader', action='store', help='Uploader')
+    args = parser.parse_args(args)
+
+    def versionGetter(suite):
+        if args.version_string:
+            return args.version_string
+        return suite.release_version(snapshotSuffix='SNAPSHOT')
+
+    if args.all_suites:
+        _suites = suites()
+    else:
+        _suites = primary_or_specific_suites()
+    tags = args.tags.split(',') if args.tags is not None else None
+    only = args.only.split(',') if args.only is not None else None
+    skip = args.skip.split(',') if args.skip is not None else None
+    has_deployed_dist = False
+    for s in _suites:
+        dists = [d for d in s.dists if _dist_matcher_all(dist=d, tags=tags, only=only, skip=skip) and d.get_artifact_metadata() is not None]
+        if not dists and not args.all_suites:
+            warn("No distribution to deploy in " + s.name)
+            continue
+        for dist in dists:
+            if not dist.exists():
+                abort("'{0}' is not built, run 'mx build' first".format(dist.name))
+
+        log('Deploying {} distributions for version {}'.format(s.name, versionGetter(s)))
+        _deploy_dists(dists=dists, version_getter=versionGetter, uploader=args.uploader, skip_existing=args.skip_existing,
+                      artifact_repo_key=args.artifact_repo_key, dry_run=args.dry_run)
         has_deployed_dist = True
     if not has_deployed_dist:
         abort("No distribution was deployed!")
@@ -17549,6 +17716,7 @@ update_commands("mx", {
     'checkoverlap': [checkoverlap, ''],
     'checkstyle': [checkstyle, ''],
     'clean': [clean, ''],
+    'deploy-artifacts': [deploy_artifacts, ''],
     'deploy-binary' : [deploy_binary, ''],
     'envs': [show_envs, '[options]'],
     'exportlibs': [exportlibs, ''],
@@ -17883,7 +18051,7 @@ def main():
         abort(1, killsig=signal.SIGINT)
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("6.1.11")  # [GR-38177]
+version = VersionSpec("6.1.12")  # [GR-38177]
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
