@@ -29,20 +29,18 @@ import java.util.List;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-
-public class FindMethodsByClass{
-    public static void main(String... args) throws Throwable{
-        int testCount=0;
-        for(String arg:args){
+public class FindMethodsByClass {
+    public static void main(String... args) throws Throwable {
+        int testCount = 0;
+        for (String arg : args) {
             Class<?> clazz = Class.forName(arg);
             Method[] methods = getAccessibleMethods(clazz);
-            int i=0;
-            for(i=0;i<methods.length;i++){
+            int i = 0;
+            for (i = 0; i < methods.length; i++) {
                 Method method = methods[i];
-                //Test annotation = method.getAnnotation(Test.class);
+                // Test annotation = method.getAnnotation(Test.class);
                 String methodName = new String(method.getName());
-                if(methodName.startsWith("test"))
-                {
+                if (methodName.startsWith("test")) {
                     testCount++;
                     System.out.println(methodName);
                 }

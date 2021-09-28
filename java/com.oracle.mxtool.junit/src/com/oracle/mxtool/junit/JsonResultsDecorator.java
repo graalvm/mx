@@ -38,6 +38,7 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
     private final String jsonResultTags;
     private boolean hasContent;
     private long startTime;
+
     JsonResultsDecorator(MxRunListener l, PrintStream output, String jsonResultTags) {
         super(l);
         this.output = output;
@@ -73,23 +74,27 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
         String result = "SUCCESS";
         outputItem(description.getDisplayName(), result);
     }
+
     @Override
     public void testFailed(Failure failure) {
         super.testFailed(failure);
         String result = "FAILED";
         outputItem(failure.getDescription().getDisplayName(), result);
     }
+
     @Override
     public void testIgnored(Description description) {
         super.testIgnored(description);
         String result = "IGNORED";
         outputItem(description.getDisplayName(), result);
     }
+
     @Override
     public void testStarted(Description description) {
         super.testStarted(description);
         startTime = System.nanoTime();
     }
+
     @Override
     public void testClassStarted(Class<?> clazz) {
         super.testClassStarted(clazz);
