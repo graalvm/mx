@@ -730,14 +730,22 @@ def _jacoco_is_package_whitelisted(package):
 
 
 def _jacoco_excludes_includes():
+    """
+    Gets a tuple of lists, the classes to include/exclude respectively in JaCoco execution analysis.
+    See https://www.eclemma.org/jacoco/trunk/doc/agent.html for details on the "includes" and "excludes" agent options.
+    """
     includes = list(_jacoco_includes)
     baseExcludes = list(_jacoco_excludes)
+    aps = mx.annotation_processors()
     for p in mx.projects():
         if p.isJavaProject():
             projsetting = getattr(p, 'jacoco', '')
             if not _jacoco_is_package_whitelisted(p.name):
                 pass
             elif projsetting == 'exclude':
+                baseExcludes.append(p.name)
+            elif p in aps:
+                # Exclude all annotation processors from JaCoco analysis
                 baseExcludes.append(p.name)
             elif projsetting == 'include':
                 includes.append(p.name + '.*')
@@ -777,7 +785,7 @@ def get_jacoco_agent_args(jacoco=None):
     if jacoco in ('on', 'append'):
         excludes, includes = _jacoco_excludes_includes()
         with tempfile.NamedTemporaryFile(prefix="jacoco_excludes", mode="w", delete=False) as excludesfile:
-            # Make sure to remove temporary file when program exit
+            # Make sure to remove temporary file when program exits
             atexit.register(os.remove, excludesfile.name)
             excludesfile.write(':'.join(excludes))
             excludesfile.flush()
