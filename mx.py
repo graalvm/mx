@@ -4645,7 +4645,7 @@ _loadedEnv = dict()
 
 _jdkFactories = {}
 
-_annotationProcessors = None
+_annotationProcessorProjects = None
 _mx_tests_suite = None
 _suitemodel = None
 _opts = Namespace()
@@ -11727,17 +11727,20 @@ def _dependencies_opt_limit_to_suites(deps):
 
 def annotation_processors():
     """
-    Get the list of all loaded projects that define an annotation processor.
+    Gets the list of all projects that are part of an annotation processor.
     """
-    global _annotationProcessors
-    if _annotationProcessors is None:
+    global _annotationProcessorProjects
+    if _annotationProcessorProjects is None:
         aps = set()
         for p in projects():
-            for ap in p.annotation_processors():
-                if project(ap, False):
-                    aps.add(ap)
-        _annotationProcessors = list(aps)
-    return _annotationProcessors
+            if p.isJavaProject():
+                for ap in p.annotation_processors():
+                    if ap.isJARDistribution():
+                        for d in ap.archived_deps():
+                            if d.isProject():
+                                aps.add(d)
+        _annotationProcessorProjects = list(aps)
+    return _annotationProcessorProjects
 
 
 def get_license(names, fatalIfMissing=True, context=None):
@@ -17748,7 +17751,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.310.3")  # GR-31529
+version = VersionSpec("5.311.0")  # GR-34021
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
