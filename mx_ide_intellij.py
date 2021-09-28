@@ -242,9 +242,9 @@ def _intellij_suite(args, s, declared_modules, referenced_modules, sdks, refresh
 
     def _complianceToIntellijLanguageLevel(compliance):
         # they changed the name format starting with JDK_10
-        if compliance.value >= 10:
-            # Lastest Idea 2018.2 only understands JDK_11 so clamp at that value
-            return 'JDK_' + str(min(compliance.value, 11))
+        if compliance.value >= 16:
+            # latest Idea 2021.2 requires the acceptance of a legal notice for beta Java specification to enable support for JDK17. Clamp at JDK16.
+            return 'JDK_' + str(min(compliance.value, 16))
         return 'JDK_1_' + str(compliance.value)
 
     def _intellij_external_project(externalProjects, sdks, host):
