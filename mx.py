@@ -8375,11 +8375,11 @@ class ResourceLibrary(BaseLibrary):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.sourcePath = None
-        self.urls = urls
-        self.sha1 = sha1
+        self.urls = [ self.substVars(url) for url in urls ]
+        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
 
     def get_urls(self):
-        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        return mx_urlrewrites.rewriteurls(self.urls)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8656,19 +8656,19 @@ class Library(BaseLibrary, ClasspathDependency):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
-        self.urls = urls
-        self.sha1 = sha1
+        self.urls = [ self.substVars(url) for url in urls ]
+        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.sourceUrls = sourceUrls
         if sourcePath == path:
-            assert sourceSha1 is None or sourceSha1 == sha1
-            sourceSha1 = sha1
+            assert sourceSha1 is None or sourceSha1 == self.sha1
+            sourceSha1 = self.sha1
         self.sourceSha1 = sourceSha1
         self.deps = deps
         self.ignore = ignore
         if not optional and not ignore:
             abspath = _make_absolute(path, self.suite.dir)
-            if not exists(abspath) and not len(urls):
+            if not exists(abspath) and not len(self.urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
             def _checkSha1PropertyCondition(propName, cond, inputPath):
@@ -8678,10 +8678,10 @@ class Library(BaseLibrary, ClasspathDependency):
                         abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
                     abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
 
-            _checkSha1PropertyCondition('sha1', sha1, path)
+            _checkSha1PropertyCondition('sha1', self.sha1, path)
             _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
 
-        for url in urls:
+        for url in self.urls:
             if url.endswith('/') != self.path.endswith(os.sep):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
@@ -8700,7 +8700,7 @@ class Library(BaseLibrary, ClasspathDependency):
         return (self.sha1, self.name)
 
     def get_urls(self):
-        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        return mx_urlrewrites.rewriteurls(self.urls)
 
     def is_available(self):
         if not self.path:
