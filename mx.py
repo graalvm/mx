@@ -8375,7 +8375,7 @@ class ResourceLibrary(BaseLibrary):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.sourcePath = None
-        self.urls = [ self.substVars(url) for url in urls ]
+        self.urls = [self.substVars(url) for url in urls]
         self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
 
     def get_urls(self):
@@ -8656,7 +8656,7 @@ class Library(BaseLibrary, ClasspathDependency):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
-        self.urls = [ self.substVars(url) for url in urls ]
+        self.urls = [self.substVars(url) for url in urls]
         self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.sourceUrls = sourceUrls
