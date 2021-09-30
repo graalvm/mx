@@ -799,17 +799,22 @@ def get_jacoco_agent_args(jacoco=None):
         return ['-javaagent:' + get_jacoco_agent_path(True) + '=' + ','.join([k + '=' + v for k, v in agentOptions.items()])]
     return None
 
-def jacocoreport(args):
-    _jacocoreport(args)
 
-def _jacocoreport(args):
-    """create a JaCoCo coverage report
+def jacocoreport(args, exec_files=None):
+    """Create a JaCoCo coverage report
 
-    Creates the report from the 'jacoco.exec' file in the current directory.
-    Default output directory is 'coverage', but an alternative can be provided as an argument.
+    Parses the supplied arguments and creates a coverage report from Jacoco exec files. By default, the file returned
+    by :get_jacoco_dest_file: is used. This is typically the 'jacoco.exec' file in the current directory. Alternatively,
+    you can specify a list of JaCoCo files to use with the `exec_files` parameter.
 
-    This function returns the included projects and excludes used for this report"""
+    :param list args: a list of arguments to parse.
+    :param list exec_files: a list of jacoco.exec files to use instead of the one returned by :get_jacoco_dest_file:.
+    :return: the included projects and excludes used for this report"""
 
+    _jacocoreport(args, exec_files)
+
+
+def _jacocoreport(args, exec_files=None):
     dist_name = "MX_JACOCO_REPORT"
     mx.command_function("build")(['--dependencies', dist_name])
     dist = mx.distribution(dist_name)
@@ -828,7 +833,7 @@ def _jacocoreport(args):
         projsetting = getattr(p, 'jacoco', '')
         if projsetting in ('include', '') and _jacoco_is_package_whitelisted(p.name):
             if isinstance(p, mx.ClasspathDependency):
-                if args.omit_excluded and p.is_test_project(): # skip test projects when omit-excluded
+                if args.omit_excluded and p.is_test_project():  # skip test projects when omit-excluded
                     continue
                 source_dirs = []
                 if p.isJavaProject():
@@ -837,8 +842,15 @@ def _jacocoreport(args):
                 includedprojects.append(p.name)
 
     def _run_reporter(extra_args=None):
-        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--in', get_jacoco_dest_file(), '--out',
-                     args.output_directory, '--format', args.format] +
+        files_arg = []
+        if exec_files is None:
+            files_arg = ['--in', get_jacoco_dest_file()]
+        else:
+            for exec_file in exec_files:
+                files_arg += ['--in', exec_file]
+
+        mx.run_java(['-cp', mx.classpath([dist_name], jdk=jdk), '-jar', dist.path, '--out',
+                     args.output_directory, '--format', args.format] + files_arg +
                     (extra_args or []) +
                     sorted(includedirs),
                     jdk=jdk, addDefaultArgs=False)
