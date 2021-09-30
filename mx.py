@@ -17710,7 +17710,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.311.1")  # GR-34021
+version = VersionSpec("5.311.2")  # GR-34116
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
