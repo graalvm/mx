@@ -158,7 +158,7 @@ def rewriteurl(url):
     return url
 
 def rewriteurls(urls):
-    return [ rewriteurl(url) for url in urls ]
+    return [rewriteurl(url) for url in urls]
 
 def rewritesha1(urls, sha1):
     for url in urls:
