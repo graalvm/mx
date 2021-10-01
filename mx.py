@@ -17744,7 +17744,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.312.0")  # GR-8852 - ECJ support for JDK >= 9
+version = VersionSpec("5.313.0")  # GR-31260
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
