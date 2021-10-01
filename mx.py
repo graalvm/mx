@@ -581,6 +581,7 @@ environment variables:
                                 "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
                                 "be stored in the parent directory of the repository containing the primary suite. This option "
                                 "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
+        self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -678,6 +679,10 @@ environment variables:
                         pass
                 except IOError as e:
                     abort('Error opening {} specified by --exec-log: {}'.format(opts.exec_log, e))
+
+            system_arch = platform.uname()[4]
+            if opts.arch and opts.arch != system_arch:
+                warn('overriding detected architecture ({}) with {}'.format(system_arch, opts.arch))
 
         else:
             parser = ArgParser(parents=[self])
@@ -3835,6 +3840,9 @@ def _separatedCygpathW2U(p):
     return os.pathsep.join(map(_cygpathW2U, p.split(';')))
 
 def get_arch():
+    return _opts.arch if _opts.arch else _get_real_arch()
+
+def _get_real_arch():
     machine = platform.uname()[4]
     if machine in ['aarch64']:
         return 'aarch64'
