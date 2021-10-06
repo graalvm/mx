@@ -588,20 +588,19 @@ def _run_gate(cleanArgs, args, tasks):
             if mx.command_function('verifysourceinproject')([]) != 0:
                 t.abort('Move or delete the Java sources that are not in a Java project directory.')
 
-    if mx._is_supported_by_jdt(mx.DEFAULT_JDK_TAG):
-        with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
-            if t:
-                defaultBuildArgs = ['-p']
-                fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
-                # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
-                if not args.no_warning_as_error and fullbuild:
-                    defaultBuildArgs += ['--warning-as-error']
-                if mx.get_env('JDT'):
-                    mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
-                    if fullbuild:
-                        gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
-                else:
-                    _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
+    with Task('BuildWithEcj', tasks, tags=[Tags.fullbuild, Tags.ecjbuild], legacyTitles=['BuildJavaWithEcj']) as t:
+        if t:
+            defaultBuildArgs = ['-p']
+            fullbuild = True if Task.tags is None else Tags.fullbuild in Task.tags # pylint: disable=unsupported-membership-test
+            # Using ecj alone is not compatible with --warning-as-error (see GR-3969)
+            if not args.no_warning_as_error and fullbuild:
+                defaultBuildArgs += ['--warning-as-error']
+            if mx.get_env('JDT'):
+                mx.command_function('build')(defaultBuildArgs + args.extra_build_args)
+                if fullbuild:
+                    gate_clean(cleanArgs, tasks, name='CleanAfterEcjBuild', tags=[Tags.fullbuild])
+            else:
+                _warn_or_abort('JDT environment variable not set. Cannot execute BuildWithEcj task.', args.strict_mode)
 
     with Task('BuildWithJavac', tasks, tags=[Tags.build, Tags.fullbuild], legacyTitles=['BuildJavaWithJavac']) as t:
         if t:
