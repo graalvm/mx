@@ -36,3 +36,7 @@ jobs:
           wget https://www.eclipse.org/downloads/download.php?file=/eclipse/downloads/drops4/R-4.5.2-201602121500/ecj-4.5.2.jar -O $JDT
       - name: mx gate
         run: ./mx --strict-compliance gate --strict-mode
+      - name: Test native build without vcs dir
+        run: |
+          rm -rf .git
+          ./mx -V build --projects com.oracle.jvmtiasmagent
