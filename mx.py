@@ -1749,10 +1749,7 @@ class Suite(object):
         """
         res = getattr(self, '.output_root_includes_config', None)
         if res is None:
-            res = os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') == 'true'
-            if res and os.getenv('MX_ALT_OUTPUT_ROOT') is not None:
-                warn('Ignoring MX_OUTPUT_ROOT_INCLUDES_CONFIG=true since MX_ALT_OUTPUT_ROOT is set')
-                res = False
+            res = os.getenv('MX_ALT_OUTPUT_ROOT') is None and os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') != 'false'
             setattr(self, '.output_root_includes_config', res)
         return res
 
@@ -17588,6 +17585,8 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
+    SourceSuite._load_env_file(_global_env_file())
+
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
     _mx_suite._init_metadata()
@@ -17613,7 +17612,6 @@ def main():
             else:
                 _binary_suites = []
 
-    SourceSuite._load_env_file(_global_env_file())
     primarySuiteMxDir = None
     if is_suite_context_free:
         _setup_binary_suites()
@@ -17746,7 +17744,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.312.0")  # GR-8852 - ECJ support for JDK >= 9
+version = VersionSpec("5.313.0")  # GR-31260
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
