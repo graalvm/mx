@@ -7809,7 +7809,7 @@ class JavacLikeCompiler(JavaCompiler):
                 if required_modules:
                     root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
                 if root_modules:
-                    self.addModuleArg(javacArgs, '-j--add-modules', ','.join(root_modules))
+                    self.addModuleArg(javacArgs, '--add-modules', ','.join(root_modules))
 
                 if len(jdk_modules_overridden_on_classpath) != 0:
                     javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
