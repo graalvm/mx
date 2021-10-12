@@ -1082,7 +1082,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
 
 def get_transitive_closure(roots, observable_modules):
     """
-    Gets the transitive closure of the dependences of a set of root modules
+    Gets the transitive closure of the dependencies of a set of root modules
     (i.e. `roots`) with respect to a set of observable modules (i.e. `observable_modules`)
 
     :param iterable roots: the roots modules (JavaModulesDescriptors or module names) for
