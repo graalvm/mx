@@ -49,7 +49,7 @@ def register_urlrewrite(urlrewrite, onError=None):
 
     :param urlrewrite: a URL rewrite rule
     :type urlrewrite: dict or URLRewrite
-    :param function onError: called with error message argument if urlwrewrite is badly formed
+    :param function onError: called with error message argument if urlrewrite is badly formed
     """
 
     if onError is None:
@@ -115,7 +115,7 @@ def _geturlrewrite(url):
     """
     Finds the first registered URL rewrite rule that matches `url` and returns it.
 
-    :param str url: a URL to match against the registered rerwrite rules
+    :param str url: a URL to match against the registered rewrite rules
     :return: `URLRewrite` rule that matches `url` or `None`
     """
     jar_url = mx._JarURL.parse(url)
@@ -148,7 +148,7 @@ def rewriteurl(url):
     Finds the first registered URL rewrite rule that matches `url` and returns the replacement `url`
     provided by the rule.
 
-    :param str url: a URL to match against the registered rerwrite rules
+    :param str url: a URL to match against the registered rewrite rules
     :return: the value of `url` rewritten according to the first matching rewrite URL or unmodified if no rules match
     :rtype: str
     """

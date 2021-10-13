@@ -894,7 +894,7 @@ class SuiteModel:
     Defines how to locate a URL/path for a suite, including imported suites.
     Conceptually a SuiteModel is defined a primary suite URL/path,
     and a map from suite name to URL/path for imported suites.
-    Subclasses define a specfic implementation.
+    Subclasses define a specific implementation.
     """
     def __init__(self):
         self.primaryDir = None
@@ -4044,7 +4044,7 @@ def _send_sigquit():
             except NoSuchProcess:
                 return None
     except ImportError:
-        warn("psutil is not available, java process detection is less acurate")
+        warn("psutil is not available, java process detection is less accurate")
         def _get_args(pid):
             return None
 
@@ -5601,7 +5601,7 @@ class AbstractTARDistribution(AbstractDistribution):
 
     def postPull(self, f):
         assert f.endswith('.gz')
-        logv('Uncompressing {}...'.format(f))
+        logv('Decompressing {}...'.format(f))
         tarfilename = f[:-len('.gz')]
         if AbstractTARDistribution._has_gzip():
             with open(tarfilename, 'wb') as tar:
@@ -5673,7 +5673,7 @@ class AbstractZIPDistribution(AbstractDistribution):
     def postPull(self, f):
         if self.compress_locally() or not self.compress_remotely():
             return None
-        logv('Uncompressing {}...'.format(f))
+        logv('Decompressing {}...'.format(f))
         tmp_dir = mkdtemp("." + self.localExtension(), self.name)
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmp_dir)
@@ -7809,7 +7809,7 @@ class JavacLikeCompiler(JavaCompiler):
                 if required_modules:
                     root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
                 if root_modules:
-                    self.addModuleArg(javacArgs, '-j--add-modules', ','.join(root_modules))
+                    self.addModuleArg(javacArgs, '--add-modules', ','.join(root_modules))
 
                 if len(jdk_modules_overridden_on_classpath) != 0:
                     javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
@@ -8840,7 +8840,7 @@ the command should be logged.
 """
 class VC(_with_metaclass(ABCMeta, object)):
     """
-    base class for all supported Distriuted Version Constrol abstractions
+    base class for all supported Distributed Version Control abstractions
 
     :ivar str kind: the VC type identifier
     :ivar str proper_name: the long name descriptor of the VCS
@@ -8922,7 +8922,7 @@ class VC(_with_metaclass(ABCMeta, object)):
 
     def init(self, vcdir, abortOnError=True):
         """
-        Intialize 'vcdir' for vc control
+        Initialize 'vcdir' for vc control
         """
         abort(self.kind + " init is not implemented")
 
@@ -11249,7 +11249,7 @@ def _deploy_binary(args, suite):
             if retcode:
                 log("Updating " + deploy_item_msg + " failed (probably more recent deployment)")
             else:
-                log("Sucessfully updated " + deploy_item_msg)
+                log("Successfully updated " + deploy_item_msg)
 
         try_remote_branch_update(binary_deployed_ref)
 
@@ -12292,7 +12292,7 @@ _VM_OPTS_SPACE_SEPARATED_ARG = ['-mp', '-modulepath', '-limitmods', '-addmods', 
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
     Partitions `args` into a leading sequence of HotSpot VM options and the rest. If
-    `useDoubleDash` then `args` is partititioned by the first instance of "--". If
+    `useDoubleDash` then `args` is partitioned by the first instance of "--". If
     not `allowClasspath` then mx aborts if "-cp" or "-classpath" is in `args`.
 
    """
@@ -12465,7 +12465,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
 
     The JDK is selected by consulting the --jdk option, the --java-home option,
     the JAVA_HOME environment variable, the --extra-java-homes option and the
-    EXTRA_JAVA_HOMES enviroment variable in that order.
+    EXTRA_JAVA_HOMES environment variable in that order.
     """
     cache_key = (versionCheck, tag)
     if cache_key in _jdks_cache:
@@ -12573,7 +12573,7 @@ def _find_jdk(versionCheck=None, versionDescription=None):
 
     The selection is attempted from the --java-home option, the JAVA_HOME
     environment variable, the --extra-java-homes option and the EXTRA_JAVA_HOMES
-    enviroment variable in that order.
+    environment variable in that order.
 
     :param versionCheck: a predicate to be applied when making the selection
     :param versionDescription: a description of `versionPredicate` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40")
@@ -12727,7 +12727,7 @@ def java_command(args):
 
     The JDK is selected by consulting the --jdk option, the --java-home option,
     the JAVA_HOME environment variable, the --extra-java-homes option and the
-    EXTRA_JAVA_HOMES enviroment variable in that order.
+    EXTRA_JAVA_HOMES environment variable in that order.
     """
     run_java(args)
 
@@ -12787,7 +12787,7 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
         else:
             currMin = avg + 1
 
-    # We cannot bisect further. The last succesful attempt is the result.
+    # We cannot bisect further. The last successful attempt is the result.
     _log = out if out is not None else log
     _log('%s %s' % (benchName, lastSuccess))
     return 0 if lastSuccess is not None else 2
@@ -12959,7 +12959,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     """
     Recursively runs mx.
 
-    :param list args: the command line arguments to pass to the recusive mx execution
+    :param list args: the command line arguments to pass to the recursive mx execution
     :param suite: the primary suite or primary suite directory to use
     :param str mxpy: path the mx module to run (None to use the current mx module)
     """
@@ -13563,9 +13563,9 @@ class JDKConfig(Comparable):
         if other is None:
             return False
         if isinstance(other, JDKConfig):
-            compilanceCmp = compare(self.javaCompliance, other.javaCompliance)
-            if compilanceCmp:
-                return compilanceCmp
+            complianceCmp = compare(self.javaCompliance, other.javaCompliance)
+            if complianceCmp:
+                return complianceCmp
             versionCmp = compare(self.version, other.version)
             if versionCmp:
                 return versionCmp
@@ -17247,7 +17247,7 @@ def checkcopyrights(args):
 
         def _get_program_help(self):
             help_output = _check_output_str([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
-            return '\nother argumments preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
+            return '\nother arguments preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
 
     # ensure compiled form of code is up to date
     build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.checkcopy'])
@@ -17744,7 +17744,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.313.0")  # GR-31260
+version = VersionSpec("5.313.1")  # GR-34464
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

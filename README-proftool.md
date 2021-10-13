@@ -53,7 +53,7 @@ by all the `proftool` commands so use whichever form is most convenient.  Packag
 simplify capturing the profile on a Linux machine then moving it to another machine for analysis.
 
 Not all benchmark suites actually support the `--profiler` option even though it's broadly advertised in the
-help output.  At the current time, only the `dacapo`, `scala-dacapo`, `renaissance` and `renassiance-legacy`
+help output.  At the current time, only the `dacapo`, `scala-dacapo`, `renaissance` and `renaissance-legacy`
 suites fully support the `--profiler` option.  The `JMH` benchmarks only correctly support it when the
 the JMH option `-f 0` is used to suppress forking by the harness.  Note that this changes the way the benchmark
 is run and might not produce the same results.  With `JMH` you can always fall back to the `JMH` `perfasm`

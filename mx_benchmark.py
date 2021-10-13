@@ -644,7 +644,7 @@ class Rule(object):
         return _crop
 
     def parse(self, text):
-        """Create a dictionary of variables for every measurment.
+        """Create a dictionary of variables for every measurement.
 
         :param text: The standard output of the benchmark.
         :type text: str
@@ -693,7 +693,7 @@ class BaseRule(Rule):
 
     def parseResults(self, text):
         """Parses the raw result of a benchmark and create a dictionary of variables
-        for every measurment.
+        for every measurement.
 
         :param text: The standard output of the benchmark.
         :type text: str
