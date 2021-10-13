@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -7717,7 +7717,7 @@ class JavacLikeCompiler(JavaCompiler):
                             for name in os.listdir(jmodsDir):
                                 if name not in jmodsToRemove:
                                     os.symlink(join(jmodsDir, name), join(jmodsCopyPath, name))
-                        jmodsDir = jmodsCopyPath
+                    jmodsDir = jmodsCopyPath
 
                 javacArgs.append(jmodsDir)
 
@@ -17744,7 +17744,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.313.1")  # GR-34464
+version = VersionSpec("5.313.2")  # GR-34479 - Fix jmodsDir when using ECJCompiler
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
