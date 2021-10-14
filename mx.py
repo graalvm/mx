@@ -17752,7 +17752,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.313.2")  # GR-34479 - Fix jmodsDir when using ECJCompiler
+version = VersionSpec("5.313.3")  # GR-34521
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
