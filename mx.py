@@ -3840,7 +3840,7 @@ def _separatedCygpathW2U(p):
     return os.pathsep.join(map(_cygpathW2U, p.split(';')))
 
 def get_arch():
-    return _opts.arch if _opts.arch else _get_real_arch()
+    return getattr(_opts, 'arch', None) or _get_real_arch()
 
 def _get_real_arch():
     machine = platform.uname()[4]
