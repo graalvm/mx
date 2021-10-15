@@ -67,6 +67,8 @@ The recommended next steps are:
 
  hint) If you select "Close newly imported projects upon completion" then the import is more efficient.
        Projects needed for development can be opened conveniently using the generated Suite working sets from the context menu.
+ 5) Update the type filters (Preferences -> Java -> Appearance -> Type Filters) so that `jdk.*` and `org.graalvm.*` are not filtered.
+    Without this, code completion will not work for JVMCI and Graal code.
 ----------------------------------------------
 Ensure that these Execution Environments have a Compatible JRE in Eclipse (Preferences -> Java -> Installed JREs -> Execution Environments):
   JavaSE-1.8
