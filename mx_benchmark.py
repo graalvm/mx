@@ -409,13 +409,22 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
     def benchmarkList(self, bmSuiteArgs):
-        """Returns the list of the benchmarks provided by this suite.
+        """Returns the list of the benchmarks of this suite which can be executed on the current platform.
 
         :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
         :rtype: list[str]
         """
         raise NotImplementedError()
+
+    def completeBenchmarkList(self, bmSuiteArgs):
+        """
+        The name of all benchmarks of the suite independently of their support of the current platform.
+        :param list[str] bmSuiteArgs: List of string arguments to the suite.
+        :return: List of benchmark names.
+        :rtype: list[str]
+        """
+        return self.benchmarkList(bmSuiteArgs)
 
     def currently_running_benchmark(self):
         """
@@ -572,7 +581,7 @@ class BenchmarkSuite(object):
 
     def dump_results_file(self, file_path, data_points):
         if not data_points:
-            return 0
+            data_points = []
         dump = json.dumps({"queries": data_points}, sort_keys=True, indent=2)
         with open(file_path, "w") as txtfile:
             txtfile.write(dump)
@@ -2408,13 +2417,13 @@ class BenchmarkExecutor(object):
             benchspec = ""
         suite = _bm_suites.get(suitename)
         if not suite:
-            mx.abort("Cannot find benchmark suite '{0}'.  Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
+            mx.abort("Cannot find benchmark suite '{0}'. Available suites are: {1}".format(suitename, ' '.join(bm_suite_valid_keys())))
         if args.bench_suite_version:
             suite.setDesiredVersion(args.bench_suite_version)
         if not exclude and benchspec == "*":
-            return (suite, [[b] for b in suite.benchmarkList(bmSuiteArgs)])
+            return (suite, [[b] for b in suite.completeBenchmarkList(bmSuiteArgs)])
         elif not exclude and benchspec.startswith("*[") and benchspec.endswith("]"):
-            all_benchmarks = suite.benchmarkList(bmSuiteArgs)
+            all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
             requested_benchmarks = [bench.strip() for bench in benchspec[2:-1].split(",")]
             if not set(requested_benchmarks) <= set(all_benchmarks):
                 difference = list(set(requested_benchmarks) - set(all_benchmarks))
@@ -2422,7 +2431,7 @@ class BenchmarkExecutor(object):
                 mx.abort("The benchmark{0} {1} are not supported by the suite ".format(plural, ",".join(difference)))
             return (suite, [[b] for b in all_benchmarks if b in requested_benchmarks])
         elif benchspec.startswith("r[") and benchspec.endswith("]"):
-            all_benchmarks = suite.benchmarkList(bmSuiteArgs)
+            all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
             # python2 compat: instead of regex.fullmatch, use the end-of-string anchor and regex.match
             regex = re.compile(benchspec[2:-1] + r"\Z")
             requested_benchmarks = set()
@@ -2430,12 +2439,12 @@ class BenchmarkExecutor(object):
                 if regex.match(bench):
                     requested_benchmarks.add(bench)
             if requested_benchmarks == set():
-                mx.warn("The pattern '{0}' doesn't match any benchmark in suite '{1}'".format(regex.pattern, suitename))
+                mx.warn("The pattern '{0}' doesn't match any benchmark from the suite '{1}'.".format(regex.pattern, suitename))
             if exclude:
                 requested_benchmarks = set(all_benchmarks) - requested_benchmarks
             return (suite, [[b] for b in requested_benchmarks])
         elif exclude and benchspec.startswith("[") and benchspec.endswith("]"):
-            all_benchmarks = suite.benchmarkList(bmSuiteArgs)
+            all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
             excluded_benchmarks = [bench.strip() for bench in benchspec[1:-1].split(",")]
             if not set(excluded_benchmarks) <= set(all_benchmarks):
                 difference = list(set(excluded_benchmarks) - set(all_benchmarks))
@@ -2446,13 +2455,12 @@ class BenchmarkExecutor(object):
             return (suite, [None])
         else:
             benchspec = [bench.strip() for bench in benchspec.split(",")]
-            benchmark_list = suite.benchmarkList(bmSuiteArgs)
+            all_benchmarks = suite.completeBenchmarkList(bmSuiteArgs)
             for bench in benchspec:
-                if not bench in benchmark_list:
-                    mx.abort("Cannot find benchmark '{0}' in suite '{1}'.  Available benchmarks are {2}".format(
-                        bench, suitename, benchmark_list))
+                if not bench in all_benchmarks:
+                    mx.abort("Cannot find benchmark '{0}' in suite '{1}'. Available benchmarks are {2}".format(bench, suitename, all_benchmarks))
             if exclude:
-                return (suite, [[bench] for bench in benchmark_list if bench not in benchspec])
+                return (suite, [[bench] for bench in all_benchmarks if bench not in benchspec])
             return (suite, [benchspec])
 
     def applyScoreFunction(self, datapoint):
@@ -2622,19 +2630,21 @@ class BenchmarkExecutor(object):
             with open(mxBenchmarkArgs.fork_count_file) as f:
                 fork_count_spec = json.load(f)
         failures_seen = False
+        failed_benchmarks = []
         try:
             suite.before(bmSuiteArgs)
-            skipped_benchmarks = []
+            skipped_benchmark_forks = []
+            ignored_benchmarks = []
             for benchnames in benchNamesList:
                 suite.validateEnvironment()
                 fork_count = 1
                 if fork_count_spec and benchnames and len(benchnames) == 1:
                     fork_count = fork_count_spec.get("{}:{}".format(suite.name(), benchnames[0]))
                     if fork_count is None and benchnames[0] in fork_count_spec:
-                        mx.warn("[FORKS] Found a fallback entry '{}' in the fork counts file. "
-                                "Please use the full benchmark name instead: '{}:{}'".format(benchnames[0],
-                                                                                             suite.name(),
-                                                                                             benchnames[0]))
+                        mx.log("[FORKS] Found a fallback entry '{}' in the fork counts file. "
+                               "Please use the full benchmark name instead: '{}:{}'".format(benchnames[0],
+                                                                                            suite.name(),
+                                                                                            benchnames[0]))
                         fork_count = fork_count_spec.get(benchnames[0])
                 elif fork_count_spec and len(suite.benchmarkList(bmSuiteArgs)) == 1:
                     # single benchmark suites executed by providing the suite name only or a wildcard
@@ -2643,18 +2653,26 @@ class BenchmarkExecutor(object):
                     mx.abort("The 'fork count' feature is only supported when the suite runs each benchmark in a fresh VM.\nYou might want to use: mx benchmark <options> '<benchmark-suite>:*'")
                 if fork_count_spec and fork_count is None:
                     mx.log("[FORKS] Skipping benchmark '{}:{}' since there is no value for it in the fork count file.".format(suite.name(), benchnames[0]))
-                    skipped_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
+                    skipped_benchmark_forks.append("{}:{}".format(suite.name(), benchnames[0]))
                 else:
                     for fork_num in range(0, fork_count):
                         if fork_count_spec:
                             mx.log("Execution of fork {}/{}".format(fork_num + 1, fork_count))
                         try:
-                            results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num))
+                            if benchnames and len(benchnames) > 0 and not benchnames[0] in suite.benchmarkList(bmSuiteArgs) and benchnames[0] in suite.completeBenchmarkList(bmSuiteArgs):
+                                mx.log("Skipping benchmark '{}:{}' since it isn't supported "
+                                       "on the current platform/configuration.".format(suite.name(), benchnames[0]))
+                                ignored_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
+                            else:
+                                results.extend(self.execute(suite, benchnames, mxBenchmarkArgs, bmSuiteArgs, fork_number=fork_num))
                         except (BenchmarkFailureError, RuntimeError):
                             failures_seen = True
+                            failed_benchmarks.append("{}:{}".format(suite.name(), benchnames[0]))
                             mx.log(traceback.format_exc())
-            if skipped_benchmarks:
-                mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmarks)))
+            if ignored_benchmarks:
+                mx.log("Benchmarks ignored since they aren't supported on the current platform/configuration:\n\t{}".format('\n\t'.join(ignored_benchmarks)))
+            if skipped_benchmark_forks:
+                mx.log("[FORKS] Benchmarks skipped since they have no entry in the fork counts file:\n\t{}".format('\n\t'.join(skipped_benchmark_forks)))
         finally:
             try:
                 suite.after(bmSuiteArgs)
@@ -2669,7 +2687,8 @@ class BenchmarkExecutor(object):
 
         exit_code = 0
         if failures_seen:
-            mx.log_error("Failures happened during benchmark(s) execution !")
+            mx.log_error("Failures happened during benchmark(s) execution !"
+                         "The following benchmarks failed:\n\t{}".format('\n\t'.join(failed_benchmarks)))
             exit_code = 1
 
         if returnSuiteAndResults:
