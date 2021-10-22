@@ -411,6 +411,9 @@ class BenchmarkSuite(object):
     def benchmarkList(self, bmSuiteArgs):
         """Returns the list of the benchmarks of this suite which can be executed on the current platform.
 
+        A platform is defined as the combination of OS, architecture, JDK version and any other system or
+        configuration characteristics which impacts the feasibility of running a given benchmark.
+
         :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
         :rtype: list[str]
