@@ -463,8 +463,17 @@ class BenchmarkSuite(object):
         """ The default benchmark version to use.
 
         :return: default version.
+        :rtype: str
         """
         return "unknown"
+
+    def isDefaultSuiteVersion(self):
+        """ Returns whether the selected version is the default benchmark suite version.
+
+        :return: if the current suite version is the default one.
+        :rtype: bool
+        """
+        return self.version() == self.defaultSuiteVersion()
 
     def availableSuiteVersions(self):
         """List of available versions of that benchmark suite.
@@ -1075,6 +1084,8 @@ class StdOutBenchmarkSuite(BenchmarkSuite):
                     datapoint["bench-suite"] = self.name()
                 if "bench-suite-version" not in datapoint:
                     datapoint["bench-suite-version"] = self.version()
+                if "is-default-bench-suite-version" not in datapoint:
+                    datapoint["is-default-bench-suite-version"] = str(self.isDefaultSuiteVersion()).lower()
             datapoints.extend(parsedpoints)
 
         flaky = False
