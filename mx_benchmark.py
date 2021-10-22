@@ -409,10 +409,10 @@ class BenchmarkSuite(object):
         raise NotImplementedError()
 
     def benchmarkList(self, bmSuiteArgs):
-        """Returns the list of the benchmarks of this suite which can be executed on the current platform.
+        """Returns the list of the benchmarks of this suite which can be executed on the current host.
 
-        A platform is defined as the combination of OS, architecture, JDK version and any other system or
-        configuration characteristics which impacts the feasibility of running a given benchmark.
+        An host in this context is the combination of OS, architecture, JDK version and any other system or
+        configuration characteristics which impact the feasibility of running a given benchmark.
 
         :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark string names.
@@ -422,7 +422,7 @@ class BenchmarkSuite(object):
 
     def completeBenchmarkList(self, bmSuiteArgs):
         """
-        The name of all benchmarks of the suite independently of their support of the current platform.
+        The name of all benchmarks of the suite independently of their support on the current host.
         :param list[str] bmSuiteArgs: List of string arguments to the suite.
         :return: List of benchmark names.
         :rtype: list[str]
