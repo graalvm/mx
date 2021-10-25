@@ -76,9 +76,7 @@ def spotbugs(args, fbArgs=None, suite=None, projects=None, jarFileName='spotbugs
     for p in projectsToTest:
         compat = p.suite.getMxCompatibility()
         spotbugsVersion = compat.spotbugs_version()
-        if spotbugsVersion not in projectsByVersion:
-            projectsByVersion[spotbugsVersion] = []
-        projectsByVersion[spotbugsVersion].append(p)
+        projectsByVersion.setdefault(spotbugsVersion, []).append(p)
     resultcode = 0
     for spotbugsVersion, versionProjects in projectsByVersion.items():
         mx.logv('Running spotbugs version {} on projects {}'.format(spotbugsVersion, versionProjects))
@@ -153,9 +151,13 @@ def _spotbugs(args, fbArgs, suite, projectsToTest, spotbugsVersion):
     outputDirs = [mx._cygpathU2W(p.output_dir()) for p in projectsToTest]
     javaCompliance = max([p.javaCompliance for p in projectsToTest])
     jdk = mx.get_jdk(javaCompliance)
+
     if jdk.javaCompliance >= '9':
-        mx.log('FindBugs does not yet support JDK9 - skipping')
-        return 0
+        if mx.VersionSpec(spotbugsVersion) < mx.VersionSpec('4.4.2'):
+            suitesToTest = set((p.suite.name for p in projectsToTest))
+            sep = os.linesep + '  '
+            mx.log('Update mxversion to at least 5.316.0 for following suites to enable SpotBugs on JDK {}:{}{}'.format(jdk.javaCompliance, sep, sep.join(sorted(suitesToTest))))
+            return 0
 
     spotbugsResults = join(suite.dir, 'spotbugs.results')
 
