@@ -248,7 +248,7 @@ def checkout_downstream(args):
             if not re.match(r'\(HEAD detached at [a-z0-9]+\)$', ub):
                 upstream_branch_candidates.append(ub)
 
-        mx.log("The most recent merge perfomed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
+        mx.log("The most recent merge performed by the CI on the active branch of the upstream repository is at revision '{}', which is part of the following branches:\n- {}".format(upstream_commit, '\n- '.join(upstream_branch_candidates)))
         if not _checkout_upstream_revision(upstream_commit, upstream_branch_candidates, upstream_suite, downstream_suite):
             raise mx.abort("Cannot find a revision of '{}' that imports revision '{}' of '{}".format(downstream_suite.vc_dir, upstream_commit, upstream_suite.name))
 

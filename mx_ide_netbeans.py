@@ -499,7 +499,7 @@ source.encoding=UTF-8""".replace(':', os.pathsep).replace('/', os.sep)
         elif dep.isClasspathDependency():
             extra = [di for di in dep.deps if di not in deps]
             if dep.isDistribution() and dep.deps and not extra:
-                # ignore distribution classpath dependencies that only contain other explicit depedencies
+                # ignore distribution classpath dependencies that only contain other explicit dependencies
                 continue
             path = dep.classpath_repr(resolve=True)
             sourcePath = dep.get_source_path(jdk) if hasattr(dep, 'get_source_path') else None

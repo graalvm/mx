@@ -674,12 +674,24 @@ suite = {
       "license": "Apache-2.0",
     },
 
-    "ECJ_3.25": {
-      "sha1": "4307fe9c04f832a113f254c49b7033166628c334",
+    # last compatible version for JDK 8 - do not upgrade or remove
+    "ECJ_3.26": {
+      "sha1": "4837be609a3368a0f7e7cf0dc1bdbc7fe94993de",
       "maven": {
         "groupId": "org.eclipse.jdt",
         "artifactId": "ecj",
-        "version": "3.25.0",
+        "version": "3.26.0",
+      },
+      "licence": "EPL-2.0",
+    },
+
+    # compatible version for JDK 11 (no longer compatible with < 11)
+    "ECJ_3.27": {
+      "sha1": "b9f4002cc13e414f303d6c3b9736b0efb505c9b8",
+      "maven": {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.27.0",
       },
       "licence": "EPL-2.0",
     },

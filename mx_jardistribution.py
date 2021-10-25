@@ -326,6 +326,10 @@ class JARDistribution(mx.Distribution, mx.ClasspathDependency):
 
         stager = _ArchiveStager(bin_archive, src_archive, exploded)
 
+        # GR-31142
+        latest_bin_archive = join(self.suite.get_output_root(False, False), "dists", os.path.basename(bin_archive.path))
+        _stage_file_impl(bin_archive.path, latest_bin_archive)
+
         self.notify_updated()
         compliance = self._compliance_for_build()
         if compliance is not None and compliance >= '9':
@@ -896,25 +900,7 @@ class _ArchiveStager(object):
                                     self.stage_file(contents.path, staged)
 
     def stage_file(self, src, dst):
-        """
-        Copies or symlinks `src` to `dst`.
-        """
-        mx.ensure_dir_exists(dirname(dst))
-        if not mx.can_symlink():
-            if exists(dst):
-                os.remove(dst)
-            shutil.copy(src, dst)
-        else:
-            if exists(dst):
-                if islink(dst):
-                    target = os.readlink(dst)
-                    if target == src:
-                        return
-                    if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
-                        # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
-                        return
-                os.remove(dst)
-            os.symlink(src, dst)
+        _stage_file_impl(src, dst)
 
     def stage_dep(self, dep):
         """
@@ -1426,3 +1412,24 @@ def _source_pos(code):
     :param code: an object with ``co_filename`` and ``co_firstlineno`` fields
     """
     return '{}:{}'.format(code.co_filename, code.co_firstlineno)
+
+def _stage_file_impl(src, dst):
+    """
+    Copies or symlinks `src` to `dst`.
+    """
+    mx.ensure_dir_exists(dirname(dst))
+    if not mx.can_symlink():
+        if exists(dst):
+            os.remove(dst)
+        shutil.copy(src, dst)
+    else:
+        if exists(dst):
+            if islink(dst):
+                target = os.readlink(dst)
+                if target == src:
+                    return
+                if mx.is_windows() and target.startswith('\\\\?\\') and target[4:] == src:
+                    # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
+                    return
+            os.remove(dst)
+        os.symlink(src, dst)

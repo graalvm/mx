@@ -1,7 +1,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -582,6 +582,7 @@ environment variables:
                                 "projects and store it in the given <file>. If <file> is 'default', the compilation database will "
                                 "be stored in the parent directory of the repository containing the primary suite. This option "
                                 "can also be configured using the MX_COMPDB environment variable. Use --compdb none to disable.")
+        self.add_argument('--arch', action='store', dest='arch', help='force use of the specified architecture')
 
         if not is_windows():
             # Time outs are (currently) implemented with Unix specific functionality
@@ -679,6 +680,10 @@ environment variables:
                         pass
                 except IOError as e:
                     abort('Error opening {} specified by --exec-log: {}'.format(opts.exec_log, e))
+
+            system_arch = platform.uname()[4]
+            if opts.arch and opts.arch != system_arch:
+                warn('overriding detected architecture ({}) with {}'.format(system_arch, opts.arch))
 
         else:
             parser = ArgParser(parents=[self])
@@ -895,7 +900,7 @@ class SuiteModel:
     Defines how to locate a URL/path for a suite, including imported suites.
     Conceptually a SuiteModel is defined a primary suite URL/path,
     and a map from suite name to URL/path for imported suites.
-    Subclasses define a specfic implementation.
+    Subclasses define a specific implementation.
     """
     def __init__(self):
         self.primaryDir = None
@@ -1750,10 +1755,7 @@ class Suite(object):
         """
         res = getattr(self, '.output_root_includes_config', None)
         if res is None:
-            res = os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') == 'true'
-            if res and os.getenv('MX_ALT_OUTPUT_ROOT') is not None:
-                warn('Ignoring MX_OUTPUT_ROOT_INCLUDES_CONFIG=true since MX_ALT_OUTPUT_ROOT is set')
-                res = False
+            res = os.getenv('MX_ALT_OUTPUT_ROOT') is None and os.getenv('MX_OUTPUT_ROOT_INCLUDES_CONFIG') != 'false'
             setattr(self, '.output_root_includes_config', res)
         return res
 
@@ -3839,6 +3841,9 @@ def _separatedCygpathW2U(p):
     return os.pathsep.join(map(_cygpathW2U, p.split(';')))
 
 def get_arch():
+    return getattr(_opts, 'arch', None) or _get_real_arch()
+
+def _get_real_arch():
     machine = platform.uname()[4]
     if machine in ['aarch64']:
         return 'aarch64'
@@ -4048,7 +4053,7 @@ def _send_sigquit():
             except NoSuchProcess:
                 return None
     except ImportError:
-        warn("psutil is not available, java process detection is less acurate")
+        warn("psutil is not available, java process detection is less accurate")
         def _get_args(pid):
             return None
 
@@ -5605,7 +5610,7 @@ class AbstractTARDistribution(AbstractDistribution):
 
     def postPull(self, f):
         assert f.endswith('.gz')
-        logv('Uncompressing {}...'.format(f))
+        logv('Decompressing {}...'.format(f))
         tarfilename = f[:-len('.gz')]
         if AbstractTARDistribution._has_gzip():
             with open(tarfilename, 'wb') as tar:
@@ -5677,7 +5682,7 @@ class AbstractZIPDistribution(AbstractDistribution):
     def postPull(self, f):
         if self.compress_locally() or not self.compress_remotely():
             return None
-        logv('Uncompressing {}...'.format(f))
+        logv('Decompressing {}...'.format(f))
         tmp_dir = mkdtemp("." + self.localExtension(), self.name)
         with zipfile.ZipFile(f) as zf:
             zf.extractall(tmp_dir)
@@ -7341,6 +7346,7 @@ class JavaBuildTask(ProjectBuildTask):
     def __init__(self, args, project, jdk):
         ProjectBuildTask.__init__(self, args, 1, project)
         self.jdk = jdk
+        self.project = project
         self._javafiles = None
         self._newestOutput = None
         self._compiler = None
@@ -7457,22 +7463,29 @@ class JavaBuildTask(ProjectBuildTask):
 
     def _getCompiler(self):
         if self._compiler is None:
-            useJDT = self.args.jdt and not self.args.force_javac
-            if hasattr(self.subject, 'forceJavac') and getattr(self.subject, 'forceJavac', False):
+            useJDT = not self.args.force_javac and self.args.jdt
+            if useJDT and hasattr(self.subject, 'forceJavac') and getattr(self.subject, 'forceJavac', False):
                 # Revisit once GR-8992 is resolved
                 logv('Project {} has "forceJavac" attribute set to True - falling back to javac'.format(self.subject))
                 useJDT = False
 
-            if useJDT and not _is_supported_by_jdt(self.jdk):
-                # Revisit once GR-8852 is resolved
-                logv('JDT does not yet support JDK9 - falling back to javac for ' + str(self.subject))
+            # we cannot use JDT for projects with a JNI dir because the javah tool is needed anyway
+            # and that is no longer available JDK >= 10
+            if useJDT and self.subject.jni_gen_dir():
+                logv('Project {} has jni_gen_dir dir set. That is unsupported on ECJ - falling back to javac'.format(self.subject))
                 useJDT = False
 
+            jdt = None
             if useJDT:
+                jdt = _resolve_ecj_jar(self.jdk, self.project.javaCompliance, self.args.jdt)
+                if not jdt:
+                    logv('Project {} should be compiled with ecj. But no compatible ecj version was found for this project - falling back to javac'.format(self.subject))
+
+            if jdt:
                 if self.args.no_daemon:
-                    self._compiler = ECJCompiler(self.jdk, self.args.jdt, self.args.extra_javac_args)
+                    self._compiler = ECJCompiler(self.jdk, jdt, self.args.extra_javac_args)
                 else:
-                    self._compiler = ECJDaemonCompiler(self.jdk, self.args.jdt, self.args.extra_javac_args)
+                    self._compiler = ECJDaemonCompiler(self.jdk, jdt, self.args.extra_javac_args)
             else:
                 if self.args.no_daemon or self.args.alt_javac:
                     self._compiler = JavacCompiler(self.jdk, self.args.alt_javac, self.args.extra_javac_args)
@@ -7618,8 +7631,9 @@ class JavacLikeCompiler(JavaCompiler):
         disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, postCompileActions):
         javacArgs = ['-g', '-d', outputDir]
         compliance = project.javaCompliance
-        if self.jdk.javaCompliance.value > 8 and compliance.value <= 8: # pylint: disable=chained-comparison
+        if self.jdk.javaCompliance.value > 8 and compliance.value <= 8 and isinstance(self, JavacCompiler): # pylint: disable=chained-comparison
             # Ensure classes from dependencies take precedence over those in the JDK image.
+            # We only need this on javac as on ECJ we strip the jmods directory - see code later
             javacArgs.append('-Xbootclasspath/p:' + classPath)
         else:
             javacArgs += ['-classpath', classPath]
@@ -7652,7 +7666,168 @@ class JavacLikeCompiler(JavaCompiler):
                     os.remove(f)
             postCompileActions.append(_rm_tempFiles)
 
+        if self.jdk.javaCompliance >= '9':
+            jdk_modules_overridden_on_classpath = set()  # pylint: disable=C0103
+
+            declaring_module = project.get_declaring_module_name()
+            if declaring_module is not None:
+                jdk_modules_overridden_on_classpath.add(declaring_module)
+
+            def addExportArgs(dep, exports=None, prefix='', jdk=None, observable_modules=None):
+                """
+                Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
+                `javacArgs` for the non-public JDK modules required by `dep`.
+
+                :param mx.JavaProject dep: a Java project
+                :param dict exports: module exports for which ``--add-exports`` args
+                   have already been added to `javacArgs`
+                :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
+                :param JDKConfig jdk: the JDK to be searched for concealed packages
+                :param observable_modules: only consider modules in this set if not None
+                """
+                for module, packages in dep.get_concealed_imported_packages(jdk).items():
+                    if observable_modules is not None and module not in observable_modules:
+                        continue
+                    if module in jdk_modules_overridden_on_classpath:
+                        # If the classes in a module declaring the dependency are also
+                        # resolvable on the class path, then do not export the module
+                        # as the class path classes are more recent than the module classes
+                        continue
+                    for package in packages:
+                        exportedPackages = exports.setdefault(module, set())
+                        if package not in exportedPackages:
+                            exportedPackages.add(package)
+                            self.addModuleArg(javacArgs, prefix + '--add-exports', module + '/' + package + '=ALL-UNNAMED')
+
+            jmodsDir = None
+            if isinstance(self, ECJCompiler):
+                # on ecj and JDK  >= 8 system modules cannot be accessed if the module path is not set
+                # see https://bugs.eclipse.org/bugs/show_bug.cgi?id=535552 for reference.
+                javacArgs.append('--module-path')
+                jmodsDir = join(self.jdk.home, 'jmods')
+
+                # If Graal is in the JDK we need to remove it to avoid conflicts with build artefacts
+                jmodsToRemove = ('jdk.internal.vm.compiler.jmod', 'jdk.internal.vm.compiler.management.jmod')
+                if any(exists(join(jmodsDir, jmod)) for jmod in jmodsToRemove):
+                    # Use version and sha1 of source JDK's JAVA_HOME to ensure jmods copy is unique to source JDK
+                    d = hashlib.sha1()
+                    d.update(_encode(self.jdk.home))
+                    jdkHomeSig = d.hexdigest()[0:10] # 10 digits of the sha1 is more than enough
+                    jdkHomeMirror = ensure_dir_exists(join(primary_suite().get_output_root(), '.jdk{}_{}_ecj'.format(self.jdk.version, jdkHomeSig)))
+                    jmodsCopyPath = join(jdkHomeMirror, 'jmods')
+                    if not exists(jmodsCopyPath):
+                        logv('The JDK contains Graal. Copying {} to {} and removing Graal to avoid conflicts in ECJ compilation.'.format(jmodsDir, jmodsCopyPath))
+                        if not can_symlink():
+                            shutil.copytree(jmodsDir, jmodsCopyPath)
+                            for jmod in jmodsToRemove:
+                                os.remove(join(jmodsCopyPath, jmod))
+                        else:
+                            ensure_dir_exists(jmodsCopyPath)
+                            for name in os.listdir(jmodsDir):
+                                if name not in jmodsToRemove:
+                                    os.symlink(join(jmodsDir, name), join(jmodsCopyPath, name))
+                    jmodsDir = jmodsCopyPath
+
+                javacArgs.append(jmodsDir)
+
+                # on ECJ if the module path is set then the processors need to use the processor-module-path to be found
+                if processorPath:
+                    javacArgs += ['--processor-module-path', processorPath, '-s', sourceGenDir]
+
+            required_modules = set()
+            if compliance >= '9':
+                exports = {}
+                compat = project.suite.getMxCompatibility()
+                if compat.enhanced_module_usage_info():
+                    required_modules = set(getattr(project, 'requires', []))
+                    required_modules.add('java.base')
+                else:
+                    required_modules = None
+                entries = classpath_entries(project, includeSelf=False)
+                for e in entries:
+                    e_module_name = e.get_declaring_module_name()
+                    if e.isJdkLibrary():
+                        if required_modules is not None and self.jdk.javaCompliance >= e.jdkStandardizedSince:
+                            # this will not be on the classpath, and is needed from a JDK module
+                            if not e_module_name:
+                                abort('JDK library standardized since {} must have a "module" attribute'.format(e.jdkStandardizedSince), context=e)
+                            required_modules.add(e_module_name)
+                    else:
+                        if e_module_name:
+                            jdk_modules_overridden_on_classpath.add(e_module_name)
+                            if required_modules and e_module_name in required_modules:
+                                abort('Project must not specify {} in a "requires" attribute as it conflicts with the dependency {}'.format(e_module_name, e),
+                                       context=project)
+                        elif e.isJavaProject():
+                            addExportArgs(e, exports)
+
+                if required_modules is not None:
+                    concealed = parse_requiresConcealed_attribute(self.jdk, getattr(project, 'requiresConcealed', None), {}, None, project)
+                    required_modules.update((m for m in concealed if m not in jdk_modules_overridden_on_classpath))
+
+                addExportArgs(project, exports, '', self.jdk, required_modules)
+
+                root_modules = set(exports.keys())
+                if jmodsDir:
+                    # on ECJ filter root modules already in the JDK otherwise we will get an duplicate module error when compiling
+                    root_modules = set([m for m in root_modules if not os.path.exists(join(jmodsDir, m + '.jmod'))])
+
+                if required_modules:
+                    root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
+                if root_modules:
+                    self.addModuleArg(javacArgs, '--add-modules', ','.join(root_modules))
+
+                if required_modules:
+                    self.addModuleArg(javacArgs, '--limit-modules', ','.join(required_modules))
+
+            # this hack is exclusive to javac. on ECJ we copy the jmods directory to avoid this problem
+            # if the JVM happens to contain a compiler.
+            aps = project.annotation_processors()
+            if aps and isinstance(self, JavacCompiler):
+                # We want annotation processors to use classes on the class path
+                # instead of those in modules since the module classes may not
+                # be in exported packages and/or may have different signatures.
+                # Unfortunately, there's no VM option for hiding modules, only the
+                # --limit-modules option for restricting modules observability.
+                # We limit module observability to those required by javac and
+                # the module declaring sun.misc.Unsafe which is used by annotation
+                # processors such as JMH.
+                observable_modules = frozenset(['jdk.compiler', 'jdk.zipfs', 'jdk.unsupported'])
+                exports = {}
+                entries = classpath_entries(aps, preferProjects=True)
+                for e in entries:
+                    e_module_name = e.get_declaring_module_name()
+                    if e_module_name:
+                        jdk_modules_overridden_on_classpath.add(e_module_name)
+                    elif e.isJavaProject():
+                        addExportArgs(e, exports, '-J', self.jdk, observable_modules)
+
+                # An annotation processor may have a dependency on other annotation
+                # processors. The latter might need extra exports.
+                entries = classpath_entries(aps, preferProjects=False)
+                for dep in entries:
+                    if dep.isJARDistribution() and dep.definedAnnotationProcessors:
+                        for apDep in dep.deps:
+                            module_name = apDep.get_declaring_module_name()
+                            if module_name:
+                                jdk_modules_overridden_on_classpath.add(module_name)
+                            elif apDep.isJavaProject():
+                                addExportArgs(apDep, exports, '-J', self.jdk, observable_modules)
+
+                root_modules = set(exports.keys())
+                if required_modules:
+                    root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
+                if root_modules:
+                    self.addModuleArg(javacArgs, '--add-modules', ','.join(root_modules))
+
+                if len(jdk_modules_overridden_on_classpath) != 0:
+                    javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
+
+
         return self.prepareJavacLike(project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir)
+
+    def addModuleArg(self, args, key, value):
+        nyi('buildJavacLike', self)
 
     def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         nyi('buildJavacLike', self)
@@ -7665,12 +7840,13 @@ class JavacCompiler(JavacLikeCompiler):
     def name(self):
         return 'javac(JDK {})'.format(self.jdk.javaCompliance)
 
+    def addModuleArg(self, args, key, value):
+        args.append(key + '=' + value)
+
     def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         jdk = self.jdk
-        compliance = project.javaCompliance
         if jnigenDir is not None:
             javacArgs += ['-h', jnigenDir]
-
         lint = ['all', '-auxiliaryclass', '-processing', '-removal']
         overrides = project.get_javac_lint_overrides()
         if overrides:
@@ -7707,128 +7883,6 @@ class JavacCompiler(JavacLikeCompiler):
         javacArgs.append('UTF-8')
         javacArgs.append('-Xmaxerrs')
         javacArgs.append('10000')
-
-        if jdk.javaCompliance >= '9':
-            jdk_modules_overridden_on_classpath = set()  # pylint: disable=C0103
-
-            declaring_module = project.get_declaring_module_name()
-            if declaring_module is not None:
-                jdk_modules_overridden_on_classpath.add(declaring_module)
-
-            def addExportArgs(dep, exports=None, prefix='', jdk=None, observable_modules=None):
-                """
-                Adds ``--add-exports`` options (`JEP 261 <http://openjdk.java.net/jeps/261>`_) to
-                `javacArgs` for the non-public JDK modules required by `dep`.
-
-                :param mx.JavaProject dep: a Java project
-                :param dict exports: module exports for which ``--add-exports`` args
-                   have already been added to `javacArgs`
-                :param string prefix: the prefix to be added to the ``--add-exports`` arg(s)
-                :param JDKConfig jdk: the JDK to be searched for concealed packages
-                :param observable_modules: only consider modules in this set if not None
-                """
-                for module, packages in dep.get_concealed_imported_packages(jdk).items():
-                    if observable_modules is not None and module not in observable_modules:
-                        continue
-                    if module in jdk_modules_overridden_on_classpath:
-                        # If the classes in a module declaring the dependency are also
-                        # resolvable on the class path, then do not export the module
-                        # as the class path classes are more recent than the module classes
-                        continue
-                    for package in packages:
-                        exportedPackages = exports.setdefault(module, set())
-                        if package not in exportedPackages:
-                            exportedPackages.add(package)
-                            exportArg = prefix + '--add-exports=' + module + '/' + package + '=ALL-UNNAMED'
-                            javacArgs.append(exportArg)
-
-            def addRootModules(exports, required_modules, prefix):
-                """
-                Makes all modules in `exports` and all incubator modules in `required_modules` be root modules.
-
-                :param dict exports: a set of exports per module for which ``--add-exports`` args
-                   have been added to `javacArgs`
-                :param list required_modules: a list of required modules
-                """
-                root_modules = set(exports.keys())
-                if required_modules:
-                    root_modules.update((m for m in required_modules if m.startswith('jdk.incubator')))
-                if root_modules:
-                    javacArgs.append(prefix + '--add-modules=' + ','.join(root_modules))
-
-            if compliance >= '9':
-                exports = {}
-                compat = project.suite.getMxCompatibility()
-                if compat.enhanced_module_usage_info():
-                    required_modules = set(getattr(project, 'requires', []))
-                    required_modules.add('java.base')
-                else:
-                    required_modules = None
-                entries = classpath_entries(project, includeSelf=False)
-                for e in entries:
-                    e_module_name = e.get_declaring_module_name()
-                    if e.isJdkLibrary():
-                        if required_modules is not None and jdk.javaCompliance >= e.jdkStandardizedSince:
-                            # this will not be on the classpath, and is needed from a JDK module
-                            if not e_module_name:
-                                abort('JDK library standardized since {} must have a "module" attribute'.format(e.jdkStandardizedSince), context=e)
-                            required_modules.add(e_module_name)
-                    else:
-                        if e_module_name:
-                            jdk_modules_overridden_on_classpath.add(e_module_name)
-                            if required_modules and e_module_name in required_modules:
-                                abort('Project must not specify {} in a "requires" attribute as it conflicts with the dependency {}'.format(e_module_name, e),
-                                       context=project)
-                        elif e.isJavaProject():
-                            addExportArgs(e, exports)
-
-                if required_modules is not None:
-                    concealed = parse_requiresConcealed_attribute(jdk, getattr(project, 'requiresConcealed', None), {}, None, project)
-                    required_modules.update((m for m in concealed if m not in jdk_modules_overridden_on_classpath))
-
-                addExportArgs(project, exports, '', jdk, required_modules)
-                addRootModules(exports, required_modules, '')
-                if required_modules:
-                    javacArgs.append('--limit-modules=' + ','.join(required_modules))
-
-            aps = project.annotation_processors()
-            if aps:
-                # We want annotation processors to use classes on the class path
-                # instead of those in modules since the module classes may not
-                # be in exported packages and/or may have different signatures.
-                # Unfortunately, there's no VM option for hiding modules, only the
-                # --limit-modules option for restricting modules observability.
-                # We limit module observability to those required by javac and
-                # the module declaring sun.misc.Unsafe which is used by annotation
-                # processors such as JMH.
-                observable_modules = frozenset(['jdk.compiler', 'jdk.zipfs', 'jdk.unsupported'])
-
-                exports = {}
-                entries = classpath_entries(aps, preferProjects=True)
-                for e in entries:
-                    e_module_name = e.get_declaring_module_name()
-                    if e_module_name:
-                        jdk_modules_overridden_on_classpath.add(e_module_name)
-                    elif e.isJavaProject():
-                        addExportArgs(e, exports, '-J', jdk, observable_modules)
-
-                # An annotation processor may have a dependency on other annotation
-                # processors. The latter might need extra exports.
-                entries = classpath_entries(aps, preferProjects=False)
-                for dep in entries:
-                    if dep.isJARDistribution() and dep.definedAnnotationProcessors:
-                        for apDep in dep.deps:
-                            module_name = apDep.get_declaring_module_name()
-                            if module_name:
-                                jdk_modules_overridden_on_classpath.add(module_name)
-                            elif apDep.isJavaProject():
-                                addExportArgs(apDep, exports, '-J', jdk, observable_modules)
-
-                addRootModules(exports, None, '-J')
-
-                if len(jdk_modules_overridden_on_classpath) != 0:
-                    javacArgs.append('-J--limit-modules=' + ','.join(observable_modules))
-
         return javacArgs
 
     def compile(self, args):
@@ -7978,6 +8032,10 @@ class ECJCompiler(JavacLikeCompiler):
     def name(self):
         return 'ecj(JDK {})'.format(self.jdk.javaCompliance)
 
+    def addModuleArg(self, args, key, value):
+        args.append(key)
+        args.append(value)
+
     def prepareJavacLike(self, project, javacArgs, disableApiRestrictions, warningsAsErrors, forceDeprecationAsWarning, showTasks, tempFiles, jnigenDir):
         jdtArgs = javacArgs
 
@@ -8015,28 +8073,13 @@ class ECJCompiler(JavacLikeCompiler):
             else:
                 jdtArgs += ['-properties', _cygpathU2W(jdtProperties)]
 
-        javahArgs = None
         if jnigenDir:
-            def matchNative(line):
-                # simple heuristic to match the keyword 'native' outside of comments or strings
-                return re.match(r'[^"*/]*\bnative\b', line) is not None
-            nativeClasses = list(project.find_classes_with_matching_source_line(None, matchNative).keys())
-            if len(nativeClasses) == 0:
-                abort('No native methods found in project {}, please remove the "jniHeaders" flag in suite.py.'.format(project.name), context=project)
-            javahArgs = ['-d', jnigenDir, '-cp', classpath(project, jdk=self.jdk)] + list(nativeClasses)
+            abort('Cannot use the "jniHeaders" flag with ECJ in project {}. Force javac to generate JNI headers.'.format(project.name), context=project)
 
-        return (jdtArgs, javahArgs)
+        return jdtArgs
 
-    def compile(self, compileArgs):
-        (jdtArgs, javahArgs) = compileArgs
+    def compile(self, jdtArgs):
         run_java(['-jar', self.jdtJar] + jdtArgs, jdk=self.jdk)
-        self.post_compile(javahArgs)
-
-    def post_compile(self, javahArgs):
-        if javahArgs is not None:
-            if self.jdk.javah is None:
-                abort('Cannot use ECJ on JDK without javah command.')
-            run([self.jdk.javah] + javahArgs)
 
 class ECJDaemonCompiler(ECJCompiler):
     def __init__(self, jdk, jdtJar, extraJavacArgs=None):
@@ -8045,10 +8088,8 @@ class ECJDaemonCompiler(ECJCompiler):
     def name(self):
         return 'ecj-daemon(JDK {})'.format(self.jdk.javaCompliance)
 
-    def compile(self, compileArgs):
-        (jdtArgs, javahArgs) = compileArgs
+    def compile(self, jdtArgs):
         self.daemon.compile(jdtArgs)
-        self.post_compile(javahArgs)
 
     def prepare_daemon(self, daemons, compileArgs):
         jvmArgs = self.jdk.java_args
@@ -8376,11 +8417,11 @@ class ResourceLibrary(BaseLibrary):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.sourcePath = None
-        self.urls = urls
-        self.sha1 = sha1
+        self.urls = [self.substVars(url) for url in urls]
+        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
 
     def get_urls(self):
-        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        return mx_urlrewrites.rewriteurls(self.urls)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8657,19 +8698,19 @@ class Library(BaseLibrary, ClasspathDependency):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
-        self.urls = urls
-        self.sha1 = sha1
+        self.urls = [self.substVars(url) for url in urls]
+        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.sourceUrls = sourceUrls
         if sourcePath == path:
-            assert sourceSha1 is None or sourceSha1 == sha1
-            sourceSha1 = sha1
+            assert sourceSha1 is None or sourceSha1 == self.sha1
+            sourceSha1 = self.sha1
         self.sourceSha1 = sourceSha1
         self.deps = deps
         self.ignore = ignore
         if not optional and not ignore:
             abspath = _make_absolute(path, self.suite.dir)
-            if not exists(abspath) and not len(urls):
+            if not exists(abspath) and not len(self.urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
             def _checkSha1PropertyCondition(propName, cond, inputPath):
@@ -8679,10 +8720,10 @@ class Library(BaseLibrary, ClasspathDependency):
                         abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
                     abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
 
-            _checkSha1PropertyCondition('sha1', sha1, path)
+            _checkSha1PropertyCondition('sha1', self.sha1, path)
             _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
 
-        for url in urls:
+        for url in self.urls:
             if url.endswith('/') != self.path.endswith(os.sep):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
@@ -8701,7 +8742,7 @@ class Library(BaseLibrary, ClasspathDependency):
         return (self.sha1, self.name)
 
     def get_urls(self):
-        return [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.urls]
+        return mx_urlrewrites.rewriteurls(self.urls)
 
     def is_available(self):
         if not self.path:
@@ -8808,7 +8849,7 @@ the command should be logged.
 """
 class VC(_with_metaclass(ABCMeta, object)):
     """
-    base class for all supported Distriuted Version Constrol abstractions
+    base class for all supported Distributed Version Control abstractions
 
     :ivar str kind: the VC type identifier
     :ivar str proper_name: the long name descriptor of the VCS
@@ -8890,7 +8931,7 @@ class VC(_with_metaclass(ABCMeta, object)):
 
     def init(self, vcdir, abortOnError=True):
         """
-        Intialize 'vcdir' for vc control
+        Initialize 'vcdir' for vc control
         """
         abort(self.kind + " init is not implemented")
 
@@ -11217,7 +11258,7 @@ def _deploy_binary(args, suite):
             if retcode:
                 log("Updating " + deploy_item_msg + " failed (probably more recent deployment)")
             else:
-                log("Sucessfully updated " + deploy_item_msg)
+                log("Successfully updated " + deploy_item_msg)
 
         try_remote_branch_update(binary_deployed_ref)
 
@@ -12260,7 +12301,7 @@ _VM_OPTS_SPACE_SEPARATED_ARG = ['-mp', '-modulepath', '-limitmods', '-addmods', 
 def extract_VM_args(args, useDoubleDash=False, allowClasspath=False, defaultAllVMArgs=True):
     """
     Partitions `args` into a leading sequence of HotSpot VM options and the rest. If
-    `useDoubleDash` then `args` is partititioned by the first instance of "--". If
+    `useDoubleDash` then `args` is partitioned by the first instance of "--". If
     not `allowClasspath` then mx aborts if "-cp" or "-classpath" is in `args`.
 
    """
@@ -12423,21 +12464,6 @@ def get_jdk_option():
 DEFAULT_JDK_TAG = 'default'
 
 
-def _is_supported_by_jdt(jdk):
-    """
-    Determines if a specified JDK is supported by the Eclipse JDT compiler.
-
-    :param jdk: a :class:`mx.JDKConfig` object or a tag that can be used to get a JDKConfig object from :method:`get_jdk`
-    :type jdk: :class:`mx.JDKConfig` or string
-    :rtype: bool
-    """
-    if isinstance(jdk, str):
-        jdk = get_jdk(tag=jdk)
-    else:
-        assert isinstance(jdk, JDKConfig)
-    return jdk.javaCompliance < '9'
-
-
 _jdks_cache = {}
 _canceled_jdk_requests = set()
 
@@ -12448,7 +12474,7 @@ def get_jdk(versionCheck=None, purpose=None, cancel=None, versionDescription=Non
 
     The JDK is selected by consulting the --jdk option, the --java-home option,
     the JAVA_HOME environment variable, the --extra-java-homes option and the
-    EXTRA_JAVA_HOMES enviroment variable in that order.
+    EXTRA_JAVA_HOMES environment variable in that order.
     """
     cache_key = (versionCheck, tag)
     if cache_key in _jdks_cache:
@@ -12556,7 +12582,7 @@ def _find_jdk(versionCheck=None, versionDescription=None):
 
     The selection is attempted from the --java-home option, the JAVA_HOME
     environment variable, the --extra-java-homes option and the EXTRA_JAVA_HOMES
-    enviroment variable in that order.
+    environment variable in that order.
 
     :param versionCheck: a predicate to be applied when making the selection
     :param versionDescription: a description of `versionPredicate` (e.g. ">= 1.8 and < 1.8.0u20 or >= 1.8.0u40")
@@ -12710,7 +12736,7 @@ def java_command(args):
 
     The JDK is selected by consulting the --jdk option, the --java-home option,
     the JAVA_HOME environment variable, the --extra-java-homes option and the
-    EXTRA_JAVA_HOMES enviroment variable in that order.
+    EXTRA_JAVA_HOMES environment variable in that order.
     """
     run_java(args)
 
@@ -12770,7 +12796,7 @@ def run_java_min_heap(args, benchName='# MinHeap:', overheadFactor=1.5, minHeap=
         else:
             currMin = avg + 1
 
-    # We cannot bisect further. The last succesful attempt is the result.
+    # We cannot bisect further. The last successful attempt is the result.
     _log = out if out is not None else log
     _log('%s %s' % (benchName, lastSuccess))
     return 0 if lastSuccess is not None else 2
@@ -12942,7 +12968,7 @@ def run_mx(args, suite=None, mxpy=None, nonZeroIsFatal=True, out=None, err=None,
     """
     Recursively runs mx.
 
-    :param list args: the command line arguments to pass to the recusive mx execution
+    :param list args: the command line arguments to pass to the recursive mx execution
     :param suite: the primary suite or primary suite directory to use
     :param str mxpy: path the mx module to run (None to use the current mx module)
     """
@@ -13546,9 +13572,9 @@ class JDKConfig(Comparable):
         if other is None:
             return False
         if isinstance(other, JDKConfig):
-            compilanceCmp = compare(self.javaCompliance, other.javaCompliance)
-            if compilanceCmp:
-                return compilanceCmp
+            complianceCmp = compare(self.javaCompliance, other.javaCompliance)
+            if complianceCmp:
+                return complianceCmp
             versionCmp = compare(self.version, other.version)
             if versionCmp:
                 return versionCmp
@@ -14088,14 +14114,28 @@ def _before_fork():
     except ImportError:
         pass
 
-def _resolve_ecj_jar(spec):
+def _resolve_ecj_jar(jdk, java_project_compliance, spec):
     """
     Resolves `spec` to the path of a local jar file containing the Eclipse batch compiler.
     """
     ecj = spec
+    max_jdt_version = None
+    min_jdt_version = None
+    if jdk:
+        if jdk.javaCompliance <= '10':
+            # versions greater than 3.26 require at least JDK 11
+            max_jdt_version = VersionSpec('3.26')
+        elif jdk.javaCompliance <= '17':
+            min_jdt_version = VersionSpec('3.27')
+
+    if java_project_compliance and java_project_compliance > '16':
+        return None
+
     if spec.startswith('builtin'):
-        available = {VersionSpec(lib.maven['version']): lib for lib in _libs.values() if lib.suite is _mx_suite and lib.name.startswith('ECJ_')}
-        assert available, 'no ECJ libraries defined by mx suite'
+        available = {VersionSpec(lib.maven['version']): lib for lib in _libs.values() if lib.suite is _mx_suite and lib.name.startswith('ECJ_')
+                     and (max_jdt_version is None or VersionSpec(lib.maven['version']) <= max_jdt_version)
+                     and (min_jdt_version is None or VersionSpec(lib.maven['version']) >= min_jdt_version)}
+        assert available, 'no compatible ECJ libraries in the mx suite'
         if spec == 'builtin':
             ecj_lib = sorted(available.items(), reverse=True)[0][1]
         else:
@@ -14200,7 +14240,8 @@ def build(cmd_args, parser=None):
             args.parallelize = True
 
     if not args.force_javac and args.jdt is not None:
-        args.jdt = _resolve_ecj_jar(args.jdt)
+        # fail early but in the end we need to resolve with JDK version
+        _resolve_ecj_jar(None, None, args.jdt)
 
     onlyDeps = None
     removed = []
@@ -17255,7 +17296,7 @@ def checkcopyrights(args):
 
         def _get_program_help(self):
             help_output = _check_output_str([get_jdk().java, '-cp', classpath('com.oracle.mxtool.checkcopy'), 'com.oracle.mxtool.checkcopy.CheckCopyright', '--help'])
-            return '\nother argumments preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
+            return '\nother arguments preceded with --, e.g. mx checkcopyright --primary -- --all\n' +  help_output
 
     # ensure compiled form of code is up to date
     build(['--no-daemon', '--dependencies', 'com.oracle.mxtool.checkcopy'])
@@ -17593,6 +17634,8 @@ def main():
     global _mvn
     _mvn = MavenConfig()
 
+    SourceSuite._load_env_file(_global_env_file())
+
     mx_urlrewrites.register_urlrewrites_from_env('MX_URLREWRITES')
 
     _mx_suite._init_metadata()
@@ -17618,7 +17661,6 @@ def main():
             else:
                 _binary_suites = []
 
-    SourceSuite._load_env_file(_global_env_file())
     primarySuiteMxDir = None
     if is_suite_context_free:
         _setup_binary_suites()
@@ -17751,7 +17793,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.311.1")  # GR-31529
+version = VersionSpec("5.315.0")  # GR-31529
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
