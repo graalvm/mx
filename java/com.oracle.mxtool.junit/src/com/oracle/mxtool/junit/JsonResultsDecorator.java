@@ -184,6 +184,16 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
 
     private static String getJavaSpecificationVersion() {
         String value = System.getProperty("java.specification.version");
+
+        /*
+         * Sometimes retrieving version property may not return a value, or other times the string
+         * "java7" may be returned when java is not utilized for the purpose of the test; for these
+         * cases "no-java" is returned
+         */
+        if (value == null || value.isEmpty() || value.equalsIgnoreCase("java7")) {
+            return "no-java";
+        }
+
         if (value.startsWith("1.")) {
             value = value.substring(2);
         }
