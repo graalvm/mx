@@ -103,11 +103,6 @@ public class JsonResultsDecorator extends MxRunListenerDecorator {
         startTime = System.nanoTime();
     }
 
-    @Override
-    public void testClassFinished(Class<?> clazz, int numPassed, int numFailed, int numIgnored, int numAssumptionFailed) {
-        super.testClassFinished(clazz, numPassed, numFailed, numIgnored, numAssumptionFailed);
-    }
-
     private void outputItem(String name, String result) {
         long totalTime = System.nanoTime() - startTime;
         if (hasContent) {
