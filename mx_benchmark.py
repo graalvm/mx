@@ -2837,10 +2837,10 @@ class TTYCapturing(object):
 
 
 def gate_mx_benchmark(args, out=None, err=None, nonZeroIsFatal=True):
+    if (out is not None and not callable(out)) or (err is not None and not callable(err)):
+        mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
     with TTYCapturing(out=out, err=err):
         exit_code, suite, results = benchmark(args, returnSuiteAndResults=True)
-        if (out is not None and not callable(out)) or (err is not None and not callable(err)):
-            mx.abort("'out' and 'err' must be callable to append content. Consider using mx.TeeOutputCapture()")
     if exit_code != 0 and nonZeroIsFatal is True:
         mx.abort("Benchmark gate failed with args: {}".format(args))
     return exit_code, suite, results
