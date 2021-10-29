@@ -62,8 +62,10 @@ interface MxRunListener {
      * @param clazz the test class
      * @param numPassed number of tests in {@code clazz} that passed
      * @param numFailed number of tests in {@code clazz} that failed
+     * @param numIgnored number of tests in {@code clazz} that were ignored
+     * @param numAssumptionFailed number of tests in {@code clazz} where test assumptions failed
      */
-    default void testClassFinished(Class<?> clazz, int numPassed, int numFailed) {
+    default void testClassFinished(Class<?> clazz, int numPassed, int numFailed, int numIgnored, int numAssumptionFailed) {
     }
 
     /**
@@ -118,7 +120,7 @@ interface MxRunListener {
     }
 
     /**
-     * Called after {@link #testClassFinished(Class, int, int)}.
+     * Called after {@link #testClassFinished(Class, int, int, int, int)}.
      */
     default void testClassFinishedDelimiter() {
     }

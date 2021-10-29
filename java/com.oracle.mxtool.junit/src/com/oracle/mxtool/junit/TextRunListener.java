@@ -82,6 +82,8 @@ class TextRunListener implements MxRunListener {
             private Class<?> lastClass;
             private int passedInLastClass;
             private int failedInLastClass;
+            private int ignoredInLastClass;
+            private int assumptionFailedInLastClass;
             private boolean failed;
 
             @Override
@@ -97,7 +99,7 @@ class TextRunListener implements MxRunListener {
 
             private void testClassStarted(Class<?> clazz) {
                 if (lastClass != null) {
-                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
+                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass, ignoredInLastClass, assumptionFailedInLastClass);
                     l.testClassFinishedDelimiter();
                 }
                 lastClass = clazz;
@@ -129,6 +131,7 @@ class TextRunListener implements MxRunListener {
             public void testIgnored(Description description) {
                 testStarted(description);
                 l.testIgnored(description);
+                ignoredInLastClass++;
                 l.testFinished(description);
                 l.testFinishedDelimiter();
             }
@@ -142,7 +145,7 @@ class TextRunListener implements MxRunListener {
             public void testRunFinished(Result result) {
                 result.getFailures().addAll(missingClasses);
                 if (lastClass != null) {
-                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass);
+                    l.testClassFinished(lastClass, passedInLastClass, failedInLastClass, ignoredInLastClass, assumptionFailedInLastClass);
                 }
                 l.testRunFinished(result);
                 super.testRunFinished(result);
@@ -156,6 +159,7 @@ class TextRunListener implements MxRunListener {
                 } else {
                     l.testAssumptionFailure(failure);
                 }
+                assumptionFailedInLastClass++;
             }
 
             private void testClassAssumptionFailure(Failure failure) {

@@ -348,8 +348,6 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
         prefixArgs = ['-esa', '-ea']
         if '-JUnitGCAfterTest' in junit_args:
             prefixArgs.append('-XX:-DisableExplicitGC')
-        with open(testfile) as fp:
-            testclasses = [l.rstrip() for l in fp.readlines()]
 
         jdk = vmLauncher.jdk()
         vmArgs += mx.get_runtime_jvm_args(unittestDeps, cp_prefix=prefixCp+coreCp, jdk=jdk)
@@ -362,9 +360,19 @@ def _unittest(args, annotations, junit_args, prefixCp="", blacklist=None, whitel
             # the @AddExports annotation.
             vmArgs = vmArgs + ['--add-exports=java.base/jdk.internal.module=ALL-UNNAMED']
 
-        # Execute Junit directly when one test is being run. This simplifies
-        # replaying the VM execution in a native debugger (e.g., gdb).
-        mainClassArgs = junit_args + (testclasses if len(testclasses) == 1 else ['@' + mx._cygpathU2W(testfile)])
+        with open(testfile) as fp:
+            testclass = None
+            for l in fp:
+                if testclass:
+                    testclass = None
+                    break
+                testclass = l.rstrip()
+        if testclass:
+            # Execute Junit directly when one test is being run. This simplifies
+            # replaying the VM execution in a native debugger (e.g., gdb).
+            mainClassArgs = junit_args + [testclass]
+        else:
+            mainClassArgs = junit_args + ['@' + mx._cygpathU2W(testfile)]
 
         config = (vmArgs, mainClass, mainClassArgs)
         for p in _config_participants:
@@ -533,6 +541,8 @@ def unittest(args):
                   'In contrast to --record-results this prints not only the test class but also the test method.'
     parser.add_argument('--print-passed', metavar="<file>", dest='JUnitRecordPassed', action=MxJUnitWrapperArg, help='record passed test class results in <file>. ' + record_help_msg_shared)
     parser.add_argument('--print-failed', metavar="<file>", dest='JUnitRecordFailed', action=MxJUnitWrapperArg, help='record failed test class results in <file>.  ' + record_help_msg_shared)
+    parser.add_argument('--json-results', metavar="<file>", help='record test results in <file> in json format.')
+    parser.add_argument('--json-result-tags', metavar="<tags>", help='comma-separated list of tags to add to all results.')
     parser.add_argument('--suite', help='run only the unit tests in <suite>', metavar='<suite>')
     parser.add_argument('--repeat', help='run each test <n> times', dest='JUnitRepeat', action=MxJUnitWrapperArg, type=is_strictly_positive, metavar='<n>')
     parser.add_argument('--open-packages', dest='JUnitOpenPackages', action=MxJUnitWrapperArg, metavar='<module>/<package>[=<target-module>(,<target-module>)*]',
@@ -572,5 +582,15 @@ def unittest(args):
     if parsed_args.eager_stacktrace is None:
         junit_args.append('-JUnitEagerStackTrace')
     parsed_args.__dict__.pop('eager_stacktrace')
+
+    json_results = parsed_args.__dict__.pop('json_results') or mx.maybe_generate_test_results_path('unittest')
+    if json_results:
+        junit_args.append('-JUnitJsonResults')
+        junit_args.append(json_results)
+    json_result_tags = parsed_args.__dict__.pop('json_result_tags') or mx.test_results_tags()
+    json_result_tags.add(str(mx.primary_suite()))
+    if json_result_tags:
+        junit_args.append('-JUnitJsonResultTags')
+        junit_args.append(",".join(json_result_tags))
 
     _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
