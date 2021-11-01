@@ -612,6 +612,10 @@ suite = {
           "amd64" : {
             "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
             "sha1" : "95d0ca5e7c67ab7181c87e6a6ec59d11b1ff2d30"
+          },
+          "aarch64" : {
+            "urls" : ["https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-mac.zip"],
+            "sha1" : "95d0ca5e7c67ab7181c87e6a6ec59d11b1ff2d30"
           }
         },
         "windows" : {
@@ -663,6 +667,10 @@ suite = {
           "amd64": {
             "sha1": "81017bf1232e143c60f5f93212f617617e678cfe",
             "urls": ["{urlbase}/async-profiler-1.8.3-macos-x64.tar.gz"],
+          },
+          "aarch64": {
+            # GR-34811
+            "optional": True,
           },
         },
         "<others>": {

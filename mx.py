@@ -3845,7 +3845,7 @@ def get_arch():
 
 def _get_real_arch():
     machine = platform.uname()[4]
-    if machine in ['aarch64']:
+    if machine in ['aarch64', 'arm64']:
         return 'aarch64'
     if machine in ['amd64', 'AMD64', 'x86_64', 'i86pc']:
         return 'amd64'
@@ -17793,7 +17793,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.315.0")  # GR-31529
+version = VersionSpec("5.315.1")  # GR-34811
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
