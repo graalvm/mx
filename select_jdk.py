@@ -50,6 +50,18 @@ def is_valid_jdk(jdk):
         java_exe += '.exe'
     return isfile(java_exe) and os.access(java_exe, os.X_OK)
 
+def find_jdks_in(base_dir, jdks):
+    """
+    Finds JDKs in `base_dir` and adds them to `jdks`.
+    """
+    for n in os.listdir(base_dir):
+        jdk = join(base_dir, n)
+        mac_jdk = join(jdk, 'Contents', 'Home')
+        if isdir(mac_jdk):
+            jdk = mac_jdk
+        if is_valid_jdk(jdk):
+            jdks.add(realpath(jdk))
+
 def find_system_jdks():
     """
     Returns a set of valid JDK directories by searching standard locations.
@@ -65,13 +77,7 @@ def find_system_jdks():
     jdks = set()
     for base in bases:
         if isdir(base):
-            for n in os.listdir(base):
-                jdk = join(base, n)
-                mac_jdk = join(jdk, 'Contents', 'Home')
-                if isdir(mac_jdk):
-                    jdk = mac_jdk
-                if is_valid_jdk(jdk):
-                    jdks.add(realpath(jdk))
+            find_jdks_in(base, jdks)
     return jdks
 
 def get_suite_env_file(suite_dir='.'):
@@ -200,7 +206,14 @@ if __name__ == '__main__':
         jdks = find_system_jdks()
         if exists(jdk_cache_path):
             with open(jdk_cache_path) as fp:
-                jdks.update((line.strip() for line in fp.readlines() if is_valid_jdk(line.strip())))
+                for line in fp.readlines():
+                    jdk = line.strip()
+                    if is_valid_jdk(jdk):
+                        jdks.add(jdk)
+                        base_dir = dirname(jdk)
+                        if base_dir.endswith('/Contents/Home'):
+                            base_dir = base_dir[0:-len('/Contents/Home')]
+                        find_jdks_in(base_dir, jdks)
 
         sorted_jdks = sorted(jdks)
         print("Current JDK Settings:")
