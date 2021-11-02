@@ -50,6 +50,18 @@ def is_valid_jdk(jdk):
         java_exe += '.exe'
     return isfile(java_exe) and os.access(java_exe, os.X_OK)
 
+def find_jdks_in(base_dir, jdks):
+    """
+    Finds JDKs in `base_dir` and adds them to `jdks`.
+    """
+    for n in os.listdir(base_dir):
+        jdk = join(base_dir, n)
+        mac_jdk = join(jdk, 'Contents', 'Home')
+        if isdir(mac_jdk):
+            jdk = mac_jdk
+        if is_valid_jdk(jdk):
+            jdks.add(realpath(jdk))
+
 def find_system_jdks():
     """
     Returns a set of valid JDK directories by searching standard locations.
@@ -65,13 +77,7 @@ def find_system_jdks():
     jdks = set()
     for base in bases:
         if isdir(base):
-            for n in os.listdir(base):
-                jdk = join(base, n)
-                mac_jdk = join(jdk, 'Contents', 'Home')
-                if isdir(mac_jdk):
-                    jdk = mac_jdk
-                if is_valid_jdk(jdk):
-                    jdks.add(realpath(jdk))
+            find_jdks_in(base, jdks)
     return jdks
 
 def get_suite_env_file(suite_dir='.'):
@@ -89,6 +95,11 @@ def get_setvar_format(shell):
         return 'set -x %s %s'
     return 'export %s=%s'
 
+def get_clearvar_format(shell):
+    if shell == 'fish':
+        return 'set -e %s'
+    return 'unset %s'
+
 def get_PATH_sep(shell):
     if shell == 'fish':
         return ' '
@@ -100,6 +111,8 @@ def get_shell_commands(args, jdk, extra_jdks):
     print(setvar_format % ('JAVA_HOME', jdk), file=shell_commands)
     if extra_jdks:
         print(setvar_format % ('EXTRA_JAVA_HOMES', os.pathsep.join(extra_jdks)), file=shell_commands)
+    else:
+        print(get_clearvar_format(args.shell) % ('EXTRA_JAVA_HOMES'), file=shell_commands)
     path = os.environ.get('PATH').split(os.pathsep)
     if path:
         jdk_bin = join(jdk, 'bin')
@@ -112,10 +125,24 @@ def get_shell_commands(args, jdk, extra_jdks):
         print(setvar_format % ('PATH', get_PATH_sep(args.shell).join(path)), file=shell_commands)
     return shell_commands.getvalue().strip()
 
+_ansi_color_table = {
+    'black' : '30',
+    'red' : '31',
+    'green' : '32',
+    'yellow' : '33',
+    'blue' : '34',
+    'magenta' : '35',
+    'cyan' : '36'
+}
+
+def colorize(msg, color):
+    code = _ansi_color_table[color]
+    return '\033[' + code + ';1m' + msg + '\033[0m'
+
 def apply_selection(args, jdk, extra_jdks):
-    print('JAVA_HOME=' + jdk)
+    print(colorize('JAVA_HOME=' + jdk, 'green'))
     if extra_jdks:
-        print('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks))
+        print(colorize('EXTRA_JAVA_HOMES=' + os.pathsep.join(extra_jdks), 'cyan'))
 
     if args.shell_file:
         with open(args.shell_file, 'w') as fp:
@@ -200,22 +227,29 @@ if __name__ == '__main__':
         jdks = find_system_jdks()
         if exists(jdk_cache_path):
             with open(jdk_cache_path) as fp:
-                jdks.update((line.strip() for line in fp.readlines() if is_valid_jdk(line.strip())))
+                for line in fp.readlines():
+                    jdk = line.strip()
+                    if is_valid_jdk(jdk):
+                        jdks.add(jdk)
+                        base_dir = dirname(jdk)
+                        if base_dir.endswith('/Contents/Home'):
+                            base_dir = base_dir[0:-len('/Contents/Home')]
+                        find_jdks_in(base_dir, jdks)
 
         sorted_jdks = sorted(jdks)
-        print("Current JDK Settings:")
-        for name in ['JAVA_HOME', 'EXTRA_JAVA_HOMES']:
-            jdk = os.environ.get(name, None)
-            if jdk:
-                if jdk in sorted_jdks:
-                    jdk = '{} [{}]'.format(jdk, sorted_jdks.index(jdk))
-                print('{}={}'.format(name, jdk))
         choices = list(enumerate(sorted_jdks))
         if choices:
             _, tmp_cache_path = tempfile.mkstemp(dir=dirname(jdk_cache_path))
+            java_home = os.environ.get('JAVA_HOME', '')
+            extra_java_homes = os.environ.get('EXTRA_JAVA_HOMES', '').split(os.pathsep)
             with open(tmp_cache_path, 'w') as fp:
                 for index, jdk in choices:
-                    print('[{}] {}'.format(index, jdk))
+                    if jdk == java_home:
+                        print(colorize('[{}] {} {{JAVA_HOME}}'.format(index, jdk), 'green'))
+                    elif jdk in extra_java_homes:
+                        print(colorize('[{}] {} {{EXTRA_JAVA_HOMES[{}]}}'.format(index, jdk, extra_java_homes.index(jdk)), 'cyan'))
+                    else:
+                        print('[{}] {}'.format(index, jdk))
                     print(jdk, file=fp)
 
             os.rename(tmp_cache_path, jdk_cache_path)
