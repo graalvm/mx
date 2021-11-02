@@ -205,9 +205,9 @@ suite = {
       "maven" : {
         "groupId" : "org.apidesign.javadoc",
         "artifactId" : "codesnippet-doclet",
-        "version" : "0.51",
+        "version" : "0.62",
       },
-      "sha1" : "688f42e00c8d013d59b9dc173e53ede9462fa906",
+      "sha1" : "7df0ec3447ac1b4a02a1007505c276a0b3e6b3ca",
     },
 
     "JUNIT" : {
@@ -488,13 +488,13 @@ suite = {
     },
 
     "JACKPOT" : {
-      "sha1" : "3a4e4eccf553036bb0ddba675486d574b62a01d8",
-      "sourceSha1": "176441084c7329b95840a43d31cfb626698ceb9c",
+      "sha1" : "c90da86c534257d09defae5eead0b94d3086e749",
+      "sourceSha1": "7e844d6306e2d154b39ffbacbecc44cb335c68f9",
       "licence": "Apache-2.0",
       "maven" : {
         "groupId" : "org.apache.netbeans.modules.jackpot30",
         "artifactId" : "tool",
-        "version" : "12.3",
+        "version" : "12.5",
       }
     },
 
