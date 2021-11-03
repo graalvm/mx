@@ -38,6 +38,7 @@ import mx_subst
 _target_jdk = None
 """JDK for which native projects should be built."""
 
+
 def _get_target_jdk():
     global _target_jdk
     if not _target_jdk:
@@ -153,6 +154,7 @@ class Ninja(object):
             self._run(*args, **kwargs)  # retry
         else:
             not rc or mx.abort(rc if verbose else (out, err))  # pylint: disable=expression-not-assigned
+
 
 class NativeDependency(mx.Dependency):
     """A Dependency that can be included and linked in when building native projects.
@@ -443,6 +445,79 @@ class NinjaBuildTask(TargetArchBuildTask):
                     raise
 
 
+class Toolchain(object):
+    @abc.abstractmethod
+    def cc_command(self, includes, cflags, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def cxx_command(self, includes, cflags, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def asm_command(self, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def ar_command(self, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        pass
+
+
+class DefaultGnuToolchain(Toolchain):
+    def cc_command(self, includes, cflags, in_file, out_file):
+        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('gcc'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, out_file + ".d", "gcc"
+
+    def cxx_command(self, includes, cflags, in_file, out_file):
+        command = "{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}".format(self.toolchain_bin('g++'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, out_file + ".d", "gcc"
+
+    def ar_command(self, in_file, out_file):
+        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('ar'), out=out_file, in_file=in_file)
+
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('g++' if cxx else 'gcc'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+
+    def asm_command(self, in_file, out_file):
+        raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
+
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
+
+    def toolchain_bin(self, name):
+        return name
+
+
+class DefaultMSVCToolchain(Toolchain):
+    def cc_command(self, includes, cflags, in_file, out_file):
+        command = "cl -nologo -showIncludes {includes} {cflags} -c {in_file} -Fo{out}".format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, None, 'msvc'
+
+    def cxx_command(self, includes, cflags, in_file, out_file):
+        return self.cc_command(includes, cflags, in_file, out_file)
+
+    def ar_command(self, in_file, out_file):
+        return 'lib -nologo -out:{out} {in_file}'.format(out=out_file, in_file=in_file)
+
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        return 'link -nologo {ldflags} -out:{out} {in_file} {ldlibs}'.format(ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        command = 'cl -nologo -showIncludes -EP -P {includes} {cflags} -c {in_file} -Fi{out}'.format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, None, 'msvc'
+
+    def asm_command(self, in_file, out_file):
+        return 'ml64 -nologo -Fo{out} -c {in_file}'.format(out=out_file, in_file=in_file)
+
+
 class NinjaManifestGenerator(object):
     """Abstracts the writing of the Ninja build manifest.
 
@@ -483,16 +558,14 @@ class NinjaManifestGenerator(object):
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
     def cc_rule(self, cxx=False):
-        if mx.is_windows():
-            command = 'cl -nologo -showIncludes $includes $cflags -c $in -Fo$out'
-            depfile = None
-            deps = 'msvc'
+        toolchain = self.project.toolchain
+        if cxx:
+            command, depfile, deps = toolchain.cxx_command('$includes', '$cflags', '$in', '$out')
+            rule = 'cxx'
         else:
-            command = '%s -MMD -MF $out.d $includes $cflags -c $in -o $out' % ('g++' if cxx else 'gcc')
-            depfile = '$out.d'
-            deps = 'gcc'
+            command, depfile, deps = toolchain.cc_command('$includes', '$cflags', '$in', '$out')
+            rule = 'cc'
 
-        rule = 'cxx' if cxx else 'cc'
         self.n.rule(rule,
                     command=command,
                     description='%s $out' % rule.upper(),
@@ -508,15 +581,17 @@ class NinjaManifestGenerator(object):
 
     def asm_rule(self):
         assert mx.is_windows()
-
+        toolchain = self.project.toolchain
+        command, depfile, deps = toolchain.cpp_command('$includes', '$cflags', '$in', '$out')
         self.n.rule('cpp',
-                    command='cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out',
+                    command=command,
                     description='CPP $out',
-                    deps='msvc')
+                    depfile=depfile,
+                    deps=deps)
         self.newline()
 
         self.n.rule('asm',
-                    command='ml64 -nologo -Fo$out -c $in',
+                    command=toolchain.asm_command('$in', '$out'),
                     description='ASM $out')
         self.newline()
 
@@ -531,26 +606,16 @@ class NinjaManifestGenerator(object):
         return build
 
     def ar_rule(self):
-        if mx.is_windows():
-            command = 'lib -nologo -out:$out $in'
-        else:
-            command = 'ar -rc $out $in'
-
         self.n.rule('ar',
-                    command=command,
+                    command=self.project.toolchain.ar_command('$in', '$out'),
                     description='AR $out')
         self.newline()
 
         return lambda archive, members: self.n.build(archive, 'ar', members)[0]
 
     def link_rule(self, cxx=False):
-        if mx.is_windows():
-            command = 'link -nologo $ldflags -out:$out $in $ldlibs'
-        else:
-            command = '%s $ldflags -o $out $in $ldlibs' % ('g++' if cxx else 'gcc')
-
         self.n.rule('link',
-                    command=command,
+                    command=self.project.toolchain.ld_command('$ldflags', '$ldlibs', '$in', '$out', cxx=cxx),
                     description='LINK $out')
         self.newline()
 
@@ -657,6 +722,10 @@ class DefaultNativeProject(NinjaProject):
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
             self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
+        if mx.is_windows():
+            self.toolchain =  DefaultMSVCToolchain()
+        else:
+            self.toolchain =  DefaultGnuToolchain()
 
     @property
     def _target(self):

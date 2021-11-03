@@ -17812,7 +17812,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.15")  # GR-35279
+version = VersionSpec("5.317.0")  # ninja toolchain
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
