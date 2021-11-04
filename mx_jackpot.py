@@ -89,9 +89,10 @@ def jackpot(args, suite=None, nonZeroIsFatal=False):
     cmd = cmd + ['-classpath', mx._cygpathU2W(jackpotJar), 'org.netbeans.modules.jackpot30.cmdline.Main']
     jackCmd = ['--fail-on-warnings', '--progress'] + args + groups
 
-    jdk = mx.get_jdk(mx.JavaCompliance("11+"), cancel='cannot run Jackpot', purpose="run Jackpot")
+    jdk = mx.get_jdk(mx.JavaCompliance("11..16"), cancel='cannot run Jackpot', purpose="run Jackpot")
     if jdk is None:
-        mx.warn('Skipping Jackpot since JDK 11+ is not available')
+        # GR-32683
+        mx.warn('Skipping Jackpot since JDK 11 through JDK 16 is not available')
         return 0
     else:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.jackpot') as f:
