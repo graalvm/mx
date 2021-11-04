@@ -480,7 +480,7 @@ class MxCompatibility52102(MxCompatibility52061):
         return mx.VersionSpec("5.210.2")
 
     def spotbugs_version(self):
-        return "3.1.11"
+        return "4.4.2"
 
 class MxCompatibility52230(MxCompatibility52102):
     @staticmethod
@@ -557,14 +557,6 @@ class MxCompatibility53010(MxCompatibility53000):
 
     def bench_suite_needs_suite_args(self):
         return True
-
-class MxCompatibility53160(MxCompatibility53010):
-    @staticmethod
-    def version():
-        return mx.VersionSpec("5.316.0")
-
-    def spotbugs_version(self):
-        return "4.4.2"
 
 def minVersion():
     _ensureCompatLoaded()
