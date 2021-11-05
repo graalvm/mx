@@ -467,16 +467,22 @@ class Toolchain(object):
         pass
 
 
-class DefaultGnuToolchain(Toolchain):
+class DefaultGccLikeToolchain(Toolchain):
+    gcc_map = {
+        'CC': 'gcc',
+        'CXX': 'g++',
+        'AR': 'ar'
+    }
+
     def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('g++' if cxx else 'gcc'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
         return command, out_file + ".d", "gcc"
 
     def ar_command(self, in_file, out_file):
-        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('ar'), out=out_file, in_file=in_file)
+        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('AR'), out=out_file, in_file=in_file)
 
     def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('g++' if cxx else 'gcc'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
 
     def asm_command(self, in_file, out_file):
         raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
@@ -485,7 +491,7 @@ class DefaultGnuToolchain(Toolchain):
         raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
 
     def toolchain_bin(self, name):
-        return name
+        return DefaultGccLikeToolchain.gcc_map[name]
 
 
 class DefaultMSVCToolchain(Toolchain):
@@ -713,7 +719,7 @@ class DefaultNativeProject(NinjaProject):
         if mx.is_windows():
             self.toolchain =  DefaultMSVCToolchain()
         else:
-            self.toolchain =  DefaultGnuToolchain()
+            self.toolchain =  DefaultGccLikeToolchain()
 
     @property
     def _target(self):
