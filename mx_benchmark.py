@@ -37,6 +37,7 @@ import traceback
 import uuid
 import tempfile
 import shutil
+import zipfile
 from argparse import ArgumentParser
 from argparse import RawTextHelpFormatter
 from argparse import SUPPRESS
@@ -1918,7 +1919,7 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return self.name()
 
     def failurePatterns(self):
-        return [re.compile(r"<failure>")]
+        return super(JMHBenchmarkSuiteBase, self).failurePatterns() + [re.compile(r"<failure>")]
 
     def flakySuccessPatterns(self):
         return []
@@ -1927,9 +1928,38 @@ class JMHBenchmarkSuiteBase(JavaBenchmarkSuite):
         return [JMHJsonRule(JMHBenchmarkSuiteBase.jmh_result_file, self.benchSuiteName(bmSuiteArgs))]
 
 
+def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=True):
+    vm_args = []
+    archive = zipfile.ZipFile(jarfile, "r")
+    if "META-INF/MANIFEST.MF" in archive.namelist():
+        manifest = archive.read("META-INF/MANIFEST.MF").decode('utf-8')
+        lines = manifest.splitlines()
+        if add_opens:
+            add_opens_entries = [line for line in lines if line.strip().startswith("Add-Opens:")]
+            if len(add_opens_entries) > 1:
+                raise ValueError("Manifest file of {} contains multiple Add-Opens lines!".format(jarfile))
+            if add_opens_entries:
+                vm_args += ["--add-opens={}=ALL-UNNAMED".format(package.strip()) for package in add_opens_entries[-1][len("Add-Opens:"):].strip().split(" ")]
+        if add_exports:
+            add_exports_entries = [line for line in lines if line.strip().startswith("Add-Exports:")]
+            if len(add_exports_entries) > 1:
+                raise ValueError("Manifest file of {} contains multiple Add-Exports lines!".format(jarfile))
+            if add_exports_entries:
+                vm_args += ["--add-exports={}=ALL-UNNAMED".format(package.strip()) for package in add_exports_entries[-1][len("Add-Exports:"):].strip().split(" ")]
+    return vm_args
+
+
 class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
     """
     JMH benchmark suite that executes microbenchmark mx distribution.
+
+    It also supports extraction of the `Add-Opens` and `Add-Exports` entries from the manifest and places them on the
+    command line. This has the advantage of not relying on the JVM to open/export the relevant packages since it isn't
+    sufficient when new JVMs are forked (which is the default and desirable mode of JMH).
+
+    Since manifest entries can be specified in the mx suite distribution definition, one can use this simple approach
+    to ensure all desired --add-opens and --add-exports are added to the underlying command line.
+
     """
 
     def benchSuiteName(self, bmSuiteArgs=None):
@@ -1950,8 +1980,10 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
 
     def extraVmArgs(self):
         assert self.dist
-        jdk = mx.get_jdk(mx.distribution(self.dist).javaCompliance)
-        return mx.get_runtime_jvm_args([self.dist], jdk=jdk)
+        distribution = mx.distribution(self.dist)
+        assert distribution.isJARDistribution()
+        jdk = mx.get_jdk(distribution.javaCompliance)
+        return mx.get_runtime_jvm_args([self.dist], jdk=jdk) + _add_opens_and_exports_from_manifest(distribution.path)
 
     def filter_distribution(self, dist):
         return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
