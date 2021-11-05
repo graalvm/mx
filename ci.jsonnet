@@ -191,7 +191,7 @@ local with(os, arch, java_release, timelimit="10:00", python=3) = common.sulong.
         with("darwin",  "amd64", 17, timelimit="25:00").gate,
         with("linux",   "amd64", 17).bench_test,
         with("linux",   "amd64", 17).jmh_test,
-        with("linux",   "amd64", 17).proftool_test,
+        with("linux",   "amd64", 17, timelimit="15:00").proftool_test,
         with("linux",   "amd64", 11, timelimit="20:00").build_truffleruby,
         with("linux",   "amd64", 11, timelimit="20:00", python=2).build_graalvm_ce,
         with("linux",   "amd64", 11, timelimit="20:00", python=3).build_graalvm_ce,
