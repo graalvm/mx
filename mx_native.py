@@ -447,11 +447,7 @@ class NinjaBuildTask(TargetArchBuildTask):
 
 class Toolchain(object):
     @abc.abstractmethod
-    def cc_command(self, includes, cflags, in_file, out_file):
-        pass
-
-    @abc.abstractmethod
-    def cxx_command(self, includes, cflags, in_file, out_file):
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
         pass
 
     @abc.abstractmethod
@@ -472,12 +468,8 @@ class Toolchain(object):
 
 
 class DefaultGnuToolchain(Toolchain):
-    def cc_command(self, includes, cflags, in_file, out_file):
-        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('gcc'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
-        return command, out_file + ".d", "gcc"
-
-    def cxx_command(self, includes, cflags, in_file, out_file):
-        command = "{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}".format(self.toolchain_bin('g++'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
+        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('g++' if cxx else 'gcc'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
         return command, out_file + ".d", "gcc"
 
     def ar_command(self, in_file, out_file):
@@ -497,7 +489,7 @@ class DefaultGnuToolchain(Toolchain):
 
 
 class DefaultMSVCToolchain(Toolchain):
-    def cc_command(self, includes, cflags, in_file, out_file):
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
         command = "cl -nologo -showIncludes {includes} {cflags} -c {in_file} -Fo{out}".format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
         return command, None, 'msvc'
 
@@ -559,12 +551,8 @@ class NinjaManifestGenerator(object):
 
     def cc_rule(self, cxx=False):
         toolchain = self.project.toolchain
-        if cxx:
-            command, depfile, deps = toolchain.cxx_command('$includes', '$cflags', '$in', '$out')
-            rule = 'cxx'
-        else:
-            command, depfile, deps = toolchain.cc_command('$includes', '$cflags', '$in', '$out')
-            rule = 'cc'
+        command, depfile, deps = toolchain.cc_command('$includes', '$cflags', '$in', '$out', cxx)
+        rule = 'cxx' if cxx else 'cc'
 
         self.n.rule(rule,
                     command=command,
