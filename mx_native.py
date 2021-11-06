@@ -445,77 +445,6 @@ class NinjaBuildTask(TargetArchBuildTask):
                     raise
 
 
-class Toolchain(object):
-    @abc.abstractmethod
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        pass
-
-    @abc.abstractmethod
-    def asm_command(self, in_file, out_file):
-        pass
-
-    @abc.abstractmethod
-    def cpp_command(self, includes, cflags, in_file, out_file):
-        pass
-
-    @abc.abstractmethod
-    def ar_command(self, in_file, out_file):
-        pass
-
-    @abc.abstractmethod
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        pass
-
-
-class DefaultGccLikeToolchain(Toolchain):
-    gcc_map = {
-        'CC': 'gcc',
-        'CXX': 'g++',
-        'AR': 'ar'
-    }
-
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
-        return command, out_file + ".d", "gcc"
-
-    def ar_command(self, in_file, out_file):
-        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('AR'), out=out_file, in_file=in_file)
-
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
-
-    def asm_command(self, in_file, out_file):
-        raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
-
-    def cpp_command(self, includes, cflags, in_file, out_file):
-        raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
-
-    def toolchain_bin(self, name):
-        return DefaultGccLikeToolchain.gcc_map[name]
-
-
-class DefaultMSVCToolchain(Toolchain):
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        command = "cl -nologo -showIncludes {includes} {cflags} -c {in_file} -Fo{out}".format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
-        return command, None, 'msvc'
-
-    def cxx_command(self, includes, cflags, in_file, out_file):
-        return self.cc_command(includes, cflags, in_file, out_file)
-
-    def ar_command(self, in_file, out_file):
-        return 'lib -nologo -out:{out} {in_file}'.format(out=out_file, in_file=in_file)
-
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        return 'link -nologo {ldflags} -out:{out} {in_file} {ldlibs}'.format(ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
-
-    def cpp_command(self, includes, cflags, in_file, out_file):
-        command = 'cl -nologo -showIncludes -EP -P {includes} {cflags} -c {in_file} -Fi{out}'.format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
-        return command, None, 'msvc'
-
-    def asm_command(self, in_file, out_file):
-        return 'ml64 -nologo -Fo{out} -c {in_file}'.format(out=out_file, in_file=in_file)
-
-
 class NinjaManifestGenerator(object):
     """Abstracts the writing of the Ninja build manifest.
 
@@ -556,8 +485,7 @@ class NinjaManifestGenerator(object):
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
     def cc_rule(self, cxx=False):
-        toolchain = self.project.toolchain
-        command, depfile, deps = toolchain.cc_command('$includes', '$cflags', '$in', '$out', cxx)
+        command, depfile, deps = self.cc_command('$includes', '$cflags', '$in', '$out', cxx)
         rule = 'cxx' if cxx else 'cc'
 
         self.n.rule(rule,
@@ -575,8 +503,7 @@ class NinjaManifestGenerator(object):
 
     def asm_rule(self):
         assert mx.is_windows()
-        toolchain = self.project.toolchain
-        command, depfile, deps = toolchain.cpp_command('$includes', '$cflags', '$in', '$out')
+        command, depfile, deps = self.cpp_command('$includes', '$cflags', '$in', '$out')
         self.n.rule('cpp',
                     command=command,
                     description='CPP $out',
@@ -585,7 +512,7 @@ class NinjaManifestGenerator(object):
         self.newline()
 
         self.n.rule('asm',
-                    command=toolchain.asm_command('$in', '$out'),
+                    command=self.asm_command('$in', '$out'),
                     description='ASM $out')
         self.newline()
 
@@ -601,7 +528,7 @@ class NinjaManifestGenerator(object):
 
     def ar_rule(self):
         self.n.rule('ar',
-                    command=self.project.toolchain.ar_command('$in', '$out'),
+                    command=self.ar_command('$in', '$out'),
                     description='AR $out')
         self.newline()
 
@@ -609,7 +536,7 @@ class NinjaManifestGenerator(object):
 
     def link_rule(self, cxx=False):
         self.n.rule('link',
-                    command=self.project.toolchain.ld_command('$ldflags', '$ldlibs', '$in', '$out', cxx=cxx),
+                    command=self.ld_command('$ldflags', '$ldlibs', '$in', '$out', cxx=cxx),
                     description='LINK $out')
         self.newline()
 
@@ -651,6 +578,102 @@ class NinjaManifestGenerator(object):
         self.comment('...whether manifest needs to be regenerated')
         self.n.build(Ninja.default_manifest, 'dry_run', implicit=deps)
         self.newline()
+
+    @abc.abstractmethod
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
+        pass
+
+    @abc.abstractmethod
+    def asm_command(self, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def ar_command(self, in_file, out_file):
+        pass
+
+    @abc.abstractmethod
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        pass
+
+
+class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
+    gcc_map = {
+        'CC': 'gcc',
+        'CXX': 'g++',
+        'AR': 'ar'
+    }
+
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
+        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, out_file + ".d", "gcc"
+
+    def ar_command(self, in_file, out_file):
+        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('AR'), out=out_file, in_file=in_file)
+
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+
+    def asm_command(self, in_file, out_file):
+        raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
+
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
+
+    def toolchain_bin(self, name):
+        return GccLikeNinjaManifestGenerator.gcc_map[name]
+
+
+class MSVCNinjaManifestGenerator(NinjaManifestGenerator):
+    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
+        command = "cl -nologo -showIncludes {includes} {cflags} -c {in_file} -Fo{out}".format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, None, 'msvc'
+
+    def cxx_command(self, includes, cflags, in_file, out_file):
+        return self.cc_command(includes, cflags, in_file, out_file)
+
+    def ar_command(self, in_file, out_file):
+        return 'lib -nologo -out:{out} {in_file}'.format(out=out_file, in_file=in_file)
+
+    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+        return 'link -nologo {ldflags} -out:{out} {in_file} {ldlibs}'.format(ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+
+    def cpp_command(self, includes, cflags, in_file, out_file):
+        command = 'cl -nologo -showIncludes -EP -P {includes} {cflags} -c {in_file} -Fi{out}'.format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+        return command, None, 'msvc'
+
+    def asm_command(self, in_file, out_file):
+        return 'ml64 -nologo -Fo{out} -c {in_file}'.format(out=out_file, in_file=in_file)
+
+
+class NinjaManifestGeneratorFactory(object):
+    def create_generator(self, project, output):
+        if mx.is_windows():
+            return MSVCNinjaManifestGenerator(project, output)
+        else:
+            return GccLikeNinjaManifestGenerator(project, output)
+
+    def extra_build_deps(self):
+        return []
+
+
+_ninja_manifest_generator_factories = {}
+
+
+def register_ninja_manifest_generator_factory(name, factory):
+    """
+    :type name: str
+    :type factory: NinjaManifestGeneratorFactory
+    """
+    if name in _ninja_manifest_generator_factories:
+        raise mx.abort("A Ninja manifest generator factory is already registered under the name " + name)
+    _ninja_manifest_generator_factories[name] = factory
+
+
+register_ninja_manifest_generator_factory('default', NinjaManifestGeneratorFactory())
 
 
 class DefaultNativeProject(NinjaProject):
@@ -700,26 +723,27 @@ class DefaultNativeProject(NinjaProject):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
+        manifest_generator_type = kwargs.pop('manifestType', 'default')
+        if manifest_generator_type not in _ninja_manifest_generator_factories:
+            raise mx.abort('Unknown `manifestType` "{}" for project {}. Known types: {}'.format(manifest_generator_type, name, [_ninja_manifest_generator_factories.keys()]))
+        self.manifest_generator_factory = _ninja_manifest_generator_factories[manifest_generator_type]
         if srcDirs:
-            mx.abort('"sourceDirs" is not supported for default native projects')
+            raise mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
         super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         try:
             self._kind = self._kinds[kind]
         except KeyError:
-            mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
+            raise mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
-            mx.abort('include directory must have a flat structure')
+            raise mx.abort('include directory must have a flat structure')
 
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
             self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
-        if mx.is_windows():
-            self.toolchain =  DefaultMSVCToolchain()
-        else:
-            self.toolchain =  DefaultGccLikeToolchain()
+        self.buildDependencies += self.manifest_generator_factory.extra_build_deps()
 
     @property
     def _target(self):
@@ -779,7 +803,7 @@ class DefaultNativeProject(NinjaProject):
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
-        with NinjaManifestGenerator(self, open(path, 'w')) as gen:
+        with self.manifest_generator_factory.create_generator(self, open(path, 'w')) as gen:
             gen.comment('Project rules')
             cc = cxx = asm = None
             if self.c_files:
