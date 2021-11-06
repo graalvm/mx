@@ -485,7 +485,7 @@ class NinjaManifestGenerator(object):
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
     def cc_rule(self, cxx=False):
-        command, depfile, deps = self.cc_command('$includes', '$cflags', '$in', '$out', cxx)
+        command, depfile, deps = self.cc_command(cxx)
         rule = 'cxx' if cxx else 'cc'
 
         self.n.rule(rule,
@@ -503,7 +503,7 @@ class NinjaManifestGenerator(object):
 
     def asm_rule(self):
         assert mx.is_windows()
-        command, depfile, deps = self.cpp_command('$includes', '$cflags', '$in', '$out')
+        command, depfile, deps = self.cpp_command()
         self.n.rule('cpp',
                     command=command,
                     description='CPP $out',
@@ -512,7 +512,7 @@ class NinjaManifestGenerator(object):
         self.newline()
 
         self.n.rule('asm',
-                    command=self.asm_command('$in', '$out'),
+                    command=self.asm_command(),
                     description='ASM $out')
         self.newline()
 
@@ -528,7 +528,7 @@ class NinjaManifestGenerator(object):
 
     def ar_rule(self):
         self.n.rule('ar',
-                    command=self.ar_command('$in', '$out'),
+                    command=self.ar_command(),
                     description='AR $out')
         self.newline()
 
@@ -536,7 +536,7 @@ class NinjaManifestGenerator(object):
 
     def link_rule(self, cxx=False):
         self.n.rule('link',
-                    command=self.ld_command('$ldflags', '$ldlibs', '$in', '$out', cxx=cxx),
+                    command=self.ld_command(cxx=cxx),
                     description='LINK $out')
         self.newline()
 
@@ -580,23 +580,23 @@ class NinjaManifestGenerator(object):
         self.newline()
 
     @abc.abstractmethod
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
+    def cc_command(self, cxx=False):
         pass
 
     @abc.abstractmethod
-    def asm_command(self, in_file, out_file):
+    def asm_command(self):
         pass
 
     @abc.abstractmethod
-    def cpp_command(self, includes, cflags, in_file, out_file):
+    def cpp_command(self):
         pass
 
     @abc.abstractmethod
-    def ar_command(self, in_file, out_file):
+    def ar_command(self):
         pass
 
     @abc.abstractmethod
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
+    def ld_command(self, cxx=False):
         pass
 
 
@@ -607,20 +607,20 @@ class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
         'AR': 'ar'
     }
 
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        command = '{} -MMD -MF {out}.d {includes} {cflags} -c {in_file} -o {out}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), includes=includes, out=out_file, in_file=in_file, cflags=cflags)
-        return command, out_file + ".d", "gcc"
+    def cc_command(self, cxx=False):
+        command = '{} -MMD -MF $out.d $includes $cflags -c $in -o $out'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
+        return command, 'out.d', "gcc"
 
-    def ar_command(self, in_file, out_file):
-        return '{} -rc {out} {in_file}'.format(self.toolchain_bin('AR'), out=out_file, in_file=in_file)
+    def ar_command(self):
+        return '{} -rc $out $in'.format(self.toolchain_bin('AR'))
 
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        return '{} {ldflags} -o {out} {in_file} {ldlibs}'.format(self.toolchain_bin('CXX' if cxx else 'CC'), ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
+    def ld_command(self, cxx=False):
+        return '{} $ldflags -o $out $in $ldlibs'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
 
-    def asm_command(self, in_file, out_file):
+    def asm_command(self):
         raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
 
-    def cpp_command(self, includes, cflags, in_file, out_file):
+    def cpp_command(self):
         raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
 
     def toolchain_bin(self, name):
@@ -628,25 +628,22 @@ class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
 
 
 class MSVCNinjaManifestGenerator(NinjaManifestGenerator):
-    def cc_command(self, includes, cflags, in_file, out_file, cxx=False):
-        command = "cl -nologo -showIncludes {includes} {cflags} -c {in_file} -Fo{out}".format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+    def cc_command(self, cxx=False):
+        command = "cl -nologo -showIncludes $includes $cflags -c $in -Fo$out"
         return command, None, 'msvc'
 
-    def cxx_command(self, includes, cflags, in_file, out_file):
-        return self.cc_command(includes, cflags, in_file, out_file)
+    def ar_command(self):
+        return 'lib -nologo -out:$out $in'
 
-    def ar_command(self, in_file, out_file):
-        return 'lib -nologo -out:{out} {in_file}'.format(out=out_file, in_file=in_file)
+    def ld_command(self, cxx=False):
+        return 'link -nologo $ldflags -out:$out $in $ldlibs'
 
-    def ld_command(self, ldflags, ldlibs, in_file, out_file, cxx=False):
-        return 'link -nologo {ldflags} -out:{out} {in_file} {ldlibs}'.format(ldflags=ldflags, out=out_file, in_file=in_file, ldlibs=ldlibs)
-
-    def cpp_command(self, includes, cflags, in_file, out_file):
-        command = 'cl -nologo -showIncludes -EP -P {includes} {cflags} -c {in_file} -Fi{out}'.format(includes=includes, out=out_file, in_file=in_file, cflags=cflags)
+    def cpp_command(self):
+        command = 'cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out'
         return command, None, 'msvc'
 
-    def asm_command(self, in_file, out_file):
-        return 'ml64 -nologo -Fo{out} -c {in_file}'.format(out=out_file, in_file=in_file)
+    def asm_command(self):
+        return 'ml64 -nologo -Fo$out -c $in'
 
 
 class NinjaManifestGeneratorFactory(object):
