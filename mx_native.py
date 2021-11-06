@@ -501,30 +501,9 @@ class NinjaManifestGenerator(object):
 
         return build
 
+    @abc.abstractmethod
     def asm_rule(self):
-        assert mx.is_windows()
-        command, depfile, deps = self.cpp_command()
-        self.n.rule('cpp',
-                    command=command,
-                    description='CPP $out',
-                    depfile=depfile,
-                    deps=deps)
-        self.newline()
-
-        self.n.rule('asm',
-                    command=self.asm_command(),
-                    description='ASM $out')
-        self.newline()
-
-        def preprocessed(source_file):
-            output = os.path.splitext(source_file)[0] + '.asm'
-            return self.n.build(output, 'cpp', self._resolve(source_file))[0]
-
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + '.obj'
-            return self.n.build(output, 'asm', preprocessed(source_file))[0]
-
-        return build
+        pass
 
     def ar_rule(self):
         self.n.rule('ar',
@@ -584,14 +563,6 @@ class NinjaManifestGenerator(object):
         pass
 
     @abc.abstractmethod
-    def asm_command(self):
-        pass
-
-    @abc.abstractmethod
-    def cpp_command(self):
-        pass
-
-    @abc.abstractmethod
     def ar_command(self):
         pass
 
@@ -607,6 +578,22 @@ class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
         'AR': 'ar'
     }
 
+    def asm_rule(self):
+        command, depfile, deps = self.cc_command(False)
+
+        self.n.rule('asm',
+                    command=command,
+                    description='ASM $out',
+                    depfile=depfile,
+                    deps=deps)
+        self.newline()
+
+        def build(source_file):
+            output = os.path.splitext(source_file)[0] + '.o'
+            return self.n.build(output, 'asm', self._resolve(source_file))[0]
+
+        return build
+
     def cc_command(self, cxx=False):
         command = '{} -MMD -MF $out.d $includes $cflags -c $in -o $out'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
         return command, 'out.d', "gcc"
@@ -617,17 +604,36 @@ class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
     def ld_command(self, cxx=False):
         return '{} $ldflags -o $out $in $ldlibs'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
 
-    def asm_command(self):
-        raise mx.abort("Unexpected: asm on DefaultGnuToolchain")
-
-    def cpp_command(self):
-        raise mx.abort("Unexpected: cpp on DefaultGnuToolchain")
-
     def toolchain_bin(self, name):
         return GccLikeNinjaManifestGenerator.gcc_map[name]
 
 
 class MSVCNinjaManifestGenerator(NinjaManifestGenerator):
+    def asm_rule(self):
+        assert mx.is_windows()
+        command, depfile, deps = self.cpp_command()
+        self.n.rule('cpp',
+                    command=command,
+                    description='CPP $out',
+                    depfile=depfile,
+                    deps=deps)
+        self.newline()
+
+        self.n.rule('asm',
+                    command=self.asm_command(),
+                    description='ASM $out')
+        self.newline()
+
+        def preprocessed(source_file):
+            output = os.path.splitext(source_file)[0] + '.asm'
+            return self.n.build(output, 'cpp', self._resolve(source_file))[0]
+
+        def build(source_file):
+            output = os.path.splitext(source_file)[0] + '.obj'
+            return self.n.build(output, 'asm', preprocessed(source_file))[0]
+
+        return build
+
     def cc_command(self, cxx=False):
         command = "cl -nologo -showIncludes $includes $cflags -c $in -Fo$out"
         return command, None, 'msvc'
@@ -808,7 +814,7 @@ class DefaultNativeProject(NinjaProject):
             if self.cxx_files:
                 cxx = gen.cc_rule(cxx=True)
             if self.asm_sources:
-                asm = gen.asm_rule() if mx.is_windows() else cc if cc else gen.cc_rule()
+                asm = gen.asm_rule()
 
             ar = link = None
             if self._kind == self._kinds['static_lib']:
