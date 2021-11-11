@@ -1929,10 +1929,16 @@ def _add_opens_and_exports_from_manifest(jarfile, add_opens=True, add_exports=Tr
         if add_opens:
             add_opens_entries = [line for line in lines if line.strip().startswith("Add-Opens:")]
             if len(add_opens_entries) > 1:
+                # We decide to enforce that the manifest contains no duplicate lines. The JVM would be more relaxed
+                # in that case and only consider then last Add-Opens line, but since the manifest generation is under
+                # our control, it's better to enforce it here.
                 raise ValueError("Manifest file of {} contains multiple Add-Opens lines!".format(jarfile))
             if add_opens_entries:
                 vm_args += ["--add-opens={}=ALL-UNNAMED".format(package.strip()) for package in add_opens_entries[-1][len("Add-Opens:"):].strip().split(" ")]
         if add_exports:
+            # We decide to enforce that the manifest contains no duplicate lines. The JVM would be more relaxed
+            # in that case and only consider then last Add-Exports line, but since the manifest generation is under
+            # our control, it's better to enforce it here.
             add_exports_entries = [line for line in lines if line.strip().startswith("Add-Exports:")]
             if len(add_exports_entries) > 1:
                 raise ValueError("Manifest file of {} contains multiple Add-Exports lines!".format(jarfile))
