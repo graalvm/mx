@@ -388,6 +388,12 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
     if quiet:
         return _get_jdk_binary_or_abort(jdk_binaries, _DEFAULT_JDK_ID)
 
+    import sys
+    if sys.version_info[0] < 3:
+        get_input = raw_input # pylint: disable=undefined-variable,redefined-builtin
+    else:
+        get_input = input # pylint: disable=undefined-variable,redefined-builtin
+
     index = 1
     default_choice = 1
     choices = sorted(jdk_binaries.items())
@@ -402,10 +408,11 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
         print("{prefix:5} {jdk_id} | {version}".format(prefix=prefix,
         jdk_id=jdk_id.ljust(25), version=jdk_binary._version))
         index += 1
+    print('{:5} Other version'.format('[{}]'.format(index)))
     while True:
         try:
             try:
-                choice = input("Select JDK> ")
+                choice = get_input("Select JDK> ")
             except SyntaxError: # Empty line
                 choice = ""
 
@@ -415,10 +422,20 @@ def _choose_jdk_binary(jdk_binaries, quiet=False):
                 index = int(choice) - 1
 
             if index < 0:
-                raise IndexError
+                raise IndexError(choice)
+            if index == len(choices):
+                choice = get_input("Select base JDK (1 .. {})> ".format(index))
+                base_index = int(choice) - 1
+                if base_index < 0 or base_index >= index:
+                    raise IndexError(choice)
+                base_jdk = choices[base_index][1]
+                version = get_input("Enter version [{}]> ".format(base_jdk._version))
+                if version == "":
+                    version = base_jdk._version
+                return base_jdk.with_version(version)
             return choices[index][1]
-        except (SyntaxError, NameError, IndexError):
-            mx.warn("Invalid selection!")
+        except (NameError, IndexError) as e:
+            mx.warn("Invalid selection: {}".format(e))
 
 _DEFAULT_JDK_ID = "labsjdk-ce-11"
 
@@ -427,6 +444,9 @@ class _JdkBinary(object):
     def __init__(self, jdk_id, version, filename, url, source):
         self._jdk_id = jdk_id
         self._version = version
+        self._filename_template = filename
+        self._url_template = url
+        self._source = source
         platform = mx.get_os() + '-' + mx.get_arch()
         keywords = {'version': version, 'platform': platform}
         self._filename = _instantiate(filename, keywords, source)
@@ -437,6 +457,9 @@ class _JdkBinary(object):
 
     def __repr__(self):
         return '{}: file={}, url={}'.format(self._jdk_id, self._filename, self._url)
+
+    def with_version(self, version):
+        return _JdkBinary(self._jdk_id, version, self._filename_template, self._url_template, self._source)
 
     def get_final_path(self, jdk_path):
         return join(jdk_path, self._folder_name)
