@@ -6,7 +6,7 @@ local jdks = common.jdks;
 #
 # This structure allows for easily changing the
 # platform details of a gate builder.
-local with(os, arch, java_release, timelimit="10:00", python=3) = common.sulong.deps[os] + {
+local with(os, arch, java_release, timelimit="15:00", python=3) = common.sulong.deps[os] + {
     local path(unixpath) = if os == "windows" then std.strReplace(unixpath, "/", "\\") else unixpath,
     local exe(unixpath) = if os == "windows" then path(unixpath) + ".exe" else unixpath,
     local copydir(src, dst) = if os == "windows" then ["xcopy", path(src), path(dst), "/e", "/i", "/q"] else ["cp", "-r", src, dst],
