@@ -1727,18 +1727,26 @@ class OutputCapturingJavaVm(OutputCapturingVm): #pylint: disable=R0921
                         vm_info["platform.jdk-version-number"] = jdk_version_number
                         vm_info["platform.jdk-major-version"] = jdk_major_version
                         vm_info["platform.jdk-version-string"] = jdk_version_string
-                        if "GraalVM" in jdk_version_string:
-                            m = re.search(r'GraalVM (\S+) ((\.?\d+)*)', jdk_version_string)
+                        if "jvmci" in jdk_version_string:
+                            m = re.search(r'jvmci-(([a-z\d\.\-])*)', jdk_version_string)
                             if m:
-                                edition = m.group(1)
-                                if len(edition) > 2 and "CE" in edition.upper():
-                                    # to accommodate for 'GraalVM LIBGRAAL_CE_BASH 19.3.0'
-                                    edition = "CE"
-                                elif "EE" in edition.upper():
-                                    edition = "EE"
-                                vm_info["platform.graalvm-version-string"] = m.group(0)
-                                vm_info["platform.graalvm-edition"] = edition
-                                vm_info["platform.graalvm-version"] = m.group(2)
+                                vm_info["platform.jvmci-version"] = m.group(1)
+                        if "GraalVM" in jdk_version_string:
+                            # Until 19.3.0 the following format used to exist: 'GraalVM LIBGRAAL_CE_BASH 19.3.0'
+                            m = re.search(r'GraalVM (?P<edition>CE |EE |LIBGRAAL_CE_BASH | LIBGRAAL_EE_BASH )?(?P<version>(\.?\d+)*)', jdk_version_string)
+                            if m:
+                                vm_info["platform.graalvm-version-string"] = m.group(0).strip()
+                                vm_info["platform.graalvm-version"] = m.group('version').strip()
+                                if m.group('edition'):
+                                    if "CE" in m.group('edition').upper():
+                                        # to accommodate for 'LIBGRAAL_CE_BASH'
+                                        vm_info["platform.graalvm-edition"] = "CE"
+                                    elif "EE" in m.group('edition').upper():
+                                        vm_info["platform.graalvm-edition"] = "EE"
+                                else:
+                                    # Edition may be absent from the version string. 'GraalVM 22.0.0-dev' is valid
+                                    vm_info["platform.graalvm-edition"] = "unknown"
+
                         manual_graalvm_edition = mx.get_env("GRAALVM_EDITION", default=None)
                         if manual_graalvm_edition is not None:
                             vm_info["platform.graalvm-edition"] = manual_graalvm_edition
