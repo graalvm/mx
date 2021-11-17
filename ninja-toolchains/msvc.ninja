@@ -1,0 +1,27 @@
+# Ninja rules for a MSVC toolchain found on the path
+rule cc
+  command = cl -nologo -showIncludes $includes $cflags -c $in -Fo$out
+  description = CC $out
+  deps = msvc
+
+rule cxx
+  command = cl -nologo -showIncludes $includes $cflags -c $in -Fo$out
+  description = CXX $out
+  deps = msvc
+
+rule link
+  command = link -nologo $ldflags -out:$out $in $ldlibs
+  description = LINK $out
+
+rule linkxx
+  command = link -nologo $ldflags -out:$out $in $ldlibs
+  description = LINKXX $out
+
+rule ar
+  command = lib -nologo -out:$out $in
+  description = AR $out
+
+rule asm
+  command = cmd /c "cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$in.asm && ml64 -nologo -Fo$out -c $in.asm"
+  description = ASM $out
+  deps = msvc

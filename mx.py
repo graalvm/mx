@@ -5559,6 +5559,7 @@ class JARArchiveTask(AbstractArchiveTask):
                     self.javac_daemon = JavacDaemon(jdk, jdk.java_args)
                     daemons[key] = self.javac_daemon
 
+
 class AbstractDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)

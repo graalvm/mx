@@ -1,0 +1,30 @@
+# Ninja rules for a GCC toolchain found on the path
+rule cc
+  command = gcc -MMD -MF $out.d $includes $cflags -c $in -o $out
+  description = CC $out
+  depfile = $out.d
+  deps = gcc
+
+rule cxx
+  command = g++ -MMD -MF $out.d $includes $cflags -c $in -o $out
+  description = CXX $out
+  depfile = $out.d
+  deps = gcc
+
+rule link
+  command = gcc $ldflags -o $out $in $ldlibs
+  description = LINK $out
+
+rule linkxx
+  command = g++ $ldflags -o $out $in $ldlibs
+  description = LINKXX $out
+
+rule ar
+  command = ar -rc $out $in
+  description = AR $out
+
+rule asm
+  command = gcc -MMD -MF $out.d $includes $cflags -c $in -o $out
+  description = ASM $out
+  depfile = $out.d
+  deps = gcc

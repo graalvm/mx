@@ -477,49 +477,31 @@ class NinjaManifestGenerator(object):
             self.n.variable(key, value)
         self.newline()
 
-    def include(self, dirs):
+    def include_dirs(self, dirs):
         def quote(path):
             has_spaces = ' ' in path or ('$project' in path and ' ' in self.project.dir)
             return '"{}"'.format(path) if has_spaces else path
 
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
-    def cc_rule(self, cxx=False):
-        command, depfile, deps = self.cc_command(cxx)
+    def include(self, path):
+        self.n.include(path)
+
+    def cc(self, source_file, cxx=False):
         rule = 'cxx' if cxx else 'cc'
+        output = os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
+        return self.n.build(output, rule, self._resolve(source_file))[0]
 
-        self.n.rule(rule,
-                    command=command,
-                    description='%s $out' % rule.upper(),
-                    depfile=depfile,
-                    deps=deps)
-        self.newline()
+    def asm(self, source_file):
+        output = os.path.splitext(source_file)[0] + '.o'
+        return self.n.build(output, 'asm', self._resolve(source_file))[0]
 
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
-            return self.n.build(output, rule, self._resolve(source_file))[0]
+    def ar(self, archive, members):
+        return self.n.build(archive, 'ar', members)[0]
 
-        return build
-
-    @abc.abstractmethod
-    def asm_rule(self):
-        pass
-
-    def ar_rule(self):
-        self.n.rule('ar',
-                    command=self.ar_command(),
-                    description='AR $out')
-        self.newline()
-
-        return lambda archive, members: self.n.build(archive, 'ar', members)[0]
-
-    def link_rule(self, cxx=False):
-        self.n.rule('link',
-                    command=self.ld_command(cxx=cxx),
-                    description='LINK $out')
-        self.newline()
-
-        return lambda program, files: self.n.build(program, 'link', files)[0]
+    def link(self, program, files, cxx=False):
+        rule = 'linkxx' if cxx else 'link'
+        return self.n.build(program, rule, files)[0]
 
     def close(self):
         self.n.close()
@@ -557,126 +539,6 @@ class NinjaManifestGenerator(object):
         self.comment('...whether manifest needs to be regenerated')
         self.n.build(Ninja.default_manifest, 'dry_run', implicit=deps)
         self.newline()
-
-    @abc.abstractmethod
-    def cc_command(self, cxx=False):
-        pass
-
-    @abc.abstractmethod
-    def ar_command(self):
-        pass
-
-    @abc.abstractmethod
-    def ld_command(self, cxx=False):
-        pass
-
-
-class GccLikeNinjaManifestGenerator(NinjaManifestGenerator):
-    gcc_map = {
-        'CC': 'gcc',
-        'CXX': 'g++',
-        'AR': 'ar'
-    }
-
-    def asm_rule(self):
-        command, depfile, deps = self.cc_command(False)
-
-        self.n.rule('asm',
-                    command=command,
-                    description='ASM $out',
-                    depfile=depfile,
-                    deps=deps)
-        self.newline()
-
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + '.o'
-            return self.n.build(output, 'asm', self._resolve(source_file))[0]
-
-        return build
-
-    def cc_command(self, cxx=False):
-        command = '{} -MMD -MF $out.d $includes $cflags -c $in -o $out'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
-        return command, 'out.d', "gcc"
-
-    def ar_command(self):
-        return '{} -rc $out $in'.format(self.toolchain_bin('AR'))
-
-    def ld_command(self, cxx=False):
-        return '{} $ldflags -o $out $in $ldlibs'.format(self.toolchain_bin('CXX' if cxx else 'CC'))
-
-    def toolchain_bin(self, name):
-        return GccLikeNinjaManifestGenerator.gcc_map[name]
-
-
-class MSVCNinjaManifestGenerator(NinjaManifestGenerator):
-    def asm_rule(self):
-        assert mx.is_windows()
-        command, depfile, deps = self.cpp_command()
-        self.n.rule('cpp',
-                    command=command,
-                    description='CPP $out',
-                    depfile=depfile,
-                    deps=deps)
-        self.newline()
-
-        self.n.rule('asm',
-                    command=self.asm_command(),
-                    description='ASM $out')
-        self.newline()
-
-        def preprocessed(source_file):
-            output = os.path.splitext(source_file)[0] + '.asm'
-            return self.n.build(output, 'cpp', self._resolve(source_file))[0]
-
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + '.obj'
-            return self.n.build(output, 'asm', preprocessed(source_file))[0]
-
-        return build
-
-    def cc_command(self, cxx=False):
-        command = "cl -nologo -showIncludes $includes $cflags -c $in -Fo$out"
-        return command, None, 'msvc'
-
-    def ar_command(self):
-        return 'lib -nologo -out:$out $in'
-
-    def ld_command(self, cxx=False):
-        return 'link -nologo $ldflags -out:$out $in $ldlibs'
-
-    def cpp_command(self):
-        command = 'cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out'
-        return command, None, 'msvc'
-
-    def asm_command(self):
-        return 'ml64 -nologo -Fo$out -c $in'
-
-
-class NinjaManifestGeneratorFactory(object):
-    def create_generator(self, project, output):
-        if mx.is_windows():
-            return MSVCNinjaManifestGenerator(project, output)
-        else:
-            return GccLikeNinjaManifestGenerator(project, output)
-
-    def extra_build_deps(self):
-        return []
-
-
-_ninja_manifest_generator_factories = {}
-
-
-def register_ninja_manifest_generator_factory(name, factory):
-    """
-    :type name: str
-    :type factory: NinjaManifestGeneratorFactory
-    """
-    if name in _ninja_manifest_generator_factories:
-        raise mx.abort("A Ninja manifest generator factory is already registered under the name " + name)
-    _ninja_manifest_generator_factories[name] = factory
-
-
-register_ninja_manifest_generator_factory('default', NinjaManifestGeneratorFactory())
 
 
 class DefaultNativeProject(NinjaProject):
@@ -726,10 +588,7 @@ class DefaultNativeProject(NinjaProject):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
-        manifest_generator_type = kwargs.pop('manifestType', 'default')
-        if manifest_generator_type not in _ninja_manifest_generator_factories:
-            raise mx.abort('Unknown `manifestType` "{}" for project {}. Known types: {}'.format(manifest_generator_type, name, [_ninja_manifest_generator_factories.keys()]))
-        self.manifest_generator_factory = _ninja_manifest_generator_factories[manifest_generator_type]
+        self.toolchain = kwargs.pop('toolchain', 'mx:NINJA_MSVC_RULES' if mx.is_windows() else 'mx:NINJA_GCC_RULES')
         if srcDirs:
             raise mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
@@ -746,7 +605,7 @@ class DefaultNativeProject(NinjaProject):
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
             self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
-        self.buildDependencies += self.manifest_generator_factory.extra_build_deps()
+        self.buildDependencies.append(self.toolchain)
 
     @property
     def _target(self):
@@ -806,47 +665,40 @@ class DefaultNativeProject(NinjaProject):
         if unsupported_source_files:
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
-        with self.manifest_generator_factory.create_generator(self, open(path, 'w')) as gen:
-            gen.comment('Project rules')
-            cc = cxx = asm = None
-            if self.c_files:
-                cc = gen.cc_rule()
-            if self.cxx_files:
-                cxx = gen.cc_rule(cxx=True)
-            if self.asm_sources:
-                asm = gen.asm_rule()
+        with NinjaManifestGenerator(self, open(path, 'w')) as gen:
+            toolchain_dist = mx.distribution(self.toolchain, context=self)
+            assert isinstance(toolchain_dist, mx.AbstractDistribution) and toolchain_dist.get_output()
+            gen.comment("Include toolchain rules")
+            gen.newline()
+            gen.include(mx.join(toolchain_dist.get_output(), 'toolchain.ninja'))
 
-            ar = link = None
-            if self._kind == self._kinds['static_lib']:
-                ar = gen.ar_rule()
-            else:
-                link = gen.link_rule(cxx=bool(self.cxx_files))
-
-            gen.variables(
-                cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags],
-                ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags] if link else None,
-                ldlibs=self.ldlibs if link else None,
-            )
-            gen.include(collections.OrderedDict.fromkeys(
+            gen.comment("Variables")
+            gen.variables(cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags])
+            if self._kind != self._kinds['static_lib']:
+                gen.variables(
+                    ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags],
+                    ldlibs=self.ldlibs,
+                )
+            gen.include_dirs(collections.OrderedDict.fromkeys(
                 # remove the duplicates while maintaining the ordering
                 [mx.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
             gen.comment('Compiled project sources')
-            object_files = [cc(f) for f in self.c_files]
+            object_files = [gen.cc(f, cxx=False) for f in self.c_files]
             gen.newline()
-            object_files += [cxx(f) for f in self.cxx_files]
+            object_files += [gen.cc(f, cxx=True) for f in self.cxx_files]
             gen.newline()
-            object_files += [asm(f) for f in self.asm_sources]
+            object_files += [gen.asm(f) for f in self.asm_sources]
             gen.newline()
 
             gen.comment('Project deliverable')
             if self._kind == self._kinds['static_lib']:
-                ar(self._target, object_files)
+                gen.ar(self._target, object_files)
             else:
-                link(self._target, object_files + list(itertools.chain.from_iterable(
-                    getattr(d, 'libs', []) for d in self.buildDependencies)))
+                gen.link(self._target, object_files + list(itertools.chain.from_iterable(
+                    getattr(d, 'libs', []) for d in self.buildDependencies)), cxx=bool(self.cxx_files))
 
     def _archivable_results(self, target_arch, use_relpath, single):
         def result(base_dir, file_path):

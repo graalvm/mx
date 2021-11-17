@@ -873,6 +873,26 @@ suite = {
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
       "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
-    }
+    },
+
+    "NINJA_GCC_RULES": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a GCC toolchain found on the PATH",
+      "layout": {
+        "toolchain.ninja": "file:ninja-toolchains/gcc.ninja",
+      },
+      "maven": False,
+    },
+
+    "NINJA_MSVC_RULES": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a GCC toolchain found on the PATH",
+      "layout": {
+        "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+      },
+      "maven": False,
+    },
   },
 }
