@@ -588,7 +588,7 @@ class DefaultNativeProject(NinjaProject):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
-        self.toolchain = kwargs.pop('toolchain', 'mx:NINJA_MSVC_RULES' if mx.is_windows() else 'mx:NINJA_GCC_RULES')
+        self.toolchain = kwargs.pop('toolchain', 'mx:DEFAULT_NINJA_TOOLCHAIN')
         if srcDirs:
             raise mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
@@ -667,7 +667,8 @@ class DefaultNativeProject(NinjaProject):
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
             toolchain_dist = mx.distribution(self.toolchain, context=self)
-            assert isinstance(toolchain_dist, mx.AbstractDistribution) and toolchain_dist.get_output()
+            if not isinstance(toolchain_dist, mx.AbstractDistribution) or not toolchain_dist.get_output():
+                raise mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
             gen.comment("Include toolchain rules")
             gen.newline()
             gen.include(mx.join(toolchain_dist.get_output(), 'toolchain.ninja'))

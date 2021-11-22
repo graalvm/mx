@@ -875,7 +875,7 @@ suite = {
       "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
     },
 
-    "NINJA_GCC_RULES": {
+    "GCC_NINJA_TOOLCHAIN": {
       "native": True,
       "platformDependent": False,
       "description": "ninja rules for a GCC toolchain found on the PATH",
@@ -885,12 +885,25 @@ suite = {
       "maven": False,
     },
 
-    "NINJA_MSVC_RULES": {
+    "DEFAULT_NINJA_TOOLCHAIN": {
       "native": True,
-      "platformDependent": False,
-      "description": "ninja rules for a GCC toolchain found on the PATH",
-      "layout": {
-        "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+      "platformDependent": True,
+      "description": "Default ninja rules for an OS-dependent toolchain found on the PATH",
+      "os_arch": {
+        "<others>": {
+          "<others>": {
+            "layout": {
+              "./": "extracted-dependency:GCC_NINJA_TOOLCHAIN",
+            }
+          },
+        },
+        "windows": {
+          "<others>": {
+            "layout": {
+              "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+            },
+          },
+        },
       },
       "maven": False,
     },
