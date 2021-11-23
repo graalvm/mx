@@ -22,6 +22,10 @@ rule ar
   description = AR $out
 
 rule asm
-  command = cmd /c "cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$in.asm && ml64 -nologo -Fo$out -c $in.asm"
+  command = ml64 -nologo -Fo$out -c $in"
   description = ASM $out
+
+rule cpp
+  command = cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out
+  description = CPP $out
   deps = msvc

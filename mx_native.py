@@ -489,10 +489,13 @@ class NinjaManifestGenerator(object):
 
     def cc(self, source_file, cxx=False):
         rule = 'cxx' if cxx else 'cc'
-        return self.n.build(self._object_output(source_file), rule, self._resolve(source_file))[0]
+        return self.n.build(self._output(source_file), rule, self._resolve(source_file))[0]
 
-    def asm(self, source_file):
-        return self.n.build(self._object_output(source_file), 'asm', self._resolve(source_file))[0]
+    def asm(self, source_file, preprocess_first=False):
+        asm_source = self._resolve(source_file)
+        if preprocess_first:
+            asm_source = self.n.build(self._output(source_file, '.asm'), 'cpp', asm_source)
+        return self.n.build(self._output(source_file), 'asm', asm_source)[0]
 
     def ar(self, archive, members):
         return self.n.build(archive, 'ar', members)[0]
@@ -505,8 +508,10 @@ class NinjaManifestGenerator(object):
         self.n.close()
 
     @staticmethod
-    def _object_output(source_file):
-        return os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
+    def _output(source_file, ext=None):
+        if ext is None:
+            ext = '.obj' if mx.is_windows() else '.o'
+        return os.path.splitext(source_file)[0] + ext
 
     @staticmethod
     def _resolve(path):
@@ -688,12 +693,17 @@ class DefaultNativeProject(NinjaProject):
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
+            if hasattr(toolchain_dist, 'asm_requires_cpp'):
+                asm_requires_cpp = getattr(toolchain_dist, 'asm_requires_cpp')
+            else:
+                asm_requires_cpp = False
+
             gen.comment('Compiled project sources')
             object_files = [gen.cc(f, cxx=False) for f in self.c_files]
             gen.newline()
             object_files += [gen.cc(f, cxx=True) for f in self.cxx_files]
             gen.newline()
-            object_files += [gen.asm(f) for f in self.asm_sources]
+            object_files += [gen.asm(f, asm_requires_cpp) for f in self.asm_sources]
             gen.newline()
 
             gen.comment('Project deliverable')

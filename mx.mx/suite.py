@@ -894,7 +894,8 @@ suite = {
           "<others>": {
             "layout": {
               "./": "extracted-dependency:GCC_NINJA_TOOLCHAIN",
-            }
+            },
+            "asm_requires_cpp": False,
           },
         },
         "windows": {
@@ -902,6 +903,7 @@ suite = {
             "layout": {
               "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
             },
+            "asm_requires_cpp": True,
           },
         },
       },
