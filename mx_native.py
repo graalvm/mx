@@ -489,12 +489,10 @@ class NinjaManifestGenerator(object):
 
     def cc(self, source_file, cxx=False):
         rule = 'cxx' if cxx else 'cc'
-        output = os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
-        return self.n.build(output, rule, self._resolve(source_file))[0]
+        return self.n.build(self._object_output(source_file), rule, self._resolve(source_file))[0]
 
     def asm(self, source_file):
-        output = os.path.splitext(source_file)[0] + '.o'
-        return self.n.build(output, 'asm', self._resolve(source_file))[0]
+        return self.n.build(self._object_output(source_file), 'asm', self._resolve(source_file))[0]
 
     def ar(self, archive, members):
         return self.n.build(archive, 'ar', members)[0]
@@ -505,6 +503,10 @@ class NinjaManifestGenerator(object):
 
     def close(self):
         self.n.close()
+
+    @staticmethod
+    def _object_output(source_file):
+        return os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
 
     @staticmethod
     def _resolve(path):
