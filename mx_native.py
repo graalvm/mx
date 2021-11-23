@@ -487,9 +487,11 @@ class NinjaManifestGenerator(object):
     def include(self, path):
         self.n.include(path)
 
-    def cc(self, source_file, cxx=False):
-        rule = 'cxx' if cxx else 'cc'
-        return self.n.build(self._output(source_file), rule, self._resolve(source_file))[0]
+    def cc(self, source_file):
+        return self.n.build(self._output(source_file), 'cc', self._resolve(source_file))[0]
+
+    def cxx(self, source_file):
+        return self.n.build(self._output(source_file), 'cxx', self._resolve(source_file))[0]
 
     def asm(self, source_file, preprocess_first=False):
         asm_source = self._resolve(source_file)
@@ -500,9 +502,11 @@ class NinjaManifestGenerator(object):
     def ar(self, archive, members):
         return self.n.build(archive, 'ar', members)[0]
 
-    def link(self, program, files, cxx=False):
-        rule = 'linkxx' if cxx else 'link'
-        return self.n.build(program, rule, files)[0]
+    def link(self, program, files):
+        return self.n.build(program, 'link', files)[0]
+
+    def linkxx(self, program, files):
+        return self.n.build(program, 'linkxx', files)[0]
 
     def close(self):
         self.n.close()
@@ -699,9 +703,9 @@ class DefaultNativeProject(NinjaProject):
                 asm_requires_cpp = False
 
             gen.comment('Compiled project sources')
-            object_files = [gen.cc(f, cxx=False) for f in self.c_files]
+            object_files = [gen.cc(f) for f in self.c_files]
             gen.newline()
-            object_files += [gen.cc(f, cxx=True) for f in self.cxx_files]
+            object_files += [gen.cxx(f) for f in self.cxx_files]
             gen.newline()
             object_files += [gen.asm(f, asm_requires_cpp) for f in self.asm_sources]
             gen.newline()
@@ -710,8 +714,9 @@ class DefaultNativeProject(NinjaProject):
             if self._kind == self._kinds['static_lib']:
                 gen.ar(self._target, object_files)
             else:
-                gen.link(self._target, object_files + list(itertools.chain.from_iterable(
-                    getattr(d, 'libs', []) for d in self.buildDependencies)), cxx=bool(self.cxx_files))
+                link = gen.linkxx if self.cxx_files else gen.link
+                link(self._target, object_files + list(itertools.chain.from_iterable(
+                    getattr(d, 'libs', []) for d in self.buildDependencies)))
 
     def _archivable_results(self, target_arch, use_relpath, single):
         def result(base_dir, file_path):
