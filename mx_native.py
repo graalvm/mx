@@ -618,6 +618,12 @@ class DefaultNativeProject(NinjaProject):
             self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
         self.buildDependencies.append(self.toolchain)
 
+    def resolveDeps(self):
+        super(DefaultNativeProject, self).resolveDeps()
+        self.toolchain = mx.distribution(self.toolchain, context=self)
+        if not isinstance(self.toolchain, mx.AbstractDistribution) or not self.toolchain.get_output():
+            raise mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
+
     @property
     def _target(self):
         return self._kind['target'](self.deliverable)
@@ -677,14 +683,8 @@ class DefaultNativeProject(NinjaProject):
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
-            toolchain_dist = mx.distribution(self.toolchain, context=self)
-            if not isinstance(toolchain_dist, mx.AbstractDistribution) or not toolchain_dist.get_output():
-                raise mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
-            gen.comment("Include toolchain rules")
-            gen.newline()
-            gen.include(mx.join(toolchain_dist.get_output(), 'toolchain.ninja'))
-
-            gen.comment("Variables")
+            gen.comment("Configure the toolchain")
+            gen.include(mx.join(self.toolchain.get_output(), 'toolchain.ninja'))
             gen.variables(cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags])
             if self._kind != self._kinds['static_lib']:
                 gen.variables(
@@ -697,8 +697,8 @@ class DefaultNativeProject(NinjaProject):
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
-            if hasattr(toolchain_dist, 'asm_requires_cpp'):
-                asm_requires_cpp = getattr(toolchain_dist, 'asm_requires_cpp')
+            if hasattr(self.toolchain, 'asm_requires_cpp'):
+                asm_requires_cpp = getattr(self.toolchain, 'asm_requires_cpp')
             else:
                 asm_requires_cpp = False
 
