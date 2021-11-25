@@ -14376,12 +14376,15 @@ def build(cmd_args, parser=None):
                     task._d = max([remainingDepsDepth(t) for t in incompleteDeps]) + 1
             return task._d
 
+        cpus = cpu_count()
+
         def sortWorklist(tasks):
             for t in tasks:
+                if t.parallelism > cpus:
+                    abort('{} requires more parallelism ({}) than available CPUs ({})'.format(t, t.parallelism, cpus))
                 t._d = None
             return sorted(tasks, key=remainingDepsDepth)
 
-        cpus = cpu_count()
         worklist = sortWorklist(sortedTasks)
         active = []
         failed = []
@@ -17793,7 +17796,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.9")  # GR-34972
+version = VersionSpec("5.316.10")  # GR-35257
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
