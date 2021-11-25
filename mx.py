@@ -68,7 +68,7 @@ from collections import OrderedDict, namedtuple, deque
 from datetime import datetime, timedelta
 from threading import Thread
 from argparse import ArgumentParser, PARSER, REMAINDER, Namespace, HelpFormatter, ArgumentTypeError, RawTextHelpFormatter, FileType
-from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, splitext
+from os.path import join, basename, dirname, exists, lexists, isabs, expandvars, isdir, islink, normpath, realpath, relpath, splitext
 from tempfile import mkdtemp, mkstemp
 from io import BytesIO
 import fnmatch
@@ -6023,9 +6023,13 @@ class LayoutDistribution(AbstractDistribution):
             absolute_destination = _safe_path(join(output, dst.replace('/', os.sep)))
             if islink(src):
                 link_target = os.readlink(src)
-                if archive and isabs(link_target):
-                    abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
-                add_symlink(src, link_target, absolute_destination, dst, archive=archive)
+                src_target = join(dirname(src), os.readlink(src))
+                if LayoutDistribution._is_linky(absolute_destination) and not isabs(link_target) and normpath(relpath(src_target, output)).startswith('..'):
+                    add_symlink(src, normpath(relpath(src_target, dirname(absolute_destination))), absolute_destination, dst, archive=archive)
+                else:
+                    if archive and isabs(link_target):
+                        abort("Cannot add absolute links into archive: '{}' points to '{}'".format(src, link_target), context=self)
+                    add_symlink(src, link_target, absolute_destination, dst, archive=archive)
             elif isdir(src):
                 ensure_dir_exists(absolute_destination, lstat(src).st_mode)
                 for name in os.listdir(src):
@@ -17796,7 +17800,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.10")  # GR-35257
+version = VersionSpec("5.316.11")  # GR-35278
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
