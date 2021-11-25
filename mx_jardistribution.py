@@ -1432,4 +1432,7 @@ def _stage_file_impl(src, dst):
                     # os.readlink was changed in python 3.8 to include a \\?\ prefix on Windows
                     return
             os.remove(dst)
+        elif islink(dst):
+            # Remove a broken link
+            os.remove(dst)
         os.symlink(src, dst)
