@@ -248,6 +248,9 @@ class MxCompatibility500(object):
         """
         return False
 
+    def enforce_spec_compliant_exports(self):
+        """Returns whether modular multi-release JARs must have spec compliant exports."""
+        return False
 
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
@@ -557,6 +560,16 @@ class MxCompatibility53010(MxCompatibility53000):
 
     def bench_suite_needs_suite_args(self):
         return True
+
+
+class MxCompatibility53169(MxCompatibility53010):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.316.9")
+
+    def enforce_spec_compliant_exports(self):
+        return True
+
 
 def minVersion():
     _ensureCompatLoaded()

@@ -828,7 +828,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                         max_version = str(max((int(v) for v in all_versions)))
                     else:
                         max_version = default_version
-                    all_versions = all_versions + ['common']
+                    all_versions = ['common'] + all_versions
                 else:
                     max_version = str(max((int(v) for v in all_versions)))
                     default_version = max_version
@@ -919,6 +919,18 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             if exists(join(dest_dir, serviceClassfile)):
                                 uses.add(service)
 
+                    def exported_package_exists(p):
+                        package_exists = exists(join(dest_dir, p.replace('.', os.sep)))
+                        if not package_exists and dist.suite.getMxCompatibility().enforce_spec_compliant_exports():
+                            pp = [proj for proj in java_projects if p in proj.defined_java_packages()][0]
+                            dist.abort('Modular multi-release JARs cannot export packages defined only by versioned projects: '
+                                       '{} is defined by {} with multiReleaseJarVersion={}'.format(p, pp, pp.multiReleaseJarVersion))
+                        return package_exists
+
+                    # Exports of modular multi-release JARs must be exactly the same in all versions,
+                    # but for backward compatibility we tolerate version-specific exports.
+                    exports_clean = {p: exports[p] for p in exports if exported_package_exists(p)}
+
                     requires_clean = {}
                     for required_module_spec, requires_directives in requires.items():
                         if '@' in required_module_spec:
@@ -930,7 +942,7 @@ def make_java_module(dist, jdk, archive, javac_daemon=None, alt_module_info_name
                             module_name = required_module_spec
                         requires_clean[module_name] = requires_directives
 
-                    jmd = JavaModuleDescriptor(moduleName, exports, requires_clean, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
+                    jmd = JavaModuleDescriptor(moduleName, exports_clean, requires_clean, uses, provides, packages=module_packages, concealedRequires=concealedRequires,
                                                jarpath=module_jar, dist=dist, modulepath=modulepath, alternatives=alternatives, opens=opens)
 
                     # Compile module-info.class
