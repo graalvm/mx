@@ -6241,7 +6241,18 @@ class LayoutDistribution(AbstractDistribution):
                 else:
                     abort("Unsupported file type in 'extracted-dependency' for {}: '{}'".format(destination, source_archive_file))
                 if first_file_box[0] and path is not None and not source['optional']:
-                    abort("Could not find any source file for '{}'".format(source['_str_']), context=self)
+                    msg = """\
+Could not find any source file for '{str}'.
+Common causes:
+- the inclusion list ('{path}') or the exclusion list ('{exclude}') are too restrictive. Note that file names starting with '.' are not matched by '*' but by '.*'
+- '{name}' is empty
+- the root dir of '{name}' is '.' and the inclusion list does not contain a '.' entry or one that starts with './' or '.*'""".format(
+                        str=source['_str_'],
+                        path=path,
+                        exclude=exclude,
+                        name=d.name,
+                    )
+                    abort(msg, context=self)
         elif source_type == 'file':
             files_root = self.suite.dir
             source_path = source['path']
@@ -17800,7 +17811,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.12")  # GR-35309
+version = VersionSpec("5.316.13")  # Extracted-dependency does not match source files
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
