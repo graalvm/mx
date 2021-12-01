@@ -2425,7 +2425,7 @@ class Suite(object):
             if packedResource:
                 l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             elif resource:
-                l = ResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
+                l = ResourceLibrary(self, name, path, optional, urls, sha1, ext=ext, **attrs)
             else:
                 l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
             l._orig_attrs = orig_attrs
@@ -3715,7 +3715,7 @@ def download_file_exists(urls):
     return False
 
 
-def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, sources=False, canSymlink=True):
+def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist, ext=None, sources=False, canSymlink=True):
     """
     Downloads an entity from a URL in the list 'urls' (tried in order) to 'path',
     checking the sha1 digest of the result against 'sha1' (if not 'NOCHECK')
@@ -3735,7 +3735,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if is_cache_path(path):
             cachePath = path
         else:
-            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources)
+            cachePath = _get_path_in_cache(name, sha1, urls, sources=sources, ext=ext)
 
         def _copy_or_symlink(source, link_name):
             ensure_dirname_exists(link_name)
@@ -3771,7 +3771,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
                         raise e
 
         if not exists(cachePath):
-            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True)
+            oldCachePath = _get_path_in_cache(name, sha1, urls, sources=sources, oldPath=True, ext=ext)
             if exists(oldCachePath):
                 logv('Migrating cache file of {} from {} to {}'.format(name, oldCachePath, cachePath))
                 _copy_or_symlink(oldCachePath, cachePath)
@@ -8428,9 +8428,10 @@ class ResourceLibrary(BaseLibrary):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
-    def __init__(self, suite, name, path, optional, urls, sha1, **kwArgs):
+    def __init__(self, suite, name, path, optional, urls, sha1, ext=None, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
+        self.ext = ext
         self.sourcePath = None
         self.urls = [self.substVars(url) for url in urls]
         self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
@@ -8454,7 +8455,7 @@ class ResourceLibrary(BaseLibrary):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
         urls = self.get_urls()
-        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=True)
+        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
 
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
@@ -17811,7 +17812,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.13")  # Extracted-dependency does not match source files
+version = VersionSpec("5.316.14")  # GR-35370
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
