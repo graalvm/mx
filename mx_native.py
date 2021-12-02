@@ -493,9 +493,9 @@ class NinjaManifestGenerator(object):
     def cxx(self, source_file):
         return self.n.build(self._output(source_file), 'cxx', self._resolve(source_file))[0]
 
-    def asm(self, source_file, preprocess_first=False):
+    def asm(self, source_file):
         asm_source = self._resolve(source_file)
-        if preprocess_first:
+        if getattr(self.project.toolchain, 'asm_requires_cpp', False):
             asm_source = self.n.build(self._output(source_file, '.asm'), 'cpp', asm_source)
         return self.n.build(self._output(source_file), 'asm', asm_source)[0]
 
@@ -697,17 +697,12 @@ class DefaultNativeProject(NinjaProject):
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
-            if hasattr(self.toolchain, 'asm_requires_cpp'):
-                asm_requires_cpp = getattr(self.toolchain, 'asm_requires_cpp')
-            else:
-                asm_requires_cpp = False
-
             gen.comment('Compiled project sources')
             object_files = [gen.cc(f) for f in self.c_files]
             gen.newline()
             object_files += [gen.cxx(f) for f in self.cxx_files]
             gen.newline()
-            object_files += [gen.asm(f, asm_requires_cpp) for f in self.asm_sources]
+            object_files += [gen.asm(f) for f in self.asm_sources]
             gen.newline()
 
             gen.comment('Project deliverable')
