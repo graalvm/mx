@@ -22,7 +22,7 @@ rule ar
   description = AR $out
 
 rule asm
-  command = ml64 -nologo -Fo$out -c $in"
+  command = ml64 -nologo -Fo$out -c $in
   description = ASM $out
 
 rule cpp
