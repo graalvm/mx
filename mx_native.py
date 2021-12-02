@@ -683,8 +683,9 @@ class DefaultNativeProject(NinjaProject):
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
-            gen.comment("Configure the toolchain")
+            gen.comment("Toolchain configuration")
             gen.include(mx.join(self.toolchain.get_output(), 'toolchain.ninja'))
+            gen.newline()
             gen.variables(cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags])
             if self._kind != self._kinds['static_lib']:
                 gen.variables(
@@ -710,8 +711,8 @@ class DefaultNativeProject(NinjaProject):
                 gen.ar(self._target, object_files)
             else:
                 link = gen.linkxx if self.cxx_files else gen.link
-                link(self._target, object_files + list(itertools.chain.from_iterable(
-                    getattr(d, 'libs', []) for d in self.buildDependencies)))
+                dep_libs = list(itertools.chain.from_iterable(getattr(d, 'libs', []) for d in self.buildDependencies))
+                link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
         def result(base_dir, file_path):
