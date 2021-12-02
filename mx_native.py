@@ -485,7 +485,8 @@ class NinjaManifestGenerator(object):
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
     def include(self, path):
-        self.n.include(path)
+        import ninja_syntax
+        self.n.include(ninja_syntax.escape_path(path))
 
     def cc(self, source_file):
         return self.n.build(self._output(source_file), 'cc', self._resolve(source_file))[0]
