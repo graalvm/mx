@@ -712,8 +712,18 @@ class PerfEvent:
         return self.symbol
 
 
+def _which(executable):
+    for path in os.environ['PATH'].split(os.pathsep):
+        f = os.path.join(path.strip('"'), executable)
+        if os.path.isfile(f) and os.access(f, os.X_OK):
+            return f
+    return None
+
+
 class PerfOutput:
     """The decoded output of a perf record execution"""
+
+    _perf_available = None
 
     def __init__(self, files):
         self.events = []
@@ -728,7 +738,9 @@ class PerfOutput:
 
     @staticmethod
     def is_supported():
-        return os.path.exists('/usr/bin/perf')
+        if PerfOutput._perf_available is None:
+            PerfOutput._perf_available = _which('perf') is not None
+        return PerfOutput._perf_available
 
     @staticmethod
     def supports_dash_k_option():
