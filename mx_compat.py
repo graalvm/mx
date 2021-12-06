@@ -252,6 +252,11 @@ class MxCompatibility500(object):
         """Returns whether modular multi-release JARs must have spec compliant exports."""
         return False
 
+    def jmh_dist_benchmark_extracts_add_opens_from_manifest(self):
+        """Returns whether jmh benchmarks should extract --add-opens and --add-exports from the manifest file to
+        place it explicitly on the command line."""
+        return False
+
 class MxCompatibility520(MxCompatibility500):
     @staticmethod
     def version():
@@ -568,6 +573,15 @@ class MxCompatibility53169(MxCompatibility53010):
         return mx.VersionSpec("5.316.9")
 
     def enforce_spec_compliant_exports(self):
+        return True
+
+
+class MxCompatibility531615(MxCompatibility53169):
+    @staticmethod
+    def version():
+        return mx.VersionSpec("5.316.15")
+
+    def jmh_dist_benchmark_extracts_add_opens_from_manifest(self):
         return True
 
 
