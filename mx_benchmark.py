@@ -1989,7 +1989,10 @@ class JMHDistBenchmarkSuite(JMHBenchmarkSuiteBase):
         distribution = mx.distribution(self.dist)
         assert distribution.isJARDistribution()
         jdk = mx.get_jdk(distribution.javaCompliance)
-        return mx.get_runtime_jvm_args([self.dist], jdk=jdk) + _add_opens_and_exports_from_manifest(distribution.path)
+        add_opens_add_extracts = []
+        if mx_benchmark_compatibility().jmh_dist_benchmark_extracts_add_opens_from_manifest():
+            add_opens_add_extracts = _add_opens_and_exports_from_manifest(distribution.path)
+        return mx.get_runtime_jvm_args([self.dist], jdk=jdk) + add_opens_add_extracts
 
     def filter_distribution(self, dist):
         return any((dep.name.startswith('JMH') for dep in dist.archived_deps()))
