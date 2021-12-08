@@ -5559,6 +5559,7 @@ class JARArchiveTask(AbstractArchiveTask):
                     self.javac_daemon = JavacDaemon(jdk, jdk.java_args)
                     daemons[key] = self.javac_daemon
 
+
 class AbstractDistribution(Distribution):
     def __init__(self, suite, name, deps, path, excludedLibs, platformDependent, theLicense, output, **kwArgs):
         super(AbstractDistribution, self).__init__(suite, name, deps, excludedLibs, platformDependent, theLicense, **kwArgs)
@@ -17812,7 +17813,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.316.15")  # GR-35279
+version = VersionSpec("5.317.0")  # ninja toolchain
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

@@ -873,6 +873,41 @@ suite = {
     "MX_MICRO_BENCHMARKS" : {
       "subDir" : "java",
       "dependencies" : ["com.oracle.mxtool.jmh_1_21"],
-    }
+    },
+
+    "GCC_NINJA_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": False,
+      "description": "ninja rules for a GCC toolchain found on the PATH",
+      "layout": {
+        "toolchain.ninja": "file:ninja-toolchains/gcc.ninja",
+      },
+      "maven": False,
+    },
+
+    "DEFAULT_NINJA_TOOLCHAIN": {
+      "native": True,
+      "platformDependent": True,
+      "description": "Default ninja rules for an OS-dependent toolchain found on the PATH",
+      "os_arch": {
+        "<others>": {
+          "<others>": {
+            "layout": {
+              "./": "extracted-dependency:GCC_NINJA_TOOLCHAIN",
+            },
+            "asm_requires_cpp": False,
+          },
+        },
+        "windows": {
+          "<others>": {
+            "layout": {
+              "toolchain.ninja": "file:ninja-toolchains/msvc.ninja",
+            },
+            "asm_requires_cpp": True,
+          },
+        },
+      },
+      "maven": False,
+    },
   },
 }

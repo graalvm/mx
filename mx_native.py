@@ -38,6 +38,7 @@ import mx_subst
 _target_jdk = None
 """JDK for which native projects should be built."""
 
+
 def _get_target_jdk():
     global _target_jdk
     if not _target_jdk:
@@ -153,6 +154,7 @@ class Ninja(object):
             self._run(*args, **kwargs)  # retry
         else:
             not rc or mx.abort(rc if verbose else (out, err))  # pylint: disable=expression-not-assigned
+
 
 class NativeDependency(mx.Dependency):
     """A Dependency that can be included and linked in when building native projects.
@@ -475,89 +477,46 @@ class NinjaManifestGenerator(object):
             self.n.variable(key, value)
         self.newline()
 
-    def include(self, dirs):
+    def include_dirs(self, dirs):
         def quote(path):
             has_spaces = ' ' in path or ('$project' in path and ' ' in self.project.dir)
             return '"{}"'.format(path) if has_spaces else path
 
         self.variables(includes=['-I' + quote(self._resolve(d)) for d in dirs])
 
-    def cc_rule(self, cxx=False):
-        if mx.is_windows():
-            command = 'cl -nologo -showIncludes $includes $cflags -c $in -Fo$out'
-            depfile = None
-            deps = 'msvc'
-        else:
-            command = '%s -MMD -MF $out.d $includes $cflags -c $in -o $out' % ('g++' if cxx else 'gcc')
-            depfile = '$out.d'
-            deps = 'gcc'
+    def include(self, path):
+        import ninja_syntax
+        self.n.include(ninja_syntax.escape_path(path))
 
-        rule = 'cxx' if cxx else 'cc'
-        self.n.rule(rule,
-                    command=command,
-                    description='%s $out' % rule.upper(),
-                    depfile=depfile,
-                    deps=deps)
-        self.newline()
+    def cc(self, source_file):  # pylint: disable=invalid-name
+        return self.n.build(self._output(source_file), 'cc', self._resolve(source_file))[0]
 
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + ('.obj' if mx.is_windows() else '.o')
-            return self.n.build(output, rule, self._resolve(source_file))[0]
+    def cxx(self, source_file):
+        return self.n.build(self._output(source_file), 'cxx', self._resolve(source_file))[0]
 
-        return build
+    def asm(self, source_file):
+        asm_source = self._resolve(source_file)
+        if getattr(self.project.toolchain, 'asm_requires_cpp', False):
+            asm_source = self.n.build(self._output(source_file, '.asm'), 'cpp', asm_source)
+        return self.n.build(self._output(source_file), 'asm', asm_source)[0]
 
-    def asm_rule(self):
-        assert mx.is_windows()
+    def ar(self, archive, members):  # pylint: disable=invalid-name
+        return self.n.build(archive, 'ar', members)[0]
 
-        self.n.rule('cpp',
-                    command='cl -nologo -showIncludes -EP -P $includes $cflags -c $in -Fi$out',
-                    description='CPP $out',
-                    deps='msvc')
-        self.newline()
+    def link(self, program, files):
+        return self.n.build(program, 'link', files)[0]
 
-        self.n.rule('asm',
-                    command='ml64 -nologo -Fo$out -c $in',
-                    description='ASM $out')
-        self.newline()
-
-        def preprocessed(source_file):
-            output = os.path.splitext(source_file)[0] + '.asm'
-            return self.n.build(output, 'cpp', self._resolve(source_file))[0]
-
-        def build(source_file):
-            output = os.path.splitext(source_file)[0] + '.obj'
-            return self.n.build(output, 'asm', preprocessed(source_file))[0]
-
-        return build
-
-    def ar_rule(self):
-        if mx.is_windows():
-            command = 'lib -nologo -out:$out $in'
-        else:
-            command = 'ar -rc $out $in'
-
-        self.n.rule('ar',
-                    command=command,
-                    description='AR $out')
-        self.newline()
-
-        return lambda archive, members: self.n.build(archive, 'ar', members)[0]
-
-    def link_rule(self, cxx=False):
-        if mx.is_windows():
-            command = 'link -nologo $ldflags -out:$out $in $ldlibs'
-        else:
-            command = '%s $ldflags -o $out $in $ldlibs' % ('g++' if cxx else 'gcc')
-
-        self.n.rule('link',
-                    command=command,
-                    description='LINK $out')
-        self.newline()
-
-        return lambda program, files: self.n.build(program, 'link', files)[0]
+    def linkxx(self, program, files):
+        return self.n.build(program, 'linkxx', files)[0]
 
     def close(self):
         self.n.close()
+
+    @staticmethod
+    def _output(source_file, ext=None):
+        if ext is None:
+            ext = '.obj' if mx.is_windows() else '.o'
+        return os.path.splitext(source_file)[0] + ext
 
     @staticmethod
     def _resolve(path):
@@ -641,22 +600,30 @@ class DefaultNativeProject(NinjaProject):
 
     def __init__(self, suite, name, subDir, srcDirs, deps, workingSets, d, kind, **kwargs):
         self.deliverable = kwargs.pop('deliverable', name.split('.')[-1])
+        self.toolchain = kwargs.pop('toolchain', 'mx:DEFAULT_NINJA_TOOLCHAIN')
         if srcDirs:
-            mx.abort('"sourceDirs" is not supported for default native projects')
+            raise mx.abort('"sourceDirs" is not supported for default native projects')
         srcDirs += [self.include, self.src]
         super(DefaultNativeProject, self).__init__(suite, name, subDir, srcDirs, deps, workingSets, d, **kwargs)
         try:
             self._kind = self._kinds[kind]
         except KeyError:
-            mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
+            raise mx.abort('"native" should be one of {}, but "{}" is given'.format(list(self._kinds.keys()), kind))
 
         include_dir = mx.join(self.dir, self.include)
         if next(os.walk(include_dir))[1]:
-            mx.abort('include directory must have a flat structure')
+            raise mx.abort('include directory must have a flat structure')
 
         self.include_dirs = [include_dir]
         if kind == 'static_lib':
             self.libs = [mx.join(self.out_dir, mx.get_arch(), self._target)]
+        self.buildDependencies.append(self.toolchain)
+
+    def resolveDeps(self):
+        super(DefaultNativeProject, self).resolveDeps()
+        self.toolchain = mx.distribution(self.toolchain, context=self)
+        if not isinstance(self.toolchain, mx.AbstractDistribution) or not self.toolchain.get_output():
+            raise mx.abort("Cannot generate manifest: the specified toolchain ({}) must be an AbstractDistribution that returns a value for get_output".format(self.toolchain), context=self)
 
     @property
     def _target(self):
@@ -717,46 +684,36 @@ class DefaultNativeProject(NinjaProject):
             mx.abort('{} source files are not supported by default native projects'.format(unsupported_source_files))
 
         with NinjaManifestGenerator(self, open(path, 'w')) as gen:
-            gen.comment('Project rules')
-            cc = cxx = asm = None
-            if self.c_files:
-                cc = gen.cc_rule()
-            if self.cxx_files:
-                cxx = gen.cc_rule(cxx=True)
-            if self.asm_sources:
-                asm = gen.asm_rule() if mx.is_windows() else cc if cc else gen.cc_rule()
-
-            ar = link = None
-            if self._kind == self._kinds['static_lib']:
-                ar = gen.ar_rule()
-            else:
-                link = gen.link_rule(cxx=bool(self.cxx_files))
-
-            gen.variables(
-                cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags],
-                ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags] if link else None,
-                ldlibs=self.ldlibs if link else None,
-            )
-            gen.include(collections.OrderedDict.fromkeys(
+            gen.comment("Toolchain configuration")
+            gen.include(mx.join(self.toolchain.get_output(), 'toolchain.ninja'))
+            gen.newline()
+            gen.variables(cflags=[mx_subst.path_substitutions.substitute(cflag) for cflag in self.cflags])
+            if self._kind != self._kinds['static_lib']:
+                gen.variables(
+                    ldflags=[mx_subst.path_substitutions.substitute(ldflag) for ldflag in self.ldflags],
+                    ldlibs=self.ldlibs,
+                )
+            gen.include_dirs(collections.OrderedDict.fromkeys(
                 # remove the duplicates while maintaining the ordering
                 [mx.dirname(h_file) for h_file in self.h_files] + list(itertools.chain.from_iterable(
                     getattr(d, 'include_dirs', []) for d in self.buildDependencies))
             ).keys())
 
             gen.comment('Compiled project sources')
-            object_files = [cc(f) for f in self.c_files]
+            object_files = [gen.cc(f) for f in self.c_files]
             gen.newline()
-            object_files += [cxx(f) for f in self.cxx_files]
+            object_files += [gen.cxx(f) for f in self.cxx_files]
             gen.newline()
-            object_files += [asm(f) for f in self.asm_sources]
+            object_files += [gen.asm(f) for f in self.asm_sources]
             gen.newline()
 
             gen.comment('Project deliverable')
             if self._kind == self._kinds['static_lib']:
-                ar(self._target, object_files)
+                gen.ar(self._target, object_files)
             else:
-                link(self._target, object_files + list(itertools.chain.from_iterable(
-                    getattr(d, 'libs', []) for d in self.buildDependencies)))
+                link = gen.linkxx if self.cxx_files else gen.link
+                dep_libs = list(itertools.chain.from_iterable(getattr(d, 'libs', []) for d in self.buildDependencies))
+                link(self._target, object_files + dep_libs)
 
     def _archivable_results(self, target_arch, use_relpath, single):
         def result(base_dir, file_path):
