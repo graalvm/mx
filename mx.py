@@ -217,7 +217,7 @@ def _urlopen(*args, **kwargs):
         abort("should not reach here")
 
 
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+def _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
     """
     Checks if a file exists and is up to date according to the sha1.
     Returns False if the file is not there or does not have the right checksum.
@@ -241,19 +241,21 @@ def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, l
 
     if exists(path):
         if sha1Check and sha1:
-            if not _sha1CachedValid() or (newFile and sha1 != _sha1Cached()):
+            sha1Override = mx_urlrewrites.rewritesha1(urls, sha1)
+
+            if not _sha1CachedValid() or (newFile and sha1Override != _sha1Cached()):
                 logv('Create/update SHA1 cache file ' + sha1path)
                 _writeSha1Cached()
 
-            if sha1 != _sha1Cached():
+            if sha1Override != _sha1Cached():
                 computedSha1 = sha1OfFile(path)
-                if sha1 == computedSha1:
+                if sha1Override == computedSha1:
                     warn('Fixing corrupt SHA1 cache file ' + sha1path)
                     _writeSha1Cached(computedSha1)
                     return True
                 if logErrors:
                     size = os.path.getsize(path)
-                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1))
+                    log_error('SHA1 of {} [size: {}] ({}) does not match expected value ({})'.format(TimeStampFile(path), size, computedSha1, sha1Override))
                 return False
     elif mustExist:
         if logErrors:
@@ -3728,7 +3730,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     if len(urls) == 0 and not sha1Check:
         return path
 
-    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
+    if not _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=resolve and mustExist):
         if len(urls) == 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
@@ -3787,7 +3789,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if path != cachePath:
             _copy_or_symlink(cachePath, path)
 
-        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
+        if not _check_file_with_sha1(path, urls, sha1, sha1path, newFile=True, logErrors=True):
             abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
 
     return path
@@ -8453,11 +8455,14 @@ class ResourceLibrary(BaseLibrary):
         self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
         self.ext = ext
         self.sourcePath = None
-        self.urls = [self.substVars(url) for url in urls]
-        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
+        self.urls = urls
+        self.urlsSubstituted = [self.substVars(url) for url in urls]
+        self.urlsRewritten = mx_urlrewrites.rewriteurls(self.urlsSubstituted)
+        self.sha1 = sha1
+        self.sha1Rewritten = mx_urlrewrites.rewritesha1(self.urlsSubstituted, sha1)
 
     def get_urls(self):
-        return mx_urlrewrites.rewriteurls(self.urls)
+        return self.urlsRewritten
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8474,13 +8479,12 @@ class ResourceLibrary(BaseLibrary):
     def get_path(self, resolve):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        urls = self.get_urls()
-        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
+        return download_file_with_sha1(self.name, path, self.urlsRewritten, self.sha1Rewritten, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
 
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        return not _check_file_with_sha1(path, self.sha1, sha1path)
+        return not _check_file_with_sha1(path, self.urlsRewritten, self.sha1Rewritten, sha1path)
 
     def _comparison_key(self):
         return (self.sha1, self.name)
@@ -8734,19 +8738,25 @@ class Library(BaseLibrary, ClasspathDependency):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
         self.path = path.replace('/', os.sep) if path is not None else None
-        self.urls = [self.substVars(url) for url in urls]
-        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
+        self.urls = urls
+        self.urlsSubstituted = [self.substVars(url) for url in urls]
+        self.urlsRewritten = mx_urlrewrites.rewriteurls(self.urlsSubstituted)
+        self.sha1 = sha1
+        self.sha1Rewritten = mx_urlrewrites.rewritesha1(self.urlsSubstituted, sha1)
         self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
         self.sourceUrls = sourceUrls
+        self.sourceUrlsSubstituted = [self.substVars(url) for url in sourceUrls]
+        self.sourceUrlsRewritten = mx_urlrewrites.rewriteurls(self.sourceUrlsSubstituted)
         if sourcePath == path:
-            assert sourceSha1 is None or sourceSha1 == self.sha1
-            sourceSha1 = self.sha1
+            assert sourceSha1 is None or sourceSha1 == sha1
+            sourceSha1 = sha1
         self.sourceSha1 = sourceSha1
+        self.sourceSha1Rewritten = mx_urlrewrites.rewritesha1(self.sourceUrlsSubstituted, sourceSha1)
         self.deps = deps
         self.ignore = ignore
         if not optional and not ignore:
             abspath = _make_absolute(path, self.suite.dir)
-            if not exists(abspath) and not len(self.urls):
+            if not exists(abspath) and not len(urls):
                 abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
 
             def _checkSha1PropertyCondition(propName, cond, inputPath):
@@ -8756,10 +8766,10 @@ class Library(BaseLibrary, ClasspathDependency):
                         abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
                     abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
 
-            _checkSha1PropertyCondition('sha1', self.sha1, path)
+            _checkSha1PropertyCondition('sha1', sha1, path)
             _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
 
-        for url in self.urls:
+        for url in urls:
             if url.endswith('/') != self.path.endswith(os.sep):
                 abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
 
@@ -8778,7 +8788,7 @@ class Library(BaseLibrary, ClasspathDependency):
         return (self.sha1, self.name)
 
     def get_urls(self):
-        return mx_urlrewrites.rewriteurls(self.urls)
+        return self.urlsRewritten
 
     def is_available(self):
         if not self.path:
@@ -8791,18 +8801,17 @@ class Library(BaseLibrary, ClasspathDependency):
 
         bootClassPathAgent = getattr(self, 'bootClassPathAgent').lower() == 'true' if hasattr(self, 'bootClassPathAgent') else False
 
-        urls = self.get_urls()
-        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+        return download_file_with_sha1(self.name, path, self.urlsRewritten, self.sha1Rewritten, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
 
     def _check_download_needed(self):
         path = _make_absolute(self.path, self.suite.dir)
         sha1path = path + '.sha1'
-        if not _check_file_with_sha1(path, self.sha1, sha1path):
+        if not _check_file_with_sha1(path, self.urlsRewritten, self.sha1Rewritten, sha1path):
             return True
         if self.sourcePath:
             path = _make_absolute(self.sourcePath, self.suite.dir)
             sha1path = path + '.sha1'
-            if not _check_file_with_sha1(path, self.sourceSha1, sha1path):
+            if not _check_file_with_sha1(path, self.sourceUrlsRewritten, self.sourceSha1Rewritten, sha1path):
                 return True
         return False
 
@@ -8811,9 +8820,7 @@ class Library(BaseLibrary, ClasspathDependency):
             return None
         path = _make_absolute(self.sourcePath, self.suite.dir)
         sha1path = path + '.sha1'
-
-        sourceUrls = [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.sourceUrls]
-        return download_file_with_sha1(self.name, path, sourceUrls, self.sourceSha1, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
+        return download_file_with_sha1(self.name, path, self.sourceUrlsRewritten, self.sourceSha1Rewritten, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
 
     def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
