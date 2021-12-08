@@ -488,7 +488,7 @@ class NinjaManifestGenerator(object):
         import ninja_syntax
         self.n.include(ninja_syntax.escape_path(path))
 
-    def cc(self, source_file):
+    def cc(self, source_file):  # pylint: disable=invalid-name
         return self.n.build(self._output(source_file), 'cc', self._resolve(source_file))[0]
 
     def cxx(self, source_file):
@@ -500,7 +500,7 @@ class NinjaManifestGenerator(object):
             asm_source = self.n.build(self._output(source_file, '.asm'), 'cpp', asm_source)
         return self.n.build(self._output(source_file), 'asm', asm_source)[0]
 
-    def ar(self, archive, members):
+    def ar(self, archive, members):  # pylint: disable=invalid-name
         return self.n.build(archive, 'ar', members)[0]
 
     def link(self, program, files):
