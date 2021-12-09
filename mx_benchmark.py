@@ -1268,7 +1268,7 @@ class VmBenchmarkSuite(StdOutBenchmarkSuite):
         if self.profilerNames(bmSuiteArgs):
             for profiler in self.profilerNames(bmSuiteArgs).split(','):
                 if profiler not in _profilers:
-                    raise ValueError("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
+                    raise mx.abort("Unknown profiler '{}'. Use one of: ({})".format(profiler, ', '.join(_profilers.keys())))
                 vmargs, prefix_command = _profilers.get(profiler).additional_options(os.getcwd())
                 args += vmargs
                 if prefix_command:

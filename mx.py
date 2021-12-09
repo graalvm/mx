@@ -17813,7 +17813,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.0")  # ninja toolchain
+version = VersionSpec("5.317.1")  # proftool should search for perf on the path
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
