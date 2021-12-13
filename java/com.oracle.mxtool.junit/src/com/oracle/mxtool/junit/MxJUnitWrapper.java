@@ -306,8 +306,6 @@ public class MxJUnitWrapper {
         if (config.jsonResults != null) {
             system.out().println("generate json reports.....");
             mxListener = new JsonResultsDecorator(mxListener, openFile(system, config.jsonResults), config.jsonResultTags);
-        } else if (config.jsonResultTags != null && config.jsonResultTags.length() > 0) {
-            system.out().println("Ignoring -JUnitJsonResultTags since -JUnitJsonResults was not set");
         }
 
         junitCore.addListener(TextRunListener.createRunListener(mxListener, mxRequest.missingClasses));

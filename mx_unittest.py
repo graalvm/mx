@@ -587,10 +587,16 @@ def unittest(args):
     if json_results:
         junit_args.append('-JUnitJsonResults')
         junit_args.append(json_results)
-    json_result_tags = parsed_args.__dict__.pop('json_result_tags') or mx.test_results_tags()
-    json_result_tags.add(str(mx.primary_suite()))
-    if json_result_tags:
+        # -JUnitJsonResultTags will only be added when -JUnitJsonResults is set
+        json_result_tags = parsed_args.__dict__.pop('json_result_tags')
+        if json_result_tags:
+            json_result_tags = set(json_result_tags.split(","))
+        else:
+            json_result_tags = mx.test_results_tags()
+        json_result_tags.add(str(mx.primary_suite()))
         junit_args.append('-JUnitJsonResultTags')
         junit_args.append(",".join(json_result_tags))
+    elif parsed_args.__dict__.pop('json_result_tags') or mx.user_env_test_results_tags():
+        mx.log('Ignoring -JUnitJsonResultTags since -JUnitJsonResults was not set')
 
     _unittest(args, ['@Test', '@Parameters'], junit_args, **parsed_args.__dict__)
