@@ -5455,7 +5455,7 @@ class Distribution(Dependency):
         yield  # pylint: disable=unreachable
 
 
-from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build
+from mx_jardistribution import JARDistribution, _get_proguard_cp, _use_exploded_build, _stage_file_impl
 
 class JMHArchiveParticipant(object):
     """ Archive participant for building JMH benchmarking jars. """
@@ -6842,6 +6842,10 @@ class JavaProject(Project, ClasspathDependency):
             res = os.path.relpath(res, self.dir)
         return res
 
+    # GR-31142
+    def latest_source_gen_dir(self):
+        return join(self.suite.get_output_root(False, False), self.name, 'src_gen')
+
     def jni_gen_dir(self, relative=False):
         if getattr(self, 'jniHeaders', False):
             res = join(self.get_output_root(), 'jni_gen')
@@ -7582,6 +7586,19 @@ class JavaBuildTask(ProjectBuildTask):
             for f in os.listdir(genDir):
                 rmtree(join(genDir, f))
 
+        linkedGenDir = self.subject.latest_source_gen_dir()
+        if exists(linkedGenDir):
+            logv('Cleaning {0}...'.format(linkedGenDir))
+            if islink(linkedGenDir):
+                os.unlink(linkedGenDir)
+            elif isdir(linkedGenDir):
+                rmtree(linkedGenDir)
+        linkedGenDirParent = dirname(linkedGenDir)
+        if exists(linkedGenDirParent):
+            for root, dirs, files in os.walk(linkedGenDirParent, topdown=False, followlinks=False):
+                if not dirs and not files:
+                    os.rmdir(root)
+
         outputDir = self.subject.output_dir()
         if exists(outputDir):
             logv('Cleaning {0}...'.format(outputDir))
@@ -7658,6 +7675,8 @@ class JavacLikeCompiler(JavaCompiler):
         if processorPath:
             ensure_dir_exists(sourceGenDir)
             javacArgs += ['-processorpath', processorPath, '-s', sourceGenDir]
+            # GR-31142
+            postCompileActions.append(lambda: _stage_file_impl(project.source_gen_dir(), project.latest_source_gen_dir()))
         else:
             javacArgs += ['-proc:none']
         c = str(compliance)
@@ -17813,7 +17832,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.1")  # proftool should search for perf on the path
+version = VersionSpec("5.317.2")  # symlink src_gen for GR-31142
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
