@@ -530,21 +530,21 @@ suite = {
       }
     },
 
-    "LOG4J_API_2_14_1" : {
-      "sha1" : "cd8858fbbde69f46bce8db1152c18a43328aae78",
+    "LOG4J_API_2_15_0" : {
+      "sha1" : "4a5aa7e55a29391c6f66e0b259d5189aa11e45d0",
       "maven" : {
         "groupId" : "org.apache.logging.log4j",
         "artifactId" : "log4j-api",
-        "version" : "2.14.1",
+        "version" : "2.15.0",
       }
     },
 
-    "LOG4J_CORE_2_14_1" : {
-      "sha1" : "9141212b8507ab50a45525b545b39d224614528b",
+    "LOG4J_CORE_2_15_0" : {
+      "sha1" : "ba55c13d7ac2fd44df9cc8074455719a33f375b9",
       "maven" : {
         "groupId" : "org.apache.logging.log4j",
         "artifactId" : "log4j-core",
-        "version" : "2.14.1",
+        "version" : "2.15.0",
       }
     },
 
@@ -558,7 +558,7 @@ suite = {
         "artifactId" : "proguard-core",
         "version" : "8.0.0",
       },
-      "dependencies" : ["LOG4J_CORE_2_14_1", "LOG4J_API_2_14_1"],
+      "dependencies" : ["LOG4J_CORE_2_15_0", "LOG4J_API_2_15_0"],
     },
 
     "PROGUARD_RETRACE_7_2_0_beta1" : {
