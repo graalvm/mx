@@ -17832,7 +17832,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.3")  # symlink src_gen for GR-35773
+version = VersionSpec("5.317.4")  # GR-35780
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
