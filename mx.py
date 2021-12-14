@@ -17266,16 +17266,16 @@ def maybe_generate_test_results_path(key=None):
 _test_results_tags = {get_os(), get_arch()}
 
 
+def user_env_test_results_tags():
+    return get_env("MX_TEST_RESULT_TAGS")
+
+
 def test_results_tags():
     tags = _test_results_tags
-    from_env = get_env("MX_TEST_RESULT_TAGS")
+    from_env = user_env_test_results_tags()
     if from_env:
         tags = tags.union(from_env.split(','))
     return tags
-
-
-def add_test_results_tag(tag):
-    _test_results_tags.add(tag)
 
 
 ### ~~~~~~~~~~~~~ Java Compiler
@@ -17832,7 +17832,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.3")  # symlink src_gen for GR-35773
+version = VersionSpec("5.317.4")  # GR-35780
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
