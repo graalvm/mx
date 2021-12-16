@@ -160,15 +160,21 @@ def rewriteurl(url):
     urlrewrite = _geturlrewrite(url)
     return _applyurlrewrite(urlrewrite, url)
 
-def rewriteurls(urls):
-    return [rewriteurl(url) for url in urls]
+def rewriteurlsandsha1(urls, sha1):
+    """
+    Rewrites URL list and SHA1 as defined by rewriting rules.
 
-def rewritesha1(urls, sha1):
+    :param urls: an URL list to rewrite
+    :param sha1: an SHA1 to rewrite
+    :return: a tuple of rewritten URL list and rewritten SHA1
+    """
+    result = []
     for url in urls:
         urlrewrite = _geturlrewrite(url)
+        result.append (_applyurlrewrite(urlrewrite, url))
         if urlrewrite and urlrewrite.sha1:
-            return urlrewrite.sha1
-    return sha1
+            sha1 = urlrewrite.sha1
+    return (result, sha1)
 
 def urlrewrite_cli(args):
     """rewrites the given URL using MX_URLREWRITES"""
