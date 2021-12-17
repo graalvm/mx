@@ -160,7 +160,7 @@ def rewriteurl(url):
     urlrewrite = _geturlrewrite(url)
     return _applyurlrewrite(urlrewrite, url)
 
-def rewriteurlsandsha1(urls, sha1):
+def _rewrite_urls_and_sha1(urls, sha1):
     """
     Rewrites URL list and SHA1 as defined by rewriting rules.
 
@@ -171,7 +171,7 @@ def rewriteurlsandsha1(urls, sha1):
     result = []
     for url in urls:
         urlrewrite = _geturlrewrite(url)
-        result.append (_applyurlrewrite(urlrewrite, url))
+        result.append(_applyurlrewrite(urlrewrite, url))
         if urlrewrite and urlrewrite.sha1:
             sha1 = urlrewrite.sha1
     return (result, sha1)

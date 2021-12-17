@@ -2394,9 +2394,9 @@ class Suite(object):
             theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
 
             # Resources with the "maven" attribute can get their "urls" and "sourceUrls" from the Maven repository definition.
-            _need_maven_urls = not urls and sha1
-            _need_maven_sourceUrls = not sourceUrls and sourceSha1
-            if maven and (_need_maven_urls or _need_maven_sourceUrls):
+            need_maven_urls = not urls and sha1
+            need_maven_sourceUrls = not sourceUrls and sourceSha1
+            if maven and (need_maven_urls or need_maven_sourceUrls):
 
                 # Make sure we have complete "maven" metadata.
                 maven_attrs = ['groupId', 'artifactId', 'version']
@@ -2409,10 +2409,10 @@ class Suite(object):
                         maven['classifier'] = maven['suffix']
                         del maven['suffix']
 
-                if _need_maven_urls:
+                if need_maven_urls:
                     urls = maven_download_urls(**maven)
 
-                if _need_maven_sourceUrls:
+                if need_maven_sourceUrls:
                     if 'classifier' in maven:
                         abort('Cannot download sources for "maven" library with "classifier" attribute', context)
                     else:
@@ -8429,13 +8429,13 @@ class BaseLibrary(Dependency):
 
     def substVars(self, text):
         """
-        Return string where standard formatting references to instance variables are replaced.
+        Returns the result of calling `text.format(kwargs)` where kwargs is the instance variables of this object along with their values.
         """
         return text.format(**vars(self))
 
     def substVarsList(self, textList):
         """
-        Return string list where standard formatting references to instance variables are replaced.
+        Returns the list formed by calling `self.substVars` on each string in `textList`.
         """
         return [self.substVars(text) for text in textList]
 
@@ -8448,7 +8448,7 @@ class BaseLibrary(Dependency):
         pass
 
 
-class RewritableLibraryMixin:
+class _RewritableLibraryMixin:
 
     def _should_generate_cache_path(self):
         return not self.path and not self.optional
@@ -8475,15 +8475,15 @@ class RewritableLibraryMixin:
             path = _make_absolute(path, self.suite.dir)
         return path
 
-    def _check_hash_specified(self, file, attribute):
+    def _check_hash_specified(self, path, attribute):
         if not hasattr(self, attribute):
-            if exists(file):
-                self.abort('Missing "{0}" property for library {1}, add the following to the definition of {1}:\n{0}={2}'.format(attribute, self.name, sha1OfFile(file)))
+            if exists(path):
+                self.abort('Missing "{0}" property for library {1}, add the following to the definition of {1}:\n{0}={2}'.format(attribute, self.name, sha1OfFile(path)))
             else:
                 self.abort('Missing "{0}" property for library {1}'.format(attribute, self.name))
 
 
-class ResourceLibrary(BaseLibrary, RewritableLibraryMixin):
+class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
@@ -8491,7 +8491,7 @@ class ResourceLibrary(BaseLibrary, RewritableLibraryMixin):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
 
         # Perform URL and SHA1 rewriting before potentially generating cache path.
-        self.urls, self.sha1 = mx_urlrewrites.rewriteurlsandsha1(self.substVarsList(urls), sha1)
+        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
 
         # Path can be generated from URL and SHA1 if needed.
         self.ext = ext
@@ -8570,7 +8570,7 @@ class PackedResourceLibrary(ResourceLibrary):
                     self.path = candidate_archive_path
 
     def _should_generate_cache_path(self):
-        return super()._should_generate_cache_path() and not hasattr(self, 'preExtractedPath')
+        return super(PackedResourceLibrary, self)._should_generate_cache_path() and not hasattr(self, 'preExtractedPath')
 
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
@@ -8773,7 +8773,7 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         return getattr(self, 'module')
 
 
-class Library(BaseLibrary, ClasspathDependency, RewritableLibraryMixin):
+class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
     """
     A library that is provided (built) by some third-party and made available via a URL.
     A Library may have dependencies on other Libraries as expressed by the "deps" field.
@@ -8788,8 +8788,8 @@ class Library(BaseLibrary, ClasspathDependency, RewritableLibraryMixin):
         ClasspathDependency.__init__(self, **kwArgs)
 
         # Perform URL and SHA1 rewriting before potentially generating cache path.
-        self.urls, self.sha1 = mx_urlrewrites.rewriteurlsandsha1(self.substVarsList(urls), sha1)
-        self.sourceUrls, self.sourceSha1 = mx_urlrewrites.rewriteurlsandsha1(self.substVarsList(sourceUrls), sourceSha1)
+        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
+        self.sourceUrls, self.sourceSha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(sourceUrls), sourceSha1)
 
         # Path and sourcePath can be generated from URL and SHA1 if needed.
         self.path = self._normalize_path(path)
@@ -8828,7 +8828,7 @@ class Library(BaseLibrary, ClasspathDependency, RewritableLibraryMixin):
         return (self.sha1, self.name)
 
     def get_urls(self):
-        return self.urlsRewritten
+        return self.urls
 
     def is_available(self):
         if not self.path:
@@ -17169,7 +17169,10 @@ def verify_library_urls(args):
         _suites.append(_mx_suite)
     for s in _suites:
         for lib in s.libs:
-            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            log('Verifying connection to URLs for ' + lib.name)
+            # Due to URL rewriting, URL list may have duplicates so perform deduping now
+            urls = list(set(lib.get_urls()))
+            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, urls, verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -17873,7 +17876,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.4")  # GR-35780
+version = VersionSpec("5.317.5")  # GR-34982
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
