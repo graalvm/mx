@@ -217,7 +217,7 @@ def _urlopen(*args, **kwargs):
         abort("should not reach here")
 
 
-def _check_file_with_sha1(path, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
+def _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=True, newFile=False, logErrors=False):
     """
     Checks if a file exists and is up to date according to the sha1.
     Returns False if the file is not there or does not have the right checksum.
@@ -2371,63 +2371,61 @@ class Suite(object):
         for name, attrs in sorted(libsMap.items()):
             context = 'library ' + name
             orig_attrs = deepcopy(attrs)
-            attrs.pop('native', False)  # TODO use to make non-classpath libraries
+            attrs.pop('native', False) # TODO use to make non-classpath libraries
             os_arch = Suite._pop_os_arch(attrs, context)
             Suite._merge_os_arch_attrs(attrs, os_arch, context)
             deps = Suite._pop_list(attrs, 'dependencies', context)
+
+            ext = attrs.pop('ext', None)
             path = attrs.pop('path', None)
             urls = Suite._pop_list(attrs, 'urls', context)
             sha1 = attrs.pop('sha1', None)
-            ext = attrs.pop('ext', None)
-            maven = attrs.get('maven', None)
 
-            def _check_maven(maven):
-                maven_attrs = ['groupId', 'artifactId', 'version']
-                if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
-                    abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
-                if self.getMxCompatibility().mavenSupportsClassifier():
-                    if 'suffix' in maven:
-                        abort('The use of "suffix" as maven metadata is not supported in this version of mx. Use "classifier" instead.', context)
-                elif 'suffix' in maven:
-                    maven['classifier'] = maven['suffix']
-                    del maven['suffix']
-
-            optional = attrs.pop('optional', False)
-            if not urls and maven is not None:
-                _check_maven(maven)
-                urls = maven_download_urls(**maven)
-
-            packedResource = attrs.pop('packedResource', False)
-            if path is None and not optional and not (packedResource and "preExtractedPath" in attrs):
-                if not urls:
-                    abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute', context)
-                if not sha1:
-                    abort('Library without "path" attribute must have a non-empty "sha1" attribute', context)
-                path = _get_path_in_cache(name, sha1, urls, ext, sources=False)
+            sourceExt = attrs.pop('sourceExt', None)
             sourcePath = attrs.pop('sourcePath', None)
             sourceUrls = Suite._pop_list(attrs, 'sourceUrls', context)
             sourceSha1 = attrs.pop('sourceSha1', None)
-            sourceExt = attrs.pop('sourceExt', None)
-            if sourcePath is None:
-                if sourceSha1 and not sourceUrls:
-                    # There is a sourceSha1 but no sourceUrls. Lets try to get one from maven.
-                    if maven is not None:
-                        _check_maven(maven)
-                        if 'classifier' in maven:
-                            abort('Cannot download sources for "maven" library with "classifier" attribute', context)
-                        sourceUrls = maven_download_urls(classifier='sources', **maven)
-                if sourceUrls:
-                    if not sourceSha1:
-                        abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute', context)
-                    sourcePath = _get_path_in_cache(name, sourceSha1, sourceUrls, sourceExt, sources=True)
-            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
+
+            maven = attrs.get('maven', None)
+            optional = attrs.pop('optional', False)
             resource = attrs.pop('resource', False)
+            packedResource = attrs.pop('packedResource', False)
+
+            theLicense = attrs.pop(self.getMxCompatibility().licenseAttribute(), None)
+
+            # Resources with the "maven" attribute can get their "urls" and "sourceUrls" from the Maven repository definition.
+            need_maven_urls = not urls and sha1
+            need_maven_sourceUrls = not sourceUrls and sourceSha1
+            if maven and (need_maven_urls or need_maven_sourceUrls):
+
+                # Make sure we have complete "maven" metadata.
+                maven_attrs = ['groupId', 'artifactId', 'version']
+                if not isinstance(maven, dict) or any(x not in maven for x in maven_attrs):
+                    abort('The "maven" attribute must be a dictionary containing "{0}"'.format('", "'.join(maven_attrs)), context)
+                if 'suffix' in maven:
+                    if self.getMxCompatibility().mavenSupportsClassifier():
+                        abort('The use of "suffix" as maven metadata is not supported in this version of mx, use "classifier" instead', context)
+                    else:
+                        maven['classifier'] = maven['suffix']
+                        del maven['suffix']
+
+                if need_maven_urls:
+                    urls = maven_download_urls(**maven)
+
+                if need_maven_sourceUrls:
+                    if 'classifier' in maven:
+                        abort('Cannot download sources for "maven" library with "classifier" attribute', context)
+                    else:
+                        sourceUrls = maven_download_urls(classifier='sources', **maven)
+
+            # Construct the required resource type.
             if packedResource:
                 l = PackedResourceLibrary(self, name, path, optional, urls, sha1, **attrs)
             elif resource:
                 l = ResourceLibrary(self, name, path, optional, urls, sha1, ext=ext, **attrs)
             else:
-                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, **attrs)
+                l = Library(self, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ext=ext, sourceExt=sourceExt, **attrs)
+
             l._orig_attrs = orig_attrs
             self.libs.append(l)
 
@@ -3728,7 +3726,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
     if len(urls) == 0 and not sha1Check:
         return path
 
-    if not _check_file_with_sha1(path, sha1, sha1path, mustExist=resolve and mustExist):
+    if not _check_file_with_sha1(path, urls, sha1, sha1path, mustExist=resolve and mustExist):
         if len(urls) == 0:
             abort('SHA1 of {} ({}) does not match expected value ({})'.format(path, sha1OfFile(path), sha1))
 
@@ -3787,7 +3785,7 @@ def download_file_with_sha1(name, path, urls, sha1, sha1path, resolve, mustExist
         if path != cachePath:
             _copy_or_symlink(cachePath, path)
 
-        if not _check_file_with_sha1(path, sha1, sha1path, newFile=True, logErrors=True):
+        if not _check_file_with_sha1(path, urls, sha1, sha1path, newFile=True, logErrors=True):
             abort("No valid file for {} after download. Broken download? SHA1 not updated in suite.py file?".format(path))
 
     return path
@@ -8431,9 +8429,15 @@ class BaseLibrary(Dependency):
 
     def substVars(self, text):
         """
-        Return string where references to instance variables from given text string are replaced.
+        Returns the result of calling `text.format(kwargs)` where kwargs is the instance variables of this object along with their values.
         """
         return text.format(**vars(self))
+
+    def substVarsList(self, textList):
+        """
+        Returns the list formed by calling `self.substVars` on each string in `textList`.
+        """
+        return [self.substVars(text) for text in textList]
 
     @abstractmethod
     def is_available(self):
@@ -8444,20 +8448,66 @@ class BaseLibrary(Dependency):
         pass
 
 
-class ResourceLibrary(BaseLibrary):
+class _RewritableLibraryMixin:
+
+    def _should_generate_cache_path(self):
+        return not self.path and not self.optional
+
+    def _optionally_generate_cache_pathAttr(self, ext):
+        if self._should_generate_cache_path():
+            if not self.urls:
+                self.abort('Library without "path" attribute must have a non-empty "urls" list attribute or "maven" attribute')
+            if not self.sha1:
+                self.abort('Library without "path" attribute must have a non-empty "sha1" attribute')
+            self.path = _get_path_in_cache(self.name, self.sha1, self.urls, ext, sources=False)
+
+    def _optionally_generate_cache_sourcePathAttr(self):
+        if not self.sourcePath and self.sourceUrls:
+            if not self.sourceSha1:
+                self.abort('Library without "sourcePath" attribute but with non-empty "sourceUrls" attribute must have a non-empty "sourceSha1" attribute')
+            self.sourcePath = _get_path_in_cache(self.name, self.sourceSha1, self.sourceUrls, self.sourceExt, sources=True)
+
+    def _normalize_path(self, path):
+        if path:
+            # Accept forward slashes regardless of platform.
+            path = path.replace('/', os.sep)
+            # Relative paths refer to suite directory.
+            path = _make_absolute(path, self.suite.dir)
+        return path
+
+    def _check_hash_specified(self, path, attribute):
+        if not hasattr(self, attribute):
+            if exists(path):
+                self.abort('Missing "{0}" property for library {1}, add the following to the definition of {1}:\n{0}={2}'.format(attribute, self.name, sha1OfFile(path)))
+            else:
+                self.abort('Missing "{0}" property for library {1}'.format(attribute, self.name))
+
+
+class ResourceLibrary(BaseLibrary, _RewritableLibraryMixin):
     """
     A library that is just a resource and therefore not a `ClasspathDependency`.
     """
     def __init__(self, suite, name, path, optional, urls, sha1, ext=None, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, None, **kwArgs)
-        self.path = _make_absolute(path.replace('/', os.sep), suite.dir) if path else None
+
+        # Perform URL and SHA1 rewriting before potentially generating cache path.
+        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
+
+        # Path can be generated from URL and SHA1 if needed.
         self.ext = ext
+        self.path = self._normalize_path(path)
+        self._optionally_generate_cache_pathAttr(self.ext)
+
+        # TODO Note from refactoring.
+        # Was set here but not clear if any code should expect ResourceLibrary to have sourcePath.
         self.sourcePath = None
-        self.urls = [self.substVars(url) for url in urls]
-        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
 
     def get_urls(self):
-        return mx_urlrewrites.rewriteurls(self.urls)
+        return self.urls
+
+    def get_path(self, resolve):
+        sha1path = self.path + '.sha1'
+        return download_file_with_sha1(self.name, self.path, self.urls, self.sha1, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
 
     def getArchivableResults(self, use_relpath=True, single=False):
         path = realpath(self.get_path(False))
@@ -8471,16 +8521,9 @@ class ResourceLibrary(BaseLibrary):
             return False
         return exists(self.get_path(True))
 
-    def get_path(self, resolve):
-        path = _make_absolute(self.path, self.suite.dir)
-        sha1path = path + '.sha1'
-        urls = self.get_urls()
-        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, ext=self.ext, canSymlink=True)
-
     def _check_download_needed(self):
-        path = _make_absolute(self.path, self.suite.dir)
-        sha1path = path + '.sha1'
-        return not _check_file_with_sha1(path, self.sha1, sha1path)
+        sha1path = self.path + '.sha1'
+        return not _check_file_with_sha1(self.path, self.urls, self.sha1, sha1path)
 
     def _comparison_key(self):
         return (self.sha1, self.name)
@@ -8492,32 +8535,42 @@ class PackedResourceLibrary(ResourceLibrary):
     """
 
     def __init__(self, *args, **kwargs):
-        pre_extracted_path = kwargs.pop("preExtractedPath", None)
         super(PackedResourceLibrary, self).__init__(*args, **kwargs)
-        # input:
-        # self.path is the user-provided path or a path in the cache
-        # output:
-        # self.path points to the archive
-        # self.extract_path points to the extracted content of the archive
-        if pre_extracted_path:
-            self.extract_path = _make_absolute(pre_extracted_path.replace('/', os.sep), self.suite.dir)
+
+        # Specifying preExtractedPath beats all other extraction logic.
+        if hasattr(self, 'preExtractedPath'):
             if self.path:
-                raise self.abort("At most one of the `preExtractedPath` or `path` attributes should be used on a packed resource library")
+                self.abort('At most one of the "preExtractedPath" or "path" attributes should be used on a packed resource library')
+            self.extract_path = self._normalize_path(self.preExtractedPath)
+
+        # Absent preExtractedPath we want self.path to point to the archive and self.extract_path to point to the extracted content.
         else:
+
+            # If we do not have attributes to generate cache paths
+            # then we have to be optional and use explicit paths.
             if not self.urls or not self.sha1:
-                if not self.optional:
-                    self.abort("non-optional libraries must have a sha1 and urls or an archivePath")
-                archive_path = None
+                if self.optional:
+                    self.extract_path = self.path
+                    self.path = None
+                else:
+                    self.abort('Non-optional packed resource must have both "urls" and "sha1" attributes')
+
             else:
-                archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, None, sources=False)
-            if self.path == archive_path and archive_path is not None:
-                # default path: generate path for extraction
-                self.extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, ".extracted", sources=False)
-            else:
-                # custom path: use generated path for archive and specified for the result
-                assert self.optional or self.path is not None
-                self.extract_path = self.path
-                self.path = archive_path
+                candidate_archive_path = _get_path_in_cache(self.name, self.sha1, self.urls, self.ext, sources=False)
+                candidate_extract_path = _get_path_in_cache(self.name, self.sha1, self.urls, '.extracted', sources=False)
+
+                if self.path == candidate_archive_path:
+                    # The path attribute was generated.
+                    # Use that path to point to the archive content so that extraction can rely on archive extension.
+                    self.extract_path = candidate_extract_path
+                else:
+                    # The path attribute was provided explicitly.
+                    # Use that path to point to the extracted content and use the generated path to point to the archive.
+                    self.extract_path = self.path
+                    self.path = candidate_archive_path
+
+    def _should_generate_cache_path(self):
+        return super(PackedResourceLibrary, self)._should_generate_cache_path() and not hasattr(self, 'preExtractedPath')
 
     def _check_extract_needed(self, dst, src):
         if not os.path.exists(dst):
@@ -8720,10 +8773,10 @@ class JdkLibrary(BaseLibrary, ClasspathDependency):
         return getattr(self, 'module')
 
 
-class Library(BaseLibrary, ClasspathDependency):
+class Library(BaseLibrary, ClasspathDependency, _RewritableLibraryMixin):
     """
     A library that is provided (built) by some third-party and made available via a URL.
-    A Library may have dependencies on other Library's as expressed by the "deps" field.
+    A Library may have dependencies on other Libraries as expressed by the "deps" field.
     A Library can only depend on another Library, and not a Project or Distribution
     Additional attributes are an SHA1 checksum, location of (assumed) matching sources.
     A Library is effectively an "import" into the suite since, unlike a Project or Distribution
@@ -8733,35 +8786,32 @@ class Library(BaseLibrary, ClasspathDependency):
     def __init__(self, suite, name, path, optional, urls, sha1, sourcePath, sourceUrls, sourceSha1, deps, theLicense, ignore=False, **kwArgs):
         BaseLibrary.__init__(self, suite, name, optional, theLicense, **kwArgs)
         ClasspathDependency.__init__(self, **kwArgs)
-        self.path = path.replace('/', os.sep) if path is not None else None
-        self.urls = [self.substVars(url) for url in urls]
-        self.sha1 = mx_urlrewrites.rewritesha1(self.urls, sha1)
-        self.sourcePath = sourcePath.replace('/', os.sep) if sourcePath else None
-        self.sourceUrls = sourceUrls
-        if sourcePath == path:
-            assert sourceSha1 is None or sourceSha1 == self.sha1
-            sourceSha1 = self.sha1
-        self.sourceSha1 = sourceSha1
+
+        # Perform URL and SHA1 rewriting before potentially generating cache path.
+        self.urls, self.sha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(urls), sha1)
+        self.sourceUrls, self.sourceSha1 = mx_urlrewrites._rewrite_urls_and_sha1(self.substVarsList(sourceUrls), sourceSha1)
+
+        # Path and sourcePath can be generated from URL and SHA1 if needed.
+        self.path = self._normalize_path(path)
+        self.sourcePath = self._normalize_path(sourcePath)
+        if self.path == self.sourcePath and not self.sourceSha1:
+            self.sourceSha1 = self.sha1
+        self._optionally_generate_cache_pathAttr(None)
+        self._optionally_generate_cache_sourcePathAttr()
+
         self.deps = deps
         self.ignore = ignore
+
         if not optional and not ignore:
-            abspath = _make_absolute(path, self.suite.dir)
-            if not exists(abspath) and not len(self.urls):
-                abort('Non-optional library {0} must either exist at {1} or specify one or more URLs from which it can be retrieved'.format(name, abspath), context=self)
-
-            def _checkSha1PropertyCondition(propName, cond, inputPath):
-                if not cond:
-                    absInputPath = _make_absolute(inputPath, self.suite.dir)
-                    if exists(absInputPath):
-                        abort('Missing "{0}" property for library {1}. Add the following to the definition of {1}:\n{0}={2}'.format(propName, name, sha1OfFile(absInputPath)), context=self)
-                    abort('Missing "{0}" property for library {1}'.format(propName, name), context=self)
-
-            _checkSha1PropertyCondition('sha1', self.sha1, path)
-            _checkSha1PropertyCondition('sourceSha1', not sourcePath or sourceSha1, sourcePath)
+            if not exists(self.path) and not self.urls:
+                self.abort('Non-optional library {0} must either exist at {1} or specify URL list from which it can be retrieved'.format(self.name, self.path))
+            self._check_hash_specified(self.path, 'sha1')
+            if self.sourcePath:
+                self._check_hash_specified(self.sourcePath, 'sourceSha1')
 
         for url in self.urls:
             if url.endswith('/') != self.path.endswith(os.sep):
-                abort('Path for dependency directory must have a URL ending with "/": path=' + self.path + ' url=' + url, context=self)
+                self.abort('Path for dependency directory must have a URL ending with "/":\npath={0}\nurl={1}'.format(self.path, url))
 
     def resolveDeps(self):
         """
@@ -8778,7 +8828,7 @@ class Library(BaseLibrary, ClasspathDependency):
         return (self.sha1, self.name)
 
     def get_urls(self):
-        return mx_urlrewrites.rewriteurls(self.urls)
+        return self.urls
 
     def is_available(self):
         if not self.path:
@@ -8786,34 +8836,25 @@ class Library(BaseLibrary, ClasspathDependency):
         return exists(self.get_path(True))
 
     def get_path(self, resolve):
-        path = _make_absolute(self.path, self.suite.dir)
-        sha1path = path + '.sha1'
-
-        bootClassPathAgent = getattr(self, 'bootClassPathAgent').lower() == 'true' if hasattr(self, 'bootClassPathAgent') else False
-
-        urls = self.get_urls()
-        return download_file_with_sha1(self.name, path, urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
+        sha1path = self.path + '.sha1'
+        bootClassPathAgent = hasattr(self, 'bootClassPathAgent') and getattr(self, 'bootClassPathAgent').lower() == 'true'
+        return download_file_with_sha1(self.name, self.path, self.urls, self.sha1, sha1path, resolve, not self.optional, canSymlink=not bootClassPathAgent)
 
     def _check_download_needed(self):
-        path = _make_absolute(self.path, self.suite.dir)
-        sha1path = path + '.sha1'
-        if not _check_file_with_sha1(path, self.sha1, sha1path):
+        sha1Path = self.path + '.sha1'
+        if not _check_file_with_sha1(self.path, self.urls, self.sha1, sha1Path):
             return True
         if self.sourcePath:
-            path = _make_absolute(self.sourcePath, self.suite.dir)
-            sha1path = path + '.sha1'
-            if not _check_file_with_sha1(path, self.sourceSha1, sha1path):
+            sourceSha1Path = self.sourcePath + '.sha1'
+            if not _check_file_with_sha1(self.sourcePath, self.sourceUrls, self.sourceSha1, sourceSha1Path):
                 return True
         return False
 
     def get_source_path(self, resolve):
         if self.sourcePath is None:
             return None
-        path = _make_absolute(self.sourcePath, self.suite.dir)
-        sha1path = path + '.sha1'
-
-        sourceUrls = [mx_urlrewrites.rewriteurl(self.substVars(url)) for url in self.sourceUrls]
-        return download_file_with_sha1(self.name, path, sourceUrls, self.sourceSha1, sha1path, resolve, len(self.sourceUrls) != 0, sources=True)
+        sourceSha1Path = self.sourcePath + '.sha1'
+        return download_file_with_sha1(self.name, self.sourcePath, self.sourceUrls, self.sourceSha1, sourceSha1Path, resolve, len(self.sourceUrls) != 0, sources=True)
 
     def classpath_repr(self, resolve=True):
         path = self.get_path(resolve)
@@ -17128,7 +17169,10 @@ def verify_library_urls(args):
         _suites.append(_mx_suite)
     for s in _suites:
         for lib in s.libs:
-            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, lib.get_urls(), verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
+            log('Verifying connection to URLs for ' + lib.name)
+            # Due to URL rewriting, URL list may have duplicates so perform deduping now
+            urls = list(set(lib.get_urls()))
+            if (lib.isLibrary() or lib.isResourceLibrary()) and len(lib.get_urls()) != 0 and not download(os.devnull, urls, verifyOnly=True, abortOnError=False, verbose=_opts.verbose):
                 ok = False
                 log_error('Library {} not available from {}'.format(lib.qualifiedName(), lib.get_urls()))
     if not ok:
@@ -17832,7 +17876,7 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.317.4")  # GR-35780
+version = VersionSpec("5.317.5")  # GR-34982
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()

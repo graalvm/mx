@@ -63,8 +63,8 @@ def register_urlrewrite(urlrewrite, onError=None):
     if not isinstance(urlrewrite, dict) or len(urlrewrite) != 1:
         onError('A URL rewrite rule must be a dict with a single entry')
     for pattern, attrs in urlrewrite.items():
-        sha1 = attrs.pop('sha1', None)
         replacement = attrs.pop('replacement', None)
+        sha1 = attrs.pop('sha1', None)
         if replacement is None:
             raise Exception('URL rewrite for pattern "' + pattern + '" is missing "replacement" entry')
         if len(attrs) != 0:
@@ -73,7 +73,7 @@ def register_urlrewrite(urlrewrite, onError=None):
             pattern = re.compile(pattern)
         except Exception as e: # pylint: disable=broad-except
             onError('Error parsing URL rewrite pattern "' + pattern + '": ' + str(e))
-        urlrewrite = URLRewrite(pattern, str(replacement), sha1)
+        urlrewrite = URLRewrite(pattern, replacement, sha1)
         mx.logvv("Registering url rewrite: " + str(urlrewrite))
         _urlrewrites.append(urlrewrite)
 
@@ -134,14 +134,19 @@ def _applyurlrewrite(urlrewrite, url):
     Applies an URL rewrite rule to `url`.
     Handles JAR URL references.
     """
-    jar_url = mx._JarURL.parse(url)
-    if jar_url:
-        jar_url.base_url = urlrewrite._rewrite(jar_url.base_url)
-        res = str(jar_url)
+    if urlrewrite:
+        # Rewrite rule exists, use it.
+        jar_url = mx._JarURL.parse(url)
+        if jar_url:
+            jar_url.base_url = urlrewrite._rewrite(jar_url.base_url)
+            res = str(jar_url)
+        else:
+            res = urlrewrite._rewrite(url)
+        mx.logvv("Rewrote '{}' to '{}'".format(url, res))
+        return res
     else:
-        res = urlrewrite._rewrite(url)
-    mx.logvv("Rewrote '{}' to '{}'".format(url, res))
-    return res
+        # Rewrite rule does not exist.
+        return url
 
 def rewriteurl(url):
     """
@@ -153,19 +158,23 @@ def rewriteurl(url):
     :rtype: str
     """
     urlrewrite = _geturlrewrite(url)
-    if urlrewrite:
-        return _applyurlrewrite(urlrewrite, url)
-    return url
+    return _applyurlrewrite(urlrewrite, url)
 
-def rewriteurls(urls):
-    return [rewriteurl(url) for url in urls]
+def _rewrite_urls_and_sha1(urls, sha1):
+    """
+    Rewrites URL list and SHA1 as defined by rewriting rules.
 
-def rewritesha1(urls, sha1):
+    :param urls: an URL list to rewrite
+    :param sha1: an SHA1 to rewrite
+    :return: a tuple of rewritten URL list and rewritten SHA1
+    """
+    result = []
     for url in urls:
         urlrewrite = _geturlrewrite(url)
+        result.append(_applyurlrewrite(urlrewrite, url))
         if urlrewrite and urlrewrite.sha1:
-            return urlrewrite.sha1
-    return sha1
+            sha1 = urlrewrite.sha1
+    return (result, sha1)
 
 def urlrewrite_cli(args):
     """rewrites the given URL using MX_URLREWRITES"""
@@ -177,13 +186,16 @@ class URLRewrite(object):
     Represents a regular expression based rewrite rule that can be applied to a URL.
 
     :param :class:`re.RegexObject` pattern: a regular expression for matching URLs
-    :param str replacement: the replacement to use for a URL matched by `pattern`
+    :param replacement: the replacement URL to use for a URL matched by `pattern`
+    :param sha1: the replacement SHA1 to use for a URL matched by `pattern`
     """
 
     def __init__(self, pattern, replacement, sha1):
         self.pattern = pattern
-        self.replacement = replacement
-        self.sha1 = sha1
+        # Make sure to use str rather than unicode.
+        # Some code paths elsewhere depend on this.
+        self.replacement = str(replacement)
+        self.sha1 = str(sha1) if sha1 else None
 
     def _rewrite(self, url):
         match = self.pattern.match(url)
