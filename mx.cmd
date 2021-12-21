@@ -7,5 +7,5 @@ if defined MX_PYTHON (
 ) else if defined MX_PYTHON_VERSION (
   python%MX_PYTHON_VERSION% -u "%~dp0mx.py" %*
 ) else (
-  python -u "%~dp0mx.py" %*
+  python -u "%~dp0mx_enter.py" %*
 )

@@ -28,14 +28,8 @@ r"""
 mx is a command line tool for managing the development of Java code organized as suites of projects.
 
 """
-from __future__ import print_function
 
 import sys
-
-if sys.version_info < (2, 7):
-    major, minor, micro, _, _ = sys.version_info
-    raise SystemExit('mx requires python 2.7+, not {0}.{1}.{2}'.format(major, minor, micro))
-
 from abc import ABCMeta, abstractmethod, abstractproperty
 
 if __name__ == '__main__':
@@ -81,46 +75,27 @@ import posixpath
 
 _mx_commands = MxCommands("mx")
 
-# Temporary imports and (re)definitions while porting mx from Python 2 to Python 3
-if sys.version_info[0] < 3:
-    filter = itertools.ifilter                 # pylint: disable=redefined-builtin,invalid-name
-    def input(prompt=None):                    # pylint: disable=redefined-builtin
-        return raw_input(prompt)               # pylint: disable=undefined-variable
-
-    import __builtin__ as builtins
-    import urllib2                             # pylint: disable=unused-import
-    _urllib_request = urllib2
-    _urllib_error = urllib2
-    del urllib2
-    import urlparse as _urllib_parse
-    def _decode(x):
-        return x
-    def _encode(x):
-        return x
-    _unicode = unicode                         # pylint: disable=undefined-variable
-    import multiprocessing
-else:
-    import builtins                            # pylint: disable=unused-import,no-name-in-module
-    import urllib.request as _urllib_request   # pylint: disable=unused-import,no-name-in-module
-    import urllib.error as _urllib_error       # pylint: disable=unused-import,no-name-in-module
-    import urllib.parse as _urllib_parse       # pylint: disable=unused-import,no-name-in-module
-    def _decode(x):
-        return x.decode()
-    def _encode(x):
-        return x.encode()
-    _unicode = str
-    import multiprocessing.dummy as multiprocessing
-    class _DummyProcess(multiprocessing.DummyProcess):
-        def run(self):
-            try:
-                super(_DummyProcess, self).run()
-            except:
-                self._exitcode = 1
-                raise
-        @property
-        def exitcode(self):
-            return getattr(self, '_exitcode', super(_DummyProcess, self).exitcode)
-    multiprocessing.Process = _DummyProcess
+import builtins                            # pylint: disable=unused-import,no-name-in-module
+import urllib.request as _urllib_request   # pylint: disable=unused-import,no-name-in-module
+import urllib.error as _urllib_error       # pylint: disable=unused-import,no-name-in-module
+import urllib.parse as _urllib_parse       # pylint: disable=unused-import,no-name-in-module
+def _decode(x):
+    return x.decode()
+def _encode(x):
+    return x.encode()
+_unicode = str
+import multiprocessing.dummy as multiprocessing
+class _DummyProcess(multiprocessing.DummyProcess):
+    def run(self):
+        try:
+            super(_DummyProcess, self).run()
+        except:
+            self._exitcode = 1
+            raise
+    @property
+    def exitcode(self):
+        return getattr(self, '_exitcode', super(_DummyProcess, self).exitcode)
+multiprocessing.Process = _DummyProcess
 
 ### ~~~~~~~~~~~~~ _private
 
@@ -4196,7 +4171,7 @@ def _suggest_tlsv1_error(e):
 def _init_can_symlink():
     if 'symlink' in dir(os):
         try:
-            dst = '.symlink_dst.{}'.format(os.getpid())
+            dst = join(dirname(__file__), '.symlink_dst.{}'.format(os.getpid()))
             while exists(dst):
                 dst = '{}.{}'.format(dst, time.time())
             os.symlink(__file__, dst)
@@ -17903,14 +17878,18 @@ def main():
 
 
 # The version must be updated for every PR (checked in CI)
-version = VersionSpec("5.321.2")  # GR-38415
+version = VersionSpec("6.0.0")  # GR-22580
 
 currentUmask = None
 _mx_start_datetime = datetime.utcnow()
 _last_timestamp = _mx_start_datetime
 
-if __name__ == '__main__':
+def _main_wrapper():
     # Capture the current umask since there's no way to query it without mutating it.
+    global currentUmask
     currentUmask = os.umask(0)
     os.umask(currentUmask)
     main()
+
+if __name__ == '__main__':
+    _main_wrapper()

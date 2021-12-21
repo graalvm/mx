@@ -2,7 +2,7 @@
 #
 # ----------------------------------------------------------------------------------------------------
 #
-# Copyright (c) 2007, 2011, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2007, 2022, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -40,8 +40,8 @@ while [ -h "$source" ] ; do
 done
 dir="$( cd -P "$( dirname "$source" )" && pwd )"
 
-if [ ! -f "$dir/mx.py" ]; then
-    echo "Cannot find mx.py in $dir"
+if [ ! -f "$dir/mx_enter.py" ]; then
+    echo "Cannot find mx_enter.py in $dir"
     exit 1
 fi
 
@@ -51,14 +51,13 @@ if [ -n "${MX_PYTHON}" ]; then
 elif [ -n "${MX_PYTHON_VERSION}" ]; then
     python_exe=python${MX_PYTHON_VERSION}
 else
-    # Not all systems (e.g. Mac OS X) have 'python2' on the path.
-    type python2.7 >/dev/null 2>&1
+    type python3.8 >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        python_exe=python2.7
+        python_exe=python3.8
     else
-        type python2 > /dev/null 2>&1
+        type python3 >/dev/null 2>&1
         if [ $? -eq 0 ]; then
-            python_exe=python2
+            python_exe=python3
         else
             type python > /dev/null 2>&1
             if [ $? -eq 0 ]; then
@@ -82,4 +81,4 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-exec $python_exe -u "$dir/mx.py" "$@"
+exec $python_exe -u "$dir/mx_enter.py" "$@"

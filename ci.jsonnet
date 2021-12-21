@@ -1,7 +1,7 @@
 local common = import "common.json";
 local jdks = common.jdks;
 local versions = {
-    python3: "3.9.9",
+    python3: "3.8.10",
     pylint: "1.9.3",
     gcc: "4.9.2",
     ruby: "2.7.2",
@@ -21,31 +21,30 @@ local deps(project, os, arch) = if std.objectHasAll(common[project].deps, os) th
 #
 # This structure allows for easily changing the
 # platform details of a gate builder.
-local with(os, arch, java_release, timelimit="15:00", python=3) = deps("sulong", os, arch) + {
+local with(os, arch, java_release, timelimit="15:00") = deps("sulong", os, arch) + {
     local path(unixpath) = if os == "windows" then std.strReplace(unixpath, "/", "\\") else unixpath,
     local exe(unixpath) = if os == "windows" then path(unixpath) + ".exe" else unixpath,
     local copydir(src, dst) = if os == "windows" then ["xcopy", path(src), path(dst), "/e", "/i", "/q"] else ["cp", "-r", src, dst],
     local mx_copy_dir = path("${PWD}/../path with a space"),
     local mx = path("./mx"),
 
-    # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then python and Java versions followed by OS and arch
+    # Creates a builder name in "top down" order: first "what it is" (e.g. gate) then Java version followed by OS and arch
     with_name(prefix):: self + {
-        # Omit python version if it is 3 since that is the default
-        local python_ver = if python == 3 then "" else "-python%s" % python,
-        name: "%s%s-jdk%s-%s-%s" % [prefix, python_ver, java_release, os, arch],
+        name: "%s-jdk%s-%s-%s" % [prefix, java_release, os, arch],
     },
 
+    python_version: "3",
     targets: ["gate"],
     capabilities: [os, arch],
     packages+: {
         "pip:pylint": "==" + versions.pylint,
         "gcc": "==" + versions.gcc,
+        "python": "==" + versions.python3,
     },
     downloads+: common.downloads.eclipse.downloads + {
         JAVA_HOME: jdks["labsjdk-ee-%s" % java_release]
     },
     environment: {
-        MX_PYTHON: "python%s" % python,
         ECLIPSE_EXE: if os == "darwin" then "$ECLIPSE/Contents/MacOS/eclipse" else exe("$ECLIPSE/eclipse"),
         # Required to keep pylint happy on Darwin
         # https://coderwall.com/p/-k_93g/mac-os-x-valueerror-unknown-locale-utf-8-in-python
@@ -101,7 +100,7 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = deps("sulong",
     proftool_test:: self.with_name("proftool-test") + {
         packages+: {
             "pip:capstone": ">=" + versions.capstone,
-            "python": ">=3.4.1",
+            "python": "==" + versions.python3,
         },
         setup:  [
             [mx, "build"],
@@ -201,14 +200,16 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = deps("sulong",
 };
 
 {
+    specVersion: "3",
+
     # Overlay
     overlay: "fa7b89f39e034388b149591ef6fb706c72c8c29b",
+    
 
     # For use by overlay
     versions:: versions,
 
     builds: [
-        with("linux",   "amd64", 17, python=2).gate,
         with("linux",   "amd64", 17).gate,
         with("linux",   "amd64", 17).fetchjdk_test,
         with("linux",   "amd64", 17).bisect_test,
@@ -218,10 +219,8 @@ local with(os, arch, java_release, timelimit="15:00", python=3) = deps("sulong",
         with("linux",   "amd64", 17).jmh_test,
         with("linux",   "amd64", 17, timelimit="20:00").proftool_test,
         with("linux",   "amd64", 11, timelimit="20:00").build_truffleruby,
-        with("linux",   "amd64", 11, timelimit="20:00", python=2).build_graalvm_ce,
-        with("linux",   "amd64", 11, timelimit="20:00", python=3).build_graalvm_ce,
-        with("linux",   "amd64", 17, python=2).mx_unit_test,
-        with("linux",   "amd64", 17, python=3).mx_unit_test,
+        with("linux",   "amd64", 11, timelimit="20:00").build_graalvm_ce,
+        with("linux",   "amd64", 17).mx_unit_test,
         with("linux",   "amd64", 17).version_update_check,
         with("linux",   "amd64", 17).post_merge_tag_version,
     ]
