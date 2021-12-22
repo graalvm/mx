@@ -40,8 +40,10 @@ while [ -h "$source" ] ; do
 done
 dir="$( cd -P "$( dirname "$source" )" && pwd )"
 
-if [ ! -f "$dir/mx_enter.py" ]; then
-    echo "Cannot find mx_enter.py in $dir"
+: ${__MX_MODULE__:="mx_enter.py"}
+
+if [ ! -f "$dir/${__MX_MODULE__}" ]; then
+    echo "Cannot find ${__MX_MODULE__} in $dir"
     exit 1
 fi
 
@@ -81,4 +83,4 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-exec $python_exe -u "$dir/mx_enter.py" "$@"
+exec $python_exe -u "$dir/${__MX_MODULE__}" "$@"
